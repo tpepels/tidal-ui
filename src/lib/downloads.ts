@@ -134,12 +134,13 @@ async function downloadTrackWithRetry(
 	filename: string,
 	track: Track,
 	callbacks?: AlbumDownloadCallbacks,
-	options?: { convertAacToMp3?: boolean; downloadCoverSeperately?: boolean }
+	options?: { convertAacToMp3?: boolean; downloadCoverSeperately?: boolean; storage?: DownloadStorage }
 ): Promise<DownloadTrackResult> {
 	const maxAttempts = 3;
 	const baseDelay = 1000; // 1 second
 	const trackTitle = track.title ?? 'Unknown Track';
 	const artistName = formatArtists(track.artists);
+	const storage = options?.storage ?? 'client';
 
 	console.log(`[Track Download] Starting download: "${trackTitle}" by ${artistName} (ID: ${trackId}, Quality: ${quality})`);
 
@@ -151,7 +152,7 @@ async function downloadTrackWithRetry(
 
 			const { blob } = await losslessAPI.fetchTrackBlob(trackId, quality, filename, {
 				ffmpegAutoTriggered: false,
-				convertAacToMp3: options?.convertAacToMp3
+				convertAacToMp3: storage === 'client' ? options?.convertAacToMp3 : false
 			});
 
 			console.log(`[Track Download] ✓ Success: "${trackTitle}" (${(blob.size / 1024 / 1024).toFixed(2)} MB)${attempt > 1 ? ` - succeeded on attempt ${attempt}` : ''}`);
@@ -434,7 +435,7 @@ export async function downloadAlbum(
 				filename,
 				track,
 				callbacks,
-				{ convertAacToMp3 }
+				{ convertAacToMp3, storage: 'client' }
 			);
 
 			if (result.success && result.blob) {
@@ -512,7 +513,7 @@ export async function downloadAlbum(
 					filename,
 					track,
 					callbacks,
-					{ convertAacToMp3, downloadCoverSeperately }
+					{ convertAacToMp3, downloadCoverSeperately, storage: 'server' }
 				);
 
 				if (result.success && result.blob) {
@@ -547,7 +548,7 @@ export async function downloadAlbum(
 				filename,
 				track,
 				callbacks,
-				{ convertAacToMp3, downloadCoverSeperately }
+				{ convertAacToMp3, downloadCoverSeperately, storage: 'client' }
 			);
 
 			if (result.success && result.blob) {
