@@ -29,7 +29,11 @@ function selectAdapter() {
 	console.log('Using Node adapter (Docker/local)');
 	return node({
 		out: 'build',
-		precompress: true
+		precompress: true,
+		// Configure underlying HTTP server to accept large payloads (100MB for audio uploads)
+		middlewareOptions: {
+			bodyLimit: '100mb'
+		}
 	});
 }
 

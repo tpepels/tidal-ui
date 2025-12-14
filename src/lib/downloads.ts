@@ -1,6 +1,8 @@
 import { losslessAPI } from '$lib/api';
 import type { Album, Track, AudioQuality } from '$lib/types';
 import type { DownloadMode, DownloadStorage } from '$lib/stores/downloadPreferences';
+import { downloadQueue } from '$lib/stores/downloadQueue';
+import type { DownloadQueueItem } from '$lib/stores/downloadQueue';
 import { formatArtists } from '$lib/utils';
 import JSZip from 'jszip';
 
@@ -267,6 +269,38 @@ export async function downloadTrackServerSide(
 	}
 }
 
+// Helper: Process array of async tasks in parallel with concurrency limit
+async function parallelMap<T, R>(
+	items: T[],
+	asyncFn: (item: T, index: number) => Promise<R>,
+	maxConcurrent: number = 3
+): Promise<R[]> {
+	const results: R[] = [];
+	const executing: Promise<void>[] = [];
+
+	for (let index = 0; index < items.length; index++) {
+		const item = items[index];
+		const promise = Promise.resolve()
+			.then(() => asyncFn(item, index))
+			.then((result) => {
+				results[index] = result;
+			});
+
+		executing.push(promise);
+
+		if (executing.length >= maxConcurrent) {
+			await Promise.race(executing);
+			executing.splice(
+				executing.findIndex((p) => p === promise),
+				1
+			);
+		}
+	}
+
+	await Promise.all(executing);
+	return results;
+}
+
 export async function downloadAlbum(
 	album: Album,
 	quality: AudioQuality,
@@ -486,13 +520,14 @@ export async function downloadAlbum(
 		return;
 	}
 
-	// Individual download mode
+	// Individual download mode - process in parallel (up to 3 concurrent)
 	let completed = 0;
 	let failedCount = 0;
 
-	console.log(`[Individual Download] Starting individual downloads - storage mode: ${storage}`);
+	console.log(`[Individual Download] Starting individual downloads - storage mode: ${storage} (parallel, max 3 concurrent)`);
 
-	for (const track of tracks) {
+	// Create async download task for each track
+	const downloadTasks = tracks.map(async (track) => {
 		const filename = buildTrackFilename(
 			canonicalAlbum,
 			track,
@@ -512,7 +547,7 @@ export async function downloadAlbum(
 					quality,
 					filename,
 					track,
-					callbacks,
+					undefined, // no callbacks for parallel
 					{ convertAacToMp3, downloadCoverSeperately, storage: 'server' }
 				);
 
@@ -528,17 +563,18 @@ export async function downloadAlbum(
 					);
 					if (serverResult.success) {
 						console.log(`[Individual Download] ✓ Server-side saved: ${track.title}`);
+						return { success: true, track };
 					} else {
 						console.error(`[Individual Download] ✗ Server-side failed: ${track.title}`, serverResult.error);
-						failedCount++;
+						return { success: false, track, error: serverResult.error };
 					}
 				} else {
 					console.error(`[Individual Download] ✗ Failed to fetch blob: ${track.title}`, result.error);
-					failedCount++;
+					return { success: false, track, error: result.error };
 				}
 			} catch (error) {
 				console.error(`[Individual Download] ✗ Server-side error: ${track.title}`, error);
-				failedCount++;
+				return { success: false, track, error };
 			}
 		} else {
 			// Client-side download
@@ -547,7 +583,7 @@ export async function downloadAlbum(
 				quality,
 				filename,
 				track,
-				callbacks,
+				undefined, // no callbacks for parallel
 				{ convertAacToMp3, downloadCoverSeperately, storage: 'client' }
 			);
 
@@ -639,13 +675,24 @@ export async function downloadAlbum(
 				}
 			} else {
 				console.error(`[Individual Download] Track failed: ${track.title}`, result.error);
-				failedCount++;
+				return { success: false, track, error: result.error };
 			}
-		}
 
-		completed += 1;
-		callbacks?.onTrackDownloaded?.(completed, total, track);
-	}
+			return { success: true, track };
+		}
+	});
+
+	// Wait for all downloads to complete (still limits concurrency)
+	const results = await parallelMap(downloadTasks, (task) => task, 3);
+
+	// Count successes/failures
+	failedCount = results.filter((r) => !r.success).length;
+	completed = total;
+
+	// Update callbacks for all tracks
+	tracks.forEach((track, index) => {
+		callbacks?.onTrackDownloaded?.(index + 1, total, track);
+	});
 
 	// Summary logging
 	const successCount = total - failedCount;
