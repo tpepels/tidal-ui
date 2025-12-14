@@ -1,6 +1,11 @@
 # Use a Node.js Slim image for the builder stage
 FROM node:24.0.1-slim AS builder
 
+# Install ffmpeg (needed for metadata embedding)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
 # Set the working directory
 WORKDIR /app
 
