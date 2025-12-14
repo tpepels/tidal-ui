@@ -1,6 +1,6 @@
 import { losslessAPI } from '$lib/api';
 import type { Album, Track, AudioQuality } from '$lib/types';
-import type { DownloadMode } from '$lib/stores/downloadPreferences';
+import type { DownloadMode, DownloadStorage } from '$lib/stores/downloadPreferences';
 import { formatArtists } from '$lib/utils';
 import JSZip from 'jszip';
 
@@ -192,12 +192,86 @@ function triggerFileDownload(blob: Blob, filename: string): void {
 	URL.revokeObjectURL(url);
 }
 
+export async function downloadTrackServerSide(
+	trackId: number,
+	quality: AudioQuality,
+	albumTitle: string,
+	artistName: string,
+	trackTitle?: string,
+	blob?: Blob
+): Promise<{ success: boolean; filepath?: string; message?: string; error?: string }> {
+	try {
+		if (!blob) {
+			console.error('[Server Download] No blob provided');
+			return {
+				success: false,
+				error: 'No blob provided'
+			};
+		}
+
+		console.log(`[Server Download] Phase 1: Sending metadata for "${trackTitle}" (${(blob.size / 1024 / 1024).toFixed(2)} MB)`);
+		const response = await fetch('/api/download-track', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				trackId,
+				quality,
+				albumTitle,
+				artistName,
+				trackTitle,
+				blobSize: blob.size
+			})
+		});
+
+		if (!response.ok) {
+			const errorData = await response.json().catch(() => ({}));
+			const errMsg = errorData.error || `HTTP ${response.status}`;
+			console.error(`[Server Download] Phase 1 failed: ${errMsg}`);
+			throw new Error(errMsg);
+		}
+
+		// Get the signed ID for the upload
+		const { uploadId } = await response.json();
+		console.log(`[Server Download] Phase 1 success: received uploadId=${uploadId}`);
+
+		// Upload the blob to the server
+		console.log(`[Server Download] Phase 2: Uploading blob for "${trackTitle}"`);
+		const uploadResponse = await fetch(`/api/download-track/${uploadId}`, {
+			method: 'POST',
+			body: blob,
+			headers: { 'Content-Type': 'application/octet-stream' }
+		});
+
+		if (!uploadResponse.ok) {
+			const errorData = await uploadResponse.json().catch(() => ({}));
+			const errMsg = errorData.error || `Upload failed: ${uploadResponse.status}`;
+			console.error(`[Server Download] Phase 2 failed: ${errMsg}`);
+			throw new Error(errMsg);
+		}
+
+		const data = await uploadResponse.json();
+		console.log(`[Server Download] Phase 2 success: ${data.message}`);
+		return {
+			success: true,
+			filepath: data.filepath,
+			message: data.message
+		};
+	} catch (error) {
+		const errorMsg = error instanceof Error ? error.message : String(error);
+		console.error(`[Server Download] Error: ${errorMsg}`);
+		return {
+			success: false,
+			error: errorMsg
+		};
+	}
+}
+
 export async function downloadAlbum(
 	album: Album,
 	quality: AudioQuality,
 	callbacks?: AlbumDownloadCallbacks,
 	preferredArtistName?: string,
-	options?: { mode?: DownloadMode; convertAacToMp3?: boolean; downloadCoverSeperately?: boolean }
+	options?: { mode?: DownloadMode; convertAacToMp3?: boolean; downloadCoverSeperately?: boolean; storage?: DownloadStorage }
 ): Promise<void> {
 	const { album: fetchedAlbum, tracks } = await losslessAPI.getAlbum(album.id);
 	const canonicalAlbum = fetchedAlbum ?? album;
@@ -208,6 +282,7 @@ export async function downloadAlbum(
 	const useCsv = mode === 'csv';
 	const convertAacToMp3 = options?.convertAacToMp3 ?? false;
 	const downloadCoverSeperately = options?.downloadCoverSeperately ?? false;
+	const storage = options?.storage ?? 'client';
 	const artistName = sanitizeForFilename(
 		preferredArtistName ?? canonicalAlbum.artist?.name ?? 'Unknown Artist'
 	);
@@ -410,8 +485,11 @@ export async function downloadAlbum(
 		return;
 	}
 
+	// Individual download mode
 	let completed = 0;
 	let failedCount = 0;
+
+	console.log(`[Individual Download] Starting individual downloads - storage mode: ${storage}`);
 
 	for (const track of tracks) {
 		const filename = buildTrackFilename(
@@ -422,104 +500,146 @@ export async function downloadAlbum(
 			convertAacToMp3
 		);
 
-		const result = await downloadTrackWithRetry(
-			track.id,
-			quality,
-			filename,
-			track,
-			callbacks,
-			{ convertAacToMp3, downloadCoverSeperately }
-		);
+		console.log(`[Individual Download] Processing track: ${track.title} (storage: ${storage})`);
 
-		if (result.success && result.blob) {
-			// Trigger individual download
-			const url = URL.createObjectURL(result.blob);
-			const a = document.createElement('a');
-			a.href = url;
-			a.download = filename;
-			document.body.appendChild(a);
-			a.click();
-			document.body.removeChild(a);
-			URL.revokeObjectURL(url);
+		if (storage === 'server') {
+			// Server-side download
+			try {
+				console.log(`[Individual Download] Fetching blob for "${track.title}"...`);
+				const result = await downloadTrackWithRetry(
+					track.id,
+					quality,
+					filename,
+					track,
+					callbacks,
+					{ convertAacToMp3, downloadCoverSeperately }
+				);
 
-			// Download cover separately if enabled
-			if (downloadCoverSeperately && track.album?.cover) {
-				try {
-					const coverId = track.album.cover;
-					const coverSizes: Array<'1280' | '640' | '320'> = ['1280', '640', '320'];
-					let coverDownloadSuccess = false;
-
-					for (const size of coverSizes) {
-						if (coverDownloadSuccess) break;
-
-						const coverUrl = losslessAPI.getCoverUrl(coverId, size);
-						const fetchStrategies = [
-							{
-								name: 'with-headers',
-								options: {
-									method: 'GET' as const,
-									headers: {
-										'Accept': 'image/jpeg,image/jpg,image/png,image/*',
-										'User-Agent':
-											'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-									},
-									signal: AbortSignal.timeout(10000)
-								}
-							},
-							{
-								name: 'simple',
-								options: {
-									method: 'GET' as const,
-									signal: AbortSignal.timeout(10000)
-								}
-							}
-						];
-
-						for (const strategy of fetchStrategies) {
-							if (coverDownloadSuccess) break;
-
-							try {
-								const coverResponse = await fetch(coverUrl, strategy.options);
-
-								if (!coverResponse.ok) continue;
-
-								const contentType = coverResponse.headers.get('Content-Type');
-								const contentLength = coverResponse.headers.get('Content-Length');
-
-								if (contentLength && parseInt(contentLength, 10) === 0) continue;
-								if (contentType && !contentType.startsWith('image/')) continue;
-
-								const arrayBuffer = await coverResponse.arrayBuffer();
-								if (!arrayBuffer || arrayBuffer.byteLength === 0) continue;
-
-								const uint8Array = new Uint8Array(arrayBuffer);
-								const imageFormat = detectImageFormat(uint8Array);
-								if (!imageFormat) continue;
-
-								const coverBlob = new Blob([uint8Array], { type: imageFormat.mimeType });
-								const coverObjectUrl = URL.createObjectURL(coverBlob);
-								const coverLink = document.createElement('a');
-								coverLink.href = coverObjectUrl;
-								coverLink.download = `cover.${imageFormat.extension}`;
-								document.body.appendChild(coverLink);
-								coverLink.click();
-								document.body.removeChild(coverLink);
-								URL.revokeObjectURL(coverObjectUrl);
-
-								coverDownloadSuccess = true;
-								break;
-							} catch {
-								// Continue to next strategy
-							}
-						}
+				if (result.success && result.blob) {
+					console.log(`[Individual Download] Blob fetched, uploading to server...`);
+					const serverResult = await downloadTrackServerSide(
+						track.id,
+						quality,
+						albumTitle,
+						artistName,
+						track.title,
+						result.blob
+					);
+					if (serverResult.success) {
+						console.log(`[Individual Download] ✓ Server-side saved: ${track.title}`);
+					} else {
+						console.error(`[Individual Download] ✗ Server-side failed: ${track.title}`, serverResult.error);
+						failedCount++;
 					}
-				} catch (coverError) {
-					console.warn('Failed to download cover separately:', coverError);
+				} else {
+					console.error(`[Individual Download] ✗ Failed to fetch blob: ${track.title}`, result.error);
+					failedCount++;
 				}
+			} catch (error) {
+				console.error(`[Individual Download] ✗ Server-side error: ${track.title}`, error);
+				failedCount++;
 			}
 		} else {
-			console.error(`[Individual Download] Track failed: ${track.title}`, result.error);
-			failedCount++;
+			// Client-side download
+			const result = await downloadTrackWithRetry(
+				track.id,
+				quality,
+				filename,
+				track,
+				callbacks,
+				{ convertAacToMp3, downloadCoverSeperately }
+			);
+
+			if (result.success && result.blob) {
+				// Trigger individual download
+				const url = URL.createObjectURL(result.blob);
+				const a = document.createElement('a');
+				a.href = url;
+				a.download = filename;
+				document.body.appendChild(a);
+				a.click();
+				document.body.removeChild(a);
+				URL.revokeObjectURL(url);
+
+				// Download cover separately if enabled
+				if (downloadCoverSeperately && track.album?.cover) {
+					try {
+						const coverId = track.album.cover;
+						const coverSizes: Array<'1280' | '640' | '320'> = ['1280', '640', '320'];
+						let coverDownloadSuccess = false;
+
+						for (const size of coverSizes) {
+							if (coverDownloadSuccess) break;
+
+							const coverUrl = losslessAPI.getCoverUrl(coverId, size);
+							const fetchStrategies = [
+								{
+									name: 'with-headers',
+									options: {
+										method: 'GET' as const,
+										headers: {
+											'Accept': 'image/jpeg,image/jpg,image/png,image/*',
+											'User-Agent':
+												'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+										},
+										signal: AbortSignal.timeout(10000)
+									}
+								},
+								{
+									name: 'simple',
+									options: {
+										method: 'GET' as const,
+										signal: AbortSignal.timeout(10000)
+									}
+								}
+							];
+
+							for (const strategy of fetchStrategies) {
+								if (coverDownloadSuccess) break;
+
+								try {
+									const coverResponse = await fetch(coverUrl, strategy.options);
+
+									if (!coverResponse.ok) continue;
+
+									const contentType = coverResponse.headers.get('Content-Type');
+									const contentLength = coverResponse.headers.get('Content-Length');
+
+									if (contentLength && parseInt(contentLength, 10) === 0) continue;
+									if (contentType && !contentType.startsWith('image/')) continue;
+
+									const arrayBuffer = await coverResponse.arrayBuffer();
+									if (!arrayBuffer || arrayBuffer.byteLength === 0) continue;
+
+									const uint8Array = new Uint8Array(arrayBuffer);
+									const imageFormat = detectImageFormat(uint8Array);
+									if (!imageFormat) continue;
+
+									const coverBlob = new Blob([uint8Array], { type: imageFormat.mimeType });
+									const coverObjectUrl = URL.createObjectURL(coverBlob);
+									const coverLink = document.createElement('a');
+									coverLink.href = coverObjectUrl;
+									coverLink.download = `cover.${imageFormat.extension}`;
+									document.body.appendChild(coverLink);
+									coverLink.click();
+									document.body.removeChild(coverLink);
+									URL.revokeObjectURL(coverObjectUrl);
+
+									coverDownloadSuccess = true;
+									break;
+								} catch {
+									// Continue to next strategy
+								}
+							}
+						}
+					} catch (coverError) {
+						console.warn('Failed to download cover separately:', coverError);
+					}
+				}
+			} else {
+				console.error(`[Individual Download] Track failed: ${track.title}`, result.error);
+				failedCount++;
+			}
 		}
 
 		completed += 1;

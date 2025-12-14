@@ -19,7 +19,15 @@
 		fetchSonglinkData,
 		extractTidalSongEntity
 	} from '$lib/utils/songlink';
-	import type { Track, Album, Artist, Playlist, AudioQuality, SonglinkTrack, PlayableTrack } from '$lib/types';
+	import type {
+		Track,
+		Album,
+		Artist,
+		Playlist,
+		AudioQuality,
+		SonglinkTrack,
+		PlayableTrack
+	} from '$lib/types';
 	import { isSonglinkTrack } from '$lib/types';
 	import {
 		Search,
@@ -61,7 +69,8 @@
 	}
 
 	function getEmbedCode(type: 'track' | 'album' | 'artist' | 'playlist', id: string | number) {
-		if (type === "track") return `<iframe src="https://music.binimum.org/embed/${type}/${id}" width="100%" height="150" style="border:none; overflow:hidden; border-radius: 0.5em;" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>`;
+		if (type === 'track')
+			return `<iframe src="https://music.binimum.org/embed/${type}/${id}" width="100%" height="150" style="border:none; overflow:hidden; border-radius: 0.5em;" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>`;
 		return `<iframe src="https://music.binimum.org/embed/${type}/${id}" width="100%" height="450" style="border:none; overflow:hidden; border-radius: 0.5em;" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>`;
 	}
 
@@ -131,7 +140,9 @@
 	onDestroy(unsubscribeRegion);
 
 	// Computed property to check if current query is a Tidal URL
-	const isQueryATidalUrl = $derived(searchStore.query.trim().length > 0 && isTidalUrl(searchStore.query.trim()));
+	const isQueryATidalUrl = $derived(
+		searchStore.query.trim().length > 0 && isTidalUrl(searchStore.query.trim())
+	);
 
 	// Computed property to check if current query is a supported streaming platform URL
 	const isQueryAStreamingUrl = $derived(
@@ -159,7 +170,7 @@
 		{
 			title: 'Hi-Res downloading!!!',
 			description:
-				"You can finally download and stream in Hi-Res again because of a much better API. It should also be much faster - try it out for yourself!"
+				'You can finally download and stream in Hi-Res again because of a much better API. It should also be much faster - try it out for yourself!'
 		},
 		{
 			title: 'Links support + QOLs!',
@@ -284,7 +295,9 @@
 				albumTitle = undefined;
 			} else {
 				console.warn('Cannot download SonglinkTrack directly - play it first to convert to TIDAL');
-				alert('This track needs to be played first before it can be downloaded. Click to play it, then download.');
+				alert(
+					'This track needs to be played first before it can be downloaded. Click to play it, then download.'
+				);
 				return;
 			}
 		} else {
@@ -313,13 +326,13 @@
 
 		const quality = $userPreferencesStore.playbackQuality;
 		const extension = getExtensionForQuality(quality, convertAacToMp3Preference);
-		
+
 		// Format title with version if present
 		let title = track.title;
 		if ('version' in track && track.version) {
 			title = `${title} (${track.version})`;
 		}
-		
+
 		const filename = `${artistName} - ${title}.${extension}`;
 		const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
 			subtitle: albumTitle ?? artistName
@@ -426,7 +439,8 @@
 				{
 					mode: albumDownloadMode,
 					convertAacToMp3: convertAacToMp3Preference,
-					downloadCoverSeperately: downloadCoverSeperatelyPreference
+					downloadCoverSeperately: downloadCoverSeperatelyPreference,
+					storage: $downloadPreferencesStore.storage
 				}
 			);
 			const finalState = albumDownloadStates[album.id];
@@ -750,7 +764,9 @@
 			// Update tracks all at once for better performance
 			searchStore.tracks = successfulTracks;
 
-			console.log(`Successfully loaded ${searchStore.tracks.length}/${spotifyTrackUrls.length} tracks`);
+			console.log(
+				`Successfully loaded ${searchStore.tracks.length}/${spotifyTrackUrls.length} tracks`
+			);
 
 			if (searchStore.tracks.length === 0) {
 				searchStore.error = 'Could not find TIDAL equivalents for any tracks in this playlist.';
@@ -807,7 +823,7 @@
 			try {
 				// Use tidalId if available (for Songlink tracks), otherwise use id
 				const trackId = 'tidalId' in track && track.tidalId ? track.tidalId : track.id;
-				
+
 				// Skip if we don't have a valid numeric ID (e.g. unconverted Songlink track)
 				if (typeof trackId !== 'number') {
 					console.warn(`Skipping download for track ${track.title}: No valid TIDAL ID`);
@@ -816,14 +832,14 @@
 
 				const artistName = 'artistName' in track ? track.artistName : formatArtists(track.artists);
 				const albumTitle = 'album' in track ? track.album?.title : undefined;
-				
+
 				let title = track.title;
 				if ('version' in track && track.version) {
 					title = `${title} (${track.version})`;
 				}
-				
+
 				const filename = `${artistName} - ${title}.${getExtensionForQuality(quality)}`;
-				
+
 				const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
 					subtitle: albumTitle ?? artistName
 				});
@@ -945,7 +961,8 @@
 					/>
 				</div>
 				<div class="flex w-auto flex-row items-center gap-2">
-					{#if false} <!-- hide the region selector that doesn't even work lol -->
+					{#if false}
+						<!-- hide the region selector that doesn't even work lol -->
 						<div class="relative w-auto">
 							<label class="sr-only" for="region-select">Region</label>
 							<Earth
@@ -993,16 +1010,22 @@
 					>
 						{#if isQueryASpotifyPlaylist}
 							<Link2 size={16} class="text-white" />
-							<span class="hidden sm:inline">{searchStore.isLoading ? 'Converting…' : 'Convert Playlist'}</span>
+							<span class="hidden sm:inline"
+								>{searchStore.isLoading ? 'Converting…' : 'Convert Playlist'}</span
+							>
 						{:else if isQueryAStreamingUrl}
 							<Link2 size={16} class="text-white" />
-							<span class="hidden sm:inline">{searchStore.isLoading ? 'Converting…' : 'Convert & Play'}</span>
+							<span class="hidden sm:inline"
+								>{searchStore.isLoading ? 'Converting…' : 'Convert & Play'}</span
+							>
 						{:else if isQueryATidalUrl}
 							<Link2 size={16} class="text-white" />
-							<span class="hidden sm:inline">{searchStore.isLoading ? 'Importing…' : 'Import'}</span>
+							<span class="hidden sm:inline">{searchStore.isLoading ? 'Importing…' : 'Import'}</span
+							>
 						{:else}
 							<Search size={16} class="text-white" />
-							<span class="hidden sm:inline">{searchStore.isLoading ? 'Searching…' : 'Search'}</span>
+							<span class="hidden sm:inline">{searchStore.isLoading ? 'Searching…' : 'Search'}</span
+							>
 						{/if}
 					</button>
 				</div>
@@ -1155,11 +1178,18 @@
 						role="button"
 						tabindex="0"
 						onclick={(e) => {
-							if (e.target instanceof Element && (e.target.closest('a') || e.target.closest('button'))) return;
+							if (
+								e.target instanceof Element &&
+								(e.target.closest('a') || e.target.closest('button'))
+							)
+								return;
 							handleTrackActivation(track);
 						}}
 						onkeydown={(event) => handleTrackKeydown(event, track)}
-						class="track-glass group flex w-full cursor-pointer items-center gap-3 rounded-lg p-3 transition-colors hover:brightness-110 focus:ring-2 focus:ring-blue-500 focus:outline-none {activeMenuId === track.id ? 'z-20 relative' : ''}"
+						class="track-glass group flex w-full cursor-pointer items-center gap-3 rounded-lg p-3 transition-colors hover:brightness-110 focus:ring-2 focus:ring-blue-500 focus:outline-none {activeMenuId ===
+						track.id
+							? 'relative z-20'
+							: ''}"
 					>
 						{#if isSonglinkTrack(track)}
 							<!-- Display for SonglinkTrack -->
@@ -1196,7 +1226,7 @@
 									<!-- Dropdown menu for queue actions -->
 									{#if activeMenuId === track.id}
 										<div
-											class="track-menu-container absolute right-0 top-full z-10 mt-1 w-48 rounded-lg border border-gray-700 bg-gray-800 shadow-lg"
+											class="track-menu-container absolute top-full right-0 z-10 mt-1 w-48 rounded-lg border border-gray-700 bg-gray-800 shadow-lg"
 										>
 											<button
 												onclick={(event) => {
@@ -1346,7 +1376,7 @@
 									</button>
 									{#if activeMenuId === track.id}
 										<div
-											class="track-menu-container absolute right-0 top-full z-10 mt-1 w-48 rounded-lg border border-gray-700 bg-gray-800 shadow-lg"
+											class="track-menu-container absolute top-full right-0 z-10 mt-1 w-48 rounded-lg border border-gray-700 bg-gray-800 shadow-lg"
 										>
 											<button
 												onclick={(event) => {
@@ -1554,7 +1584,7 @@
 						<p class="truncate text-sm text-gray-400">{playlist.creator.name}</p>
 						<p class="text-xs text-gray-500">{playlist.numberOfTracks} tracks</p>
 					</a>
-			{/each}
+				{/each}
 			</div>
 			<!-- News Section -->
 		{:else if !searchStore.query.trim()}

@@ -9,7 +9,11 @@
 	import DynamicBackgroundWebGL from '$lib/components/DynamicBackground.svelte';
 	import { playerStore } from '$lib/stores/player';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
-	import { downloadPreferencesStore, type DownloadMode } from '$lib/stores/downloadPreferences';
+	import {
+		downloadPreferencesStore,
+		type DownloadMode,
+		type DownloadStorage
+	} from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { effectivePerformanceLevel } from '$lib/stores/performance';
 	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
@@ -76,7 +80,12 @@
 		playlist: 'Loading playlist'
 	};
 
-	const QUALITY_OPTIONS: Array<{ value: AudioQuality; label: string; description: string; disabled?: boolean }> = [
+	const QUALITY_OPTIONS: Array<{
+		value: AudioQuality;
+		label: string;
+		description: string;
+		disabled?: boolean;
+	}> = [
 		{
 			value: 'HI_RES_LOSSLESS',
 			label: 'Hi-Res',
@@ -148,6 +157,10 @@
 		downloadPreferencesStore.setMode(mode);
 	}
 
+	function setDownloadStorage(storage: DownloadStorage): void {
+		downloadPreferencesStore.setStorage(storage);
+	}
+
 	function setPerformanceMode(mode: 'medium' | 'low'): void {
 		userPreferencesStore.setPerformanceMode(mode);
 	}
@@ -168,10 +181,10 @@
 	// Update page title with currently playing song
 	$effect(() => {
 		if (typeof document === 'undefined') return;
-		
+
 		const track = $playerStore.currentTrack;
 		const isPlaying = $playerStore.isPlaying;
-		
+
 		if (track) {
 			const artist = isSonglinkTrack(track) ? track.artistName : formatArtists(track.artists);
 			const title = track.title ?? 'Unknown Track';
@@ -195,7 +208,9 @@
 	function buildQueueFilename(track: PlayableTrack, index: number, quality: AudioQuality): string {
 		const ext = getExtensionForQuality(quality, convertAacToMp3);
 		const order = `${index + 1}`.padStart(2, '0');
-		const artistName = sanitizeForFilename(isSonglinkTrack(track) ? track.artistName : formatArtists(track.artists));
+		const artistName = sanitizeForFilename(
+			isSonglinkTrack(track) ? track.artistName : formatArtists(track.artists)
+		);
 		const titleName = sanitizeForFilename(track.title ?? `Track ${order}`);
 		return `${order} - ${artistName} - ${titleName}.${ext}`;
 	}
@@ -276,7 +291,10 @@
 		await exportQueueAsCsv(tracks, quality);
 	}
 
-	async function downloadQueueIndividually(tracks: PlayableTrack[], quality: AudioQuality): Promise<void> {
+	async function downloadQueueIndividually(
+		tracks: PlayableTrack[],
+		quality: AudioQuality
+	): Promise<void> {
 		if (isLegacyQueueDownloading) {
 			return;
 		}
@@ -291,9 +309,15 @@
 
 				const filename = buildQueueFilename(track, index, quality);
 				// @ts-ignore - downloadUiStore needs update to accept PlayableTrack or we cast
-				const { taskId, controller } = downloadUiStore.beginTrackDownload(track as Track, filename, {
-					subtitle: isSonglinkTrack(track) ? track.artistName : (track.album?.title ?? formatArtists(track.artists))
-				});
+				const { taskId, controller } = downloadUiStore.beginTrackDownload(
+					track as Track,
+					filename,
+					{
+						subtitle: isSonglinkTrack(track)
+							? track.artistName
+							: (track.album?.title ?? formatArtists(track.artists))
+					}
+				);
 				downloadUiStore.skipFfmpegCountdown();
 
 				try {
@@ -484,257 +508,300 @@
 		<DynamicBackgroundWebGL />
 		<div class="app-shell">
 			<header class="app-header glass-panel" bind:clientHeight={headerHeight}>
-			<div class="app-header__inner">
-				<a href="/" class="brand" aria-label="Home">
-					<div class="brand__text">
-						<h1 class="brand__title">{data.title}</h1>
-						<p class="brand__subtitle">sailing on PCM tidal waves</p>
-					</div>
-				</a>
+				<div class="app-header__inner">
+					<a href="/" class="brand" aria-label="Home">
+						<div class="brand__text">
+							<h1 class="brand__title">{data.title}</h1>
+							<p class="brand__subtitle">sailing on PCM tidal waves</p>
+						</div>
+					</a>
 
-				<div class="toolbar">
-					<div class="settings-trigger" bind:this={settingsMenuContainer}>
-						<button
-							onclick={() => {
-								showSettingsMenu = !showSettingsMenu;
-							}}
-							type="button"
-							class={`toolbar-button glass-button ${showSettingsMenu ? 'is-active' : ''}`}
-							aria-haspopup="true"
-							aria-expanded={showSettingsMenu}
-							aria-label={`Settings menu (${playbackQualityLabel()})`}
-						>
-							<span class="toolbar-button__label">
-								<Settings size={16} />
-								<span class="toolbar-button__text">Settings</span>
-							</span>
-							<span class="text-gray-400">{playbackQualityLabel()}</span>
-							<span class={`toolbar-button__chevron ${showSettingsMenu ? 'is-open' : ''}`}>
-								<ChevronDown size={16} />
-							</span>
-						</button>
-						{#if showSettingsMenu}
-							<div
-								class="settings-menu glass-popover"
-								style={`--settings-menu-offset: ${settingsMenuOffset()}px;`}
+					<div class="toolbar">
+						<div class="settings-trigger" bind:this={settingsMenuContainer}>
+							<button
+								onclick={() => {
+									showSettingsMenu = !showSettingsMenu;
+								}}
+								type="button"
+								class={`toolbar-button glass-button ${showSettingsMenu ? 'is-active' : ''}`}
+								aria-haspopup="true"
+								aria-expanded={showSettingsMenu}
+								aria-label={`Settings menu (${playbackQualityLabel()})`}
 							>
-								<div class="settings-grid">
-									<section class="settings-section settings-section--wide">
-										<p class="section-heading">Streaming & Downloads</p>
-										<div class="option-grid">
-											{#each QUALITY_OPTIONS as option}
+								<span class="toolbar-button__label">
+									<Settings size={16} />
+									<span class="toolbar-button__text">Settings</span>
+								</span>
+								<span class="text-gray-400">{playbackQualityLabel()}</span>
+								<span class={`toolbar-button__chevron ${showSettingsMenu ? 'is-open' : ''}`}>
+									<ChevronDown size={16} />
+								</span>
+							</button>
+							{#if showSettingsMenu}
+								<div
+									class="settings-menu glass-popover"
+									style={`--settings-menu-offset: ${settingsMenuOffset()}px;`}
+								>
+									<div class="settings-grid">
+										<section class="settings-section settings-section--wide">
+											<p class="section-heading">Streaming & Downloads</p>
+											<div class="option-grid">
+												{#each QUALITY_OPTIONS as option}
+													<button
+														type="button"
+														onclick={() => selectPlaybackQuality(option.value)}
+														class={`glass-option ${option.value === $playerStore.quality ? 'is-active' : ''} ${option.disabled ? 'cursor-not-allowed opacity-50' : ''}`}
+														aria-pressed={option.value === $playerStore.quality}
+														disabled={option.disabled}
+													>
+														<div class="glass-option__content">
+															<span class="glass-option__label">{option.label}</span>
+															<span class="glass-option__description">{option.description}</span>
+														</div>
+														{#if option.value === $playerStore.quality}
+															<Check size={16} class="glass-option__check" />
+														{/if}
+													</button>
+												{/each}
+											</div>
+										</section>
+										<section class="settings-section settings-section--wide">
+											<p class="section-heading">Conversions</p>
+											<button
+												type="button"
+												onclick={toggleAacConversion}
+												class={`glass-option ${convertAacToMp3 ? 'is-active' : ''}`}
+												aria-pressed={convertAacToMp3}
+											>
+												<span class="glass-option__content">
+													<span class="glass-option__label">Convert AAC downloads to MP3</span>
+													<span class="glass-option__description"
+														>Applies to 320kbps and 96kbps downloads.</span
+													>
+												</span>
+												<span class={`glass-option__chip ${convertAacToMp3 ? 'is-active' : ''}`}>
+													{convertAacToMp3 ? 'On' : 'Off'}
+												</span>
+											</button>
+											<button
+												type="button"
+												onclick={toggleDownloadCoversSeperately}
+												class={`glass-option ${downloadCoversSeperately ? 'is-active' : ''}`}
+												aria-pressed={downloadCoversSeperately}
+											>
+												<span class="glass-option__content">
+													<span class="glass-option__label">Download covers separately</span>
+													<span class="glass-option__description"
+														>Save cover.jpg alongside audio files.</span
+													>
+												</span>
+												<span
+													class={`glass-option__chip ${downloadCoversSeperately ? 'is-active' : ''}`}
+												>
+													{downloadCoversSeperately ? 'On' : 'Off'}
+												</span>
+											</button>
+										</section>
+										<section class="settings-section settings-section--wide">
+											<p class="section-heading">Queue exports</p>
+											<div class="option-grid option-grid--compact">
 												<button
 													type="button"
-													onclick={() => selectPlaybackQuality(option.value)}
-													class={`glass-option ${option.value === $playerStore.quality ? 'is-active' : ''} ${option.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-													aria-pressed={option.value === $playerStore.quality}
-													disabled={option.disabled}
+													onclick={() => setDownloadMode('individual')}
+													class={`glass-option glass-option--compact ${downloadMode === 'individual' ? 'is-active' : ''}`}
+													aria-pressed={downloadMode === 'individual'}
 												>
-													<div class="glass-option__content">
-														<span class="glass-option__label">{option.label}</span>
-														<span class="glass-option__description">{option.description}</span>
-													</div>
-													{#if option.value === $playerStore.quality}
-														<Check size={16} class="glass-option__check" />
-													{/if}
-												</button>
-											{/each}
-										</div>
-									</section>
-									<section class="settings-section settings-section--wide">
-										<p class="section-heading">Conversions</p>
-										<button
-											type="button"
-											onclick={toggleAacConversion}
-											class={`glass-option ${convertAacToMp3 ? 'is-active' : ''}`}
-											aria-pressed={convertAacToMp3}
-										>
-											<span class="glass-option__content">
-												<span class="glass-option__label">Convert AAC downloads to MP3</span>
-												<span class="glass-option__description">Applies to 320kbps and 96kbps downloads.</span>
-											</span>
-											<span class={`glass-option__chip ${convertAacToMp3 ? 'is-active' : ''}`}>
-												{convertAacToMp3 ? 'On' : 'Off'}
-											</span>
-										</button>
-										<button
-											type="button"
-											onclick={toggleDownloadCoversSeperately}
-											class={`glass-option ${downloadCoversSeperately ? 'is-active' : ''}`}
-											aria-pressed={downloadCoversSeperately}
-										>
-											<span class="glass-option__content">
-												<span class="glass-option__label">Download covers separately</span>
-												<span class="glass-option__description">Save cover.jpg alongside audio files.</span>
-											</span>
-											<span class={`glass-option__chip ${downloadCoversSeperately ? 'is-active' : ''}`}>
-												{downloadCoversSeperately ? 'On' : 'Off'}
-											</span>
-										</button>
-									</section>
-									<section class="settings-section settings-section--wide">
-										<p class="section-heading">Queue exports</p>
-										<div class="option-grid option-grid--compact">
-											<button
-												type="button"
-												onclick={() => setDownloadMode('individual')}
-												class={`glass-option glass-option--compact ${downloadMode === 'individual' ? 'is-active' : ''}`}
-												aria-pressed={downloadMode === 'individual'}
-											>
-												<span class="glass-option__content">
-													<span class="glass-option__label">
-														<Download size={16} />
-														<span>Individual files</span>
+													<span class="glass-option__content">
+														<span class="glass-option__label">
+															<Download size={16} />
+															<span>Individual files</span>
+														</span>
 													</span>
-												</span>
-												{#if downloadMode === 'individual'}
-													<Check size={14} class="glass-option__check" />
-												{/if}
-											</button>
-											<button
-												type="button"
-												onclick={() => setDownloadMode('zip')}
-												class={`glass-option glass-option--compact ${downloadMode === 'zip' ? 'is-active' : ''}`}
-												aria-pressed={downloadMode === 'zip'}
-											>
-												<span class="glass-option__content">
-													<span class="glass-option__label">
-														<Archive size={16} />
-														<span>ZIP archive</span>
-													</span>
-												</span>
-												{#if downloadMode === 'zip'}
-													<Check size={14} class="glass-option__check" />
-												{/if}
-											</button>
-											<button
-												type="button"
-												onclick={() => setDownloadMode('csv')}
-												class={`glass-option glass-option--compact ${downloadMode === 'csv' ? 'is-active' : ''}`}
-												aria-pressed={downloadMode === 'csv'}
-											>
-												<span class="glass-option__content">
-													<span class="glass-option__label">
-														<FileSpreadsheet size={16} />
-														<span>Export links</span>
-													</span>
-												</span>
-												{#if downloadMode === 'csv'}
-													<Check size={14} class="glass-option__check" />
-												{/if}
-											</button>
-										</div>
-									</section>
-									<section class="settings-section settings-section--wide">
-										<p class="section-heading">Performance Mode</p>
-										<div class="option-grid option-grid--compact">
-											{#each PERFORMANCE_OPTIONS as option}
-												<button
-													type="button"
-													onclick={() => setPerformanceMode(option.value)}
-													class={`glass-option glass-option--compact ${option.value === $userPreferencesStore.performanceMode ? 'is-active' : ''}`}
-													aria-pressed={option.value === $userPreferencesStore.performanceMode}
-												>
-													<div class="glass-option__content">
-														<span class="glass-option__label">{option.label}</span>
-													</div>
-													{#if option.value === $userPreferencesStore.performanceMode}
+													{#if downloadMode === 'individual'}
 														<Check size={14} class="glass-option__check" />
 													{/if}
 												</button>
-											{/each}
-										</div>
-									</section>
-									<section class="settings-section settings-section--bordered">
-										<p class="section-heading">Queue actions</p>
-										<div class="actions-column">
-											<button
-												onclick={handleQueueDownload}
-												type="button"
-												class="glass-action"
-												disabled={queueActionBusy}
-											>
-												<span class="glass-action__label">
+												<button
+													type="button"
+													onclick={() => setDownloadMode('zip')}
+													class={`glass-option glass-option--compact ${downloadMode === 'zip' ? 'is-active' : ''}`}
+													aria-pressed={downloadMode === 'zip'}
+												>
+													<span class="glass-option__content">
+														<span class="glass-option__label">
+															<Archive size={16} />
+															<span>ZIP archive</span>
+														</span>
+													</span>
 													{#if downloadMode === 'zip'}
-														<Archive size={16} />
-														<span>Download queue</span>
-													{:else if downloadMode === 'csv'}
-														<FileSpreadsheet size={16} />
-														<span>Export queue links</span>
-													{:else}
-														<Download size={16} />
-														<span>Download queue</span>
+														<Check size={14} class="glass-option__check" />
 													{/if}
-												</span>
-												{#if queueActionBusy}
-													<LoaderCircle size={16} class="glass-action__spinner" />
-												{/if}
-											</button>
-											<button
-												onclick={handleExportQueueCsv}
-												type="button"
-												class="glass-action"
-												disabled={isCsvExporting}
-											>
-												<span class="glass-action__label">
-													<FileSpreadsheet size={16} />
-													<span>Export links as CSV</span>
-												</span>
-												{#if isCsvExporting}
-													<LoaderCircle size={16} class="glass-action__spinner" />
-												{/if}
-											</button>
-										</div>
-										<p class="section-footnote">
-											Queue actions follow your selection above. ZIP bundles require at least two tracks,
-											while CSV exports capture the track links without downloading audio.
-										</p>
-									</section>
+												</button>
+												<button
+													type="button"
+													onclick={() => setDownloadMode('csv')}
+													class={`glass-option glass-option--compact ${downloadMode === 'csv' ? 'is-active' : ''}`}
+													aria-pressed={downloadMode === 'csv'}
+												>
+													<span class="glass-option__content">
+														<span class="glass-option__label">
+															<FileSpreadsheet size={16} />
+															<span>Export links</span>
+														</span>
+													</span>
+													{#if downloadMode === 'csv'}
+														<Check size={14} class="glass-option__check" />
+													{/if}
+												</button>
+											</div>
+										</section>
+										<section class="settings-section settings-section--wide">
+											<p class="section-heading">Download Storage</p>
+											<div class="option-grid option-grid--compact">
+												<button
+													type="button"
+													onclick={() => setDownloadStorage('client')}
+													class={`glass-option glass-option--compact ${$downloadPreferencesStore.storage === 'client' ? 'is-active' : ''}`}
+													aria-pressed={$downloadPreferencesStore.storage === 'client'}
+												>
+													<span class="glass-option__content">
+														<span class="glass-option__label">
+															<Download size={16} />
+															<span>Client-side</span>
+														</span>
+													</span>
+													{#if $downloadPreferencesStore.storage === 'client'}
+														<Check size={14} class="glass-option__check" />
+													{/if}
+												</button>
+												<button
+													type="button"
+													onclick={() => setDownloadStorage('server')}
+													class={`glass-option glass-option--compact ${$downloadPreferencesStore.storage === 'server' ? 'is-active' : ''}`}
+													aria-pressed={$downloadPreferencesStore.storage === 'server'}
+												>
+													<span class="glass-option__content">
+														<span class="glass-option__label">
+															<Download size={16} />
+															<span>Server-side</span>
+														</span>
+													</span>
+													{#if $downloadPreferencesStore.storage === 'server'}
+														<Check size={14} class="glass-option__check" />
+													{/if}
+												</button>
+											</div>
+										</section>
+										<section class="settings-section settings-section--wide">
+											<p class="section-heading">Performance Mode</p>
+											<div class="option-grid option-grid--compact">
+												{#each PERFORMANCE_OPTIONS as option}
+													<button
+														type="button"
+														onclick={() => setPerformanceMode(option.value)}
+														class={`glass-option glass-option--compact ${option.value === $userPreferencesStore.performanceMode ? 'is-active' : ''}`}
+														aria-pressed={option.value === $userPreferencesStore.performanceMode}
+													>
+														<div class="glass-option__content">
+															<span class="glass-option__label">{option.label}</span>
+														</div>
+														{#if option.value === $userPreferencesStore.performanceMode}
+															<Check size={14} class="glass-option__check" />
+														{/if}
+													</button>
+												{/each}
+											</div>
+										</section>
+										<section class="settings-section settings-section--bordered">
+											<p class="section-heading">Queue actions</p>
+											<div class="actions-column">
+												<button
+													onclick={handleQueueDownload}
+													type="button"
+													class="glass-action"
+													disabled={queueActionBusy}
+												>
+													<span class="glass-action__label">
+														{#if downloadMode === 'zip'}
+															<Archive size={16} />
+															<span>Download queue</span>
+														{:else if downloadMode === 'csv'}
+															<FileSpreadsheet size={16} />
+															<span>Export queue links</span>
+														{:else}
+															<Download size={16} />
+															<span>Download queue</span>
+														{/if}
+													</span>
+													{#if queueActionBusy}
+														<LoaderCircle size={16} class="glass-action__spinner" />
+													{/if}
+												</button>
+												<button
+													onclick={handleExportQueueCsv}
+													type="button"
+													class="glass-action"
+													disabled={isCsvExporting}
+												>
+													<span class="glass-action__label">
+														<FileSpreadsheet size={16} />
+														<span>Export links as CSV</span>
+													</span>
+													{#if isCsvExporting}
+														<LoaderCircle size={16} class="glass-action__spinner" />
+													{/if}
+												</button>
+											</div>
+											<p class="section-footnote">
+												Queue actions follow your selection above. ZIP bundles require at least two
+												tracks, while CSV exports capture the track links without downloading audio.
+											</p>
+										</section>
+									</div>
 								</div>
-							</div>
-						{/if}
-					</div>
-					<a
-						target="_blank"
-						rel="noopener noreferrer"
-						href="https://github.com/uimaxbai/tidal-ui"
-						class="toolbar-icon"
-						aria-label="Project GitHub"
-					>
-						<svg
-							viewBox="0 0 98 96"
-							class="toolbar-icon__svg"
-							aria-hidden="true"
-							width="98"
-							height="96"
-							xmlns="http://www.w3.org/2000/svg"
+							{/if}
+						</div>
+						<a
+							target="_blank"
+							rel="noopener noreferrer"
+							href="https://github.com/uimaxbai/tidal-ui"
+							class="toolbar-icon"
+							aria-label="Project GitHub"
 						>
-							<path
-								fill-rule="evenodd"
-								clip-rule="evenodd"
-								d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6-10.839-1.141-22.243-5.378-22.243-24.283 0-5.378 1.94-9.778 5.014-13.2-.485-1.222-2.184-6.275.486-13.038 0 0 4.125-1.304 13.426 5.052a46.97 46.97 0 0 1 12.214-1.63c4.125 0 8.33.571 12.213 1.63 9.302-6.356 13.427-5.052 13.427-5.052 2.67 6.763.97 11.816.485 13.038 3.155 3.422 5.015 7.822 5.015 13.2 0 18.905-11.404 23.06-22.324 24.283 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"
-								fill="#fff"
-							/>
-						</svg>
-					</a>
+							<svg
+								viewBox="0 0 98 96"
+								class="toolbar-icon__svg"
+								aria-hidden="true"
+								width="98"
+								height="96"
+								xmlns="http://www.w3.org/2000/svg"
+							>
+								<path
+									fill-rule="evenodd"
+									clip-rule="evenodd"
+									d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6-10.839-1.141-22.243-5.378-22.243-24.283 0-5.378 1.94-9.778 5.014-13.2-.485-1.222-2.184-6.275.486-13.038 0 0 4.125-1.304 13.426 5.052a46.97 46.97 0 0 1 12.214-1.63c4.125 0 8.33.571 12.213 1.63 9.302-6.356 13.427-5.052 13.427-5.052 2.67 6.763.97 11.816.485 13.038 3.155 3.422 5.015 7.822 5.015 13.2 0 18.905-11.404 23.06-22.324 24.283 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"
+									fill="#fff"
+								/>
+							</svg>
+						</a>
+					</div>
 				</div>
-			</div>
-		</header>
+			</header>
 
-		<main
-			class="app-main glass-panel !mb-56 !sm:mb-40"
-			style={`min-height: ${mainMinHeight}px; margin-bottom: ${mainMarginBottom}px;`}
-		>
-			<div class="app-main__inner">
-				{@render children?.()}
-			</div>
-		</main>
+			<main
+				class="app-main glass-panel !sm:mb-40 !mb-56"
+				style={`min-height: ${mainMinHeight}px; margin-bottom: ${mainMarginBottom}px;`}
+			>
+				<div class="app-main__inner">
+					{@render children?.()}
+				</div>
+			</main>
 
-		<AudioPlayer onHeightChange={handlePlayerHeight} />
+			<AudioPlayer onHeightChange={handlePlayerHeight} />
+		</div>
 	</div>
-</div>
 
-<LyricsPopup />
+	<LyricsPopup />
 {/if}
 
 <!--
@@ -808,7 +875,7 @@
 			0 3px 12px rgba(15, 23, 42, 0.25),
 			inset 0 1px 0 rgba(255, 255, 255, 0.06),
 			inset 0 0 40px rgba(255, 255, 255, 0.015);
-		transition: 
+		transition:
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease;
 	}
@@ -843,7 +910,9 @@
 		text-decoration: none;
 		color: inherit;
 		font-weight: 600;
-		transition: opacity 150ms ease, transform 180ms ease;
+		transition:
+			opacity 150ms ease,
+			transform 180ms ease;
 	}
 
 	.brand:hover {
@@ -881,7 +950,10 @@
 		backdrop-filter: blur(var(--perf-blur-low, 24px)) saturate(var(--perf-saturate, 160%));
 		-webkit-backdrop-filter: blur(var(--perf-blur-low, 24px)) saturate(var(--perf-saturate, 160%));
 		color: inherit;
-		transition: border-color 160ms ease, transform 180ms ease, box-shadow 180ms ease;
+		transition:
+			border-color 160ms ease,
+			transform 180ms ease,
+			box-shadow 180ms ease;
 	}
 
 	.toolbar-icon:hover {
@@ -911,9 +983,9 @@
 		background: transparent;
 		backdrop-filter: blur(var(--perf-blur-low, 24px)) saturate(var(--perf-saturate, 160%));
 		-webkit-backdrop-filter: blur(var(--perf-blur-low, 24px)) saturate(var(--perf-saturate, 160%));
-		transition: 
+		transition:
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
-			box-shadow 160ms ease, 
+			box-shadow 160ms ease,
 			transform 160ms ease;
 	}
 
@@ -979,7 +1051,7 @@
 		border: 1px solid rgba(148, 163, 184, 0.25);
 		backdrop-filter: blur(48px) saturate(180%) brightness(1.05);
 		-webkit-backdrop-filter: blur(48px) saturate(180%) brightness(1.05);
-		box-shadow: 
+		box-shadow:
 			0 25px 60px rgba(2, 6, 23, 0.5),
 			0 3px 15px rgba(15, 23, 42, 0.35),
 			inset 0 1px 0 rgba(255, 255, 255, 0.06),
@@ -988,7 +1060,7 @@
 		isolation: isolate;
 		will-change: transform;
 		transform: translateZ(0);
-		transition: 
+		transition:
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease;
 	}
@@ -999,8 +1071,8 @@
 
 	/* Hide scrollbar for IE, Edge and Firefox */
 	.settings-menu {
-		-ms-overflow-style: none;  /* IE and Edge */
-		scrollbar-width: none;  /* Firefox */
+		-ms-overflow-style: none; /* IE and Edge */
+		scrollbar-width: none; /* Firefox */
 	}
 
 	.settings-grid {
@@ -1048,13 +1120,17 @@
 		border: 1px solid rgba(148, 163, 184, 0.18);
 		background: transparent;
 		backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
-		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
+		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 28px))
+			saturate(var(--perf-saturate, 160%));
 		padding: 0.5rem 0.65rem;
 		color: inherit;
 		font-size: 0.8rem;
 		cursor: pointer;
 		text-align: left;
-		transition: border-color 140ms ease, transform 140ms ease, box-shadow 160ms ease;
+		transition:
+			border-color 140ms ease,
+			transform 140ms ease,
+			box-shadow 160ms ease;
 	}
 
 	.glass-option--compact {
@@ -1081,7 +1157,7 @@
 	.glass-option.is-active {
 		border-color: var(--bloom-accent, rgba(59, 130, 246, 0.6));
 		background: transparent;
-		box-shadow: 
+		box-shadow:
 			0 12px 28px rgba(59, 130, 246, 0.2),
 			inset 0 0 32px rgba(59, 130, 246, 0.06);
 	}
@@ -1154,13 +1230,17 @@
 		border: 1px solid rgba(148, 163, 184, 0.2);
 		background: transparent;
 		backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
-		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
+		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 28px))
+			saturate(var(--perf-saturate, 160%));
 		padding: 0.7rem 0.9rem;
 		font-size: 0.8rem;
 		font-weight: 600;
 		color: inherit;
 		cursor: pointer;
-		transition: border-color 140ms ease, box-shadow 160ms ease, transform 160ms ease;
+		transition:
+			border-color 140ms ease,
+			box-shadow 160ms ease,
+			transform 160ms ease;
 	}
 
 	.glass-action:disabled {
@@ -1310,7 +1390,6 @@
 			border-radius: 18px;
 			top: calc(var(--settings-menu-offset, 88px) - 8px);
 		}
-		
 
 		.settings-grid {
 			display: grid;

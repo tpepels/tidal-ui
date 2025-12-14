@@ -29,6 +29,7 @@
 	let downloadError = $state<string | null>(null);
 	const albumDownloadMode = $derived($downloadPreferencesStore.mode);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
+	const downloadStoragePreference = $derived($downloadPreferencesStore.storage);
 
 	const albumId = $derived($page.params.id);
 
@@ -106,9 +107,9 @@
 					}
 				},
 				album.artist?.name,
-				{ mode, convertAacToMp3: convertAacToMp3Preference }
+				{ mode, convertAacToMp3: convertAacToMp3Preference, storage: downloadStoragePreference }
 			);
-			
+
 			if (failedCount > 0) {
 				downloadError = `Download completed. ${failedCount} track${failedCount > 1 ? 's' : ''} failed after 3 attempts.`;
 			}

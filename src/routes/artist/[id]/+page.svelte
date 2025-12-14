@@ -22,6 +22,7 @@
 	const downloadQuality = $derived($userPreferencesStore.playbackQuality as AudioQuality);
 	const downloadMode = $derived($downloadPreferencesStore.mode);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
+	const downloadStoragePreference = $derived($downloadPreferencesStore.storage);
 
 	type AlbumDownloadState = {
 		downloading: boolean;
@@ -115,15 +116,20 @@
 					}
 				},
 				artist?.name,
-				{ mode: downloadMode, convertAacToMp3: convertAacToMp3Preference }
+				{
+					mode: downloadMode,
+					convertAacToMp3: convertAacToMp3Preference,
+					storage: downloadStoragePreference
+				}
 			);
 			const finalState = albumDownloadStates[album.id];
 			patchAlbumDownloadState(album.id, {
 				downloading: false,
 				completed: finalState?.total ?? finalState?.completed ?? 0,
-				error: failedCount > 0 
-					? `${failedCount} track${failedCount > 1 ? 's' : ''} failed after 3 attempts`
-					: null
+				error:
+					failedCount > 0
+						? `${failedCount} track${failedCount > 1 ? 's' : ''} failed after 3 attempts`
+						: null
 			});
 		} catch (err) {
 			console.error('Failed to download album:', err);
@@ -182,10 +188,16 @@
 						}
 					},
 					artist?.name,
-					{ mode: downloadMode, convertAacToMp3: convertAacToMp3Preference }
+					{
+						mode: downloadMode,
+						convertAacToMp3: convertAacToMp3Preference,
+						storage: downloadStoragePreference
+					}
 				);
 				if (albumFailedCount > 0) {
-					console.warn(`[Discography] ${albumFailedCount} track(s) failed in album: ${album.title}`);
+					console.warn(
+						`[Discography] ${albumFailedCount} track(s) failed in album: ${album.title}`
+					);
 				}
 			} catch (err) {
 				console.error('Failed to download discography album:', err);
@@ -411,7 +423,9 @@
 										{/if}
 									</div>
 									<div class="w-full">
-										<h3 class="truncate text-balance text-lg font-semibold text-white group-hover:text-blue-400">
+										<h3
+											class="truncate text-lg font-semibold text-balance text-white group-hover:text-blue-400"
+										>
 											{album.title}
 										</h3>
 										{#if formatAlbumMeta(album)}
