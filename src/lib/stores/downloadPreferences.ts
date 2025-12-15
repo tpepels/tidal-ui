@@ -27,14 +27,14 @@ const createDownloadPreferencesStore = () => {
 
 	const readInitialStorage = (): DownloadStorage => {
 		if (!browser) {
-			return 'client';
+			return 'server';
 		}
 
 		const stored = localStorage.getItem(STORAGE_KEY_STORAGE);
 		if (stored === 'client' || stored === 'server') {
 			return stored;
 		}
-		return 'client';
+		return 'server';
 	};
 
 	const { subscribe, set, update } = writable<DownloadPreferencesState>({

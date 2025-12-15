@@ -2,11 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 import { pendingUploads, getDownloadDir, sanitizePath } from '../_shared';
-
-const execFileAsync = promisify(execFile);
 
 // Ensure directory exists
 const ensureDir = async (dirPath: string): Promise<void> => {
@@ -15,48 +11,6 @@ const ensureDir = async (dirPath: string): Promise<void> => {
     } catch (err) {
         console.error(`Failed to create directory ${dirPath}:`, err);
         throw err;
-    }
-};
-
-// Embed metadata into audio file using ffmpeg
-const embedMetadata = async (
-    inputPath: string,
-    outputPath: string,
-    metadata: {
-        title?: string;
-        artist?: string;
-        album?: string;
-        trackId?: number;
-    }
-): Promise<void> => {
-    const args: string[] = ['-i', inputPath];
-
-    // Add metadata if available
-    if (metadata.title) {
-        args.push('-metadata', `title=${metadata.title}`);
-    }
-    if (metadata.artist) {
-        args.push('-metadata', `artist=${metadata.artist}`);
-    }
-    if (metadata.album) {
-        args.push('-metadata', `album=${metadata.album}`);
-    }
-
-    // Copy codec without re-encoding (fast)
-    args.push('-c', 'copy');
-    args.push(outputPath);
-
-    console.log(`[Metadata Embed] Running ffmpeg with args:`, args);
-
-    try {
-        await execFileAsync('ffmpeg', args, {
-            timeout: 60000 // 60 second timeout
-        });
-        console.log(`[Metadata Embed] Successfully embedded metadata`);
-    } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        console.error(`[Metadata Embed] Failed:`, errorMsg);
-        throw new Error(`Failed to embed metadata: ${errorMsg}`);
     }
 };
 
@@ -127,44 +81,16 @@ export const POST: RequestHandler = async ({ request, params }) => {
         // Full filepath
         const filepath = path.join(targetDir, filename);
 
-        // Write blob to temporary file first
-        const tempFilePath = path.join(targetDir, `.${filename}.tmp`);
+        // Write blob directly to file
+        // Note: Metadata is already embedded client-side by losslessAPI.fetchTrackBlob()
         const buffer = Buffer.from(arrayBuffer);
-        await fs.writeFile(tempFilePath, buffer);
-
-        try {
-            // Embed metadata using ffmpeg
-            console.log(`[Server Download] [${uploadId}] Embedding metadata...`);
-            await embedMetadata(tempFilePath, filepath, {
-                title: trackTitle,
-                artist: artistName,
-                album: albumTitle,
-                trackId
-            });
-
-            // Clean up temporary file
-            await fs.unlink(tempFilePath).catch(() => {
-                // Ignore if temp file can't be deleted
-            });
-        } catch (embedError) {
-            console.warn(`[Server Download] [${uploadId}] Metadata embedding failed, saving without metadata:`, embedError);
-            // If metadata embedding fails, just copy the temp file to final location
-            try {
-                await fs.rename(tempFilePath, filepath);
-            } catch (renameError) {
-                // If rename fails, copy instead
-                await fs.copyFile(tempFilePath, filepath);
-                await fs.unlink(tempFilePath).catch(() => {
-                    // Ignore if can't delete
-                });
-            }
-        }
+        await fs.writeFile(filepath, buffer);
 
         // Clean up the upload session
         pendingUploads.delete(uploadId);
 
         const sizeInMB = (buffer.length / 1024 / 1024).toFixed(2);
-        console.log(`[Server Download] [${uploadId}] ✓ Saved to: ${filepath} (${sizeInMB} MB)`);
+        console.log(`[Server Download] [${uploadId}] ✓ Saved to: ${filepath} (${sizeInMB} MB, metadata embedded client-side)`);
 
         return json(
             {

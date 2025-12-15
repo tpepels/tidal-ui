@@ -521,7 +521,7 @@ export async function downloadAlbum(
 	}
 
 	// Individual download mode - process in parallel (up to 3 concurrent)
-	let completed = 0;
+	let completedCount = 0;
 	let failedCount = 0;
 
 	console.log(`[Individual Download] Starting individual downloads - storage mode: ${storage} (parallel, max 3 concurrent)`);
@@ -538,147 +538,156 @@ export async function downloadAlbum(
 
 		console.log(`[Individual Download] Processing track: ${track.title} (storage: ${storage})`);
 
-		if (storage === 'server') {
-			// Server-side download
-			try {
-				console.log(`[Individual Download] Fetching blob for "${track.title}"...`);
+		try {
+			if (storage === 'server') {
+				// Server-side download
+				try {
+					console.log(`[Individual Download] Fetching blob for "${track.title}"...`);
+					const result = await downloadTrackWithRetry(
+						track.id,
+						quality,
+						filename,
+						track,
+						undefined, // no callbacks for parallel
+						{ convertAacToMp3, downloadCoverSeperately, storage: 'server' }
+					);
+
+					if (result.success && result.blob) {
+						console.log(`[Individual Download] Blob fetched, uploading to server...`);
+						const serverResult = await downloadTrackServerSide(
+							track.id,
+							quality,
+							albumTitle,
+							artistName,
+							track.title,
+							result.blob
+						);
+						if (serverResult.success) {
+							console.log(`[Individual Download] ✓ Server-side saved: ${track.title}`);
+							return { success: true, track };
+						} else {
+							console.error(`[Individual Download] ✗ Server-side failed: ${track.title}`, serverResult.error);
+							return { success: false, track, error: serverResult.error };
+						}
+					} else {
+						console.error(`[Individual Download] ✗ Failed to fetch blob: ${track.title}`, result.error);
+						return { success: false, track, error: result.error };
+					}
+				} catch (error) {
+					console.error(`[Individual Download] ✗ Server-side error: ${track.title}`, error);
+					return { success: false, track, error };
+				}
+			} else {
+				// Client-side download
 				const result = await downloadTrackWithRetry(
 					track.id,
 					quality,
 					filename,
 					track,
 					undefined, // no callbacks for parallel
-					{ convertAacToMp3, downloadCoverSeperately, storage: 'server' }
+					{ convertAacToMp3, downloadCoverSeperately, storage: 'client' }
 				);
 
 				if (result.success && result.blob) {
-					console.log(`[Individual Download] Blob fetched, uploading to server...`);
-					const serverResult = await downloadTrackServerSide(
-						track.id,
-						quality,
-						albumTitle,
-						artistName,
-						track.title,
-						result.blob
-					);
-					if (serverResult.success) {
-						console.log(`[Individual Download] ✓ Server-side saved: ${track.title}`);
-						return { success: true, track };
-					} else {
-						console.error(`[Individual Download] ✗ Server-side failed: ${track.title}`, serverResult.error);
-						return { success: false, track, error: serverResult.error };
-					}
-				} else {
-					console.error(`[Individual Download] ✗ Failed to fetch blob: ${track.title}`, result.error);
-					return { success: false, track, error: result.error };
-				}
-			} catch (error) {
-				console.error(`[Individual Download] ✗ Server-side error: ${track.title}`, error);
-				return { success: false, track, error };
-			}
-		} else {
-			// Client-side download
-			const result = await downloadTrackWithRetry(
-				track.id,
-				quality,
-				filename,
-				track,
-				undefined, // no callbacks for parallel
-				{ convertAacToMp3, downloadCoverSeperately, storage: 'client' }
-			);
+					// Trigger individual download
+					const url = URL.createObjectURL(result.blob);
+					const a = document.createElement('a');
+					a.href = url;
+					a.download = filename;
+					document.body.appendChild(a);
+					a.click();
+					document.body.removeChild(a);
+					URL.revokeObjectURL(url);
 
-			if (result.success && result.blob) {
-				// Trigger individual download
-				const url = URL.createObjectURL(result.blob);
-				const a = document.createElement('a');
-				a.href = url;
-				a.download = filename;
-				document.body.appendChild(a);
-				a.click();
-				document.body.removeChild(a);
-				URL.revokeObjectURL(url);
+					// Download cover separately if enabled
+					if (downloadCoverSeperately && track.album?.cover) {
+						try {
+							const coverId = track.album.cover;
+							const coverSizes: Array<'1280' | '640' | '320'> = ['1280', '640', '320'];
+							let coverDownloadSuccess = false;
 
-				// Download cover separately if enabled
-				if (downloadCoverSeperately && track.album?.cover) {
-					try {
-						const coverId = track.album.cover;
-						const coverSizes: Array<'1280' | '640' | '320'> = ['1280', '640', '320'];
-						let coverDownloadSuccess = false;
-
-						for (const size of coverSizes) {
-							if (coverDownloadSuccess) break;
-
-							const coverUrl = losslessAPI.getCoverUrl(coverId, size);
-							const fetchStrategies = [
-								{
-									name: 'with-headers',
-									options: {
-										method: 'GET' as const,
-										headers: {
-											'Accept': 'image/jpeg,image/jpg,image/png,image/*',
-											'User-Agent':
-												'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-										},
-										signal: AbortSignal.timeout(10000)
-									}
-								},
-								{
-									name: 'simple',
-									options: {
-										method: 'GET' as const,
-										signal: AbortSignal.timeout(10000)
-									}
-								}
-							];
-
-							for (const strategy of fetchStrategies) {
+							for (const size of coverSizes) {
 								if (coverDownloadSuccess) break;
 
-								try {
-									const coverResponse = await fetch(coverUrl, strategy.options);
+								const coverUrl = losslessAPI.getCoverUrl(coverId, size);
+								const fetchStrategies = [
+									{
+										name: 'with-headers',
+										options: {
+											method: 'GET' as const,
+											headers: {
+												'Accept': 'image/jpeg,image/jpg,image/png,image/*',
+												'User-Agent':
+													'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+											},
+											signal: AbortSignal.timeout(10000)
+										}
+									},
+									{
+										name: 'simple',
+										options: {
+											method: 'GET' as const,
+											signal: AbortSignal.timeout(10000)
+										}
+									}
+								];
 
-									if (!coverResponse.ok) continue;
+								for (const strategy of fetchStrategies) {
+									if (coverDownloadSuccess) break;
 
-									const contentType = coverResponse.headers.get('Content-Type');
-									const contentLength = coverResponse.headers.get('Content-Length');
+									try {
+										const coverResponse = await fetch(coverUrl, strategy.options);
 
-									if (contentLength && parseInt(contentLength, 10) === 0) continue;
-									if (contentType && !contentType.startsWith('image/')) continue;
+										if (!coverResponse.ok) continue;
 
-									const arrayBuffer = await coverResponse.arrayBuffer();
-									if (!arrayBuffer || arrayBuffer.byteLength === 0) continue;
+										const contentType = coverResponse.headers.get('Content-Type');
+										const contentLength = coverResponse.headers.get('Content-Length');
 
-									const uint8Array = new Uint8Array(arrayBuffer);
-									const imageFormat = detectImageFormat(uint8Array);
-									if (!imageFormat) continue;
+										if (contentLength && parseInt(contentLength, 10) === 0) continue;
+										if (contentType && !contentType.startsWith('image/')) continue;
 
-									const coverBlob = new Blob([uint8Array], { type: imageFormat.mimeType });
-									const coverObjectUrl = URL.createObjectURL(coverBlob);
-									const coverLink = document.createElement('a');
-									coverLink.href = coverObjectUrl;
-									coverLink.download = `cover.${imageFormat.extension}`;
-									document.body.appendChild(coverLink);
-									coverLink.click();
-									document.body.removeChild(coverLink);
-									URL.revokeObjectURL(coverObjectUrl);
+										const arrayBuffer = await coverResponse.arrayBuffer();
+										if (!arrayBuffer || arrayBuffer.byteLength === 0) continue;
 
-									coverDownloadSuccess = true;
-									break;
-								} catch {
-									// Continue to next strategy
+										const uint8Array = new Uint8Array(arrayBuffer);
+										const imageFormat = detectImageFormat(uint8Array);
+										if (!imageFormat) continue;
+
+										const coverBlob = new Blob([uint8Array], { type: imageFormat.mimeType });
+										const coverObjectUrl = URL.createObjectURL(coverBlob);
+										const coverLink = document.createElement('a');
+										coverLink.href = coverObjectUrl;
+										coverLink.download = `cover.${imageFormat.extension}`;
+										document.body.appendChild(coverLink);
+										coverLink.click();
+										document.body.removeChild(coverLink);
+										URL.revokeObjectURL(coverObjectUrl);
+
+										coverDownloadSuccess = true;
+										break;
+									} catch {
+										// Continue to next strategy
+									}
 								}
 							}
+						} catch (coverError) {
+							console.warn('Failed to download cover separately:', coverError);
 						}
-					} catch (coverError) {
-						console.warn('Failed to download cover separately:', coverError);
 					}
+				} else {
+					console.error(`[Individual Download] Track failed: ${track.title}`, result.error);
+					return { success: false, track, error: result.error };
 				}
-			} else {
-				console.error(`[Individual Download] Track failed: ${track.title}`, result.error);
-				return { success: false, track, error: result.error };
-			}
 
-			return { success: true, track };
+				return { success: true, track };
+			}
+		} catch (error) {
+			console.error(`[Individual Download] ✗ Error processing ${track.title}:`, error);
+			return { success: false, track, error };
+		} finally {
+			// Always increment progress counter and call callback as each task completes
+			completedCount++;
+			callbacks?.onTrackDownloaded?.(completedCount, total, track);
 		}
 	});
 
@@ -687,12 +696,6 @@ export async function downloadAlbum(
 
 	// Count successes/failures
 	failedCount = results.filter((r) => !r.success).length;
-	completed = total;
-
-	// Update callbacks for all tracks
-	tracks.forEach((track, index) => {
-		callbacks?.onTrackDownloaded?.(index + 1, total, track);
-	});
 
 	// Summary logging
 	const successCount = total - failedCount;
