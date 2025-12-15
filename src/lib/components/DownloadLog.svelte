@@ -1,30 +1,41 @@
 <script lang="ts">
 	import { downloadLogStore } from '$lib/stores/downloadLog';
-	import { X, ChevronDown, Copy, Trash2 } from 'lucide-svelte';
+	import { X, Copy, Trash2 } from 'lucide-svelte';
+	import { afterUpdate, beforeUpdate } from 'svelte';
 
-	let scrollContainer: HTMLDivElement;
+	let scrollContainer: HTMLDivElement | null = null;
+	let shouldStickToBottom = true;
 
-	function autoScroll() {
-		if (scrollContainer) {
-			// Scroll to bottom immediately
-			scrollContainer.scrollTop = scrollContainer.scrollHeight;
-		}
+	function isNearBottom(el: HTMLElement, px = 24) {
+		return el.scrollTop + el.clientHeight >= el.scrollHeight - px;
 	}
 
-	// Auto-scroll on new entries
-	$: if ($downloadLogStore.entries.length > 0) {
-		// Use requestAnimationFrame to ensure DOM has been updated
-		requestAnimationFrame(() => {
-			autoScroll();
-		});
-	}
+	beforeUpdate(() => {
+		const el = scrollContainer;
+		if (!el) return;
+		shouldStickToBottom = isNearBottom(el, 64);
+	});
 
-	$: console.log('[DownloadLog] Visibility:', $downloadLogStore.isVisible, 'Entries:', $downloadLogStore.entries.length);
+	afterUpdate(() => {
+		const el = scrollContainer;
+		if (!el) return;
+		if (!$downloadLogStore.isVisible) return;
+		if ($downloadLogStore.entries.length === 0) return;
+
+		// Only stick to bottom if user was already near it before new entries rendered
+		if (!shouldStickToBottom) return;
+
+		el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+	});
 
 	function copyLogs() {
 		const logText = $downloadLogStore.entries
-			.map((entry) => `[${entry.timestamp.toLocaleTimeString()}] [${entry.level.toUpperCase()}] ${entry.message}`)
+			.map(
+				(entry) =>
+					`[${entry.timestamp.toLocaleTimeString()}] [${entry.level.toUpperCase()}] ${entry.message}`
+			)
 			.join('\n');
+
 		navigator.clipboard.writeText(logText);
 	}
 </script>
@@ -34,19 +45,14 @@
 		<div class="download-log-header">
 			<h3 class="download-log-title">Download Log</h3>
 			<div class="download-log-actions">
-				<button
-					type="button"
-					class="download-log-btn"
-					title="Copy logs"
-					onclick={copyLogs}
-				>
+				<button type="button" class="download-log-btn" title="Copy logs" on:click={copyLogs}>
 					<Copy size={16} />
 				</button>
 				<button
 					type="button"
 					class="download-log-btn"
 					title="Clear logs"
-					onclick={() => downloadLogStore.clear()}
+					on:click={() => downloadLogStore.clear()}
 				>
 					<Trash2 size={16} />
 				</button>
@@ -54,7 +60,7 @@
 					type="button"
 					class="download-log-btn"
 					title="Close"
-					onclick={() => downloadLogStore.hide()}
+					on:click={() => downloadLogStore.hide()}
 				>
 					<X size={16} />
 				</button>
@@ -69,7 +75,6 @@
 					<span class="download-log-message">{entry.message}</span>
 				</div>
 			{/each}
-			<div style="flex-shrink: 0; height: 1px;"></div>
 		</div>
 	</div>
 </div>
@@ -80,14 +85,17 @@
 		bottom: 0;
 		right: 0;
 		left: 0;
-		max-height: 0;
+
+		/* IMPORTANT: use height rather than max-height to give inner flex a stable box */
+		height: 0;
 		overflow: hidden;
-		transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
 		z-index: 9999;
 	}
 
 	.download-log-container.is-visible {
-		max-height: 300px;
+		height: 300px;
 	}
 
 	.download-log-panel {
@@ -144,15 +152,22 @@
 
 	.download-log-content {
 		flex: 1;
-		overflow-y: scroll;
+
+		/* IMPORTANT: allow a flex child to actually shrink and become scrollable */
+		min-height: 0;
+
+		overflow-y: auto;
 		overflow-x: hidden;
+
 		font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
 		font-size: 12px;
 		padding: 8px 12px;
 		color: #ccc;
 		line-height: 1.4;
+
 		display: flex;
 		flex-direction: column;
+
 		scroll-behavior: smooth;
 	}
 

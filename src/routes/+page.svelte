@@ -28,7 +28,7 @@
 
 <div class="space-y-8">
 	<!-- Hero Section -->
-	<div class="py-8 text-center">
+	<!-- <div class="py-8 text-center">
 		<div class="mb-4 flex items-end justify-center gap-2">
 			<h2
 				class="bg-clip-text text-5xl font-bold text-transparent"
@@ -39,7 +39,7 @@
 			<span class="text-sm text-gray-400">{APP_VERSION}</span>
 		</div>
 		<p class="mx-auto max-w-2xl text-xl text-gray-400">{data.slogan}</p>
-	</div>
+	</div> -->
 
 	<!-- Search Interface -->
 	<SearchInterface onTrackSelect={handleTrackSelect} />

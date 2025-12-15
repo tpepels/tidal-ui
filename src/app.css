@@ -23,10 +23,10 @@ a[aria-disabled='true'] {
 
 /* Performance-optimized blur and effects */
 :root[data-performance='medium'] {
-  --perf-blur-high: 22px;
-  --perf-blur-medium: 18px;
-  --perf-blur-low: 14px;
-  --perf-saturate: 125%;
+  --perf-blur-high: 0px;
+  --perf-blur-medium: 0px;
+  --perf-blur-low: 0px;
+  --perf-saturate: 100%;
 }
 
 :root[data-performance='low'] {
@@ -63,10 +63,22 @@ a[aria-disabled='true'] {
 }
 
 :root:not([data-performance='medium']):not([data-performance='low']) {
-	--perf-blur-high: 32px;
-	--perf-blur-medium: 28px;
-	--perf-blur-low: 24px;
-	--perf-saturate: 160%;
+	--perf-blur-high: 0px;
+	--perf-blur-medium: 0px;
+	--perf-blur-low: 0px;
+	--perf-saturate: 100%;
+}
+
+* {
+	box-shadow: none !important;
+	text-shadow: none !important;
+}
+
+*,
+*::before,
+*::after {
+	backdrop-filter: none !important;
+	-webkit-backdrop-filter: none !important;
 }
 
 /* figtree-regular - latin_latin-ext */
