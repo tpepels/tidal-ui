@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { get } from 'svelte/store';
 	import { playerStore } from '$lib/stores/player';
 	import { lyricsStore } from '$lib/stores/lyrics';
@@ -56,8 +56,8 @@ type ShakaNamespace = {
 
 	let audioElement: HTMLAudioElement;
 	let streamUrl = $state('');
-	let isMuted = $state(false);
-	let previousVolume = 0.8;
+let isMuted = $state(false);
+let previousVolume = 0.8;
 	let currentTrackId: number | null = null;
 	let loadSequence = 0;
 	let bufferedPercent = $state(0);
@@ -95,8 +95,26 @@ let shakaAttachedElement: HTMLMediaElement | null = null;
 	let dashPlaybackActive = false;
 	let dashFallbackAttemptedTrackId: number | string | null = null;
 	let dashFallbackInFlight = false;
+	let supportsLosslessPlayback = true;
 	let losslessFallbackAttemptedTrackId: number | string | null = null;
 	let losslessFallbackInFlight = false;
+let resumeAfterFallback = false;
+let pendingPlayAfterSource = false;
+
+	function requestAudioPlayback(reason: string) {
+		if (!audioElement) return;
+		const promise = audioElement.play();
+		if (promise?.catch) {
+			promise.catch((error) => {
+				console.error(`[AudioPlayer] play() failed during ${reason}`, error);
+				if (typeof DOMException !== 'undefined' && error instanceof DOMException) {
+					if (error.name === 'AbortError') {
+						pendingPlayAfterSource = true;
+					}
+				}
+			});
+		}
+	}
 
 	const canUseMediaSession = typeof navigator !== 'undefined' && 'mediaSession' in navigator;
 	let mediaSessionTrackId: number | string | null = null;
@@ -550,7 +568,11 @@ let shakaAttachedElement: HTMLMediaElement | null = null;
 	}
 
 	function playFromQueue(index: number) {
+		console.info('[AudioPlayer] playFromQueue called for index', index);
 		playerStore.playAtIndex(index);
+		if (audioElement && audioElement.paused) {
+			requestAudioPlayback('queue play');
+		}
 	}
 
 	function removeFromQueue(index: number, event?: MouseEvent) {
@@ -585,7 +607,8 @@ let shakaAttachedElement: HTMLMediaElement | null = null;
 
 	$effect(() => {
 		if ($playerStore.isPlaying && audioElement) {
-			audioElement.play().catch(console.error);
+			console.info('[AudioPlayer] store requested play; ensuring audio element is playing');
+			requestAudioPlayback('store play request');
 		} else if (!$playerStore.isPlaying && audioElement) {
 			audioElement.pause();
 		}
@@ -605,6 +628,7 @@ let shakaAttachedElement: HTMLMediaElement | null = null;
 		playerStore.setBitDepth(bitDepth);
 		pruneStreamCache();
 		if (audioElement) {
+			await tick();
 			audioElement.crossOrigin = 'anonymous';
 			audioElement.load();
 		}
@@ -667,12 +691,24 @@ let shakaAttachedElement: HTMLMediaElement | null = null;
 			console.error('Invalid track ID - must be numeric:', tidalTrack.id);
 			return;
 		}
+		losslessFallbackAttemptedTrackId = null;
+		losslessFallbackInFlight = false;
+		resumeAfterFallback = false;
 
 		const sequence = ++loadSequence;
 		playerStore.setLoading(true);
 		bufferedPercent = 0;
 		currentPlaybackQuality = null;
 		let requestedQuality = $playerStore.quality;
+		console.info(
+			'[AudioPlayer] Loading track',
+			tidalTrack.id,
+			'with requested quality',
+			requestedQuality,
+			'(supports lossless:',
+			supportsLosslessPlayback,
+			')'
+		);
 
 		const trackBestQuality = deriveTrackQuality(tidalTrack);
 		if (isHiResQuality(requestedQuality) && trackBestQuality && !isHiResQuality(trackBestQuality)) {
@@ -682,11 +718,23 @@ let shakaAttachedElement: HTMLMediaElement | null = null;
 		if (dashFallbackAttemptedTrackId && dashFallbackAttemptedTrackId !== tidalTrack.id) {
 			dashFallbackAttemptedTrackId = null;
 		}
-		if (losslessFallbackAttemptedTrackId && losslessFallbackAttemptedTrackId !== tidalTrack.id) {
-			losslessFallbackAttemptedTrackId = null;
-		}
 
 		try {
+			if (!supportsLosslessPlayback) {
+				const requiresFlac = requestedQuality === 'LOSSLESS' || isHiResQuality(requestedQuality);
+				if (requiresFlac) {
+					console.warn(
+						'[AudioPlayer] Lossless playback unsupported; falling back to streaming quality.'
+					);
+					await loadStandardTrack(tidalTrack, 'HIGH', sequence);
+					console.info(
+						'[AudioPlayer] Streaming fallback loaded successfully for track',
+						tidalTrack.id
+					);
+					return;
+				}
+			}
+
 			if (isHiResQuality(requestedQuality)) {
 				try {
 					const hiResQuality: AudioQuality = 'HI_RES_LOSSLESS';
@@ -709,11 +757,32 @@ let shakaAttachedElement: HTMLMediaElement | null = null;
 			await loadStandardTrack(tidalTrack, requestedQuality, sequence);
 		} catch (error) {
 			console.error('Failed to load track:', error);
-			if (sequence === loadSequence && requestedQuality !== 'LOSSLESS' && !isHiResQuality(requestedQuality)) {
+			if (
+				sequence === loadSequence &&
+				requestedQuality !== 'LOSSLESS' &&
+				!isHiResQuality(requestedQuality)
+			) {
 				try {
 					await loadStandardTrack(tidalTrack, 'LOSSLESS', sequence);
 				} catch (fallbackError) {
 					console.error('Secondary lossless fallback failed:', fallbackError);
+				}
+			} else if (sequence === loadSequence && requestedQuality === 'LOSSLESS') {
+				console.warn(
+					'[AudioPlayer] Lossless load failed; attempting streaming fallback for track',
+					tidalTrack.id
+				);
+				try {
+					await loadStandardTrack(tidalTrack, 'HIGH', sequence);
+					console.info(
+						'[AudioPlayer] Streaming fallback loaded successfully after lossless failure for track',
+						tidalTrack.id
+					);
+				} catch (fallbackError) {
+					console.error(
+						'[AudioPlayer] Streaming fallback after lossless load failure also failed',
+						fallbackError
+					);
 				}
 			}
 		} finally {
@@ -764,6 +833,7 @@ let shakaAttachedElement: HTMLMediaElement | null = null;
 	}
 
 	function handleAudioError(event: Event) {
+		console.warn('[AudioPlayer] Audio element reported an error state:', event);
 		const element = event.currentTarget as HTMLAudioElement | null;
 		const mediaError = element?.error ?? null;
 		const code = mediaError?.code;
@@ -775,50 +845,62 @@ let shakaAttachedElement: HTMLMediaElement | null = null;
 				return;
 			}
 			const reason = isDecodeError ? 'decode error' : code ? `code ${code}` : 'unknown error';
+			console.warn('[AudioPlayer] DASH playback error detected; attempting lossless fallback:', reason);
 			void fallbackToLosslessAfterDashError(reason);
 			return;
 		}
-		const activeQuality = currentPlaybackQuality;
 		const codeNumber = typeof code === 'number' ? code : null;
 		const abortedCode =
 			typeof mediaError?.MEDIA_ERR_ABORTED === 'number' ? mediaError.MEDIA_ERR_ABORTED : null;
-		const shouldStreamFallback =
-			activeQuality === 'LOSSLESS' && codeNumber !== null && codeNumber !== abortedCode;
-		if (!shouldStreamFallback) {
+		const srcUnsupported = mediaError?.MEDIA_ERR_SRC_NOT_SUPPORTED;
+		const losslessActive =
+			currentPlaybackQuality === 'LOSSLESS' || $playerStore.quality === 'LOSSLESS';
+		const shouldFallbackToStreaming =
+			losslessActive &&
+			codeNumber !== null &&
+			codeNumber !== abortedCode &&
+			((typeof decodeConstant === 'number' && codeNumber === decodeConstant) ||
+				(typeof srcUnsupported === 'number' && codeNumber === srcUnsupported));
+		if (shouldFallbackToStreaming) {
+			const reason =
+				codeNumber === srcUnsupported ? 'source not supported' : isDecodeError ? 'decode error' : 'unknown';
+			console.warn(
+				`[AudioPlayer] Lossless playback error (${reason}). Falling back to streaming quality for current track.`
+			);
+			void fallbackToStreamingAfterLosslessError();
+		}
+	}
+
+	async function fallbackToStreamingAfterLosslessError() {
+		if (losslessFallbackInFlight) {
 			return;
 		}
 		const track = $playerStore.currentTrack;
-		if (!track || losslessFallbackInFlight) {
+		if (!track) {
 			return;
 		}
 		if (losslessFallbackAttemptedTrackId === track.id) {
 			return;
 		}
-		losslessFallbackInFlight = true;
 		losslessFallbackAttemptedTrackId = track.id;
+		losslessFallbackInFlight = true;
+		resumeAfterFallback = $playerStore.isPlaying;
 		const sequence = ++loadSequence;
-		console.warn('Lossless playback failed, falling back to streaming quality.');
-		void (async () => {
-			try {
-				playerStore.setLoading(true);
-				await loadStandardTrack(track as Track, 'HIGH', sequence);
-				if ($playerStore.isPlaying && audioElement) {
-					try {
-						await audioElement.play();
-					} catch (playError) {
-						console.error('Failed to resume playback after streaming fallback', playError);
-					}
-				}
-			} catch (fallbackError) {
-				console.error('Streaming fallback after lossless playback error failed', fallbackError);
-			} finally {
-				if (sequence === loadSequence) {
-					playerStore.setLoading(false);
-				}
-				losslessFallbackInFlight = false;
+		try {
+			playerStore.setLoading(true);
+			await loadStandardTrack(track as Track, 'HIGH', sequence);
+			console.info('[AudioPlayer] Streaming fallback loaded for track', track.id);
+		} catch (fallbackError) {
+			console.error('Streaming fallback after lossless playback error failed', fallbackError);
+			resumeAfterFallback = false;
+		} finally {
+			if (sequence === loadSequence) {
+				playerStore.setLoading(false);
 			}
-		})();
+			losslessFallbackInFlight = false;
+		}
 	}
+
 
 	function handleDurationChange() {
 		if (audioElement) {
@@ -868,6 +950,14 @@ let shakaAttachedElement: HTMLMediaElement | null = null;
 		}
 
 		updateMediaSessionPositionState();
+		if (audioElement && $playerStore.isPlaying && audioElement.paused) {
+			const shouldResume = resumeAfterFallback || pendingPlayAfterSource || $playerStore.isPlaying;
+			resumeAfterFallback = false;
+			pendingPlayAfterSource = false;
+			if (shouldResume) {
+				requestAudioPlayback('source loaded');
+			}
+		}
 	}
 
 	function getPercent(current: number, total: number): number {
@@ -955,10 +1045,11 @@ let shakaAttachedElement: HTMLMediaElement | null = null;
 
 		const state = get(playerStore);
 		if (!state.isPlaying) {
+			console.info('[AudioPlayer] Lyrics seek requested playback; resuming audio');
 			playerStore.play();
 		}
 
-		audioElement.play().catch(() => {});
+		requestAudioPlayback('lyrics seek');
 	}
 
 	async function handleDownloadCurrentTrack() {
@@ -1231,12 +1322,7 @@ let shakaAttachedElement: HTMLMediaElement | null = null;
 
 		safeSetActionHandler('play', async () => {
 			playerStore.play();
-			if (!audioElement) return;
-			try {
-				await audioElement.play();
-			} catch (error) {
-				console.debug('Media Session play failed', error);
-			}
+			requestAudioPlayback('media session play');
 			updateMediaSessionPlaybackState('playing');
 			updateMediaSessionPositionState();
 		});
@@ -1308,6 +1394,32 @@ let shakaAttachedElement: HTMLMediaElement | null = null;
 
 		if (audioElement) {
 			audioElement.volume = $playerStore.volume;
+		}
+
+		if (typeof window !== 'undefined') {
+			const probe = document.createElement('audio');
+			const support = probe.canPlayType?.('audio/flac');
+			const supportedByCodec = Boolean(support && support !== 'no');
+			if (isFirefox && supportedByCodec) {
+				console.info(
+					'[AudioPlayer] Browser reported FLAC support but running on Firefox; forcing streaming fallback.'
+				);
+			}
+			const previousSupport = supportsLosslessPlayback;
+			supportsLosslessPlayback = supportedByCodec && !isFirefox;
+			console.info(
+				'[AudioPlayer] Browser lossless playback support detected:',
+				supportsLosslessPlayback
+			);
+			if (previousSupport && !supportsLosslessPlayback) {
+				const state = get(playerStore);
+				if (state.currentTrack) {
+					console.info(
+						'[AudioPlayer] Re-loading current track with streaming quality due to unsupported FLAC playback.'
+					);
+					loadTrack(state.currentTrack);
+				}
+			}
 		}
 
 		if (containerElement) {
@@ -1956,7 +2068,7 @@ let shakaAttachedElement: HTMLMediaElement | null = null;
 		color: rgba(255, 255, 255, 0.95);
 	}
 
-	.player-toggle-button--active {
+.player-toggle-button--active {
 		border-color: var(--bloom-accent, rgba(96, 165, 250, 0.7));
 		color: rgba(255, 255, 255, 0.98);
 		box-shadow: inset 0 0 20px rgba(96, 165, 250, 0.15);

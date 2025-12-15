@@ -50,6 +50,7 @@
 	}
 
 	function handlePlayTrack(track: Track, index: number) {
+		console.info('[TrackList] handlePlayTrack', { trackId: track.id, index });
 		playerStore.setQueue(tracks, index);
 		playerStore.play();
 	}

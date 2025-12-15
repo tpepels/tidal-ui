@@ -45,6 +45,7 @@
 	}
 
 	function handlePlayTrack(track: Track, index: number) {
+		console.info('[TopTracksGrid] handlePlayTrack', { trackId: track.id, index });
 		playerStore.setQueue(displayedTracks, index);
 		playerStore.play();
 	}
