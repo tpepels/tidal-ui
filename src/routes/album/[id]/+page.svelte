@@ -13,11 +13,13 @@
 		Clock,
 		Download,
 		Shuffle,
-		LoaderCircle
+		LoaderCircle,
+		Terminal
 	} from 'lucide-svelte';
 	import { playerStore } from '$lib/stores/player';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
+	import { downloadLogStore } from '$lib/stores/downloadLog';
 	import { downloadAlbum } from '$lib/downloads';
 
 	let album = $state<Album | null>(null);
@@ -279,6 +281,14 @@
 							{isDownloadingAll
 								? `Downloading ${downloadedCount}/${tracks.length}`
 								: 'Download All'}
+						</button>
+						<button
+							onclick={() => downloadLogStore.toggle()}
+							class="flex items-center gap-2 rounded-full border border-green-600/50 px-6 py-3 text-sm font-semibold text-green-300 transition-colors hover:border-green-500 hover:text-green-100"
+							title="Toggle download log"
+						>
+							<Terminal size={18} />
+							Logs
 						</button>
 						<ShareButton type="album" id={album.id} variant="secondary" />
 					</div>

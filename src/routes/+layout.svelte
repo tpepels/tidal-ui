@@ -6,9 +6,11 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import AudioPlayer from '$lib/components/AudioPlayer.svelte';
 	import LyricsPopup from '$lib/components/LyricsPopup.svelte';
+	import DownloadLog from '$lib/components/DownloadLog.svelte';
 	import DynamicBackgroundWebGL from '$lib/components/DynamicBackground.svelte';
 	import { playerStore } from '$lib/stores/player';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
+	import { downloadLogStore } from '$lib/stores/downloadLog';
 	import {
 		downloadPreferencesStore,
 		type DownloadMode,
@@ -693,6 +695,23 @@
 											</div>
 										</section>
 										<section class="settings-section settings-section--wide">
+											<p class="section-heading">Download Log</p>
+											<button
+												type="button"
+												onclick={() => downloadLogStore.toggle()}
+												class="glass-option glass-option--wide glass-option--primary"
+											>
+												<span class="glass-option__content">
+													<span class="glass-option__label">
+														View Download Log
+													</span>
+													<span class="glass-option__description">
+														{$downloadLogStore.isVisible ? 'Hide' : 'Show'} real-time download progress
+													</span>
+												</span>
+											</button>
+										</section>
+										<section class="settings-section settings-section--wide">
 											<p class="section-heading">Performance Mode</p>
 											<div class="option-grid option-grid--compact">
 												{#each PERFORMANCE_OPTIONS as option}
@@ -797,11 +816,14 @@
 				</div>
 			</main>
 
-			<AudioPlayer onHeightChange={handlePlayerHeight} />
+			{#if $playerStore.currentTrack}
+				<AudioPlayer onHeightChange={handlePlayerHeight} />
+			{/if}
 		</div>
 	</div>
 
 	<LyricsPopup />
+	<DownloadLog />
 {/if}
 
 <!--

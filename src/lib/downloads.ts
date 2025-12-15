@@ -3,6 +3,7 @@ import type { Album, Track, AudioQuality } from '$lib/types';
 import type { DownloadMode, DownloadStorage } from '$lib/stores/downloadPreferences';
 import { downloadQueue } from '$lib/stores/downloadQueue';
 import type { DownloadQueueItem } from '$lib/stores/downloadQueue';
+import { downloadLogStore } from '$lib/stores/downloadLog';
 import { formatArtists } from '$lib/utils';
 import JSZip from 'jszip';
 
@@ -212,7 +213,9 @@ export async function downloadTrackServerSide(
 			};
 		}
 
-		console.log(`[Server Download] Phase 1: Sending metadata for "${trackTitle}" (${(blob.size / 1024 / 1024).toFixed(2)} MB)`);
+		const sizeMsg = `[Server Download] Phase 1: Sending metadata for "${trackTitle}" (${(blob.size / 1024 / 1024).toFixed(2)} MB)`;
+		console.log(sizeMsg);
+		downloadLogStore.log(sizeMsg);
 		const response = await fetch('/api/download-track', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -327,6 +330,9 @@ export async function downloadAlbum(
 	console.log(`[Album Download] Starting: "${albumTitle}" by ${artistName}`);
 	console.log(`[Album Download] Tracks: ${total} | Quality: ${quality} | Mode: ${mode}`);
 	console.log(`[Album Download] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+	downloadLogStore.show();
+	downloadLogStore.log(`Starting: "${albumTitle}" by ${artistName}`);
+	downloadLogStore.log(`Tracks: ${total} | Quality: ${quality} | Mode: ${mode}`);
 
 
 	if (useCsv) {
@@ -687,6 +693,12 @@ export async function downloadAlbum(
 		} finally {
 			// Always increment progress counter and call callback as each task completes
 			completedCount++;
+			const progressMsg = `Progress: ${completedCount}/${total} tracks`;
+			console.log(`[Individual Download] ${progressMsg}`);
+			downloadLogStore.log(progressMsg);
+			if (completedCount === total) {
+				downloadLogStore.success('All downloads completed!');
+			}
 			callbacks?.onTrackDownloaded?.(completedCount, total, track);
 		}
 	});
