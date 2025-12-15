@@ -95,6 +95,8 @@ let shakaAttachedElement: HTMLMediaElement | null = null;
 	let dashPlaybackActive = false;
 	let dashFallbackAttemptedTrackId: number | string | null = null;
 	let dashFallbackInFlight = false;
+	let losslessFallbackAttemptedTrackId: number | string | null = null;
+	let losslessFallbackInFlight = false;
 
 	const canUseMediaSession = typeof navigator !== 'undefined' && 'mediaSession' in navigator;
 	let mediaSessionTrackId: number | string | null = null;
@@ -680,6 +682,9 @@ let shakaAttachedElement: HTMLMediaElement | null = null;
 		if (dashFallbackAttemptedTrackId && dashFallbackAttemptedTrackId !== tidalTrack.id) {
 			dashFallbackAttemptedTrackId = null;
 		}
+		if (losslessFallbackAttemptedTrackId && losslessFallbackAttemptedTrackId !== tidalTrack.id) {
+			losslessFallbackAttemptedTrackId = null;
+		}
 
 		try {
 			if (isHiResQuality(requestedQuality)) {
@@ -759,17 +764,48 @@ let shakaAttachedElement: HTMLMediaElement | null = null;
 	}
 
 	function handleAudioError(event: Event) {
-		if (!dashPlaybackActive) {
-			return;
-		}
 		const element = event.currentTarget as HTMLAudioElement | null;
 		const mediaError = element?.error ?? null;
 		const code = mediaError?.code;
 		const decodeConstant = mediaError?.MEDIA_ERR_DECODE;
 		const isDecodeError =
 			typeof code === 'number' && typeof decodeConstant === 'number' ? code === decodeConstant : false;
-		const reason = isDecodeError ? 'decode error' : code ? `code ${code}` : 'unknown error';
-		void fallbackToLosslessAfterDashError(reason);
+		if (dashPlaybackActive) {
+			if (!isDecodeError && !code) {
+				return;
+			}
+			const reason = isDecodeError ? 'decode error' : code ? `code ${code}` : 'unknown error';
+			void fallbackToLosslessAfterDashError(reason);
+			return;
+		}
+		const activeQuality = currentPlaybackQuality;
+		if (!isDecodeError || activeQuality !== 'LOSSLESS') {
+			return;
+		}
+		const track = $playerStore.currentTrack;
+		if (!track || losslessFallbackInFlight) {
+			return;
+		}
+		if (losslessFallbackAttemptedTrackId === track.id) {
+			return;
+		}
+		losslessFallbackInFlight = true;
+		losslessFallbackAttemptedTrackId = track.id;
+		const sequence = ++loadSequence;
+		console.warn('Lossless playback failed, falling back to streaming quality.');
+		void (async () => {
+			try {
+				playerStore.setLoading(true);
+				await loadStandardTrack(track as Track, 'HIGH', sequence);
+			} catch (fallbackError) {
+				console.error('Streaming fallback after lossless playback error failed', fallbackError);
+			} finally {
+				if (sequence === loadSequence) {
+					playerStore.setLoading(false);
+				}
+				losslessFallbackInFlight = false;
+			}
+		})();
 	}
 
 	function handleDurationChange() {
