@@ -72,7 +72,7 @@ type ShakaNamespace = {
 		headless?: boolean;
 	}>();
 
-	let containerElement: HTMLDivElement | null = null;
+	let containerElement = $state<HTMLDivElement | null>(null);
 	let resizeObserver: ResizeObserver | null = null;
 	let showQueuePanel = $state(false);
 

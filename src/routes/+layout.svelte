@@ -47,7 +47,7 @@
 	let isZipDownloading = $state(false);
 	let isCsvExporting = $state(false);
 	let isLegacyQueueDownloading = $state(false);
-	let settingsMenuContainer: HTMLDivElement | null = null;
+let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 	const downloadMode = $derived($downloadPreferencesStore.mode);
 	const queueActionBusy = $derived(
 		downloadMode === 'zip'

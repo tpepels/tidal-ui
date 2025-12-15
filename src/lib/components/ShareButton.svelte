@@ -23,8 +23,8 @@
 
 	let showMenu = $state(false);
 	let copied = $state(false);
-	let menuRef: HTMLDivElement | null = null;
-	let buttonRef: HTMLButtonElement | null = null;
+	let menuRef = $state<HTMLDivElement | null>(null);
+	let buttonRef = $state<HTMLButtonElement | null>(null);
 
 	function getLongLink() {
 		return `https://music.binimum.org/${type}/${id}`;
