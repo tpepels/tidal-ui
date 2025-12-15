@@ -797,6 +797,13 @@ let shakaAttachedElement: HTMLMediaElement | null = null;
 			try {
 				playerStore.setLoading(true);
 				await loadStandardTrack(track as Track, 'HIGH', sequence);
+				if ($playerStore.isPlaying && audioElement) {
+					try {
+						await audioElement.play();
+					} catch (playError) {
+						console.error('Failed to resume playback after streaming fallback', playError);
+					}
+				}
 			} catch (fallbackError) {
 				console.error('Streaming fallback after lossless playback error failed', fallbackError);
 			} finally {
