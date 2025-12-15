@@ -135,6 +135,7 @@ let pendingPlayAfterSource = false;
 	// - not dismissed
 	// - AND either a track exists OR overlays exist (downloads/ffmpeg banner)
 	const shouldShowPlayer = $derived(!playerDismissed && (hasTrack || hasOverlays));
+	const shouldShowRestoreButton = $derived(playerDismissed && (hasTrack || hasOverlays));
 
 	function dismissPlayer() {
 		playerDismissed = true;
@@ -143,6 +144,10 @@ let pendingPlayAfterSource = false;
 		// Optional: if you want dismiss to stop playback, uncomment:
 		// playerStore.pause();
 		// playerStore.clearQueue(); // or playerStore.reset();
+	}
+
+	function restorePlayer() {
+		playerDismissed = false;
 	}
 
 	// Auto-unhide when a track appears again
@@ -1916,6 +1921,13 @@ let pendingPlayAfterSource = false;
 	</div>
 {/if}
 
+{#if !headless && shouldShowRestoreButton}
+	<button class="player-restore-button" type="button" onclick={restorePlayer} aria-label="Show player">
+		<Play size={18} />
+		Show player
+	</button>
+{/if}
+
 <style>
 	.audio-player-glass {
 		background: rgba(11, 16, 26, 0.98);
@@ -2072,5 +2084,39 @@ let pendingPlayAfterSource = false;
 		border-color: var(--bloom-accent, rgba(96, 165, 250, 0.7));
 		color: rgba(255, 255, 255, 0.98);
 		box-shadow: inset 0 0 20px rgba(96, 165, 250, 0.15);
+	}
+
+	.player-restore-button {
+		position: fixed;
+		left: 50%;
+		bottom: 1.5rem;
+		transform: translateX(-50%);
+		z-index: 60;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.65rem 1.25rem;
+		border-radius: 9999px;
+		border: 1px solid rgba(148, 163, 184, 0.3);
+		background: rgba(11, 16, 26, 0.9);
+		color: rgba(226, 232, 240, 0.95);
+		box-shadow: 0 8px 28px rgba(2, 6, 23, 0.4);
+		backdrop-filter: blur(16px) saturate(140%);
+		-webkit-backdrop-filter: blur(16px) saturate(140%);
+		transition: border-color 200ms ease, color 200ms ease, box-shadow 200ms ease,
+			background 200ms ease;
+	}
+
+	.player-restore-button:hover {
+		border-color: var(--bloom-accent, rgba(96, 165, 250, 0.7));
+		color: white;
+		background: rgba(15, 23, 42, 0.95);
+		box-shadow: 0 12px 32px rgba(2, 6, 23, 0.55);
+	}
+
+	@media (min-width: 640px) {
+		.player-restore-button {
+			bottom: 2.5rem;
+		}
 	}
 </style>
