@@ -5,16 +5,15 @@
 	import type { Album, ArtistDetails, AudioQuality } from '$lib/types';
 	import TopTracksGrid from '$lib/components/TopTracksGrid.svelte';
 	import ShareButton from '$lib/components/ShareButton.svelte';
-	import { onMount } from 'svelte';
-	import { ArrowLeft, User, Download, LoaderCircle } from 'lucide-svelte';
-	import { playerStore } from '$lib/stores/player';
-	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
-	import { userPreferencesStore } from '$lib/stores/userPreferences';
+import { ArrowLeft, User, Download, LoaderCircle } from 'lucide-svelte';
+import { playerStore } from '$lib/stores/player';
+import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
+import { userPreferencesStore } from '$lib/stores/userPreferences';
 
-	let artist = $state<ArtistDetails | null>(null);
-	let artistImage = $state<string | null>(null);
-	let isLoading = $state(true);
-	let error = $state<string | null>(null);
+let artist = $state<ArtistDetails | null>(null);
+let artistImage = $state<string | null>(null);
+let isLoading = $state(true);
+let error = $state<string | null>(null);
 
 	const artistId = $derived($page.params.id);
 	const topTracks = $derived(artist?.tracks ?? []);
@@ -35,12 +34,15 @@
 	let isDownloadingDiscography = $state(false);
 	let discographyProgress = $state({ completed: 0, total: 0 });
 	let discographyError = $state<string | null>(null);
-	let albumDownloadStates = $state<Record<number, AlbumDownloadState>>({});
+let albumDownloadStates = $state<Record<number, AlbumDownloadState>>({});
+let activeRequestToken = 0;
 
-	onMount(async () => {
-		if (artistId) {
-			await loadArtist(parseInt(artistId));
+	$effect(() => {
+		const id = Number(artistId);
+		if (!Number.isFinite(id) || id <= 0) {
+			return;
 		}
+		void loadArtist(id);
 	});
 
 	function getReleaseYear(date?: string | null): string | null {
@@ -213,7 +215,8 @@
 		isDownloadingDiscography = false;
 	}
 
-	async function loadArtist(id: number) {
+async function loadArtist(id: number) {
+		const requestToken = ++activeRequestToken;
 		try {
 			isLoading = true;
 			error = null;
@@ -221,7 +224,12 @@
 			discographyProgress = { completed: 0, total: 0 };
 			discographyError = null;
 			albumDownloadStates = {};
+			artist = null;
+			artistImage = null;
 			const data = await losslessAPI.getArtist(id);
+			if (requestToken !== activeRequestToken) {
+				return;
+			}
 			artist = data;
 
 			// Get artist picture
@@ -229,10 +237,14 @@
 				artistImage = losslessAPI.getArtistPictureUrl(artist.picture);
 			}
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to load artist';
-			console.error('Failed to load artist:', err);
+			if (requestToken === activeRequestToken) {
+				error = err instanceof Error ? err.message : 'Failed to load artist';
+				console.error('Failed to load artist:', err);
+			}
 		} finally {
-			isLoading = false;
+			if (requestToken === activeRequestToken) {
+				isLoading = false;
+			}
 		}
 	}
 </script>

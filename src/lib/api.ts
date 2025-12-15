@@ -1207,7 +1207,7 @@ class LosslessAPI {
 		const recordArtist = (candidate: Artist | undefined) => {
 			if (!candidate) return;
 			const normalized = this.prepareArtist(candidate);
-			if (!artist || artist.id === normalized.id) {
+			if (!artist || normalized.id === id || artist.id === normalized.id) {
 				artist = normalized;
 			}
 		};
