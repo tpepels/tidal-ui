@@ -779,7 +779,12 @@ let shakaAttachedElement: HTMLMediaElement | null = null;
 			return;
 		}
 		const activeQuality = currentPlaybackQuality;
-		if (!isDecodeError || activeQuality !== 'LOSSLESS') {
+		const codeNumber = typeof code === 'number' ? code : null;
+		const abortedCode =
+			typeof mediaError?.MEDIA_ERR_ABORTED === 'number' ? mediaError.MEDIA_ERR_ABORTED : null;
+		const shouldStreamFallback =
+			activeQuality === 'LOSSLESS' && codeNumber !== null && codeNumber !== abortedCode;
+		if (!shouldStreamFallback) {
 			return;
 		}
 		const track = $playerStore.currentTrack;
