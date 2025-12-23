@@ -23,22 +23,22 @@ a[aria-disabled='true'] {
 
 /* Performance-optimized blur and effects */
 :root[data-performance='medium'] {
-  --perf-blur-high: 0px;
-  --perf-blur-medium: 0px;
-  --perf-blur-low: 0px;
-  --perf-saturate: 100%;
+	--perf-blur-high: 0px;
+	--perf-blur-medium: 0px;
+	--perf-blur-low: 0px;
+	--perf-saturate: 100%;
 }
 
 :root[data-performance='low'] {
-  --perf-blur-high: 0px;
-  --perf-blur-medium: 0px;
-  --perf-blur-low: 0px;
-  --perf-saturate: 100%;
+	--perf-blur-high: 0px;
+	--perf-blur-medium: 0px;
+	--perf-blur-low: 0px;
+	--perf-saturate: 100%;
 }
 
 :root[data-performance='low'] * {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+	backdrop-filter: none !important;
+	-webkit-backdrop-filter: none !important;
 }
 
 :root[data-performance='low'] .glass-panel,
@@ -51,15 +51,15 @@ a[aria-disabled='true'] {
 :root[data-performance='low'] .glass-panel__footer,
 :root[data-performance='low'] .navigation-overlay,
 :root[data-performance='low'] .navigation-overlay__progress {
-  background-color: rgba(15, 23, 42, 0.92) !important;
-  border-color: rgba(148, 163, 184, 0.2) !important;
-  box-shadow: none !important;
+	background-color: rgba(15, 23, 42, 0.92) !important;
+	border-color: rgba(148, 163, 184, 0.2) !important;
+	box-shadow: none !important;
 }
 
 :root[data-performance='low'] .toolbar-button,
 :root[data-performance='low'] .glass-option,
 :root[data-performance='low'] .glass-action {
-  transition: none;
+	transition: none;
 }
 
 :root:not([data-performance='medium']):not([data-performance='low']) {
@@ -83,37 +83,62 @@ a[aria-disabled='true'] {
 
 /* figtree-regular - latin_latin-ext */
 @font-face {
-  font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
-  font-family: 'Figtree';
-  font-style: normal;
-  font-weight: 400;
-  src: url('/fonts/figtree-v9-latin_latin-ext-regular.woff2') format('woff2'), /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
-       url('/fonts/figtree-v9-latin_latin-ext-regular.ttf') format('truetype'); /* Chrome 4+, Firefox 3.5+, IE 9+, Safari 3.1+, iOS 4.2+, Android Browser 2.2+ */
+	font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
+	font-family: 'Figtree';
+	font-style: normal;
+	font-weight: 400;
+	src:
+		url('/fonts/figtree-v9-latin_latin-ext-regular.woff2') format('woff2'),
+		/* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+			url('/fonts/figtree-v9-latin_latin-ext-regular.ttf') format('truetype'); /* Chrome 4+, Firefox 3.5+, IE 9+, Safari 3.1+, iOS 4.2+, Android Browser 2.2+ */
 }
 /* figtree-italic - latin_latin-ext */
 @font-face {
-  font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
-  font-family: 'Figtree';
-  font-style: italic;
-  font-weight: 400;
-  src: url('/fonts/figtree-v9-latin_latin-ext-italic.woff2') format('woff2'), /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
-       url('/fonts/figtree-v9-latin_latin-ext-italic.ttf') format('truetype'); /* Chrome 4+, Firefox 3.5+, IE 9+, Safari 3.1+, iOS 4.2+, Android Browser 2.2+ */
+	font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
+	font-family: 'Figtree';
+	font-style: italic;
+	font-weight: 400;
+	src:
+		url('/fonts/figtree-v9-latin_latin-ext-italic.woff2') format('woff2'),
+		/* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+			url('/fonts/figtree-v9-latin_latin-ext-italic.ttf') format('truetype'); /* Chrome 4+, Firefox 3.5+, IE 9+, Safari 3.1+, iOS 4.2+, Android Browser 2.2+ */
 }
 /* figtree-700 - latin_latin-ext */
 @font-face {
-  font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
-  font-family: 'Figtree';
-  font-style: normal;
-  font-weight: 700;
-  src: url('/fonts/figtree-v9-latin_latin-ext-700.woff2') format('woff2'), /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
-       url('/fonts/figtree-v9-latin_latin-ext-700.ttf') format('truetype'); /* Chrome 4+, Firefox 3.5+, IE 9+, Safari 3.1+, iOS 4.2+, Android Browser 2.2+ */
+	font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
+	font-family: 'Figtree';
+	font-style: normal;
+	font-weight: 700;
+	src:
+		url('/fonts/figtree-v9-latin_latin-ext-700.woff2') format('woff2'),
+		/* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+			url('/fonts/figtree-v9-latin_latin-ext-700.ttf') format('truetype'); /* Chrome 4+, Firefox 3.5+, IE 9+, Safari 3.1+, iOS 4.2+, Android Browser 2.2+ */
 }
 /* figtree-700italic - latin_latin-ext */
 @font-face {
-  font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
-  font-family: 'Figtree';
-  font-style: italic;
-  font-weight: 700;
-  src: url('/fonts/figtree-v9-latin_latin-ext-700italic.woff2') format('woff2'), /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
-       url('/fonts/figtree-v9-latin_latin-ext-700italic.ttf') format('truetype'); /* Chrome 4+, Firefox 3.5+, IE 9+, Safari 3.1+, iOS 4.2+, Android Browser 2.2+ */
+	font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
+	font-family: 'Figtree';
+	font-style: italic;
+	font-weight: 700;
+	src:
+		url('/fonts/figtree-v9-latin_latin-ext-700italic.woff2') format('woff2'),
+		/* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+			url('/fonts/figtree-v9-latin_latin-ext-700italic.ttf') format('truetype'); /* Chrome 4+, Firefox 3.5+, IE 9+, Safari 3.1+, iOS 4.2+, Android Browser 2.2+ */
+}
+
+/* Standard button styles for consistency */
+.btn {
+	@apply rounded-md px-4 py-2 font-medium transition-colors duration-200;
+}
+
+.btn-primary {
+	@apply bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+.btn-secondary {
+	@apply bg-gray-600 text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+.btn-ghost {
+	@apply bg-transparent text-gray-300 hover:bg-gray-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-50;
 }
