@@ -1,5 +1,5 @@
 // Service exports
-export { TidalApiClient, tidalApi } from './tidal-api.client';
+export { TidalApiClient } from './tidal-api.client';
 export { SearchService } from './search.service';
 export { PlaybackService } from './playback.service';
 export { ContentService } from './content.service';

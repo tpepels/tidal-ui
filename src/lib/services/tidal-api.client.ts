@@ -133,5 +133,5 @@ export class TidalApiClient {
 	}
 }
 
-// Export singleton instance
-export const tidalApi = new TidalApiClient();
+// Export only the class - consumers should create instances as needed
+// This avoids SSR issues with singleton instantiation
