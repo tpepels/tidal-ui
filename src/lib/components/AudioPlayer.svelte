@@ -312,15 +312,11 @@ let pendingPlayAfterSource = false;
 		const data = await losslessAPI.getStreamData(track.id, quality);
 		console.log('[AudioPlayer] Stream data received:', data);
 
-		// Fetch audio content and create blob URL to avoid CORS issues
-		console.log('[AudioPlayer] Fetching audio content from:', data.url);
-		const response = await fetch(data.url);
-		if (!response.ok) {
-			throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
-		}
-		const blob = await response.blob();
-		const url = URL.createObjectURL(blob);
-		console.log('[AudioPlayer] Created blob URL:', url);
+		// Use proxy for audio streams to handle CORS
+		const url = API_CONFIG.useProxy && API_CONFIG.proxyUrl
+			? `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(data.url)}`
+			: data.url;
+		console.log('[AudioPlayer] Using proxy URL:', url);
 
 		const entry = {
 			url,

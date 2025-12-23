@@ -389,6 +389,8 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 		});
 	} catch (error) {
 		console.error('Proxy error:', error);
+		console.error('Proxy error stack:', error instanceof Error ? error.stack : 'No stack');
+		console.error('Proxy target URL:', parsedTarget.toString());
 		return new Response(
 			JSON.stringify({
 				error: 'Proxy request failed',
