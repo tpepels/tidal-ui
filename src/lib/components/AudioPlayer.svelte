@@ -542,29 +542,12 @@ let pendingPlayAfterSource = false;
 		}
 	});
 
-
-		} else if (current.id !== currentTrackId) {
-			if (isSonglinkTrack(current)) {
-				return;
-			}
-
-			currentTrackId = current.id;
-			streamUrl = '';
-			bufferedPercent = 0;
-			dashPlaybackActive = false;
-			dashFallbackAttemptedTrackId = null;
-			dashFallbackInFlight = false;
-			lastQualityTrackId = current.id;
-			lastQualityForTrack = $playerStore.quality;
-			currentPlaybackQuality = null;
-			await 			loadTrack(current);
-		}
-	});
-
 	$effect(() => {
-		if (!$playerStore.isLoading && $playerStore.isPlaying && audioElement && audioElement.paused && streamUrl) {
-			requestAudioPlayback('loading finished, attempting play');
-		}
+		if ($playerStore.isPlaying && !$playerStore.isLoading && audioElement) {
+			console.info('[AudioPlayer] store requested play; ensuring audio element is playing');
+			requestAudioPlayback('store play request');
+		} else if (!$playerStore.isPlaying && audioElement) {
+			audioElement.pause();
 		}
 	});
 
@@ -1958,17 +1941,7 @@ let pendingPlayAfterSource = false;
 							</div>
 						{/if}
 
-						{#if $playerStore.currentTrack && $playerStore.isLoading}
-							<div class="loading-overlay">
-								<div class="loading-equalizer" aria-hidden="true">
-									<span class="bar" style="animation-delay: 0ms"></span>
-									<span class="bar" style="animation-delay: 150ms"></span>
-									<span class="bar" style="animation-delay: 300ms"></span>
-									<span class="bar" style="animation-delay: 450ms"></span>
-								</div>
-								<p class="text-sm font-medium text-gray-200">Loading track…</p>
-							</div>
-						{/if}
+
 					{:else}
 						<div class="flex h-20 items-center justify-center text-sm text-gray-400">Nothing is playing</div>
 					{/if}
