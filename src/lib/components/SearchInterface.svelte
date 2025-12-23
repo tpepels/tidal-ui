@@ -43,7 +43,7 @@ import {
 	LoaderCircle,
 	X,
 	Earth,
-	Ban,
+
 	Link2,
 	MoreVertical,
 	List,
@@ -53,7 +53,7 @@ import {
 		Code
 	} from 'lucide-svelte';
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
-	import AlbumLink from '$lib/components/AlbumLink.svelte';
+
 
 	import { searchStore, type SearchTab } from '$lib/stores/searchStore.svelte';
 

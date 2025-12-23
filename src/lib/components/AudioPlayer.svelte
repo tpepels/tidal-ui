@@ -123,7 +123,7 @@ let pendingPlayAfterSource = false;
 	let cleanupMediaSessionHandlers: (() => void) | null = null;
 	let lastKnownPlaybackState: 'none' | 'paused' | 'playing' = 'none';
 	let isSeeking = false;
-	let downloadTaskIdForCurrentTrack: string | null = null;
+
 	let seekBarElement = $state<HTMLButtonElement | null>(null);
 
 	// -----------------------------
@@ -498,8 +498,7 @@ let pendingPlayAfterSource = false;
 						state.currentTrack.id === current.id
 					) {
 						playerStore.setTrack(tidalTrack);
-					} else {
-					}
+						// Conversion completed
 				})
 				.catch((error) => {
 					console.error('[Conversion Effect] Conversion FAILED:', error);
@@ -1100,7 +1099,6 @@ let pendingPlayAfterSource = false;
 			subtitle: track.album?.title ?? track.artist?.name
 		});
 
-		downloadTaskIdForCurrentTrack = taskId;
 		isDownloadingCurrentTrack = true;
 		downloadUiStore.skipFfmpegCountdown();
 
@@ -1142,7 +1140,6 @@ let pendingPlayAfterSource = false;
 			}
 		} finally {
 			isDownloadingCurrentTrack = false;
-			downloadTaskIdForCurrentTrack = null;
 		}
 	}
 
@@ -1879,7 +1876,7 @@ let pendingPlayAfterSource = false;
 
 								{#if $playerStore.queue.length > 0}
 									<ul class="max-h-60 space-y-2 overflow-y-auto pr-1">
-										{#each $playerStore.queue as queuedTrack, index}
+										{#each $playerStore.queue as queuedTrack, index (queuedTrack.id)}
 											<li>
 												<div
 													onclick={() => playFromQueue(index)}
