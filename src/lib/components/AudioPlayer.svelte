@@ -221,7 +221,13 @@ let pendingPlayAfterSource = false;
 					if (request.method === 'HEAD') {
 						request.method = 'GET';
 					}
-					// No proxying for DASH segments - assume CORS is allowed
+					if (Array.isArray(request.uris)) {
+						request.uris = request.uris.map((uri) =>
+							API_CONFIG.useProxy && API_CONFIG.proxyUrl
+								? `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(uri)}`
+								: uri
+						);
+					}
 				});
 				shakaNetworkingConfigured = true;
 			}
@@ -266,7 +272,9 @@ let pendingPlayAfterSource = false;
 		if (!fallbackUrl) {
 			return;
 		}
-		const proxied = fallbackUrl;
+		const proxied = API_CONFIG.useProxy && API_CONFIG.proxyUrl
+			? `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(fallbackUrl)}`
+			: fallbackUrl;
 		streamCache.set(getCacheKey(trackId, 'LOSSLESS'), {
 			url: proxied,
 			replayGain: trackInfo?.replayGain ?? null,
@@ -295,8 +303,12 @@ let pendingPlayAfterSource = false;
 		}
 
 		const data = await losslessAPI.getStreamData(track.id, quality);
+		// Re-enable proxying for stream URLs to handle CORS issues
+		const url = API_CONFIG.useProxy && API_CONFIG.proxyUrl
+			? `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(data.url)}`
+			: data.url;
 		const entry = {
-			url: data.url,
+			url,
 			replayGain: data.replayGain,
 			sampleRate: data.sampleRate,
 			bitDepth: data.bitDepth
