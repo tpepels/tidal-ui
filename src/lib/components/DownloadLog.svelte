@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { downloadLogStore } from '$lib/stores/downloadLog';
 	import { downloadUiStore, activeTrackDownloads, completedTrackDownloads, erroredTrackDownloads } from '$lib/stores/downloadUi';
-	import { X, Copy, Trash2, CheckCircle, XCircle, Loader, Pause, Play } from 'lucide-svelte';
+	import { X, Copy, Trash2, CheckCircle, XCircle, Loader, Pause, Play, Heart } from 'lucide-svelte';
 	import { afterUpdate, beforeUpdate } from 'svelte';
 
 	let scrollContainer: HTMLDivElement | null = null;
 	let shouldStickToBottom = true;
+	let healthData: any = null;
+	let loadingHealth = false;
 
 	function formatBytes(bytes: number): string {
 		if (bytes === 0) return '0 B';
@@ -47,6 +49,39 @@
 
 		navigator.clipboard.writeText(logText);
 	}
+
+	async function fetchHealth() {
+		loadingHealth = true;
+		try {
+			const res = await fetch('/api/download-track/health');
+			if (res.ok) {
+				healthData = await res.json();
+			} else {
+				console.error('Health check failed');
+			}
+		} catch (err) {
+			console.error('Health fetch error', err);
+		} finally {
+			loadingHealth = false;
+		}
+	}
+
+	async function cleanupHealth() {
+		try {
+			const res = await fetch('/api/download-track/health', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action: 'cleanup' })
+			});
+			if (res.ok) {
+				await fetchHealth(); // Refresh
+			} else {
+				console.error('Cleanup failed');
+			}
+		} catch (err) {
+			console.error('Cleanup error', err);
+		}
+	}
 </script>
 
 <div class="download-log-container" class:is-visible={$downloadLogStore.isVisible}>
@@ -54,6 +89,9 @@
 		<div class="download-log-header">
 			<h3 class="download-log-title">Download Log</h3>
 			<div class="download-log-actions">
+				<button type="button" class="download-log-btn" title="Check server health" on:click={fetchHealth} disabled={loadingHealth}>
+					<Heart size={16} />
+				</button>
 				<button type="button" class="download-log-btn" title="Copy logs" on:click={copyLogs}>
 					<Copy size={16} />
 				</button>
@@ -149,6 +187,28 @@
 						</div>
 					{/if}
 				</div>
+			</div>
+		{/if}
+
+		<!-- Health Status -->
+		{#if healthData}
+			<div class="download-health-summary">
+				<h4 class="download-health-title">Server Health</h4>
+				<div class="download-health-stats">
+					<div class="download-health-stat">
+						<span class="download-health-label">Active Uploads:</span>
+						<span class="download-health-value">{healthData.activeUploads} / {healthData.maxConcurrent}</span>
+					</div>
+					<div class="download-health-stat">
+						<span class="download-health-label">Pending:</span>
+						<span class="download-health-value">{healthData.pendingUploads}</span>
+					</div>
+					<div class="download-health-stat">
+						<span class="download-health-label">Chunked:</span>
+						<span class="download-health-value">{healthData.chunkUploads}</span>
+					</div>
+				</div>
+				<button type="button" class="download-health-btn" on:click={cleanupHealth}>Cleanup Stuck</button>
 			</div>
 		{/if}
 
@@ -494,4 +554,62 @@
 		margin-top: 4px;
 		word-break: break-word;
 	}
+
+/* Health Summary Styles */
+.download-health-summary {
+	padding: 16px;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+	background: rgba(0, 0, 0, 0.2);
+}
+
+.download-health-title {
+	margin: 0 0 12px 0;
+	font-size: 14px;
+	font-weight: 600;
+	color: #fff;
+	letter-spacing: 0.5px;
+}
+
+.download-health-stats {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-bottom: 12px;
+}
+
+.download-health-stat {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	font-size: 13px;
+}
+
+.download-health-label {
+	color: #ccc;
+}
+
+.download-health-value {
+	color: #fff;
+	font-weight: 500;
+}
+
+.download-health-btn {
+	all: unset;
+	cursor: pointer;
+	padding: 6px 12px;
+	border-radius: 4px;
+	background: rgba(255, 255, 255, 0.1);
+	color: #fff;
+	font-size: 12px;
+	font-weight: 500;
+	transition: all 0.2s;
+}
+
+.download-health-btn:hover {
+	background: rgba(255, 255, 255, 0.2);
+}
+
+.download-health-btn:active {
+	background: rgba(255, 255, 255, 0.25);
+}
 </style>

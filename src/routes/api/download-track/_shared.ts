@@ -3,32 +3,18 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import { createHash } from 'crypto';
 
-export type ConflictResolution = 'overwrite' | 'skip' | 'rename' | 'overwrite_if_different';
+const STATE_FILE = path.join(process.cwd(), 'upload-state.json');
 
 export interface DownloadError {
 	code: string;
 	message: string;
 	details?: any;
 	recoverable: boolean;
-	retryAfter?: number; // seconds
+	retryAfter?: number;
 	suggestion?: string;
 }
 
-export const createDownloadError = (
-	code: string,
-	message: string,
-	recoverable = false,
-	details?: any,
-	retryAfter?: number,
-	suggestion?: string
-): DownloadError => ({
-	code,
-	message,
-	details,
-	recoverable,
-	retryAfter,
-	suggestion
-});
+export type ConflictResolution = 'overwrite' | 'skip' | 'rename' | 'overwrite_if_different';
 
 export const ERROR_CODES = {
 	// Network errors
@@ -85,33 +71,125 @@ export const pendingUploads = new Map<string, PendingUpload>();
 export const chunkUploads = new Map<string, ChunkUploadState>();
 export const activeUploads = new Set<string>();
 const UPLOAD_TTL = 5 * 60 * 1000; // 5 minutes
-export const MAX_CONCURRENT_UPLOADS = parseInt(process.env.MAX_CONCURRENT_UPLOADS || '10');
+export const MAX_CONCURRENT_UPLOADS = parseInt(process.env.MAX_CONCURRENT_UPLOADS || '40');
+export const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || '524288000'); // 500MB default
+export const MAX_CHUNK_SIZE = parseInt(process.env.MAX_CHUNK_SIZE || '10485760'); // 10MB default
+
+// Save upload state to file
+const saveState = async () => {
+	try {
+		const state = {
+			pendingUploads: Object.fromEntries(pendingUploads),
+			chunkUploads: Object.fromEntries(chunkUploads),
+			activeUploads: Array.from(activeUploads)
+		};
+		await fs.writeFile(STATE_FILE, JSON.stringify(state, null, 2));
+	} catch (err) {
+		console.warn('Failed to save upload state:', err);
+	}
+};
+
+// Load upload state from file
+const loadState = async () => {
+	try {
+		const data = await fs.readFile(STATE_FILE, 'utf8');
+		const state = JSON.parse(data);
+		for (const [k, v] of Object.entries(state.pendingUploads || {})) {
+			pendingUploads.set(k, v as PendingUpload);
+		}
+		for (const [k, v] of Object.entries(state.chunkUploads || {})) {
+			chunkUploads.set(k, v as ChunkUploadState);
+		}
+		for (const id of state.activeUploads || []) {
+			activeUploads.add(id);
+		}
+		console.log('Loaded upload state from file');
+	} catch (err) {
+		// File doesn't exist or invalid, ignore
+	}
+};
+
+// Retry wrapper for fs operations
+export const retryFs = async (fn: () => Promise<any>, retries = 3): Promise<any> => {
+	for (let i = 0; i < retries; i++) {
+		try {
+			return await fn();
+		} catch (err: any) {
+			if (i === retries - 1 || !['EAGAIN', 'EBUSY', 'EMFILE'].includes(err.code)) {
+				throw err;
+			}
+			await new Promise((resolve) => setTimeout(resolve, 100 * (i + 1))); // Exponential backoff
+		}
+	}
+};
+
+// Clean up orphaned temp files
+export const cleanupTempFiles = async () => {
+	try {
+		const tempDir = getTempDir();
+		await ensureDir(tempDir); // Ensure dir exists
+		const files = await fs.readdir(tempDir);
+		for (const file of files) {
+			if (file.endsWith('.tmp')) {
+				const filePath = path.join(tempDir, file);
+				try {
+					await retryFs(() => fs.unlink(filePath));
+					console.log(`Cleaned up orphaned temp file: ${filePath}`);
+				} catch (err) {
+					console.warn(`Failed to clean up temp file ${filePath}:`, err);
+				}
+			}
+		}
+	} catch (err) {
+		console.error('Error during temp file cleanup:', err);
+	}
+};
+
+// Clean up expired uploads
+export const cleanupExpiredUploads = async () => {
+	const now = Date.now();
+	for (const [uploadId, data] of pendingUploads.entries()) {
+		if (now - data.timestamp > UPLOAD_TTL) {
+			pendingUploads.delete(uploadId);
+			activeUploads.delete(uploadId); // Also clean up from active uploads
+		}
+	}
+	for (const [uploadId, data] of chunkUploads.entries()) {
+		if (now - data.timestamp > UPLOAD_TTL) {
+			// Clean up temp files
+			try {
+				await fs.unlink(data.tempFilePath).catch(() => {});
+			} catch {}
+			chunkUploads.delete(uploadId);
+			activeUploads.delete(uploadId);
+		}
+	}
+	await saveState();
+};
 
 // Clean up expired uploads periodically
-export const startCleanupInterval = () => {
-	const cleanupExpiredUploads = () => {
-		const now = Date.now();
-		for (const [uploadId, data] of pendingUploads.entries()) {
-			if (now - data.timestamp > UPLOAD_TTL) {
-				pendingUploads.delete(uploadId);
-				activeUploads.delete(uploadId); // Also clean up from active uploads
-			}
-		}
-		for (const [uploadId, data] of chunkUploads.entries()) {
-			if (now - data.timestamp > UPLOAD_TTL) {
-				// Clean up temp files
-				try {
-					fs.unlink(data.tempFilePath).catch(() => {});
-				} catch {}
-				chunkUploads.delete(uploadId);
-				activeUploads.delete(uploadId);
-			}
+export const startCleanupInterval = async () => {
+	// Clean up orphaned temp files on startup
+	await cleanupTempFiles();
+	await loadState();
+
+	// Clean up on process exit
+	const cleanupOnExit = async () => {
+		try {
+			await cleanupTempFiles();
+			await saveState();
+		} catch (err) {
+			console.error('Exit cleanup error:', err);
 		}
 	};
+	process.on('SIGINT', cleanupOnExit);
+	process.on('SIGTERM', cleanupOnExit);
 
 	// Run cleanup every minute
 	if (typeof setInterval !== 'undefined') {
-		setInterval(cleanupExpiredUploads, 60 * 1000);
+		setInterval(() => {
+			cleanupExpiredUploads().catch((err) => console.error('Cleanup error:', err));
+		}, 60 * 1000);
 	}
 };
 
@@ -129,6 +207,7 @@ export const sanitizePath = (input: string | null | undefined): string => {
 			.replace(/[<>:"/\\|?*]/g, '_') // Windows forbidden chars
 			.replace(/\x00-\x1f/g, '_') // Control characters
 			.replace(/^\.+/, '_') // Leading dots (hidden files on Unix)
+			.replace(/\.\./g, '__') // Path traversal prevention
 			.replace(/\.+$/, '') // Trailing dots
 			.replace(/[\s]+/g, ' ') // Multiple spaces to single space
 			.trim()
@@ -204,6 +283,13 @@ export const resolveFileConflict = async (
 	newFileSize?: number,
 	newFileChecksum?: string
 ): Promise<{ finalPath: string; action: 'overwrite' | 'skip' | 'rename' }> => {
+	// Security check: ensure targetPath is within expected directory
+	const resolvedTarget = path.resolve(targetPath);
+	const baseDir = getDownloadDir();
+	const resolvedBase = path.resolve(baseDir);
+	if (!resolvedTarget.startsWith(resolvedBase + path.sep) && resolvedTarget !== resolvedBase) {
+		throw new Error('Invalid path: outside allowed directory');
+	}
 	try {
 		await fs.access(targetPath);
 
