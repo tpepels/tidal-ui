@@ -250,7 +250,7 @@ export async function downloadTrackServerSide(
 			};
 		}
 
-		const useChunks = false; // options?.useChunks ?? blob.size > 5 * 1024 * 1024; // Use chunks for files > 5MB
+		const useChunks = blob.size > 1024 * 1024; // Use chunks for files > 1MB for better progress granularity
 		const chunkSize = options?.chunkSize ?? 1024 * 1024; // 1MB chunks
 
 		const sizeMsg = `[Server Download] Phase 1: Sending metadata for "${trackTitle}" (${(blob.size / 1024 / 1024).toFixed(2)} MB)${useChunks ? ' (chunked)' : ''}`;
