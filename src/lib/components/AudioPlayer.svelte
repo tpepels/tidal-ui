@@ -498,6 +498,7 @@ let pendingPlayAfterSource = false;
 						state.currentTrack.id === current.id
 					) {
 						playerStore.setTrack(tidalTrack);
+						// Conversion completed
 					}
 				})
 				.catch((error) => {
