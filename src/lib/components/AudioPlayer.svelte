@@ -1,4 +1,5 @@
 <script lang="ts">
+	console.log('[AudioPlayer] Component loading');
 	import { onMount, tick } from 'svelte';
 	import { get } from 'svelte/store';
 	import { playerStore } from '$lib/stores/player';
@@ -223,18 +224,11 @@ let pendingPlayAfterSource = false;
 					}
 					if (Array.isArray(request.uris)) {
 						request.uris = request.uris.map((uri) => {
-							// Don't proxy blob URLs, data URLs, or already proxied URLs
+							// For DASH, also try to fetch and create blob URLs
+							console.log('[AudioPlayer] DASH requesting URI:', uri);
+							// For now, keep proxying but add logging
 							if (uri.startsWith('blob:') || uri.startsWith('data:') || uri.includes('/api/proxy')) {
 								return uri;
-							}
-							// Decode the URI first to check if it's already a proxy URL
-							try {
-								const decoded = decodeURIComponent(uri);
-								if (decoded.includes('/api/proxy')) {
-									return uri;
-								}
-							} catch {
-								// If decoding fails, proceed with proxying
 							}
 							return API_CONFIG.useProxy && API_CONFIG.proxyUrl
 								? `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(uri)}`
@@ -317,11 +311,17 @@ let pendingPlayAfterSource = false;
 
 		const data = await losslessAPI.getStreamData(track.id, quality);
 		console.log('[AudioPlayer] Stream data received:', data);
-		// Re-enable proxying for stream URLs to handle CORS and authentication
-		const url = API_CONFIG.useProxy && API_CONFIG.proxyUrl
-			? `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(data.url)}`
-			: data.url;
-		console.log('[AudioPlayer] Final stream URL set to audio element:', url);
+
+		// Fetch audio content and create blob URL to avoid CORS issues
+		console.log('[AudioPlayer] Fetching audio content from:', data.url);
+		const response = await fetch(data.url);
+		if (!response.ok) {
+			throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
+		}
+		const blob = await response.blob();
+		const url = URL.createObjectURL(blob);
+		console.log('[AudioPlayer] Created blob URL:', url);
+
 		const entry = {
 			url,
 			replayGain: data.replayGain,
@@ -635,6 +635,7 @@ let pendingPlayAfterSource = false;
 	});
 
 	async function loadStandardTrack(track: Track, quality: AudioQuality, sequence: number) {
+		console.log('[AudioPlayer] loadStandardTrack called for track:', track.id, 'quality:', quality);
 		try {
 			await destroyShakaPlayer();
 			dashPlaybackActive = false;
@@ -645,6 +646,7 @@ let pendingPlayAfterSource = false;
 				return;
 			}
 			streamUrl = url;
+			console.log('[AudioPlayer] Setting streamUrl to:', url);
 			currentPlaybackQuality = quality;
 			playerStore.setReplayGain(replayGain);
 			playerStore.setSampleRate(sampleRate);
