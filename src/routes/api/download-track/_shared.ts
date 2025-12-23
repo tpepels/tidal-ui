@@ -8,15 +8,27 @@ const STATE_FILE = path.join(process.cwd(), 'upload-state.json');
 
 // Redis client for persistence
 let redis: Redis | null = null;
-try {
-	const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-	redis = new Redis(redisUrl);
-	redis.on('error', (err) => {
-		console.warn('Redis connection error:', err);
-		redis = null; // Fallback to file
-	});
-} catch (err) {
-	console.warn('Failed to initialize Redis:', err);
+let redisConnected = false;
+
+function getRedisClient(): Redis | null {
+	if (redisConnected) return redis;
+	if (redis) return redis; // Already initialized
+
+	try {
+		const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+		redis = new Redis(redisUrl);
+		redis.on('error', (err) => {
+			console.warn('Redis connection error:', err);
+			redis = null; // Fallback to file
+		});
+		redis.on('connect', () => {
+			redisConnected = true;
+		});
+	} catch (err) {
+		console.warn('Failed to initialize Redis:', err);
+		redis = null;
+	}
+	return redis;
 }
 
 export interface DownloadError {
@@ -115,9 +127,10 @@ const saveState = async () => {
 		version: 1
 	};
 
-	if (redis) {
+	const redisClient = getRedisClient();
+	if (redisClient) {
 		try {
-			await redis.set('tidal:uploadState', JSON.stringify(state));
+			await redisClient.set('tidal:uploadState', JSON.stringify(state));
 			console.log('Saved upload state to Redis');
 		} catch (err) {
 			console.warn('Failed to save to Redis, falling back to file:', err);
@@ -142,9 +155,10 @@ const saveToFile = async (state: any) => {
 const loadState = async () => {
 	let state: any = null;
 
-	if (redis) {
+	const redisClient = getRedisClient();
+	if (redisClient) {
 		try {
-			const data = await redis.get('tidal:uploadState');
+			const data = await redisClient.get('tidal:uploadState');
 			if (data) {
 				state = JSON.parse(data);
 				console.log('Loaded upload state from Redis');
