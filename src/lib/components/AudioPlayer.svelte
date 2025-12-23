@@ -223,22 +223,8 @@ let pendingPlayAfterSource = false;
 					}
 					if (Array.isArray(request.uris)) {
 						request.uris = request.uris.map((uri) => {
-							// Don't proxy blob URLs, data URLs, or already proxied URLs
-							if (uri.startsWith('blob:') || uri.startsWith('data:') || uri.includes('/api/proxy')) {
-								return uri;
-							}
-							// Decode the URI first to check if it's already a proxy URL
-							try {
-								const decoded = decodeURIComponent(uri);
-								if (decoded.includes('/api/proxy')) {
-									return uri;
-								}
-							} catch {
-								// If decoding fails, proceed with proxying
-							}
-							return API_CONFIG.useProxy && API_CONFIG.proxyUrl
-								? `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(uri)}`
-								: uri;
+							// Temporarily disable DASH proxying to test
+							return uri; // API_CONFIG.useProxy && API_CONFIG.proxyUrl ? `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(uri)}` : uri;
 						});
 					}
 				});
@@ -285,9 +271,7 @@ let pendingPlayAfterSource = false;
 		if (!fallbackUrl) {
 			return;
 		}
-		const proxied = API_CONFIG.useProxy && API_CONFIG.proxyUrl
-			? `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(fallbackUrl)}`
-			: fallbackUrl;
+		const proxied = fallbackUrl; // API_CONFIG.useProxy && API_CONFIG.proxyUrl ? `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(fallbackUrl)}` : fallbackUrl;
 		streamCache.set(getCacheKey(trackId, 'LOSSLESS'), {
 			url: proxied,
 			replayGain: trackInfo?.replayGain ?? null,
@@ -316,10 +300,10 @@ let pendingPlayAfterSource = false;
 		}
 
 		const data = await losslessAPI.getStreamData(track.id, quality);
-		// Re-enable proxying for stream URLs to handle CORS issues
-		const url = API_CONFIG.useProxy && API_CONFIG.proxyUrl
-			? `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(data.url)}`
-			: data.url;
+		console.log('[AudioPlayer] Stream data received:', data);
+		// Temporarily disable proxying to test if direct URLs work
+		const url = data.url; // API_CONFIG.useProxy && API_CONFIG.proxyUrl ? `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(data.url)}` : data.url;
+		console.log('[AudioPlayer] Final stream URL:', url);
 		const entry = {
 			url,
 			replayGain: data.replayGain,
