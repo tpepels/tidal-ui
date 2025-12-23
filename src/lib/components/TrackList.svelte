@@ -202,8 +202,8 @@
 						{:else if isCurrentTrack(track)}
 							<Play size={16} class="text-blue-500" />
 						{:else}
-							<span class="text-sm text-gray-400 group-hover:hidden">{formatTrackNumber(track)}</span>
-							<Play size={16} class="hidden text-white group-hover:block" />
+							<span class="text-sm text-gray-400 hover:hidden">{formatTrackNumber(track)}</span>
+							<Play size={16} class="hidden text-white hover:block" />
 						{/if}
 					</button>
 
@@ -222,7 +222,7 @@
 							onclick={() => handlePlayTrack(track, index)}
 							class="truncate font-medium text-left w-full {isCurrentTrack(track)
 								? 'text-blue-500'
-								: 'text-white group-hover:text-blue-400'}"
+								: 'text-white hover:text-blue-400'}"
 							title="Play track"
 						>
 							{track.title}
