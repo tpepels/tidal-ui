@@ -15,6 +15,7 @@
 				href={`/artist/${artist.id}`}
 				class="hover:text-blue-400 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-400"
 				data-sveltekit-preload-data
+				title="View artist page"
 			>
 				{artist.name}
 			</a>

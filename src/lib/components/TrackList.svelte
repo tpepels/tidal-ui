@@ -223,6 +223,7 @@
 							class="truncate font-medium text-left w-full {isCurrentTrack(track)
 								? 'text-blue-500'
 								: 'text-white group-hover:text-blue-400'}"
+							title="Play track"
 						>
 							{track.title}
 							{#if track.explicit}
