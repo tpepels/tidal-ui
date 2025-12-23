@@ -635,22 +635,28 @@ let pendingPlayAfterSource = false;
 	});
 
 	async function loadStandardTrack(track: Track, quality: AudioQuality, sequence: number) {
-		await destroyShakaPlayer();
-		dashPlaybackActive = false;
-		const { url, replayGain, sampleRate, bitDepth } = await resolveStream(track, quality);
-		if (sequence !== loadSequence) {
-			return;
-		}
-		streamUrl = url;
-		currentPlaybackQuality = quality;
-		playerStore.setReplayGain(replayGain);
-		playerStore.setSampleRate(sampleRate);
-		playerStore.setBitDepth(bitDepth);
-		pruneStreamCache();
-		if (audioElement) {
-			await tick();
-			audioElement.crossOrigin = 'anonymous';
-			audioElement.load();
+		try {
+			await destroyShakaPlayer();
+			dashPlaybackActive = false;
+			console.log('[AudioPlayer] Resolving stream for track:', track.id, 'quality:', quality);
+			const { url, replayGain, sampleRate, bitDepth } = await resolveStream(track, quality);
+			console.log('[AudioPlayer] Stream resolved, setting audio src to:', url);
+			if (sequence !== loadSequence) {
+				return;
+			}
+			streamUrl = url;
+			currentPlaybackQuality = quality;
+			playerStore.setReplayGain(replayGain);
+			playerStore.setSampleRate(sampleRate);
+			playerStore.setBitDepth(bitDepth);
+			pruneStreamCache();
+			if (audioElement) {
+				await tick();
+				audioElement.crossOrigin = 'anonymous';
+				audioElement.load();
+			}
+		} catch (error) {
+			console.error('[AudioPlayer] Failed to load standard track:', error);
 		}
 	}
 
