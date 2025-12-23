@@ -13,8 +13,7 @@ import type {
 	ArtistDetails,
 	Lyrics,
 	CoverImage,
-	AudioQuality,
-	SonglinkTrack
+	AudioQuality
 } from '../types';
 import type { SearchResponse } from './base-api.service';
 

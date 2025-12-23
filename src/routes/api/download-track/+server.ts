@@ -3,23 +3,18 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { randomBytes } from 'crypto';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import type { AudioQuality } from '$lib/types';
 import {
 	pendingUploads,
 	chunkUploads,
 	activeUploads,
-	MAX_CONCURRENT_UPLOADS,
 	startCleanupInterval,
 	getDownloadDir,
 	getTempDir,
 	sanitizePath,
 	ensureDir,
 	resolveFileConflict,
-	createDownloadError,
-	ERROR_CODES,
 	canStartUpload,
-	startUpload,
-	endUpload
+	startUpload
 } from './_shared';
 
 // Start the cleanup interval when the module loads

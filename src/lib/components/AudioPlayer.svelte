@@ -6,10 +6,10 @@
 	import { lyricsStore } from '$lib/stores/lyrics';
 	import { losslessAPI, DASH_MANIFEST_UNAVAILABLE_CODE, type TrackDownloadProgress } from '$lib/api';
 	import type { DashManifestResult, DashManifestWithMetadata } from '$lib/api';
-	import { getProxiedUrl, API_CONFIG } from '$lib/config';
+	import { API_CONFIG } from '$lib/config';
 	import { downloadUiStore, ffmpegBanner, activeTrackDownloads } from '$lib/stores/downloadUi';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
-	import { sanitizeForFilename, getExtensionForQuality, buildTrackFilename } from '$lib/downloads';
+	import { buildTrackFilename } from '$lib/downloads';
 	import { formatArtists } from '$lib/utils';
 	import { deriveTrackQuality } from '$lib/utils/audioQuality';
 	import type { Track, AudioQuality, SonglinkTrack, PlayableTrack } from '$lib/types';
@@ -67,7 +67,7 @@ let previousVolume = 0.8;
 	let lastQualityForTrack: AudioQuality | null = null;
 	let currentPlaybackQuality = $state<AudioQuality | null>(null);
 	let isDownloadingCurrentTrack = $state(false);
-	let downloadTaskIdForCurrentTrack: string | null = null;
+
 
 	const { onHeightChange = () => {}, headless = false } = $props<{
 		onHeightChange?: (height: number) => void;

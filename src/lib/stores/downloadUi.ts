@@ -1,5 +1,5 @@
 import { derived, get, writable } from 'svelte/store';
-import type { Track, PlayableTrack } from '$lib/types';
+import type { PlayableTrack } from '$lib/types';
 import { isSonglinkTrack } from '$lib/types';
 import { formatArtists } from '$lib/utils';
 
@@ -162,7 +162,7 @@ export const downloadUiStore = {
 		const id = nextTaskId('track');
 		const controller = new AbortController();
 		taskControllers.set(id, controller);
-		
+
 		let subtitle = options?.subtitle;
 		if (!subtitle) {
 			if (isSonglinkTrack(track)) {

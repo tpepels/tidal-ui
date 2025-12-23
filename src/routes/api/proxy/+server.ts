@@ -3,7 +3,7 @@ import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import type Redis from 'ioredis';
 import type { RequestHandler } from './$types';
-import { isProxyTarget } from '$lib/config';
+
 import { getRedisClient } from '$lib/server/redis';
 
 const allowOrigin = (origin?: string | null): boolean => {

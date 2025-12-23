@@ -2357,7 +2357,7 @@ class LosslessAPI {
 			if (options?.downloadCoverSeperately) {
 				try {
 					const metadata = await this.getPreferredTrackMetadata(trackId, quality);
-					const coverId = metadata.track.album?.cover;
+
 					if (coverId) {
 						// Try multiple sizes as fallback
 						const coverSizes: Array<'1280' | '640' | '320'> = ['1280', '640', '320'];
