@@ -38,13 +38,21 @@ export const loadFromStorage = (key: string, defaultValue: any): any => {
 			return defaultValue; // Reset on version change
 		}
 
+		// Validate timestamp (not too old or future)
+		const now = Date.now();
+		const age = now - state.timestamp;
+		if (age < 0 || age > 30 * 24 * 60 * 60 * 1000) {
+			// 30 days
+			console.warn(`Stored data for ${key} has invalid timestamp`);
+			return defaultValue;
+		}
+
 		// Basic validation
 		if (!state.data || typeof state.data !== 'object') {
 			console.warn(`Invalid stored data for ${key}`);
 			return defaultValue;
 		}
 
-		console.log(`Loaded ${key} state from storage (version ${state.version})`);
 		return state.data;
 	} catch (e) {
 		console.warn(`Failed to load ${key} from storage:`, e);

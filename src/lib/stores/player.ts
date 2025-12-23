@@ -51,6 +51,21 @@ function createPlayerStore() {
 			isPlaying: false, // Don't persist playing state
 			isLoading: false
 		};
+
+		// Invariants
+		console.assert(Array.isArray(startState.queue), 'Player queue must be an array');
+		console.assert(
+			typeof startState.volume === 'number' && startState.volume >= 0 && startState.volume <= 1,
+			'Volume must be between 0 and 1'
+		);
+		console.assert(startState.queueIndex >= -1, 'Queue index must be valid');
+
+		// Invariants
+		console.assert(Array.isArray(startState.queue), 'Player queue must be an array');
+		console.assert(
+			typeof startState.volume === 'number' && startState.volume >= 0 && startState.volume <= 1,
+			'Volume must be between 0 and 1'
+		);
 	}
 
 	const { subscribe, set, update } = writable<PlayerState>(startState);

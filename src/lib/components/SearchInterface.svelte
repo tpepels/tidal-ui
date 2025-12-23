@@ -28,27 +28,28 @@
 		SonglinkTrack,
 		PlayableTrack
 	} from '$lib/types';
-	import { isSonglinkTrack } from '$lib/types';
-	import {
-		Search,
-		ChevronDown,
-		Music,
-		User,
-		Disc,
-		Download,
-		Newspaper,
-		ListPlus,
-		ListVideo,
-		LoaderCircle,
-		X,
-		Earth,
-		Ban,
-		Link2,
-		MoreVertical,
-		List,
-		Play,
-		Shuffle,
-		Copy,
+import { isSonglinkTrack } from '$lib/types';
+import { toasts } from '$lib/stores/toasts';
+import {
+	Search,
+	ChevronDown,
+	Music,
+	User,
+	Disc,
+	Download,
+	Newspaper,
+	ListPlus,
+	ListVideo,
+	LoaderCircle,
+	X,
+	Earth,
+	Ban,
+	Link2,
+	MoreVertical,
+	List,
+	Play,
+	Shuffle,
+	Copy,
 		Code
 	} from 'lucide-svelte';
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
@@ -594,8 +595,15 @@
 				}
 			}
 		} catch (err) {
-			searchStore.error = err instanceof Error ? err.message : 'Search failed';
+			const message = err instanceof Error ? err.message : 'Search failed';
+			searchStore.error = message;
 			console.error('Search error:', err);
+			toasts.error(`Search failed: ${message}`, {
+				action: {
+					label: 'Retry',
+					handler: () => performSearch()
+				}
+			});
 		} finally {
 			searchStore.isLoading = false;
 		}
