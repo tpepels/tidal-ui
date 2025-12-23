@@ -24,6 +24,9 @@ RUN npm prune --production
 # Use another Node.js Slim image for the final stage
 FROM node:24.0.1-slim AS runner
 
+# Install Redis
+RUN apt-get update && apt-get install -y redis-server && rm -rf /var/lib/apt/lists/*
+
 # Set the working directory
 WORKDIR /app
 
@@ -44,5 +47,5 @@ EXPOSE 5000
 # Set the environment to production
 ENV NODE_ENV=production
 
-# Specify the command to run the app with HTTPS
-CMD ["node", "server.js"]
+# Specify the command to run the app with HTTPS and Redis
+CMD ["sh", "-c", "redis-server --daemonize yes && node server.js"]
