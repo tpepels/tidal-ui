@@ -46,6 +46,15 @@
 		pointer-events: none;
 	}
 
+	@media (min-width: 768px) {
+		.toast-container {
+			display: grid;
+			grid-template-columns: repeat(2, 1fr);
+			gap: 10px;
+			max-width: 600px;
+		}
+	}
+
 	.toast {
 		display: flex;
 		align-items: flex-start;

@@ -239,7 +239,7 @@
 									><path
 										d="M20 2H4a2 2 0 00-2 2v16a2 2 0 002 2h16a2 2 0 002-2V4a2 2 0 00-2-2ZM8 6h8a1 1 0 110 2H9v3h5a1 1 0 010 2H9v3h7a1 1 0 010 2H8a1 1 0 01-1-1V7a1 1 0 011-1Z"
 									></path></svg
-								>
+									>
 							{/if}
 						</button>
 						<div class="flex flex-wrap items-center gap-2 text-sm text-gray-400">

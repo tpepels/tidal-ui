@@ -9,6 +9,7 @@
 	import {
 		ArrowLeft,
 		Play,
+		Pause,
 		Calendar,
 		Disc,
 		Clock,
@@ -29,6 +30,8 @@
 	let error = $state<string | null>(null);
 	let isDownloadingAll = $state(false);
 	let downloadedCount = $state(0);
+
+	let isPlayingThisAlbum = $derived($playerStore.queue.length === tracks.length && $playerStore.queue.every((t, i) => t?.id === tracks[i]?.id));
 	let downloadError = $state<string | null>(null);
 	const albumDownloadMode = $derived($downloadPreferencesStore.mode);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
@@ -267,11 +270,16 @@
 				{#if tracks.length > 0}
 					<div class="flex flex-wrap items-center gap-3">
 						<button
-							onclick={handlePlayAll}
+							onclick={isPlayingThisAlbum ? () => playerStore.pause() : handlePlayAll}
 							class="flex items-center gap-2 rounded-full bg-blue-600 px-8 py-3 font-semibold transition-colors hover:bg-blue-700"
 						>
-							<Play size={20} fill="currentColor" />
-							Play All
+							{#if isPlayingThisAlbum}
+								<Pause size={20} fill="currentColor" />
+								Pause
+							{:else}
+								<Play size={20} fill="currentColor" />
+								Play All
+							{/if}
 						</button>
 						<button
 							onclick={handleShufflePlay}

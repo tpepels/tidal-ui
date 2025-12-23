@@ -109,6 +109,7 @@ let pendingPlayAfterSource = false;
 		if (promise?.catch) {
 			promise.catch((error) => {
 				console.error(`[AudioPlayer] play() failed during ${reason}`, error);
+				playerStore.setLoading(false);
 				if (typeof DOMException !== 'undefined' && error instanceof DOMException) {
 					if (error.name === 'AbortError') {
 						pendingPlayAfterSource = true;
