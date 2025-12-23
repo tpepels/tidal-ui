@@ -734,7 +734,7 @@ let pendingPlayAfterSource = false;
 				'to LOSSLESS due to lack of FLAC support'
 			);
 			requestedQuality = 'LOSSLESS';
-			playerStore.setQuality(requestedQuality);
+			// Keep the store quality as user's selection; only adjust for playback
 		}
 
 		console.info(
