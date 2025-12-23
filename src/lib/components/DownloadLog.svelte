@@ -2,10 +2,9 @@
 	import { downloadLogStore } from '$lib/stores/downloadLog';
 	import { downloadUiStore, activeTrackDownloads, completedTrackDownloads, erroredTrackDownloads } from '$lib/stores/downloadUi';
 	import { X, Copy, Trash2, CheckCircle, XCircle, Loader, Pause, Play, Heart } from 'lucide-svelte';
-	import { afterUpdate, beforeUpdate } from 'svelte';
+	import { tick, onMount } from 'svelte';
 
 	let scrollContainer: HTMLDivElement | null = null;
-	let shouldStickToBottom = true;
 	let healthData: any = null;
 	let loadingHealth = false;
 
@@ -21,23 +20,13 @@
 		return el.scrollTop + el.clientHeight >= el.scrollHeight - px;
 	}
 
-	beforeUpdate(() => {
-		const el = scrollContainer;
-		if (!el) return;
-		shouldStickToBottom = isNearBottom(el, 64);
-	});
+	let cleanup: (() => void) | null = null;
 
-	afterUpdate(() => {
-		const el = scrollContainer;
-		if (!el) return;
-		if (!$downloadLogStore.isVisible) return;
-		if ($downloadLogStore.entries.length === 0) return;
-
-		// Only stick to bottom if user was already near it before new entries rendered
-		if (!shouldStickToBottom) return;
-
-		el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-	});
+	$: if ($downloadLogStore.entries.length > 0 && scrollContainer) {
+		tick().then(() => {
+			scrollContainer?.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
+		});
+	}
 
 	function copyLogs() {
 		const logText = $downloadLogStore.entries

@@ -2,7 +2,7 @@
 import { API_CONFIG, fetchWithCORS, selectApiTargetForRegion } from './config';
 import type { RegionOption } from '$lib/stores/region';
 import { deriveTrackQuality } from '$lib/utils/audioQuality';
-import { parseTidalUrl, type TidalUrlParseResult } from '$lib/utils/urlParser';
+import { parseTidalUrl } from '$lib/utils/urlParser';
 import { formatArtistsForMetadata } from '$lib/utils';
 import type {
 	Track,
@@ -815,6 +815,22 @@ class LosslessAPI {
 	}
 
 	/**
+	 * Parse and validate JSON response
+	 */
+	private async parseJsonResponse<T>(response: Response, context: string): Promise<T> {
+		let data;
+		try {
+			data = await response.json();
+		} catch (error) {
+			throw new Error(`Invalid JSON response from ${context}`);
+		}
+		if (!data || typeof data !== 'object') {
+			throw new Error(`Invalid response structure from ${context}`);
+		}
+		return data as T;
+	}
+
+	/**
 	 * Search for tracks
 	 */
 	async searchTracks(query: string, region: RegionOption = 'auto'): Promise<SearchResponse<Track>> {
@@ -823,7 +839,7 @@ class LosslessAPI {
 		);
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search tracks');
-		const data = await response.json();
+		const data = await this.parseJsonResponse<any>(response, 'search API');
 		const normalized = this.normalizeSearchResponse<Track>(data, 'tracks');
 		return {
 			...normalized,

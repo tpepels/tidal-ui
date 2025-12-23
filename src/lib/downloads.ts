@@ -1,8 +1,7 @@
 import { losslessAPI } from '$lib/api';
 import type { Album, Track, AudioQuality } from '$lib/types';
 import type { DownloadMode, DownloadStorage } from '$lib/stores/downloadPreferences';
-import { downloadQueue } from '$lib/stores/downloadQueue';
-import type { DownloadQueueItem } from '$lib/stores/downloadQueue';
+
 import { downloadLogStore } from '$lib/stores/downloadLog';
 import { downloadUiStore } from '$lib/stores/downloadUi';
 import { retryFetch } from '$lib/errors';
@@ -167,7 +166,6 @@ async function downloadTrackWithRetry(
 	const maxAttempts = 3;
 	const baseDelay = BASE_DELAY_MS; // 1 second
 	const trackTitle = track.title ?? 'Unknown Track';
-	const artistName = formatArtists(track.artists);
 	const storage = options?.storage ?? 'client';
 
 	for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -730,7 +728,6 @@ export async function downloadAlbum(
 			compressionOptions: { level: 6 }
 		});
 
-		const successCount = completed - failedTracks.length;
 		if (failedTracks.length > 0) {
 		}
 
@@ -955,7 +952,6 @@ export async function downloadAlbum(
 	failedCount = results.filter((r) => !r.success).length;
 
 	// Summary logging
-	const successCount = total - failedCount;
 	if (failedCount > 0) {
 	}
 }
