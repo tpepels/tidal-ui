@@ -536,7 +536,7 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 										<section class="settings-section settings-section--wide">
 											<p class="section-heading">Streaming & Downloads</p>
 											<div class="option-grid">
-												{#each QUALITY_OPTIONS as option}
+												{#each QUALITY_OPTIONS as option (option.value)}
 													<button
 														type="button"
 														onclick={() => selectPlaybackQuality(option.value)}
@@ -702,7 +702,7 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 										<section class="settings-section settings-section--wide">
 											<p class="section-heading">Performance Mode</p>
 											<div class="option-grid option-grid--compact">
-												{#each PERFORMANCE_OPTIONS as option}
+												{#each PERFORMANCE_OPTIONS as option (option.value)}
 													<button
 														type="button"
 														onclick={() => setPerformanceMode(option.value)}

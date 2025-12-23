@@ -183,7 +183,7 @@
 		</div>
 	{:else}
 		<div class="space-y-1">
-			{#each tracks as track, index}
+			{#each tracks as track, index (track.id)}
 				<div
 					class="track-glass group flex w-full items-center gap-3 rounded-lg p-3 text-left transition-colors {isCurrentTrack(
 						track

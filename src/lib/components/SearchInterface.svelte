@@ -1086,7 +1086,7 @@ import {
 	{#if searchStore.isLoading}
 		{#if searchStore.activeTab === 'tracks'}
 			<div class="space-y-2">
-				{#each trackSkeletons as _}
+				{#each trackSkeletons as _, i (i)}
 					<div class="flex w-full items-center gap-3 rounded-lg bg-gray-800/70 p-3">
 						<div class="h-12 w-12 flex-shrink-0 animate-pulse rounded bg-gray-700/80"></div>
 						<div class="flex-1 space-y-2">
@@ -1100,7 +1100,7 @@ import {
 			</div>
 		{:else if searchStore.activeTab === 'albums' || searchStore.activeTab === 'playlists'}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-				{#each gridSkeletons as _}
+				{#each gridSkeletons as _, i (i)}
 					<div class="space-y-3">
 						<div class="aspect-square w-full animate-pulse rounded-lg bg-gray-800/70"></div>
 						<div class="h-4 w-3/4 animate-pulse rounded bg-gray-700/80"></div>
@@ -1110,7 +1110,7 @@ import {
 			</div>
 		{:else if searchStore.activeTab === 'artists'}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-				{#each gridSkeletons as _}
+				{#each gridSkeletons as _, i (i)}
 					<div class="flex flex-col items-center gap-3">
 						<div class="aspect-square w-full animate-pulse rounded-full bg-gray-800/70"></div>
 						<div class="h-4 w-3/4 animate-pulse rounded bg-gray-700/80"></div>
@@ -1176,7 +1176,7 @@ import {
 			{/if}
 
 			<div class="space-y-2">
-				{#each searchStore.tracks as track}
+				{#each searchStore.tracks as track (track.id)}
 					<div
 						role="button"
 						tabindex="0"
@@ -1448,7 +1448,7 @@ import {
 			</div>
 		{:else if searchStore.activeTab === 'albums' && searchStore.albums.length > 0}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-				{#each searchStore.albums as album}
+				{#each searchStore.albums as album (album.id)}
 					<div class="group relative text-left">
 						<button
 							onclick={(event) => handleAlbumDownloadClick(album, event)}
@@ -1544,7 +1544,7 @@ import {
 			</div>
 		{:else if searchStore.activeTab === 'artists' && searchStore.artists.length > 0}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-				{#each searchStore.artists as artist}
+				{#each searchStore.artists as artist (artist.id)}
 					<a href={`/artist/${artist.id}`} class="group text-center" data-sveltekit-preload-data>
 						<div class="relative mb-2 aspect-square overflow-hidden rounded-full">
 							{#if artist.picture}
@@ -1568,7 +1568,7 @@ import {
 			</div>
 		{:else if searchStore.activeTab === 'playlists' && searchStore.playlists.length > 0}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-				{#each searchStore.playlists as playlist}
+				{#each searchStore.playlists as playlist (playlist.id)}
 					<a
 						href={`/playlist/${playlist.uuid}`}
 						class="group text-left"
@@ -1596,7 +1596,7 @@ import {
 			<div class="news-container rounded-lg border p-4">
 				<h2 class="mb-4 text-3xl font-bold">News</h2>
 				<section class="grid gap-4 text-left shadow-lg sm:grid-cols-2">
-					{#each newsItems as item}
+					{#each newsItems as item, i (i)}
 						<article
 							class="news-card flex flex-col gap-3 rounded-lg border p-4 transition-transform hover:-translate-y-0.5"
 						>

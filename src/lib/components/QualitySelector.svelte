@@ -64,7 +64,7 @@
 				<h3 class="text-sm font-semibold text-white">Audio Quality</h3>
 			</div>
 			<div class="py-1">
-				{#each qualities as quality}
+				{#each qualities as quality (quality.value)}
 					<button
 						onclick={() => selectQuality(quality.value)}
 						class="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:text-gray-500 disabled:opacity-60 disabled:hover:bg-gray-800"
