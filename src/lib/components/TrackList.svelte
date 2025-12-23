@@ -193,7 +193,7 @@
 				>
 					<!-- Track Number / Play Button -->
 					<button
-						onclick={() => handlePlayTrack(track, index)}
+						onclick={() => isPlaying(track) ? playerStore.pause() : handlePlayTrack(track, index)}
 						class="flex w-8 flex-shrink-0 items-center justify-center transition-transform hover:scale-110"
 						aria-label={isPlaying(track) ? 'Pause' : 'Play'}
 					>
