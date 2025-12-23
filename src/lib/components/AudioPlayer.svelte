@@ -527,6 +527,23 @@ let pendingPlayAfterSource = false;
 				currentPlaybackQuality = null;
 			}
 		} else if (current.id !== currentTrackId) {
+			if (!isSonglinkTrack(current)) {
+				currentTrackId = current.id;
+				streamUrl = '';
+				bufferedPercent = 0;
+				dashPlaybackActive = false;
+				dashFallbackAttemptedTrackId = null;
+				dashFallbackInFlight = false;
+				lastQualityTrackId = current.id;
+				lastQualityForTrack = $playerStore.quality;
+				currentPlaybackQuality = null;
+				loadTrack(current);
+			}
+		}
+	});
+
+
+		} else if (current.id !== currentTrackId) {
 			if (isSonglinkTrack(current)) {
 				return;
 			}
@@ -540,7 +557,14 @@ let pendingPlayAfterSource = false;
 			lastQualityTrackId = current.id;
 			lastQualityForTrack = $playerStore.quality;
 			currentPlaybackQuality = null;
-			loadTrack(current);
+			await 			loadTrack(current);
+		}
+	});
+
+	$effect(() => {
+		if (!$playerStore.isLoading && $playerStore.isPlaying && audioElement && audioElement.paused && streamUrl) {
+			requestAudioPlayback('loading finished, attempting play');
+		}
 		}
 	});
 
@@ -624,7 +648,7 @@ let pendingPlayAfterSource = false;
 	});
 
 	$effect(() => {
-		if ($playerStore.isPlaying && audioElement) {
+		if ($playerStore.isPlaying && !$playerStore.isLoading && audioElement) {
 			console.info('[AudioPlayer] store requested play; ensuring audio element is playing');
 			requestAudioPlayback('store play request');
 		} else if (!$playerStore.isPlaying && audioElement) {
@@ -655,8 +679,10 @@ let pendingPlayAfterSource = false;
 				audioElement.crossOrigin = 'anonymous';
 				audioElement.load();
 			}
+			playerStore.setLoading(false);
 		} catch (error) {
 			console.error('[AudioPlayer] Failed to load standard track:', error);
+			playerStore.setLoading(false);
 		}
 	}
 
