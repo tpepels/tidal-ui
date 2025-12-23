@@ -194,6 +194,12 @@
 						<span class="download-health-label">Chunked:</span>
 						<span class="download-health-value">{healthData.chunkUploads}</span>
 					</div>
+					<div class="download-health-stat">
+						<span class="download-health-label">Redis:</span>
+						<span class="download-health-value" class:connected={healthData.redisConnected}>
+							{healthData.redisConnected ? 'Connected' : 'Disconnected'}
+						</span>
+					</div>
 				</div>
 				<button type="button" class="download-health-btn" on:click={cleanupHealth}>Cleanup Stuck</button>
 			</div>
@@ -578,6 +584,10 @@
 .download-health-value {
 	color: #fff;
 	font-weight: 500;
+}
+
+.download-health-value.connected {
+	color: #10b981;
 }
 
 .download-health-btn {

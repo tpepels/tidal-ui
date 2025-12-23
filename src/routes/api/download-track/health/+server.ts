@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import { pendingUploads, chunkUploads, activeUploads, cleanupExpiredUploads } from '../_shared';
+import Redis from 'ioredis';
 
 export const GET: RequestHandler = async () => {
 	try {
@@ -8,12 +9,24 @@ export const GET: RequestHandler = async () => {
 		const pendingIds = Array.from(pendingUploads.keys());
 		const chunkIds = Array.from(chunkUploads.keys());
 
+		// Check Redis status
+		let redisConnected = false;
+		try {
+			const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+			await redis.ping();
+			redisConnected = true;
+			redis.disconnect();
+		} catch {
+			redisConnected = false;
+		}
+
 		return json({
 			status: 'ok',
 			activeUploads: activeIds.length,
 			pendingUploads: pendingIds.length,
 			chunkUploads: chunkIds.length,
 			maxConcurrent: 40, // or from env
+			redisConnected,
 			activeIds,
 			pendingIds,
 			chunkIds
