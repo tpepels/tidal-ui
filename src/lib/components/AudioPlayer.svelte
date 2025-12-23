@@ -724,6 +724,18 @@ let pendingPlayAfterSource = false;
 		bufferedPercent = 0;
 		currentPlaybackQuality = null;
 		let requestedQuality = $playerStore.quality;
+
+		// Adjust quality based on FLAC support
+		if (isHiResQuality(requestedQuality) && !supportsLosslessPlayback) {
+			console.info(
+				'[AudioPlayer] Adjusting quality from',
+				requestedQuality,
+				'to LOSSLESS due to lack of FLAC support'
+			);
+			requestedQuality = 'LOSSLESS';
+			playerStore.setQuality(requestedQuality);
+		}
+
 		console.info(
 			'[AudioPlayer] Loading track',
 			tidalTrack.id,
@@ -1429,6 +1441,8 @@ let pendingPlayAfterSource = false;
 					console.info(
 						'[AudioPlayer] Re-loading current track with streaming quality due to unsupported FLAC playback.'
 					);
+					// Change quality to LOSSLESS for browsers that don't support FLAC
+					playerStore.setQuality('LOSSLESS');
 					loadTrack(state.currentTrack);
 				}
 			}
