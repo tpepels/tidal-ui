@@ -28,6 +28,22 @@ export interface DownloadError {
 	suggestion?: string;
 }
 
+export const createDownloadError = (
+	code: string,
+	message: string,
+	recoverable = false,
+	details?: any,
+	retryAfter?: number,
+	suggestion?: string
+): DownloadError => ({
+	code,
+	message,
+	details,
+	recoverable,
+	retryAfter,
+	suggestion
+});
+
 export type ConflictResolution = 'overwrite' | 'skip' | 'rename' | 'overwrite_if_different';
 
 export const ERROR_CODES = {

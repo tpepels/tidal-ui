@@ -9,7 +9,7 @@
 	import DownloadLog from '$lib/components/DownloadLog.svelte';
 	import DynamicBackground from '$lib/components/DynamicBackground.svelte';
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
-	import ErrorBoundary from '$lib/components/ErrorBoundary.svelte';
+
 	import { playerStore } from '$lib/stores/player';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { downloadLogStore } from '$lib/stores/downloadLog';
@@ -504,12 +504,9 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 </svelte:head>
 
 {#if isEmbed}
-	<ErrorBoundary>
-		{@render children?.()}
-	</ErrorBoundary>
+	{@render children?.()}
 	<AudioPlayer headless={true} />
 {:else}
-	<ErrorBoundary>
 		<div class="app-root">
 		<DynamicBackground />
 		<div class="app-shell">
@@ -769,7 +766,6 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 										</section>
 		</div>
 	</div>
-	</ErrorBoundary>
 
 	<LyricsPopup />
 	<DownloadLog />
@@ -782,9 +778,7 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 				style={`min-height: ${mainMinHeight}px; margin-bottom: ${mainMarginBottom}px;`}
 			>
 				<div class="app-main__inner">
-					<ErrorBoundary>
 						{@render children?.()}
-					</ErrorBoundary>
 				</div>
 			</main>
 

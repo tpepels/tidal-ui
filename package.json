@@ -60,6 +60,7 @@
 		"ioredis": "^5.4.1",
 		"jszip": "^3.10.1",
 		"lucide-svelte": "^0.544.0",
-		"shaka-player": "^4.11.7"
+		"shaka-player": "^4.11.7",
+		"zod": "^4.2.1"
 	}
 }
