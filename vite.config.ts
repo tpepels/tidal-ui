@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import devtoolsJson from 'vite-plugin-devtools-json';
 import tailwindcss from '@tailwindcss/vite';
 import { sveltekit } from '@sveltejs/kit/vite';
@@ -21,6 +22,12 @@ export default defineConfig(({ mode }) => {
 		},
 		ssr: {
 			external: ['@ffmpeg/ffmpeg', '@ffmpeg/util']
+		},
+		test: {
+			include: ['src/**/*.{test,spec}.{js,ts}'],
+			environment: 'jsdom',
+			setupFiles: ['./src/test-setup.ts'],
+			globals: true
 		}
 	};
 });

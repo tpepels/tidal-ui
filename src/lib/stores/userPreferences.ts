@@ -18,7 +18,7 @@ const DEFAULT_STATE: UserPreferencesState = {
 	playbackQuality: 'HI_RES_LOSSLESS',
 	convertAacToMp3: false,
 	downloadCoversSeperately: false,
-	performanceMode: 'medium'
+	performanceMode: 'low'
 };
 
 function parseStoredPreferences(raw: string | null): UserPreferencesState {
@@ -40,12 +40,14 @@ function parseStoredPreferences(raw: string | null): UserPreferencesState {
 				quality === 'LOW'
 					? quality
 					: DEFAULT_STATE.playbackQuality,
-			convertAacToMp3: typeof convertFlag === 'boolean' ? convertFlag : DEFAULT_STATE.convertAacToMp3,
-			downloadCoversSeperately: typeof downloadCoversFlag === 'boolean' ? downloadCoversFlag : DEFAULT_STATE.downloadCoversSeperately,
+			convertAacToMp3:
+				typeof convertFlag === 'boolean' ? convertFlag : DEFAULT_STATE.convertAacToMp3,
+			downloadCoversSeperately:
+				typeof downloadCoversFlag === 'boolean'
+					? downloadCoversFlag
+					: DEFAULT_STATE.downloadCoversSeperately,
 			performanceMode:
-				perfMode === 'medium' || perfMode === 'low'
-					? perfMode
-					: DEFAULT_STATE.performanceMode
+				perfMode === 'medium' || perfMode === 'low' ? perfMode : DEFAULT_STATE.performanceMode
 		};
 	} catch (error) {
 		console.warn('Failed to parse stored user preferences', error);

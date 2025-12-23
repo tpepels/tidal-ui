@@ -13,6 +13,8 @@ interface PerformanceMetrics {
 	gpu?: string;
 }
 
+const BENCHMARK_FRAME_COUNT = 60;
+
 const PERFORMANCE_PRIORITY: Record<PerformanceLevel, number> = {
 	high: 3,
 	medium: 2,
@@ -374,7 +376,10 @@ function assessGraphicsSupport(): GraphicsAssessment {
 		return assessment;
 	}
 
-	let assessment: GraphicsAssessment = { tier: 'none', reason: 'Unable to acquire any WebGL context' };
+	let assessment: GraphicsAssessment = {
+		tier: 'none',
+		reason: 'Unable to acquire any WebGL context'
+	};
 
 	try {
 		const canvas = document.createElement('canvas');
@@ -490,7 +495,7 @@ function runGraphicsBenchmark(): Promise<PerformanceLevel | null> {
 
 			const frameTimes: number[] = [];
 			const workloadTimes: number[] = [];
-			const totalFrames = 60;
+			const totalFrames = BENCHMARK_FRAME_COUNT;
 			let frameCount = 0;
 			let lastTimestamp = 0;
 
@@ -502,7 +507,7 @@ function runGraphicsBenchmark(): Promise<PerformanceLevel | null> {
 					const size = 10 + ((i + frameCount) % 18) * 7;
 					const x = random() * (canvas.width + size) - size;
 					const y = random() * (canvas.height + size) - size;
-					context.globalAlpha = 0.14 + ((i % 8) * 0.1);
+					context.globalAlpha = 0.14 + (i % 8) * 0.1;
 					context.fillStyle = palette[i % palette.length]!;
 					context.fillRect(x, y, size, size);
 				}
@@ -535,10 +540,13 @@ function runGraphicsBenchmark(): Promise<PerformanceLevel | null> {
 						return;
 					}
 
-					const averageFrame = trimmedFrames.reduce((sum, value) => sum + value, 0) / trimmedFrames.length;
+					const averageFrame =
+						trimmedFrames.reduce((sum, value) => sum + value, 0) / trimmedFrames.length;
 					const worstFrame = Math.max(...trimmedFrames);
-					const averageWorkload = workloadTimes.reduce((sum, value) => sum + value, 0) / workloadTimes.length;
-					const stutterRatio = trimmedFrames.filter((value) => value > 24).length / trimmedFrames.length;
+					const averageWorkload =
+						workloadTimes.reduce((sum, value) => sum + value, 0) / workloadTimes.length;
+					const stutterRatio =
+						trimmedFrames.filter((value) => value > 24).length / trimmedFrames.length;
 
 					summary = {
 						averageFrame,
@@ -550,7 +558,12 @@ function runGraphicsBenchmark(): Promise<PerformanceLevel | null> {
 					let benchmarkLevel: PerformanceLevel = 'high';
 					if (averageFrame > 32 || worstFrame > 52 || averageWorkload > 16 || stutterRatio > 0.35) {
 						benchmarkLevel = 'low';
-					} else if (averageFrame > 24 || worstFrame > 40 || averageWorkload > 10 || stutterRatio > 0.22) {
+					} else if (
+						averageFrame > 24 ||
+						worstFrame > 40 ||
+						averageWorkload > 10 ||
+						stutterRatio > 0.22
+					) {
 						benchmarkLevel = 'medium';
 					}
 

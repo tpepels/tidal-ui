@@ -4,142 +4,299 @@ import { randomBytes } from 'crypto';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { AudioQuality } from '$lib/types';
-import { pendingUploads, startCleanupInterval, getDownloadDir, sanitizePath } from './_shared';
+import {
+	pendingUploads,
+	chunkUploads,
+	activeUploads,
+	MAX_CONCURRENT_UPLOADS,
+	startCleanupInterval,
+	getDownloadDir,
+	getTempDir,
+	sanitizePath,
+	generateChecksum,
+	validateChecksum,
+	ensureDir,
+	resolveFileConflict,
+	createDownloadError,
+	ERROR_CODES,
+	canStartUpload,
+	startUpload,
+	type ConflictResolution,
+	type DownloadError
+} from './_shared';
 
 // Start the cleanup interval when the module loads
 startCleanupInterval();
 
-// Ensure directory exists
-const ensureDir = async (dirPath: string): Promise<void> => {
-    try {
-        await fs.mkdir(dirPath, { recursive: true });
-    } catch (err) {
-        console.error(`Failed to create directory ${dirPath}:`, err);
-        throw err;
-    }
-};
+// ensureDir is now imported from _shared
 
 export const POST: RequestHandler = async ({ request, url }) => {
-    try {
-        // Check if this is a blob upload (URL contains uploadId)
-        const pathParts = url.pathname.split('/');
-        const uploadIdIndex = pathParts.indexOf('download-track') + 1;
-        const uploadId = uploadIdIndex < pathParts.length ? pathParts[uploadIdIndex] : null;
+	try {
+		// Check if this is a blob upload (URL contains uploadId)
+		const pathParts = url.pathname.split('/');
+		const uploadIdIndex = pathParts.indexOf('download-track') + 1;
+		const uploadId = uploadIdIndex < pathParts.length ? pathParts[uploadIdIndex] : null;
 
-        // Phase 1: Metadata POST (no uploadId in path)
-        if (!uploadId) {
-            const body = await request.json();
-            const { trackId, quality, albumTitle, artistName, trackTitle } = body as {
-                trackId: number;
-                quality: AudioQuality;
-                albumTitle?: string;
-                artistName?: string;
-                trackTitle?: string;
-            };
+		// Phase 1: Metadata POST (no uploadId in path)
+		if (!uploadId) {
+			const body = await request.json();
+			const {
+				trackId,
+				quality,
+				albumTitle,
+				artistName,
+				trackTitle,
+				blobSize,
+				useChunks = false,
+				chunkSize = 1024 * 1024, // 1MB default
+				checksum,
+				conflictResolution = 'overwrite'
+			} = body as {
+				trackId: number;
+				quality: AudioQuality;
+				albumTitle?: string;
+				artistName?: string;
+				trackTitle?: string;
+				blobSize?: number;
+				useChunks?: boolean;
+				chunkSize?: number;
+				checksum?: string;
+				conflictResolution?: ConflictResolution;
+			};
 
-            if (!trackId || !quality) {
-                return json(
-                    { error: 'Missing required fields: trackId, quality' },
-                    { status: 400 }
-                );
-            }
+			if (!trackId || !quality) {
+				const error = createDownloadError(
+					ERROR_CODES.INVALID_FILE,
+					'Missing required fields: trackId, quality',
+					false,
+					{ provided: { trackId, quality } },
+					undefined,
+					'Please ensure you have selected a valid track to download.'
+				);
+				return json({ error }, { status: 400 });
+			}
 
-            // Generate a unique upload ID
-            const newUploadId = randomBytes(16).toString('hex');
+			// Generate a unique upload ID
+			const newUploadId = randomBytes(16).toString('hex');
 
-            // Store metadata for the next phase
-            pendingUploads.set(newUploadId, {
-                trackId,
-                quality,
-                albumTitle,
-                artistName,
-                trackTitle,
-                timestamp: Date.now()
-            });
+			// Check upload limits
+			if (!canStartUpload()) {
+				const error = createDownloadError(
+					ERROR_CODES.RATE_LIMITED,
+					'Too many concurrent uploads',
+					true,
+					{
+						activeUploads: Array.from(activeUploads),
+						maxConcurrent: MAX_CONCURRENT_UPLOADS
+					},
+					30,
+					`Maximum ${MAX_CONCURRENT_UPLOADS} concurrent uploads allowed. Please wait for other downloads to complete.`
+				);
+				return json({ error }, { status: 429 });
+			}
 
-            console.log(`[Server Download] Metadata received, uploadId: ${newUploadId}`);
+			// Start the upload
+			if (!startUpload(newUploadId)) {
+				const error = createDownloadError(
+					ERROR_CODES.RATE_LIMITED,
+					'Failed to start upload - queue full',
+					true,
+					{ maxConcurrent: MAX_CONCURRENT_UPLOADS },
+					10,
+					'The upload queue is full. Please try again in a moment.'
+				);
+				return json({ error }, { status: 429 });
+			}
 
-            return json(
-                {
-                    success: true,
-                    uploadId: newUploadId,
-                    message: 'Metadata registered. Send blob to /api/download-track/' + newUploadId
-                },
-                { status: 201 }
-            );
-        }
+			// Store metadata for the next phase
+			pendingUploads.set(newUploadId, {
+				trackId,
+				quality,
+				albumTitle,
+				artistName,
+				trackTitle,
+				timestamp: Date.now(),
+				totalSize: blobSize,
+				checksum,
+				conflictResolution
+			});
 
-        // Phase 2: Blob POST (with uploadId in path)
-        const uploadData = pendingUploads.get(uploadId);
-        if (!uploadData) {
-            return json(
-                { error: 'Upload session not found or expired' },
-                { status: 404 }
-            );
-        }
+			const response: any = {
+				success: true,
+				uploadId: newUploadId,
+				message: 'Metadata registered. Send blob to /api/download-track/' + newUploadId
+			};
 
-        // Read the binary blob from the request body
-        const arrayBuffer = await request.arrayBuffer();
-        if (arrayBuffer.byteLength === 0) {
-            return json({ error: 'Empty blob' }, { status: 400 });
-        }
+			// If chunked upload requested, initialize chunk state
+			if (useChunks && blobSize) {
+				const totalChunks = Math.ceil(blobSize / chunkSize);
+				const tempDir = getTempDir();
+				await ensureDir(tempDir);
+				const tempFilePath = path.join(tempDir, `${newUploadId}.tmp`);
 
-        const { trackId, quality, albumTitle, artistName, trackTitle } = uploadData;
+				chunkUploads.set(newUploadId, {
+					uploadId: newUploadId,
+					chunkIndex: 0,
+					totalChunks,
+					chunkSize,
+					totalSize: blobSize,
+					checksum: checksum || '',
+					tempFilePath,
+					completed: false,
+					timestamp: Date.now()
+				});
 
-        // Determine file extension based on quality
-        let ext = 'm4a';
-        if (quality === 'HI_RES_LOSSLESS' || quality === 'LOSSLESS') {
-            ext = 'flac';
-        } else if (quality === 'HIGH') {
-            ext = 'm4a';
-        } else {
-            ext = 'm4a';
-        }
+				// Initialize empty temp file
+				await fs.writeFile(tempFilePath, Buffer.alloc(0));
 
-        // Generate filename using track title if available, otherwise use track ID
-        let filename: string;
-        if (trackTitle) {
-            const sanitizedTitle = sanitizePath(trackTitle);
-            const sanitizedArtist = sanitizePath(artistName || 'Unknown');
-            filename = `${sanitizedArtist} - ${sanitizedTitle}.${ext}`;
-        } else {
-            filename = `track-${trackId}.${ext}`;
-        }
+				response.chunked = true;
+				response.totalChunks = totalChunks;
+				response.chunkSize = chunkSize;
+				response.message = `Metadata registered. Send ${totalChunks} chunks to /api/download-track/${newUploadId}/chunk`;
+			}
 
-        // Organize by artist/album directory structure
-        const baseDir = getDownloadDir();
-        const artistDir = sanitizePath(artistName || 'Unknown Artist');
-        const albumDir = sanitizePath(albumTitle || 'Unknown Album');
-        const targetDir = path.join(baseDir, artistDir, albumDir);
+			return json(response, { status: 201 });
+		}
 
-        // Ensure target directory exists
-        await ensureDir(targetDir);
+		// Phase 2: Blob POST (with uploadId in path)
+		const uploadData = pendingUploads.get(uploadId);
+		if (!uploadData) {
+			const error = createDownloadError(
+				ERROR_CODES.SESSION_EXPIRED,
+				'Upload session not found or expired',
+				true,
+				{ uploadId },
+				30,
+				'Please try starting the download again. Upload sessions expire after 5 minutes.'
+			);
+			return json({ error }, { status: 404 });
+		}
 
-        // Full filepath
-        const filepath = path.join(targetDir, filename);
+		// Read the binary blob from the request body
+		const arrayBuffer = await request.arrayBuffer();
+		if (arrayBuffer.byteLength === 0) {
+			const error = createDownloadError(
+				ERROR_CODES.INVALID_FILE,
+				'Received empty file data',
+				true,
+				{ uploadId },
+				5,
+				'The file appears to be empty. Please try downloading again.'
+			);
+			return json({ error }, { status: 400 });
+		}
 
-        // Write blob to file
-        const buffer = Buffer.from(arrayBuffer);
-        await fs.writeFile(filepath, buffer);
+		const { trackId, quality, albumTitle, artistName, trackTitle, totalSize, checksum } =
+			uploadData;
 
-        // Clean up the upload session
-        pendingUploads.delete(uploadId);
+		// Determine file extension based on quality
+		let ext = 'm4a';
+		if (quality === 'HI_RES_LOSSLESS' || quality === 'LOSSLESS') {
+			ext = 'flac';
+		} else if (quality === 'HIGH') {
+			ext = 'm4a';
+		} else {
+			ext = 'm4a';
+		}
 
-        const sizeInMB = (buffer.length / 1024 / 1024).toFixed(2);
-        console.log(`[Server Download] ✓ Saved to: ${filepath} (${sizeInMB} MB)`);
+		// Generate filename using track title if available, otherwise use track ID
+		let filename: string;
+		if (trackTitle) {
+			const sanitizedTitle = sanitizePath(trackTitle);
+			const sanitizedArtist = sanitizePath(artistName || 'Unknown');
+			filename = `${sanitizedArtist} - ${sanitizedTitle}.${ext}`;
+		} else {
+			filename = `track-${trackId}.${ext}`;
+		}
 
-        return json(
-            {
-                success: true,
-                filepath,
-                filename,
-                message: `File saved to ${artistDir}/${albumDir}/${filename}`
-            },
-            { status: 201 }
-        );
-    } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        console.error('[Server Download] Error:', errorMsg);
-        return json({ error: 'Download failed: ' + errorMsg }, { status: 500 });
-    }
+		// Organize by artist/album directory structure
+		const baseDir = getDownloadDir();
+		const artistDir = sanitizePath(artistName || 'Unknown Artist');
+		const albumDir = sanitizePath(albumTitle || 'Unknown Album');
+		const targetDir = path.join(baseDir, artistDir, albumDir);
+
+		// Ensure target directory exists
+		await ensureDir(targetDir);
+
+		// Full filepath
+		const initialFilepath = path.join(targetDir, filename);
+
+		// Write blob directly to file
+		// Note: Metadata is already embedded client-side by losslessAPI.fetchTrackBlob()
+		const buffer = Buffer.from(arrayBuffer);
+
+		// Handle file conflicts
+		const { finalPath, action } = await resolveFileConflict(
+			initialFilepath,
+			uploadData.conflictResolution,
+			buffer.length,
+			uploadData.checksum
+		);
+		await fs.writeFile(finalPath, buffer);
+
+		// Clean up the upload session
+		pendingUploads.delete(uploadId);
+		activeUploads.delete(uploadId);
+
+		const finalFilename = path.basename(finalPath);
+		const sizeInMB = (buffer.length / 1024 / 1024).toFixed(2);
+
+		let message = `File saved to ${artistDir}/${albumDir}/${finalFilename}`;
+		if (action === 'rename') {
+			message = `File renamed and saved to ${artistDir}/${albumDir}/${finalFilename}`;
+		} else if (action === 'skip') {
+			message = `File already exists, skipped: ${artistDir}/${albumDir}/${finalFilename}`;
+		}
+
+		return json(
+			{
+				success: true,
+				filepath: finalPath,
+				filename: finalFilename,
+				action,
+				message,
+				queueInfo: {
+					activeUploads: activeUploads.size,
+					maxConcurrent: MAX_CONCURRENT_UPLOADS
+				}
+			},
+			{ status: 201 }
+		);
+	} catch (error) {
+		const errorMsg = error instanceof Error ? error.message : String(error);
+		console.error('[Server Download] Error:', errorMsg);
+
+		// Categorize the error
+		let downloadError: DownloadError;
+		if (errorMsg.includes('ENOSPC') || errorMsg.includes('disk full')) {
+			downloadError = createDownloadError(
+				ERROR_CODES.DISK_FULL,
+				'Not enough disk space available',
+				false,
+				{ originalError: errorMsg },
+				undefined,
+				'Please free up disk space and try again.'
+			);
+		} else if (errorMsg.includes('EACCES') || errorMsg.includes('permission denied')) {
+			downloadError = createDownloadError(
+				ERROR_CODES.PERMISSION_DENIED,
+				'Permission denied when saving file',
+				false,
+				{ originalError: errorMsg },
+				undefined,
+				'Please check file permissions and try again.'
+			);
+		} else {
+			downloadError = createDownloadError(
+				ERROR_CODES.UNKNOWN_ERROR,
+				'Download failed: ' + errorMsg,
+				true,
+				{ originalError: errorMsg },
+				10,
+				'Please try the download again. If the problem persists, contact support.'
+			);
+		}
+
+		return json({ error: downloadError }, { status: 500 });
+	}
 };

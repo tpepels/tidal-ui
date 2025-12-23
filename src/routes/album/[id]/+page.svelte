@@ -5,6 +5,7 @@
 	import ShareButton from '$lib/components/ShareButton.svelte';
 	import type { Album, Track } from '$lib/types';
 	import { onMount } from 'svelte';
+	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
 	import {
 		ArrowLeft,
 		Play,
@@ -161,6 +162,17 @@
 			Back
 		</button>
 
+		<!-- Breadcrumbs -->
+		{#if album.artist}
+			<nav class="flex items-center gap-2 text-sm text-gray-500" aria-label="Breadcrumb">
+				<a href="/" class="hover:text-gray-300 transition-colors">Home</a>
+				<span>/</span>
+				<ArtistLinks artists={[album.artist]} class="hover:text-gray-300" />
+				<span>/</span>
+				<span class="text-gray-400">{album.title}</span>
+			</nav>
+		{/if}
+
 		<!-- Album Header -->
 		<div class="flex flex-col gap-8 md:flex-row">
 			<!-- Album Cover -->
@@ -211,13 +223,9 @@
 						>
 					{/if}
 					{#if album.artist}
-						<a
-							href={`/artist/${album.artist.id}`}
-							data-sveltekit-preload-data
-							class="text-left text-xl text-gray-300 hover:text-white hover:underline"
-						>
-							{album.artist.name}
-						</a>
+						<div class="text-left text-xl text-gray-300">
+							<ArtistLinks artists={[album.artist]} />
+						</div>
 					{/if}
 				</div>
 

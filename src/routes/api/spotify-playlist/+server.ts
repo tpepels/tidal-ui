@@ -12,6 +12,8 @@ const COMMON_HEADERS = {
 	'Sec-Ch-Ua': `"Chromium";v="${BROWSER_VERSION}", "Not(A:Brand";v="24", "Google Chrome";v="${BROWSER_VERSION}"`
 };
 
+const SPOTIFY_TRACK_LIMIT = 343;
+
 // Fallback secret (from SpotAPI code)
 const FALLBACK_SECRET = [
 	44, 55, 47, 42, 70, 40, 34, 114, 76, 74, 50, 111, 120, 97, 75, 76, 94, 102, 43, 69, 49, 120, 118,
@@ -283,7 +285,6 @@ async function fetchPlaylist(
 		variables,
 		extensions
 	});
-	console.log(params);
 	const response = await fetch('https://api-partner.spotify.com/pathfinder/v2/query', {
 		method: 'POST',
 		headers: {
@@ -297,7 +298,6 @@ async function fetchPlaylist(
 		body: params
 	});
 	const data = await response.json();
-	console.log(data);
 	return data;
 }
 
@@ -311,7 +311,7 @@ async function getAllTracks(
 ) {
 	const tracks = [];
 	let offset = 0;
-	const limit = 343; // Upper limit
+	const limit = SPOTIFY_TRACK_LIMIT; // Upper limit
 	while (true) {
 		const data = await fetchPlaylist(
 			accessToken,

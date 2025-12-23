@@ -4,8 +4,11 @@ import type { DownloadMode, DownloadStorage } from '$lib/stores/downloadPreferen
 import { downloadQueue } from '$lib/stores/downloadQueue';
 import type { DownloadQueueItem } from '$lib/stores/downloadQueue';
 import { downloadLogStore } from '$lib/stores/downloadLog';
+import { downloadUiStore } from '$lib/stores/downloadUi';
 import { formatArtists } from '$lib/utils';
 import JSZip from 'jszip';
+
+const BASE_DELAY_MS = 1000;
 
 function detectImageFormat(data: Uint8Array): { extension: string; mimeType: string } | null {
 	if (!data || data.length < 4) {
@@ -23,9 +26,17 @@ function detectImageFormat(data: Uint8Array): { extension: string; mimeType: str
 	}
 
 	// Check for WebP magic bytes (52 49 46 46 ... 57 45 42 50)
-	if (data.length >= 12 &&
-		data[0] === 0x52 && data[1] === 0x49 && data[2] === 0x46 && data[3] === 0x46 &&
-		data[8] === 0x57 && data[9] === 0x45 && data[10] === 0x42 && data[11] === 0x50) {
+	if (
+		data.length >= 12 &&
+		data[0] === 0x52 &&
+		data[1] === 0x49 &&
+		data[2] === 0x46 &&
+		data[3] === 0x46 &&
+		data[8] === 0x57 &&
+		data[9] === 0x45 &&
+		data[10] === 0x42 &&
+		data[11] === 0x50
+	) {
 		return { extension: 'webp', mimeType: 'image/webp' };
 	}
 
@@ -64,16 +75,19 @@ export function buildTrackFilename(
 	// Check if this is a multi-volume album by checking:
 	// 1. numberOfVolumes > 1, or
 	// 2. volumeNumber is set and finite (indicating multi-volume structure)
-	const isMultiVolume = (album.numberOfVolumes && album.numberOfVolumes > 1) ||
-		Number.isFinite(volumeNumber);
+	const isMultiVolume =
+		(album.numberOfVolumes && album.numberOfVolumes > 1) || Number.isFinite(volumeNumber);
 
 	let trackPart: string;
 	if (isMultiVolume) {
-		const volumePadded = Number.isFinite(volumeNumber) && volumeNumber > 0 ? `${volumeNumber}`.padStart(2, '0') : '01';
-		const trackPadded = Number.isFinite(trackNumber) && trackNumber > 0 ? `${trackNumber}`.padStart(2, '0') : '00';
+		const volumePadded =
+			Number.isFinite(volumeNumber) && volumeNumber > 0 ? `${volumeNumber}`.padStart(2, '0') : '01';
+		const trackPadded =
+			Number.isFinite(trackNumber) && trackNumber > 0 ? `${trackNumber}`.padStart(2, '0') : '00';
 		trackPart = `${volumePadded}-${trackPadded}`;
 	} else {
-		const trackPadded = Number.isFinite(trackNumber) && trackNumber > 0 ? `${trackNumber}`.padStart(2, '0') : '00';
+		const trackPadded =
+			Number.isFinite(trackNumber) && trackNumber > 0 ? `${trackNumber}`.padStart(2, '0') : '00';
 		trackPart = trackPadded;
 	}
 
@@ -137,28 +151,34 @@ async function downloadTrackWithRetry(
 	filename: string,
 	track: Track,
 	callbacks?: AlbumDownloadCallbacks,
-	options?: { convertAacToMp3?: boolean; downloadCoverSeperately?: boolean; storage?: DownloadStorage }
+	options?: {
+		convertAacToMp3?: boolean;
+		downloadCoverSeperately?: boolean;
+		storage?: DownloadStorage;
+		onProgress?: (
+			progress:
+				| { stage: 'downloading'; receivedBytes: number; totalBytes?: number }
+				| { stage: 'embedding'; progress: number }
+		) => void;
+	}
 ): Promise<DownloadTrackResult> {
 	const maxAttempts = 3;
-	const baseDelay = 1000; // 1 second
+	const baseDelay = BASE_DELAY_MS; // 1 second
 	const trackTitle = track.title ?? 'Unknown Track';
 	const artistName = formatArtists(track.artists);
 	const storage = options?.storage ?? 'client';
 
-	console.log(`[Track Download] Starting download: "${trackTitle}" by ${artistName} (ID: ${trackId}, Quality: ${quality})`);
-
 	for (let attempt = 1; attempt <= maxAttempts; attempt++) {
 		try {
 			if (attempt > 1) {
-				console.log(`[Track Download] Retry attempt ${attempt}/${maxAttempts} for "${trackTitle}"`);
 			}
 
 			const { blob } = await losslessAPI.fetchTrackBlob(trackId, quality, filename, {
 				ffmpegAutoTriggered: false,
-				convertAacToMp3: storage === 'client' ? options?.convertAacToMp3 : false
+				convertAacToMp3: storage === 'client' ? options?.convertAacToMp3 : false,
+				onProgress: options?.onProgress
 			});
 
-			console.log(`[Track Download] ✓ Success: "${trackTitle}" (${(blob.size / 1024 / 1024).toFixed(2)} MB)${attempt > 1 ? ` - succeeded on attempt ${attempt}` : ''}`);
 			return { success: true, blob };
 		} catch (error) {
 			const errorObj = error instanceof Error ? error : new Error(String(error));
@@ -171,7 +191,6 @@ async function downloadTrackWithRetry(
 			if (attempt < maxAttempts) {
 				// Exponential backoff: 1s, 2s, 4s
 				const delay = baseDelay * Math.pow(2, attempt - 1);
-				console.log(`[Track Download] Waiting ${delay}ms before retry...`);
 				await new Promise((resolve) => setTimeout(resolve, delay));
 			} else {
 				console.error(
@@ -202,8 +221,26 @@ export async function downloadTrackServerSide(
 	albumTitle: string,
 	artistName: string,
 	trackTitle?: string,
-	blob?: Blob
-): Promise<{ success: boolean; filepath?: string; message?: string; error?: string }> {
+	blob?: Blob,
+	options?: {
+		useChunks?: boolean;
+		chunkSize?: number;
+		conflictResolution?: 'overwrite' | 'skip' | 'rename' | 'overwrite_if_different';
+		checkExisting?: boolean;
+		onProgress?: (progress: {
+			uploaded: number;
+			total: number;
+			speed?: number;
+			eta?: number;
+		}) => void;
+	}
+): Promise<{
+	success: boolean;
+	filepath?: string;
+	message?: string;
+	error?: string;
+	action?: string;
+}> {
 	try {
 		if (!blob) {
 			console.error('[Server Download] No blob provided');
@@ -213,9 +250,48 @@ export async function downloadTrackServerSide(
 			};
 		}
 
-		const sizeMsg = `[Server Download] Phase 1: Sending metadata for "${trackTitle}" (${(blob.size / 1024 / 1024).toFixed(2)} MB)`;
-		console.log(sizeMsg);
+		const useChunks = options?.useChunks ?? blob.size > 5 * 1024 * 1024; // Use chunks for files > 5MB
+		const chunkSize = options?.chunkSize ?? 1024 * 1024; // 1MB chunks
+
+		const sizeMsg = `[Server Download] Phase 1: Sending metadata for "${trackTitle}" (${(blob.size / 1024 / 1024).toFixed(2)} MB)${useChunks ? ' (chunked)' : ''}`;
 		downloadLogStore.log(sizeMsg);
+
+		// Generate checksum for integrity check
+		const checksum = await generateBlobChecksum(blob);
+
+		// Check if file already exists on server (if requested)
+		if (options?.checkExisting) {
+			try {
+				const checkResponse = await fetch('/api/download-check', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						trackId,
+						quality,
+						albumTitle,
+						artistName,
+						trackTitle
+					})
+				});
+
+				if (checkResponse.ok) {
+					const checkData = await checkResponse.json();
+					if (checkData.exists) {
+						downloadLogStore.warning(`File already exists on server: ${checkData.filepath}`);
+						return {
+							success: true,
+							filepath: checkData.filepath,
+							message: 'File already exists on server, skipped download.',
+							action: 'skipped'
+						};
+					}
+				}
+			} catch (error) {
+				// If check fails, continue with download
+				console.warn('Failed to check existing file:', error);
+			}
+		}
+
 		const response = await fetch('/api/download-track', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -225,7 +301,11 @@ export async function downloadTrackServerSide(
 				albumTitle,
 				artistName,
 				trackTitle,
-				blobSize: blob.size
+				blobSize: blob.size,
+				useChunks,
+				chunkSize,
+				checksum,
+				conflictResolution: options?.conflictResolution || 'overwrite_if_different'
 			})
 		});
 
@@ -236,32 +316,35 @@ export async function downloadTrackServerSide(
 			throw new Error(errMsg);
 		}
 
-		// Get the signed ID for the upload
-		const { uploadId } = await response.json();
-		console.log(`[Server Download] Phase 1 success: received uploadId=${uploadId}`);
+		const responseData = await response.json();
+		const { uploadId, chunked, totalChunks } = responseData;
 
-		// Upload the blob to the server
-		console.log(`[Server Download] Phase 2: Uploading blob for "${trackTitle}"`);
-		const uploadResponse = await fetch(`/api/download-track/${uploadId}`, {
-			method: 'POST',
-			body: blob,
-			headers: { 'Content-Type': 'application/octet-stream' }
-		});
+		if (chunked && useChunks) {
+			// Chunked upload
+			return await uploadInChunks(blob, uploadId, totalChunks, chunkSize, options?.onProgress);
+		} else {
+			// Single upload
+			const uploadResponse = await fetch(`/api/download-track/${uploadId}`, {
+				method: 'POST',
+				body: blob,
+				headers: { 'Content-Type': 'application/octet-stream' }
+			});
 
-		if (!uploadResponse.ok) {
-			const errorData = await uploadResponse.json().catch(() => ({}));
-			const errMsg = errorData.error || `Upload failed: ${uploadResponse.status}`;
-			console.error(`[Server Download] Phase 2 failed: ${errMsg}`);
-			throw new Error(errMsg);
+			if (!uploadResponse.ok) {
+				const errorData = await uploadResponse.json().catch(() => ({}));
+				const errMsg = errorData.error || `Upload failed: ${uploadResponse.status}`;
+				console.error(`[Server Download] Phase 2 failed: ${errMsg}`);
+				throw new Error(errMsg);
+			}
+
+			const data = await uploadResponse.json();
+			return {
+				success: true,
+				filepath: data.filepath,
+				message: data.message,
+				action: data.action
+			};
 		}
-
-		const data = await uploadResponse.json();
-		console.log(`[Server Download] Phase 2 success: ${data.message}`);
-		return {
-			success: true,
-			filepath: data.filepath,
-			message: data.message
-		};
 	} catch (error) {
 		const errorMsg = error instanceof Error ? error.message : String(error);
 		console.error(`[Server Download] Error: ${errorMsg}`);
@@ -270,6 +353,96 @@ export async function downloadTrackServerSide(
 			error: errorMsg
 		};
 	}
+}
+
+// Generate MD5 checksum for blob
+async function generateBlobChecksum(blob: Blob): Promise<string> {
+	const buffer = await blob.arrayBuffer();
+	const crypto = await import('crypto');
+	return crypto.default.createHash('md5').update(Buffer.from(buffer)).digest('hex');
+}
+
+// Upload blob in chunks with progress tracking
+async function uploadInChunks(
+	blob: Blob,
+	uploadId: string,
+	totalChunks: number,
+	chunkSize: number,
+	onProgress?: (progress: { uploaded: number; total: number; speed?: number; eta?: number }) => void
+): Promise<{
+	success: boolean;
+	filepath?: string;
+	message?: string;
+	error?: string;
+	action?: string;
+}> {
+	const startTime = Date.now();
+	let uploadedBytes = 0;
+
+	for (let i = 0; i < totalChunks; i++) {
+		const start = i * chunkSize;
+		const end = Math.min(start + chunkSize, blob.size);
+		const chunk = blob.slice(start, end);
+
+		const response = await fetch(`/api/download-track/${uploadId}/chunk`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/octet-stream',
+				'x-chunk-index': i.toString(),
+				'x-total-chunks': totalChunks.toString()
+			},
+			body: chunk
+		});
+
+		if (!response.ok) {
+			const errorData = await response.json().catch(() => ({}));
+			const errMsg = errorData.error || `Chunk ${i + 1} upload failed: ${response.status}`;
+			console.error(`[Chunk Upload] Failed: ${errMsg}`);
+			throw new Error(errMsg);
+		}
+
+		uploadedBytes += chunk.size;
+
+		// Calculate progress metrics
+		const elapsed = (Date.now() - startTime) / 1000; // seconds
+		const speed = uploadedBytes / elapsed; // bytes per second
+		const remaining = blob.size - uploadedBytes;
+		const eta = speed > 0 ? remaining / speed : undefined;
+
+		onProgress?.({
+			uploaded: uploadedBytes,
+			total: blob.size,
+			speed,
+			eta
+		});
+
+		downloadLogStore.log(
+			`Uploaded chunk ${i + 1}/${totalChunks} (${((uploadedBytes / blob.size) * 100).toFixed(1)}%)`
+		);
+	}
+
+	// Final response should be available from the last chunk upload
+	const finalResponse = await fetch(`/api/download-track/${uploadId}/chunk`, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/octet-stream',
+			'x-chunk-index': (totalChunks - 1).toString(),
+			'x-total-chunks': totalChunks.toString()
+		},
+		body: new Blob() // Empty blob for final confirmation
+	});
+
+	if (!finalResponse.ok) {
+		throw new Error('Failed to complete chunked upload');
+	}
+
+	const data = await finalResponse.json();
+	return {
+		success: true,
+		filepath: data.filepath,
+		message: data.message,
+		action: data.action || 'overwrite'
+	};
 }
 
 // Helper: Process array of async tasks in parallel with concurrency limit
@@ -309,7 +482,12 @@ export async function downloadAlbum(
 	quality: AudioQuality,
 	callbacks?: AlbumDownloadCallbacks,
 	preferredArtistName?: string,
-	options?: { mode?: DownloadMode; convertAacToMp3?: boolean; downloadCoverSeperately?: boolean; storage?: DownloadStorage }
+	options?: {
+		mode?: DownloadMode;
+		convertAacToMp3?: boolean;
+		downloadCoverSeperately?: boolean;
+		storage?: DownloadStorage;
+	}
 ): Promise<void> {
 	const { album: fetchedAlbum, tracks } = await losslessAPI.getAlbum(album.id);
 	const canonicalAlbum = fetchedAlbum ?? album;
@@ -326,14 +504,9 @@ export async function downloadAlbum(
 	);
 	const albumTitle = sanitizeForFilename(canonicalAlbum.title ?? 'Unknown Album');
 
-	console.log(`[Album Download] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-	console.log(`[Album Download] Starting: "${albumTitle}" by ${artistName}`);
-	console.log(`[Album Download] Tracks: ${total} | Quality: ${quality} | Mode: ${mode}`);
-	console.log(`[Album Download] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 	downloadLogStore.show();
 	downloadLogStore.log(`Starting: "${albumTitle}" by ${artistName}`);
 	downloadLogStore.log(`Tracks: ${total} | Quality: ${quality} | Mode: ${mode}`);
-
 
 	if (useCsv) {
 		let completed = 0;
@@ -355,8 +528,6 @@ export async function downloadAlbum(
 		// Download cover separately for ZIP if requested
 		if (downloadCoverSeperately && canonicalAlbum.cover) {
 			try {
-				console.log('[ZIP Cover Download] Fetching cover for album...');
-
 				// Try multiple sizes as fallback
 				const coverSizes: Array<'1280' | '640' | '320'> = ['1280', '640', '320'];
 				let coverDownloadSuccess = false;
@@ -365,7 +536,6 @@ export async function downloadAlbum(
 					if (coverDownloadSuccess) break;
 
 					const coverUrl = losslessAPI.getCoverUrl(canonicalAlbum.cover, size);
-					console.log(`[ZIP Cover Download] Attempting size ${size}:`, coverUrl);
 
 					// Try two fetch strategies: with headers, then without
 					const fetchStrategies = [
@@ -374,7 +544,7 @@ export async function downloadAlbum(
 							options: {
 								method: 'GET' as const,
 								headers: {
-									'Accept': 'image/jpeg,image/jpg,image/png,image/*',
+									Accept: 'image/jpeg,image/jpg,image/png,image/*',
 									'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
 								},
 								signal: AbortSignal.timeout(10000)
@@ -392,15 +562,13 @@ export async function downloadAlbum(
 					for (const strategy of fetchStrategies) {
 						if (coverDownloadSuccess) break;
 
-						console.log(`[ZIP Cover Download] Trying strategy: ${strategy.name}`);
-
 						try {
 							const coverResponse = await fetch(coverUrl, strategy.options);
 
-							console.log(`[ZIP Cover Download] Response status: ${coverResponse.status}, Content-Length: ${coverResponse.headers.get('Content-Length')}`);
-
 							if (!coverResponse.ok) {
-								console.warn(`[ZIP Cover Download] Failed with status ${coverResponse.status} for size ${size}`);
+								console.warn(
+									`[ZIP Cover Download] Failed with status ${coverResponse.status} for size ${size}`
+								);
 								continue;
 							}
 
@@ -426,7 +594,6 @@ export async function downloadAlbum(
 							}
 
 							const uint8Array = new Uint8Array(arrayBuffer);
-							console.log(`[ZIP Cover Download] Received ${uint8Array.length} bytes`);
 
 							// Detect image format
 							const imageFormat = detectImageFormat(uint8Array);
@@ -444,10 +611,12 @@ export async function downloadAlbum(
 							});
 
 							coverDownloadSuccess = true;
-							console.log(`[ZIP Cover Download] Successfully added cover to ZIP (${size}x${size}, format: ${imageFormat.extension}, strategy: ${strategy.name})`);
 							break;
 						} catch (sizeError) {
-							console.warn(`[ZIP Cover Download] Failed at size ${size} with strategy ${strategy.name}:`, sizeError);
+							console.warn(
+								`[ZIP Cover Download] Failed at size ${size} with strategy ${strategy.name}:`,
+								sizeError
+							);
 						}
 					} // End strategy loop
 				} // End size loop
@@ -469,14 +638,10 @@ export async function downloadAlbum(
 				convertAacToMp3
 			);
 
-			const result = await downloadTrackWithRetry(
-				track.id,
-				quality,
-				filename,
-				track,
-				callbacks,
-				{ convertAacToMp3, storage: 'client' }
-			);
+			const result = await downloadTrackWithRetry(track.id, quality, filename, track, callbacks, {
+				convertAacToMp3,
+				storage: 'client'
+			});
 
 			if (result.success && result.blob) {
 				zip.file(filename, result.blob);
@@ -504,7 +669,6 @@ export async function downloadAlbum(
 			});
 
 			zip.file('_DOWNLOAD_ERRORS.txt', errorReport);
-			console.log(`[ZIP Download] Added error report with ${failedTracks.length} failed track(s)`);
 		}
 
 		const zipBlob = await zip.generateAsync({
@@ -514,13 +678,8 @@ export async function downloadAlbum(
 		});
 
 		const successCount = completed - failedTracks.length;
-		console.log(`[Album Download] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-		console.log(`[Album Download] ZIP Complete: "${albumTitle}"`);
-		console.log(`[Album Download] ✓ Success: ${successCount}/${total} tracks | ZIP size: ${(zipBlob.size / 1024 / 1024).toFixed(2)} MB`);
 		if (failedTracks.length > 0) {
-			console.log(`[Album Download] ✗ Failed: ${failedTracks.length} track(s) - see _DOWNLOAD_ERRORS.txt in ZIP`);
 		}
-		console.log(`[Album Download] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 
 		triggerFileDownload(zipBlob, `${artistName} - ${albumTitle}.zip`);
 		return;
@@ -529,8 +688,6 @@ export async function downloadAlbum(
 	// Individual download mode - process in parallel (up to 3 concurrent)
 	let completedCount = 0;
 	let failedCount = 0;
-
-	console.log(`[Individual Download] Starting individual downloads - storage mode: ${storage} (parallel, max 3 concurrent)`);
 
 	// Create async download task for each track
 	const downloadTasks = tracks.map(async (track) => {
@@ -542,24 +699,40 @@ export async function downloadAlbum(
 			convertAacToMp3
 		);
 
-		console.log(`[Individual Download] Processing track: ${track.title} (storage: ${storage})`);
+		// Start tracking this track download
+		const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
+			subtitle: artistName
+		});
 
 		try {
 			if (storage === 'server') {
 				// Server-side download
 				try {
-					console.log(`[Individual Download] Fetching blob for "${track.title}"...`);
 					const result = await downloadTrackWithRetry(
 						track.id,
 						quality,
 						filename,
 						track,
 						undefined, // no callbacks for parallel
-						{ convertAacToMp3, downloadCoverSeperately, storage: 'server' }
+						{
+							convertAacToMp3,
+							downloadCoverSeperately,
+							storage: 'server',
+							onProgress: (progress) => {
+								if (progress.stage === 'downloading') {
+									downloadUiStore.updateTrackProgress(
+										taskId,
+										progress.receivedBytes,
+										progress.totalBytes
+									);
+								} else if (progress.stage === 'embedding') {
+									downloadUiStore.updateTrackStage(taskId, progress.progress);
+								}
+							}
+						}
 					);
 
 					if (result.success && result.blob) {
-						console.log(`[Individual Download] Blob fetched, uploading to server...`);
 						const serverResult = await downloadTrackServerSide(
 							track.id,
 							quality,
@@ -569,18 +742,21 @@ export async function downloadAlbum(
 							result.blob
 						);
 						if (serverResult.success) {
-							console.log(`[Individual Download] ✓ Server-side saved: ${track.title}`);
+							downloadUiStore.completeTrackDownload(taskId);
 							return { success: true, track };
 						} else {
-							console.error(`[Individual Download] ✗ Server-side failed: ${track.title}`, serverResult.error);
+							downloadLogStore.error(`Server download failed: ${serverResult.error}`);
+							downloadUiStore.errorTrackDownload(taskId, serverResult.error);
 							return { success: false, track, error: serverResult.error };
 						}
 					} else {
-						console.error(`[Individual Download] ✗ Failed to fetch blob: ${track.title}`, result.error);
+						downloadLogStore.error(`Failed to fetch track: ${result.error}`);
+						downloadUiStore.errorTrackDownload(taskId, result.error);
 						return { success: false, track, error: result.error };
 					}
 				} catch (error) {
-					console.error(`[Individual Download] ✗ Server-side error: ${track.title}`, error);
+					downloadLogStore.error(`Server download error: ${error}`);
+					downloadUiStore.errorTrackDownload(taskId, error);
 					return { success: false, track, error };
 				}
 			} else {
@@ -591,7 +767,22 @@ export async function downloadAlbum(
 					filename,
 					track,
 					undefined, // no callbacks for parallel
-					{ convertAacToMp3, downloadCoverSeperately, storage: 'client' }
+					{
+						convertAacToMp3,
+						downloadCoverSeperately,
+						storage: 'client',
+						onProgress: (progress) => {
+							if (progress.stage === 'downloading') {
+								downloadUiStore.updateTrackProgress(
+									taskId,
+									progress.receivedBytes,
+									progress.totalBytes
+								);
+							} else if (progress.stage === 'embedding') {
+								downloadUiStore.updateTrackStage(taskId, progress.progress);
+							}
+						}
+					}
 				);
 
 				if (result.success && result.blob) {
@@ -622,9 +813,8 @@ export async function downloadAlbum(
 										options: {
 											method: 'GET' as const,
 											headers: {
-												'Accept': 'image/jpeg,image/jpg,image/png,image/*',
-												'User-Agent':
-													'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+												Accept: 'image/jpeg,image/jpg,image/png,image/*',
+												'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
 											},
 											signal: AbortSignal.timeout(10000)
 										}
@@ -681,20 +871,22 @@ export async function downloadAlbum(
 						}
 					}
 				} else {
-					console.error(`[Individual Download] Track failed: ${track.title}`, result.error);
+					downloadLogStore.error(`Download failed: ${result.error}`);
+					downloadUiStore.errorTrackDownload(taskId, result.error);
 					return { success: false, track, error: result.error };
 				}
 
+				downloadUiStore.completeTrackDownload(taskId);
 				return { success: true, track };
 			}
 		} catch (error) {
-			console.error(`[Individual Download] ✗ Error processing ${track.title}:`, error);
+			downloadLogStore.error(`Processing error: ${error}`);
+			downloadUiStore.errorTrackDownload(taskId, error);
 			return { success: false, track, error };
 		} finally {
 			// Always increment progress counter and call callback as each task completes
 			completedCount++;
 			const progressMsg = `Progress: ${completedCount}/${total} tracks`;
-			console.log(`[Individual Download] ${progressMsg}`);
 			downloadLogStore.log(progressMsg);
 			if (completedCount === total) {
 				downloadLogStore.success('All downloads completed!');
@@ -711,11 +903,6 @@ export async function downloadAlbum(
 
 	// Summary logging
 	const successCount = total - failedCount;
-	console.log(`[Album Download] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-	console.log(`[Album Download] Individual Downloads Complete: "${albumTitle}"`);
-	console.log(`[Album Download] ✓ Success: ${successCount}/${total} tracks`);
 	if (failedCount > 0) {
-		console.log(`[Album Download] ✗ Failed: ${failedCount} track(s)`);
 	}
-	console.log(`[Album Download] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 }

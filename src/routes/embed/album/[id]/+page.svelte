@@ -7,6 +7,9 @@
 	import { playerStore } from '$lib/stores/player';
 	import { LoaderCircle, Play, Pause, ExternalLink } from 'lucide-svelte';
 	import { formatArtists } from '$lib/utils';
+	import { isSonglinkTrack } from '$lib/types';
+	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
+	import AlbumLink from '$lib/components/AlbumLink.svelte';
 	import { APP_VERSION } from '$lib/version';
 
 	let album = $state<Album | null>(null);
@@ -28,7 +31,7 @@
 		try {
             const referrer = document.referrer;
             const host = referrer ? new URL(referrer).hostname : 'direct';
-            umami.track('embed_loaded', { host, type: 'album' });
+            umami?.track('embed_loaded', { host, type: 'album' });
         } catch {}
 
 		if (albumId) {
@@ -106,8 +109,14 @@
                 </button>
             </div>
             <div class="details">
-                <h1 class="title" title={album.title}>{album.title}</h1>
-                <p class="artist" title={album.artist.name}>{album.artist.name}</p>
+                <h1 class="title" title={album.title}>
+					<AlbumLink album={album} />
+				</h1>
+                <p class="artist">
+					{#if album.artist}
+						<ArtistLinks artists={[album.artist]} />
+					{/if}
+				</p>
                 <a href="/album/{album.id}" target="_blank" class="open-link">
                     <span>Open Album in BiniLossless</span>
                     <ExternalLink size={12} />
@@ -137,11 +146,11 @@
             </div>
         {/if}
 
-        {#if $playerStore.currentTrack}
+        {#if $playerStore.currentTrack && !isSonglinkTrack($playerStore.currentTrack) && $playerStore.currentTrack.album}
             <div class="now-playing-bar" transition:slide={{ axis: 'y', duration: 200 }}>
-                <img 
-                    src={losslessAPI.getCoverUrl($playerStore.currentTrack.album.cover, '80')} 
-                    alt={$playerStore.currentTrack.title} 
+                <img
+                    src={losslessAPI.getCoverUrl($playerStore.currentTrack.album.cover, '80')}
+                    alt={$playerStore.currentTrack.title}
                     class="np-cover"
                 />
                 <div class="np-info">

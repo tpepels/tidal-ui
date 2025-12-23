@@ -10,7 +10,7 @@
 	onMount(() => {
 		if (APP_VERSION) {
 			try {
-				umami.track('app_loaded', { version: APP_VERSION, host: window.location.hostname } );
+				umami?.track('app_loaded', { version: APP_VERSION, host: window.location.hostname } );
 			} catch {}
 		}
 	});

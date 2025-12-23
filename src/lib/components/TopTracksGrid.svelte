@@ -7,6 +7,9 @@
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { formatArtists } from '$lib/utils';
 	import { Play, Pause, Download, ListPlus, Plus, Clock, X } from 'lucide-svelte';
+	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
+	import AlbumLink from '$lib/components/AlbumLink.svelte';
+	import LazyImage from '$lib/components/LazyImage.svelte';
 
 	interface Props {
 		tracks: Track[];
@@ -208,7 +211,7 @@
 					</button>
 
 					{#if track.album?.cover}
-						<img
+						<LazyImage
 							src={losslessAPI.getCoverUrl(track.album.cover, '320')}
 							alt={track.title}
 							class="h-20 w-20 flex-shrink-0 rounded-lg object-cover shadow-lg"
@@ -227,9 +230,13 @@
 							{/if}
 						</h3>
 						<div class="mt-1 space-y-1 text-sm text-gray-400">
-							<p class="truncate">{formatArtists(track.artists)}</p>
+							<p class="truncate">
+								<ArtistLinks artists={track.artists} />
+							</p>
 							{#if track.album}
-								<p class="truncate text-xs text-gray-500">{track.album.title}</p>
+								<p class="truncate text-xs text-gray-500">
+									<AlbumLink album={track.album} />
+								</p>
 							{/if}
 						</div>
 						{#if getDisplayTags(track.mediaMetadata?.tags).length > 0}

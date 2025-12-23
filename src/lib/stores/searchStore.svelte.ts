@@ -12,7 +12,15 @@ class SearchStore {
 	artists = $state<Artist[]>([]);
 	playlists = $state<Playlist[]>([]);
 	error = $state<string | null>(null);
-	
+
+	// Advanced filters
+	minDuration = $state<number | null>(null);
+	maxDuration = $state<number | null>(null);
+	minYear = $state<number | null>(null);
+	maxYear = $state<number | null>(null);
+	genres = $state<string[]>([]);
+	explicitFilter = $state<'all' | 'explicit' | 'clean'>('all');
+
 	// Playlist conversion state
 	isPlaylistConversionMode = $state(false);
 	playlistConversionTotal = $state(0);
@@ -30,6 +38,12 @@ class SearchStore {
 					this.albums = data.albums ?? [];
 					this.artists = data.artists ?? [];
 					this.playlists = data.playlists ?? [];
+					this.minDuration = data.minDuration ?? null;
+					this.maxDuration = data.maxDuration ?? null;
+					this.minYear = data.minYear ?? null;
+					this.maxYear = data.maxYear ?? null;
+					this.genres = data.genres ?? [];
+					this.explicitFilter = data.explicitFilter ?? 'all';
 					this.isPlaylistConversionMode = data.isPlaylistConversionMode ?? false;
 					this.playlistConversionTotal = data.playlistConversionTotal ?? 0;
 				} catch (e) {
@@ -46,6 +60,12 @@ class SearchStore {
 						albums: this.albums,
 						artists: this.artists,
 						playlists: this.playlists,
+						minDuration: this.minDuration,
+						maxDuration: this.maxDuration,
+						minYear: this.minYear,
+						maxYear: this.maxYear,
+						genres: this.genres,
+						explicitFilter: this.explicitFilter,
 						isPlaylistConversionMode: this.isPlaylistConversionMode,
 						playlistConversionTotal: this.playlistConversionTotal
 					};
@@ -68,9 +88,57 @@ class SearchStore {
 		this.artists = [];
 		this.playlists = [];
 		this.error = null;
+		this.minDuration = null;
+		this.maxDuration = null;
+		this.minYear = null;
+		this.maxYear = null;
+		this.genres = [];
+		this.explicitFilter = 'all';
 		this.isPlaylistConversionMode = false;
 		this.playlistConversionTotal = 0;
 		this.playlistLoadingMessage = null;
+	}
+
+	setDurationFilter(min: number | null, max: number | null) {
+		this.minDuration = min;
+		this.maxDuration = max;
+	}
+
+	setYearFilter(min: number | null, max: number | null) {
+		this.minYear = min;
+		this.maxYear = max;
+	}
+
+	toggleGenre(genre: string) {
+		if (this.genres.includes(genre)) {
+			this.genres = this.genres.filter((g) => g !== genre);
+		} else {
+			this.genres = [...this.genres, genre];
+		}
+	}
+
+	setExplicitFilter(filter: 'all' | 'explicit' | 'clean') {
+		this.explicitFilter = filter;
+	}
+
+	clearFilters() {
+		this.minDuration = null;
+		this.maxDuration = null;
+		this.minYear = null;
+		this.maxYear = null;
+		this.genres = [];
+		this.explicitFilter = 'all';
+	}
+
+	hasActiveFilters(): boolean {
+		return (
+			this.minDuration !== null ||
+			this.maxDuration !== null ||
+			this.minYear !== null ||
+			this.maxYear !== null ||
+			this.genres.length > 0 ||
+			this.explicitFilter !== 'all'
+		);
 	}
 }
 

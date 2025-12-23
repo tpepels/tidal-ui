@@ -51,6 +51,8 @@
 		Copy,
 		Code
 	} from 'lucide-svelte';
+	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
+	import AlbumLink from '$lib/components/AlbumLink.svelte';
 
 	import { searchStore, type SearchTab } from '$lib/stores/searchStore.svelte';
 
@@ -609,7 +611,6 @@
 
 		try {
 			const platformName = getPlatformName(searchStore.query.trim());
-			console.log(`Converting ${platformName || 'streaming'} URL to TIDAL...`);
 
 			const tidalInfo = await convertToTidal(searchStore.query.trim(), {
 				userCountry: 'US',
@@ -622,7 +623,6 @@
 				return;
 			}
 
-			console.log('Converted to TIDAL:', tidalInfo);
 
 			// Load the TIDAL content based on type
 			switch (tidalInfo.type) {
@@ -633,7 +633,6 @@
 						try {
 							const quality = $playerStore.quality;
 							await losslessAPI.getStreamUrl(trackLookup.track.id, quality);
-							console.log(`Cached stream for track ${trackLookup.track.id}`);
 						} catch (cacheErr) {
 							console.warn(`Failed to cache stream for track ${trackLookup.track.id}:`, cacheErr);
 						}
@@ -682,7 +681,6 @@
 		searchStore.isLoading = true;
 
 		try {
-			console.log('Fetching Spotify playlist tracks...');
 
 			// Step 1: Get all Spotify track URLs from the playlist
 			const spotifyTrackUrls = await convertSpotifyPlaylist(searchStore.query.trim());
@@ -696,7 +694,6 @@
 				return;
 			}
 
-			console.log(`Found ${spotifyTrackUrls.length} tracks in playlist`);
 			searchStore.playlistConversionTotal = spotifyTrackUrls.length;
 			searchStore.playlistLoadingMessage = `Loading ${spotifyTrackUrls.length} tracks...`;
 
@@ -764,9 +761,7 @@
 			// Update tracks all at once for better performance
 			searchStore.tracks = successfulTracks;
 
-			console.log(
-				`Successfully loaded ${searchStore.tracks.length}/${spotifyTrackUrls.length} tracks`
-			);
+
 
 			if (searchStore.tracks.length === 0) {
 				searchStore.error = 'Could not find TIDAL equivalents for any tracks in this playlist.';
@@ -1511,7 +1506,9 @@
 								{/if}
 							</h3>
 							{#if album.artist}
-								<p class="truncate text-sm text-gray-400">{album.artist.name}</p>
+								<p class="truncate text-sm text-gray-400">
+									<ArtistLinks artists={[album.artist]} />
+								</p>
 							{/if}
 							{#if album.releaseDate}
 								<p class="text-xs text-gray-500">{album.releaseDate.split('-')[0]}</p>

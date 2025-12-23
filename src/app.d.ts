@@ -8,25 +8,31 @@ declare global {
 		// interface PageState {}
 		// interface Platform {}
 	}
+
+	const umami:
+		| {
+				track: (event: string, data?: Record<string, any>) => void;
+		  }
+		| undefined;
 }
 
-	declare module 'shaka-player/dist/shaka-player.compiled.js' {
-		const shaka: {
-			Player: new (mediaElement: HTMLMediaElement) => {
-				load(uri: string): Promise<void>;
-				unload(): Promise<void>;
-				destroy(): Promise<void>;
-				getNetworkingEngine?: () => {
-					registerRequestFilter: (
-						callback: (type: unknown, request: { method: string; uris: string[] }) => void
-					) => void;
-				};
-			};
-			polyfill?: {
-				installAll?: () => void;
+declare module 'shaka-player/dist/shaka-player.compiled.js' {
+	const shaka: {
+		Player: new (mediaElement: HTMLMediaElement) => {
+			load(uri: string): Promise<void>;
+			unload(): Promise<void>;
+			destroy(): Promise<void>;
+			getNetworkingEngine?: () => {
+				registerRequestFilter: (
+					callback: (type: unknown, request: { method: string; uris: string[] }) => void
+				) => void;
 			};
 		};
-		export default shaka;
-	}
+		polyfill?: {
+			installAll?: () => void;
+		};
+	};
+	export default shaka;
+}
 
 export {};

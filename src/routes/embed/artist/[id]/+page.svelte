@@ -7,6 +7,7 @@
 	import { playerStore } from '$lib/stores/player';
 	import { LoaderCircle, Play, Pause, ExternalLink } from 'lucide-svelte';
 	import { APP_VERSION } from '$lib/version';
+	import { isSonglinkTrack } from '$lib/types';
 
 	let artist = $state<ArtistDetails | null>(null);
     let tracks = $state<Track[]>([]);
@@ -27,7 +28,7 @@
 		try {
             const referrer = document.referrer;
             const host = referrer ? new URL(referrer).hostname : 'direct';
-            umami.track('embed_loaded', { host, type: 'artist' });
+            umami?.track('embed_loaded', { host, type: 'artist' });
         } catch {}
 
 		if (artistId) {
@@ -144,11 +145,11 @@
             </div>
         {/if}
 
-        {#if $playerStore.currentTrack}
+        {#if $playerStore.currentTrack && !isSonglinkTrack($playerStore.currentTrack) && $playerStore.currentTrack.album}
             <div class="now-playing-bar" transition:slide={{ axis: 'y', duration: 200 }}>
-                <img 
-                    src={losslessAPI.getCoverUrl($playerStore.currentTrack.album.cover, '80')} 
-                    alt={$playerStore.currentTrack.title} 
+                <img
+                    src={losslessAPI.getCoverUrl($playerStore.currentTrack.album.cover, '80')}
+                    alt={$playerStore.currentTrack.title}
                     class="np-cover"
                 />
                 <div class="np-info">

@@ -46,17 +46,14 @@ export function createDownloadLogStore() {
 			addEntry(message, 'warning');
 		},
 		show: () => {
-			console.log('[DownloadLogStore] Showing log panel');
 			update((state) => ({ ...state, isVisible: true }));
 		},
 		hide: () => {
-			console.log('[DownloadLogStore] Hiding log panel');
 			update((state) => ({ ...state, isVisible: false }));
 		},
 		toggle: () => {
 			update((state) => {
 				const newState = { ...state, isVisible: !state.isVisible };
-				console.log('[DownloadLogStore] Toggled visibility to:', newState.isVisible);
 				return newState;
 			});
 		},

@@ -25,13 +25,11 @@ export const POST: RequestHandler = async ({ request, params }) => {
             );
         }
 
-        console.log(`[Server Download] [${uploadId}] Blob upload received`);
 
         // Phase 2: Blob POST (with uploadId in path)
         const uploadData = pendingUploads.get(uploadId);
         if (!uploadData) {
             console.error(`[Server Download] [${uploadId}] Upload session not found`);
-            console.log(`[Server Download] Available upload IDs:`, Array.from(pendingUploads.keys()));
             return json(
                 { error: 'Upload session not found or expired' },
                 { status: 404 }
@@ -47,7 +45,6 @@ export const POST: RequestHandler = async ({ request, params }) => {
 
         const { trackId, quality, albumTitle, artistName, trackTitle } = uploadData;
 
-        console.log(`[Server Download] [${uploadId}] Processing blob: ${trackTitle} (${(arrayBuffer.byteLength / 1024 / 1024).toFixed(2)} MB)`);
 
         // Determine file extension based on quality
         let ext = 'm4a';
@@ -90,7 +87,6 @@ export const POST: RequestHandler = async ({ request, params }) => {
         pendingUploads.delete(uploadId);
 
         const sizeInMB = (buffer.length / 1024 / 1024).toFixed(2);
-        console.log(`[Server Download] [${uploadId}] ✓ Saved to: ${filepath} (${sizeInMB} MB, metadata embedded client-side)`);
 
         return json(
             {

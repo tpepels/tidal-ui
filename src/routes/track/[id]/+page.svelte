@@ -131,7 +131,7 @@
 				console.error('Failed to download track:', error);
 				const fallbackMessage = 'Failed to download track. Please try again.';
 				const message = error instanceof Error ? error.message : fallbackMessage;
-				downloadUiStore.failTrackDownload(taskId, message);
+				downloadUiStore.cancelTrackDownload(taskId);
 			}
 		} finally {
 			isDownloading = false;

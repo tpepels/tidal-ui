@@ -26,7 +26,7 @@
         try {
             const referrer = document.referrer;
             const host = referrer ? new URL(referrer).hostname : 'direct';
-            umami.track('embed_loaded', { host, type: 'track' });
+            umami?.track('embed_loaded', { host, type: 'track' });
         } catch {}
 
 		if (trackId) {
@@ -57,7 +57,6 @@
 	}
 
     function formatQuality(info: TrackInfo | null): string | null {
-        console.log(info);
         if (!info) return null;
         if (info.bitDepth && info.sampleRate) {
             return `${info.bitDepth}-bit / ${info.sampleRate / 1000} kHz FLAC`;

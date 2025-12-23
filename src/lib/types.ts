@@ -1,5 +1,9 @@
 // Type definitions based on HIFI API
 
+// ============================================================================
+// TRACK TYPES
+// ============================================================================
+
 export interface Track {
 	id: number;
 	title: string;
@@ -30,6 +34,10 @@ export interface Track {
 	};
 }
 
+// ============================================================================
+// ARTIST TYPES
+// ============================================================================
+
 export interface Artist {
 	id: number;
 	name: string;
@@ -49,6 +57,10 @@ export interface ArtistDetails extends Artist {
 	albums: Album[];
 	tracks: Track[];
 }
+
+// ============================================================================
+// ALBUM TYPES
+// ============================================================================
 
 export interface Album {
 	id: number;
@@ -77,6 +89,10 @@ export interface Album {
 		tags: string[];
 	};
 }
+
+// ============================================================================
+// PLAYLIST TYPES
+// ============================================================================
 
 export interface Playlist {
 	uuid: string;
@@ -116,6 +132,10 @@ export interface TrackInfo {
 	bitDepth?: number;
 	sampleRate?: number;
 }
+
+// ============================================================================
+// API RESPONSE TYPES
+// ============================================================================
 
 export interface SearchResponse<T> {
 	limit: number;

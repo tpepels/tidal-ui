@@ -519,7 +519,6 @@
 	}
 
 	function handleContextRestored() {
-		console.log('WebGL context restored');
 		initializeWebGL();
 	}
 

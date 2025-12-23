@@ -279,13 +279,6 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 		});
 	}
 
-	if (!isProxyTarget(parsedTarget)) {
-		return new Response(JSON.stringify({ error: 'Invalid target host' }), {
-			status: 400,
-			headers: { 'Content-Type': 'application/json' }
-		});
-	}
-
 	const upstreamHeaders = new Headers();
 	let hasRangeRequest = false;
 	let hasAuthorizationHeader = false;
@@ -309,7 +302,13 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 	});
 
 	if (!upstreamHeaders.has('User-Agent')) {
-		upstreamHeaders.set('User-Agent', 'Mozilla/5.0 (compatible; TIDAL-UI/1.0)');
+		upstreamHeaders.set(
+			'User-Agent',
+			'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+		);
+	}
+	if (!upstreamHeaders.has('Referer')) {
+		upstreamHeaders.set('Referer', 'https://tidal.com/');
 	}
 
 	// Force identity encoding so the upstream sends plain data that Node can forward without zstd artifacts.

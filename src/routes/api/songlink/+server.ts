@@ -102,7 +102,6 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 			// Try the other API
 			const secondUrl = shouldTryBackupFirst ? primaryUrl : backupUrl;
 			const secondSource = shouldTryBackupFirst ? 'primary' : 'backup';
-			console.log(`Attempting ${secondSource} Songlink API...`);
 
 			const backupResponse = await fetch(secondUrl, {
 				headers: {
@@ -161,7 +160,6 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 
 		// Try backup API as last resort
 		try {
-			console.log('Primary API threw exception, trying backup...');
 			const backupUrl = buildSonglinkUrl(params, true);
 
 			const backupResponse = await fetch(backupUrl, {

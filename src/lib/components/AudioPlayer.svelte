@@ -5,7 +5,7 @@
 	import { lyricsStore } from '$lib/stores/lyrics';
 	import { losslessAPI, DASH_MANIFEST_UNAVAILABLE_CODE, type TrackDownloadProgress } from '$lib/api';
 	import type { DashManifestResult, DashManifestWithMetadata } from '$lib/api';
-	import { getProxiedUrl } from '$lib/config';
+	import { getProxiedUrl, API_CONFIG } from '$lib/config';
 	import { downloadUiStore, ffmpegBanner, activeTrackDownloads } from '$lib/stores/downloadUi';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { sanitizeForFilename, getExtensionForQuality, buildTrackFilename } from '$lib/downloads';
@@ -14,6 +14,7 @@
 	import type { Track, AudioQuality, SonglinkTrack, PlayableTrack } from '$lib/types';
 	import { isSonglinkTrack } from '$lib/types';
 	import { convertToTidal, extractTidalInfo } from '$lib/utils/songlink';
+	import LazyImage from '$lib/components/LazyImage.svelte';
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import {
@@ -196,7 +197,6 @@ let pendingPlayAfterSource = false;
 			throw new Error('Audio element not ready for Shaka initialization');
 		}
 		if (!shakaNamespace) {
-			// @ts-expect-error Shaka Player's compiled bundle does not expose module typings.
 			const module = await import('shaka-player/dist/shaka-player.compiled.js');
 			const resolved =
 				(module as ShakaModule | { default: ShakaNamespace }).default ??
@@ -221,9 +221,7 @@ let pendingPlayAfterSource = false;
 					if (request.method === 'HEAD') {
 						request.method = 'GET';
 					}
-					if (Array.isArray(request.uris)) {
-						request.uris = request.uris.map((uri) => getProxiedUrl(uri));
-					}
+					// No proxying for DASH segments - assume CORS is allowed
 				});
 				shakaNetworkingConfigured = true;
 			}
@@ -268,7 +266,7 @@ let pendingPlayAfterSource = false;
 		if (!fallbackUrl) {
 			return;
 		}
-		const proxied = getProxiedUrl(fallbackUrl);
+		const proxied = fallbackUrl;
 		streamCache.set(getCacheKey(trackId, 'LOSSLESS'), {
 			url: proxied,
 			replayGain: trackInfo?.replayGain ?? null,
@@ -297,9 +295,8 @@ let pendingPlayAfterSource = false;
 		}
 
 		const data = await losslessAPI.getStreamData(track.id, quality);
-		const proxied = getProxiedUrl(data.url);
 		const entry = {
-			url: proxied,
+			url: data.url,
 			replayGain: data.replayGain,
 			sampleRate: data.sampleRate,
 			bitDepth: data.bitDepth
@@ -367,7 +364,6 @@ let pendingPlayAfterSource = false;
 	}
 
 	async function convertSonglinkTrackToTidal(songlinkTrack: SonglinkTrack): Promise<Track> {
-		console.log('Converting SonglinkTrack to TIDAL:', songlinkTrack.title);
 
 		if (songlinkTrack.tidalId) {
 			try {
@@ -438,7 +434,6 @@ let pendingPlayAfterSource = false;
 			throw new Error(`Failed to fetch TIDAL track for: ${songlinkTrack.title}`);
 		}
 
-		console.log('Successfully converted to TIDAL track:', trackLookup.track.title);
 		return trackLookup.track;
 	}
 
@@ -463,29 +458,23 @@ let pendingPlayAfterSource = false;
 	$effect(() => {
 		const current = $playerStore.currentTrack;
 		if (current && isSonglinkTrack(current)) {
-			console.log('[Conversion Effect] Detected SonglinkTrack:', current.title, 'ID:', current.id);
 
 			if (convertingTracks.has(current.id)) {
-				console.log('[Conversion Effect] Track already being converted, skipping');
 				return;
 			}
 
 			convertingTracks.add(current.id);
-			console.log('[Conversion Effect] Starting conversion for:', current.title);
 
 			convertSonglinkTrackToTidal(current)
 				.then((tidalTrack) => {
-					console.log('[Conversion Effect] Conversion SUCCESS:', tidalTrack.title, 'TIDAL ID:', tidalTrack.id);
 					const state = get(playerStore);
 					if (
 						state.currentTrack &&
 						isSonglinkTrack(state.currentTrack) &&
 						state.currentTrack.id === current.id
 					) {
-						console.log('[Conversion Effect] Updating player with converted track');
 						playerStore.setTrack(tidalTrack);
 					} else {
-						console.log('[Conversion Effect] Track changed during conversion, not updating');
 					}
 				})
 				.catch((error) => {
@@ -494,7 +483,6 @@ let pendingPlayAfterSource = false;
 				})
 				.finally(() => {
 					convertingTracks.delete(current.id);
-					console.log('[Conversion Effect] Finished conversion attempt for:', current.title);
 				});
 		}
 	});
@@ -725,20 +713,8 @@ let pendingPlayAfterSource = false;
 		}
 
 		try {
-			if (!supportsLosslessPlayback) {
-				const requiresFlac = requestedQuality === 'LOSSLESS' || isHiResQuality(requestedQuality);
-				if (requiresFlac) {
-					console.warn(
-						'[AudioPlayer] Lossless playback unsupported; falling back to streaming quality.'
-					);
-					await loadStandardTrack(tidalTrack, 'HIGH', sequence);
-					console.info(
-						'[AudioPlayer] Streaming fallback loaded successfully for track',
-						tidalTrack.id
-					);
-					return;
-				}
-			}
+			// For LOSSLESS quality, always attempt to load first and let error handling do the fallback
+			// The supportsLosslessPlayback check is too aggressive and prevents valid attempts
 
 			if (isHiResQuality(requestedQuality)) {
 				try {
@@ -1404,7 +1380,7 @@ let pendingPlayAfterSource = false;
 		if (typeof window !== 'undefined') {
 			const probe = document.createElement('audio');
 			const support = probe.canPlayType?.('audio/flac');
-			const supportedByCodec = Boolean(support && support !== 'no');
+			const supportedByCodec = Boolean(support);
 			if (isFirefox && supportedByCodec) {
 				console.info(
 					'[AudioPlayer] Browser reported FLAC support but running on Firefox; forcing streaming fallback.'
@@ -1642,9 +1618,9 @@ let pendingPlayAfterSource = false;
 							</div>
 						</div>
 
-						<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+						<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 							{#if $playerStore.currentTrack}
-								<div class="flex min-w-0 items-center gap-3 sm:flex-1">
+								<div class="flex min-w-0 items-center gap-2 sm:gap-3 sm:flex-1">
 									{#if !isSonglinkTrack($playerStore.currentTrack)}
 										{#if asTrack($playerStore.currentTrack).album.videoCover}
 											<video
@@ -1653,26 +1629,26 @@ let pendingPlayAfterSource = false;
 												loop
 												muted
 												playsinline
-												class="h-16 w-16 flex-shrink-0 rounded-md object-cover"
+												class="h-12 w-12 sm:h-16 sm:w-16 flex-shrink-0 rounded-md object-cover"
 											></video>
 										{:else if asTrack($playerStore.currentTrack).album.cover}
-											<img
+											<LazyImage
 												src={losslessAPI.getCoverUrl(asTrack($playerStore.currentTrack).album.cover!, '640')}
 												alt={$playerStore.currentTrack.title}
-												class="h-16 w-16 flex-shrink-0 rounded-md object-cover"
+												class="h-12 w-12 sm:h-16 sm:w-16 flex-shrink-0 rounded-md object-cover"
 											/>
 										{/if}
 									{/if}
 									<div class="min-w-0 flex-1">
-										<h3 class="truncate font-semibold text-white">
+										<h3 class="truncate font-semibold text-white text-sm sm:text-base">
 											{$playerStore.currentTrack.title}{!isSonglinkTrack($playerStore.currentTrack) && asTrack($playerStore.currentTrack).version ? ` (${asTrack($playerStore.currentTrack).version})` : ''}
 										</h3>
 										{#if isSonglinkTrack($playerStore.currentTrack)}
-											<p class="truncate text-sm text-gray-400">{$playerStore.currentTrack.artistName}</p>
+											<p class="truncate text-xs sm:text-sm text-gray-400">{$playerStore.currentTrack.artistName}</p>
 										{:else}
 											<a
 												href={`/artist/${asTrack($playerStore.currentTrack).artist.id}`}
-												class="truncate text-sm text-gray-400 hover:text-blue-400 hover:underline inline-block"
+												class="truncate text-xs sm:text-sm text-gray-400 hover:text-blue-400 hover:underline inline-block"
 												data-sveltekit-preload-data
 											>
 												{formatArtists(asTrack($playerStore.currentTrack).artists)}
@@ -1686,20 +1662,16 @@ let pendingPlayAfterSource = false;
 													{asTrack($playerStore.currentTrack).album.title}
 												</a>
 												{#if currentPlaybackQuality}
-													<span class="mx-1" aria-hidden="true">•</span>
-													<span>{formatQualityLabel(currentPlaybackQuality)}</span>
-												{/if}
-												{#if currentPlaybackQuality && asTrack($playerStore.currentTrack).audioQuality && currentPlaybackQuality !== asTrack($playerStore.currentTrack).audioQuality}
-													<span class="mx-1 text-gray-600" aria-hidden="true">•</span>
-													<span class="text-gray-500">({formatQualityLabel(asTrack($playerStore.currentTrack).audioQuality)} available)</span>
+													<span class="mx-0.5 sm:mx-1" aria-hidden="true">•</span>
+													<span class="text-xs sm:text-sm">{formatQualityLabel(currentPlaybackQuality)}</span>
 												{/if}
 												{#if bitDepthLabel}
-													<span class="mx-1 text-gray-600" aria-hidden="true">•</span>
-													<span>{bitDepthLabel}</span>
+													<span class="mx-0.5 sm:mx-1 text-gray-600" aria-hidden="true">•</span>
+													<span class="text-xs sm:text-sm">{bitDepthLabel}</span>
 												{/if}
 												{#if sampleRateLabel}
-													<span class="mx-1 text-gray-600" aria-hidden="true">•</span>
-													<span>{sampleRateLabel}</span>
+													<span class="mx-0.5 sm:mx-1 text-gray-600" aria-hidden="true">•</span>
+													<span class="text-xs sm:text-sm">{sampleRateLabel}</span>
 												{/if}
 											</p>
 										{/if}
@@ -1707,73 +1679,85 @@ let pendingPlayAfterSource = false;
 								</div>
 							{/if}
 
-							<div class="flex flex-nowrap items-center justify-between gap-2 sm:gap-4">
-								<div class="flex items-center justify-center gap-1 sm:gap-2">
+							<div class="flex flex-nowrap items-center justify-between gap-1 sm:gap-4">
+								<div class="flex items-center justify-center gap-0.5 sm:gap-2">
 									<button
 										onclick={handlePrevious}
-										class="p-1.5 sm:p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
+										class="p-1 sm:p-1.5 md:p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
 										disabled={false}
 										aria-label="Previous track"
 									>
-										<SkipBack size={18} class="sm:w-5 sm:h-5" />
+										<SkipBack size={16} class="sm:w-4 sm:h-4 md:w-5 md:h-5" />
 									</button>
 
 									<button
 										onclick={() => playerStore.togglePlay()}
-										class="rounded-full bg-white p-2.5 sm:p-3 text-gray-900 transition-transform hover:scale-105"
+										class="rounded-full bg-white p-2 sm:p-2.5 md:p-3 text-gray-900 transition-transform hover:scale-105"
 										aria-label={$playerStore.isPlaying ? 'Pause' : 'Play'}
 									>
 										{#if $playerStore.isPlaying}
-											<Pause size={20} class="sm:w-6 sm:h-6" fill="currentColor" />
+											<Pause size={18} class="sm:w-5 sm:h-5 md:w-6 md:h-6" fill="currentColor" />
 										{:else}
-											<Play size={20} class="sm:w-6 sm:h-6" fill="currentColor" />
+											<Play size={18} class="sm:w-5 sm:h-5 md:w-6 md:h-6" fill="currentColor" />
 										{/if}
 									</button>
 
 									<button
 										onclick={() => playerStore.next()}
-										class="p-1.5 sm:p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
+										class="p-1 sm:p-1.5 md:p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
 										disabled={$playerStore.queueIndex >= $playerStore.queue.length - 1}
 										aria-label="Next track"
 									>
-										<SkipForward size={18} class="sm:w-5 sm:h-5" />
+										<SkipForward size={16} class="sm:w-4 sm:h-4 md:w-5 md:h-5" />
 									</button>
 								</div>
 
-								<div class="flex items-center gap-1 sm:gap-2">
+								<div class="flex items-center gap-0.5 sm:gap-2">
+									<button
+										onclick={toggleMute}
+										class="player-toggle-button p-1 sm:hidden"
+										aria-label={isMuted ? 'Unmute' : 'Mute'}
+										type="button"
+									>
+										{#if isMuted || $playerStore.volume === 0}
+											<VolumeX size={14} />
+										{:else}
+											<Volume2 size={14} />
+										{/if}
+									</button>
 									<button
 										onclick={handleDownloadCurrentTrack}
-										class="player-toggle-button p-1.5 sm:p-2"
+										class="player-toggle-button p-1 sm:p-1.5 md:p-2"
 										aria-label="Download current track"
 										type="button"
 										disabled={!$playerStore.currentTrack || isDownloadingCurrentTrack}
 									>
 										{#if isDownloadingCurrentTrack}
-											<LoaderCircle size={16} class="sm:w-[18px] sm:h-[18px] animate-spin" />
+											<LoaderCircle size={14} class="sm:w-4 sm:h-4 md:w-[18px] md:h-[18px] animate-spin" />
 										{:else}
-											<Download size={16} class="sm:w-[18px] sm:h-[18px]" />
+											<Download size={14} class="sm:w-4 sm:h-4 md:w-[18px] md:h-[18px]" />
 										{/if}
-										<span class="hidden sm:inline">Download</span>
+										<span class="hidden md:inline">Download</span>
 									</button>
 									<button
 										onclick={() => lyricsStore.toggle()}
-										class="player-toggle-button p-1.5 sm:p-2 {$lyricsStore.open ? 'player-toggle-button--active' : ''}"
+										class="player-toggle-button p-1 sm:p-1.5 md:p-2 {$lyricsStore.open ? 'player-toggle-button--active' : ''}"
 										aria-label={$lyricsStore.open ? 'Hide lyrics popup' : 'Show lyrics popup'}
 										aria-expanded={$lyricsStore.open}
 										type="button"
 									>
-										<ScrollText size={16} class="sm:w-[18px] sm:h-[18px]" />
-										<span class="hidden sm:inline">Lyrics</span>
+										<ScrollText size={14} class="sm:w-4 sm:h-4 md:w-[18px] md:h-[18px]" />
+										<span class="hidden md:inline">Lyrics</span>
 									</button>
 									<button
 										onclick={toggleQueuePanel}
-										class="player-toggle-button p-1.5 sm:p-2 {showQueuePanel ? 'player-toggle-button--active' : ''}"
+										class="player-toggle-button p-1 sm:p-1.5 md:p-2 {showQueuePanel ? 'player-toggle-button--active' : ''}"
 										aria-label="Toggle queue panel"
 										aria-expanded={showQueuePanel}
 										type="button"
 									>
-										<ListMusic size={16} class="sm:w-[18px] sm:h-[18px]" />
-										<span class="hidden sm:inline">Queue ({$playerStore.queue.length})</span>
+										<ListMusic size={14} class="sm:w-4 sm:h-4 md:w-[18px] md:h-[18px]" />
+										<span class="hidden md:inline">Queue ({$playerStore.queue.length})</span>
 									</button>
 								</div>
 

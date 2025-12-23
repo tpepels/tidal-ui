@@ -7,6 +7,9 @@
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { formatArtists } from '$lib/utils';
 	import ShareButton from '$lib/components/ShareButton.svelte';
+	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
+	import AlbumLink from '$lib/components/AlbumLink.svelte';
+	import LazyImage from '$lib/components/LazyImage.svelte';
 	import { Play, Pause, Download, Clock, Plus, ListPlus, X } from 'lucide-svelte';
 
 	interface Props {
@@ -206,7 +209,7 @@
 
 					<!-- Cover -->
 					{#if showCover && track.album.cover}
-						<img
+						<LazyImage
 							src={losslessAPI.getCoverUrl(track.album.cover, '320')}
 							alt={track.title}
 							class="h-16 w-16 flex-shrink-0 rounded object-cover"
@@ -240,40 +243,13 @@
 						</button>
 						<div class="flex flex-wrap items-center gap-2 text-sm text-gray-400">
 							{#if showArtist && track.artists?.length}
-								<div class="flex flex-wrap items-center gap-1 max-w-full">
-									{#each track.artists as artist, idx (artist?.id ?? `${track.id}-${idx}`)}
-										{#if artist?.id}
-											<a
-												href={`/artist/${artist.id}`}
-												class="hover:text-blue-400 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-400"
-												data-sveltekit-preload-data
-											>
-												{artist?.name ?? 'Unknown Artist'}
-											</a>
-										{:else}
-											<span>{artist?.name ?? 'Unknown Artist'}</span>
-										{/if}
-										{#if idx < track.artists.length - 1}
-											<span class="text-gray-500">,</span>
-										{/if}
-									{/each}
-								</div>
+								<ArtistLinks artists={track.artists} />
 							{/if}
 							{#if showAlbum && showArtist && track.album?.title}
 								<span>•</span>
 							{/if}
 							{#if showAlbum && track.album?.title}
-								{#if track.album?.id}
-									<a
-										href={`/album/${track.album.id}`}
-										class="truncate hover:text-blue-400 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-400"
-										data-sveltekit-preload-data
-									>
-										{track.album.title}
-									</a>
-								{:else}
-									<span class="truncate">{track.album.title}</span>
-								{/if}
+								<AlbumLink album={track.album} />
 							{/if}
 						</div>
 						<div class="mt-0.5 text-xs text-gray-500">
