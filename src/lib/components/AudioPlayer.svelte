@@ -222,11 +222,24 @@ let pendingPlayAfterSource = false;
 						request.method = 'GET';
 					}
 					if (Array.isArray(request.uris)) {
-						request.uris = request.uris.map((uri) =>
-							API_CONFIG.useProxy && API_CONFIG.proxyUrl
+						request.uris = request.uris.map((uri) => {
+							// Don't proxy blob URLs, data URLs, or already proxied URLs
+							if (uri.startsWith('blob:') || uri.startsWith('data:') || uri.includes('/api/proxy')) {
+								return uri;
+							}
+							// Decode the URI first to check if it's already a proxy URL
+							try {
+								const decoded = decodeURIComponent(uri);
+								if (decoded.includes('/api/proxy')) {
+									return uri;
+								}
+							} catch {
+								// If decoding fails, proceed with proxying
+							}
+							return API_CONFIG.useProxy && API_CONFIG.proxyUrl
 								? `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(uri)}`
-								: uri
-						);
+								: uri;
+						});
 					}
 				});
 				shakaNetworkingConfigured = true;

@@ -181,7 +181,7 @@
 	}
 
 	.download-log-container.is-visible {
-		height: 300px;
+		height: 450px;
 	}
 
 	.download-log-panel {
