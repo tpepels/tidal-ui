@@ -4,6 +4,7 @@ import { browser } from '$app/environment';
 import type { Track, AudioQuality, PlayableTrack } from '$lib/types';
 import { deriveTrackQuality } from '$lib/utils/audioQuality';
 import { userPreferencesStore } from '$lib/stores/userPreferences';
+import { loadFromStorage, debouncedSave } from '$lib/utils/persistence';
 
 interface PlayerState {
 	currentTrack: PlayableTrack | null;
@@ -42,20 +43,14 @@ const initialState: PlayerState = {
 function createPlayerStore() {
 	let startState = initialState;
 	if (browser) {
-		try {
-			const stored = sessionStorage.getItem('tidal-player-store');
-			if (stored) {
-				const parsed = JSON.parse(stored);
-				startState = {
-					...initialState,
-					...parsed,
-					isPlaying: false,
-					isLoading: false
-				};
-			}
-		} catch (e) {
-			console.warn('Failed to restore player state', e);
-		}
+		// Load persisted state
+		const persisted = loadFromStorage('player', {});
+		startState = {
+			...initialState,
+			...persisted,
+			isPlaying: false, // Don't persist playing state
+			isLoading: false
+		};
 	}
 
 	const { subscribe, set, update } = writable<PlayerState>(startState);
@@ -76,7 +71,7 @@ function createPlayerStore() {
 					bitDepth: state.bitDepth,
 					replayGain: state.replayGain
 				};
-				sessionStorage.setItem('tidal-player-store', JSON.stringify(toSave));
+				debouncedSave('player', toSave);
 			} catch (e) {
 				console.warn('Failed to save player state', e);
 			}
@@ -108,7 +103,13 @@ function createPlayerStore() {
 		if (track && 'isSonglinkTrack' in track && track.isSonglinkTrack) {
 			return null;
 		}
-		if (state.currentTrack && track && 'id' in state.currentTrack && 'id' in track && state.currentTrack.id === track.id) {
+		if (
+			state.currentTrack &&
+			track &&
+			'id' in state.currentTrack &&
+			'id' in track &&
+			state.currentTrack.id === track.id
+		) {
 			return state.sampleRate;
 		}
 		return null;
@@ -148,9 +149,7 @@ function createPlayerStore() {
 		setQueue: (queue: PlayableTrack[], startIndex: number = 0) =>
 			update((state) => {
 				const hasTracks = queue.length > 0;
-				const clampedIndex = hasTracks
-					? Math.min(Math.max(startIndex, 0), queue.length - 1)
-					: -1;
+				const clampedIndex = hasTracks ? Math.min(Math.max(startIndex, 0), queue.length - 1) : -1;
 				const nextTrack = hasTracks ? queue[clampedIndex]! : null;
 				let next: PlayerState = {
 					...state,
