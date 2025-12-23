@@ -1,5 +1,7 @@
 import { APP_VERSION } from '$lib/version';
 
+import { retryFetch } from './errors';
+
 // CORS Proxy Configuration
 // If you're experiencing CORS issues with the HIFI API, you can set up a proxy
 
@@ -419,7 +421,7 @@ export async function fetchWithCORS(
 
 	const originTarget = findTargetForUrl(resolvedUrl);
 	if (!originTarget) {
-		return fetch(getProxiedUrl(resolvedUrl.toString()), {
+		return retryFetch(getProxiedUrl(resolvedUrl.toString()), {
 			...options
 		});
 	}
@@ -501,7 +503,7 @@ export async function fetchWithCORS(
 		}
 
 		try {
-			const response = await fetch(finalUrl, {
+			const response = await retryFetch(finalUrl, {
 				...options,
 				headers
 			});

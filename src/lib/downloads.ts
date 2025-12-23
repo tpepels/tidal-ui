@@ -5,6 +5,7 @@ import { downloadQueue } from '$lib/stores/downloadQueue';
 import type { DownloadQueueItem } from '$lib/stores/downloadQueue';
 import { downloadLogStore } from '$lib/stores/downloadLog';
 import { downloadUiStore } from '$lib/stores/downloadUi';
+import { retryFetch } from '$lib/errors';
 import { formatArtists } from '$lib/utils';
 import JSZip from 'jszip';
 
@@ -250,8 +251,10 @@ export async function downloadTrackServerSide(
 			};
 		}
 
+		const totalBytes = blob.size;
 		const useChunks = blob.size > 1024 * 1024; // Use chunks for files > 1MB for better progress granularity
 		const chunkSize = options?.chunkSize ?? 1024 * 1024; // 1MB chunks
+		const conflictResolution = options?.conflictResolution ?? 'overwrite_if_different';
 
 		const sizeMsg = `[Server Download] Phase 1: Sending metadata for "${trackTitle}" (${(blob.size / 1024 / 1024).toFixed(2)} MB)${useChunks ? ' (chunked)' : ''}`;
 		downloadLogStore.log(sizeMsg);
@@ -267,7 +270,7 @@ export async function downloadTrackServerSide(
 		// Check if file already exists on server (if requested)
 		if (options?.checkExisting) {
 			try {
-				const checkResponse = await fetch('/api/download-check', {
+				const checkResponse = await retryFetch('/api/download-check', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({
@@ -276,7 +279,9 @@ export async function downloadTrackServerSide(
 						albumTitle,
 						artistName,
 						trackTitle
-					})
+					}),
+					timeout: 5000,
+					maxRetries: 1
 				});
 
 				if (checkResponse.ok) {
@@ -297,7 +302,7 @@ export async function downloadTrackServerSide(
 			}
 		}
 
-		const response = await fetch('/api/download-track', {
+		const response = await retryFetch('/api/download-track', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
@@ -306,12 +311,14 @@ export async function downloadTrackServerSide(
 				albumTitle,
 				artistName,
 				trackTitle,
-				blobSize: blob.size,
+				blobSize: useChunks ? undefined : totalBytes,
 				useChunks,
 				chunkSize,
 				checksum,
-				conflictResolution: options?.conflictResolution || 'overwrite_if_different'
-			})
+				conflictResolution
+			}),
+			timeout: 10000,
+			maxRetries: 2
 		});
 
 		if (!response.ok) {
@@ -407,14 +414,16 @@ async function uploadInChunks(
 		const end = Math.min(start + chunkSize, blob.size);
 		const chunk = blob.slice(start, end);
 
-		const response = await fetch(`/api/download-track/${uploadId}/chunk`, {
+		const response = await retryFetch(`/api/download-track/${uploadId}/chunk`, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/octet-stream',
 				'x-chunk-index': i.toString(),
 				'x-total-chunks': totalChunks.toString()
 			},
-			body: chunk
+			body: chunk,
+			timeout: 30000, // Longer for uploads
+			maxRetries: 3
 		});
 
 		if (!response.ok) {
@@ -447,14 +456,16 @@ async function uploadInChunks(
 	}
 
 	// Final response should be available from the last chunk upload
-	const finalResponse = await fetch(`/api/download-track/${uploadId}/chunk`, {
+	const finalResponse = await retryFetch(`/api/download-track/${uploadId}/chunk`, {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/octet-stream',
-			'x-chunk-index': (totalChunks - 1).toString(),
+			'x-chunk-index': totalChunks.toString(),
 			'x-total-chunks': totalChunks.toString()
 		},
-		body: new Blob() // Empty blob for final confirmation
+		body: new ArrayBuffer(0), // Empty chunk to finalize
+		timeout: 10000,
+		maxRetries: 2
 	});
 
 	if (!finalResponse.ok) {

@@ -91,6 +91,69 @@ export function withErrorHandling<R>(fn: () => Promise<R>, context: string): Pro
 	})();
 }
 
+// Robust fetch with retry, timeout, and error handling
+export async function retryFetch(
+	url: string,
+	options: RequestInit & { timeout?: number; maxRetries?: number } = {}
+): Promise<Response> {
+	const { timeout = 10000, maxRetries = 3, ...fetchOptions } = options;
+
+	return retryWithBackoff(
+		async () => {
+			const controller = new AbortController();
+			const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+			try {
+				const response = await fetch(url, {
+					...fetchOptions,
+					signal: controller.signal
+				});
+				clearTimeout(timeoutId);
+
+				// Handle rate limiting
+				if (response.status === 429) {
+					throw TidalError.fromApiResponse({ status: 429, statusText: 'Too Many Requests' });
+				}
+
+				// Throw for server errors to retry
+				if (response.status >= 500) {
+					throw TidalError.fromApiResponse({
+						status: response.status,
+						statusText: response.statusText
+					});
+				}
+
+				return response;
+			} catch (error) {
+				clearTimeout(timeoutId);
+
+				// Handle abort/timeout
+				if (error instanceof DOMException && error.name === 'AbortError') {
+					throw TidalError.networkError(new Error('Request timeout'));
+				}
+
+				// Handle network errors
+				if (error instanceof TypeError && error.message.includes('fetch')) {
+					throw TidalError.networkError(error as Error);
+				}
+
+				throw error;
+			}
+		},
+		maxRetries,
+		1000,
+		(error) => {
+			// Retry on network errors, timeouts, or server errors
+			return (
+				error instanceof TidalError &&
+				(error.code === 'NETWORK_ERROR' ||
+					error.code === 'SERVER_ERROR' ||
+					error.statusCode === 429)
+			);
+		}
+	);
+}
+
 // Retry utility with exponential backoff
 export async function retryWithBackoff<T>(
 	operation: () => Promise<T>,
