@@ -6,6 +6,7 @@ import type { DownloadQueueItem } from '$lib/stores/downloadQueue';
 import { downloadLogStore } from '$lib/stores/downloadLog';
 import { downloadUiStore } from '$lib/stores/downloadUi';
 import { retryFetch } from '$lib/errors';
+import { toasts } from '$lib/stores/toasts';
 import { formatArtists } from '$lib/utils';
 import JSZip from 'jszip';
 
@@ -359,6 +360,7 @@ export async function downloadTrackServerSide(
 			}
 
 			const data = await uploadResponse.json();
+			toasts.success(`Download completed: ${data.message}`);
 			return {
 				success: true,
 				filepath: data.filepath,
@@ -369,6 +371,21 @@ export async function downloadTrackServerSide(
 	} catch (error) {
 		const errorMsg = error instanceof Error ? error.message : String(error);
 		console.error(`[Server Download] Error: ${errorMsg}`);
+		toasts.error(`Download failed: ${errorMsg}`, {
+			action: {
+				label: 'Retry',
+				handler: () =>
+					downloadTrackServerSide(
+						trackId,
+						quality,
+						albumTitle,
+						artistName,
+						trackTitle,
+						blob,
+						options
+					)
+			}
+		});
 		return {
 			success: false,
 			error: errorMsg
