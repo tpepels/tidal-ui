@@ -9,7 +9,7 @@ export interface PersistedState {
 const STORAGE_PREFIX = 'tidal-ui:';
 const CURRENT_VERSION = 1;
 
-export const saveToStorage = (key: string, data: any) => {
+export const saveToStorage = (key: string, data: unknown) => {
 	if (!browser) return;
 	try {
 		const state: PersistedState = {
@@ -24,7 +24,7 @@ export const saveToStorage = (key: string, data: any) => {
 	}
 };
 
-export const loadFromStorage = (key: string, defaultValue: any): any => {
+export const loadFromStorage = (key: string, defaultValue: unknown): unknown => {
 	if (!browser) return defaultValue;
 	try {
 		const stored = localStorage.getItem(`${STORAGE_PREFIX}${key}`);
@@ -62,7 +62,7 @@ export const loadFromStorage = (key: string, defaultValue: any): any => {
 
 // Debounced save to avoid excessive writes
 let saveTimeouts: Record<string, ReturnType<typeof setTimeout>> = {};
-export const debouncedSave = (key: string, data: any, delay = 1000) => {
+export const debouncedSave = (key: string, data: unknown, delay = 1000) => {
 	if (saveTimeouts[key]) clearTimeout(saveTimeouts[key]);
 	saveTimeouts[key] = setTimeout(() => saveToStorage(key, data), delay);
 };

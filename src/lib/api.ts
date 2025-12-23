@@ -819,10 +819,10 @@ class LosslessAPI {
 	 * Parse and validate JSON response
 	 */
 	private async parseJsonResponse<T>(response: Response, context: string): Promise<T> {
-		let data;
+		let data: unknown;
 		try {
 			data = await response.json();
-		} catch (error) {
+		} catch {
 			throw new Error(`Invalid JSON response from ${context}`);
 		}
 		if (!data || typeof data !== 'object') {
@@ -840,7 +840,7 @@ class LosslessAPI {
 		);
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search tracks');
-		const data = await this.parseJsonResponse<any>(response, 'search API');
+		const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
 		// Validate response structure
 		const validated = { ...data, items: data.items || [] };
 		const normalized = this.normalizeSearchResponse<Track>(validated, 'tracks');

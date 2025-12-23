@@ -13,8 +13,14 @@ export class TidalError extends Error {
 		this.isRetryable = isRetryable;
 	}
 
-	static fromApiResponse(response: any): TidalError {
-		if (response?.status === 429) {
+	static fromApiResponse(response: {
+		status?: number;
+		statusText?: string;
+		userMessage?: string;
+		message?: string;
+		subStatus?: number;
+	}): TidalError {
+		if (response.status === 429) {
 			return new TidalError(ERROR_MESSAGES.RATE_LIMIT_ERROR, 'RATE_LIMIT', 429, true);
 		}
 
@@ -111,7 +117,7 @@ export async function retryFetch(
 				clearTimeout(timeoutId);
 
 				// Handle rate limiting
-				if (response.status === 429) {
+				if (response?.status === 429) {
 					throw TidalError.fromApiResponse({ status: 429, statusText: 'Too Many Requests' });
 				}
 

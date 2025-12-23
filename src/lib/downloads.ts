@@ -171,6 +171,7 @@ async function downloadTrackWithRetry(
 	for (let attempt = 1; attempt <= maxAttempts; attempt++) {
 		try {
 			if (attempt > 1) {
+				// Retry attempt
 			}
 
 			const { blob } = await losslessAPI.fetchTrackBlob(trackId, quality, filename, {
@@ -260,11 +261,7 @@ export async function downloadTrackServerSide(
 
 		// Generate checksum for integrity check
 		let checksum = '';
-		try {
-			checksum = await generateBlobChecksum(blob);
-		} catch {
-			// Skip checksum in browser environment
-		}
+		// Skip checksum in browser environment
 
 		// Check if file already exists on server (if requested)
 		if (options?.checkExisting) {
@@ -389,12 +386,6 @@ export async function downloadTrackServerSide(
 			error: errorMsg
 		};
 	}
-}
-
-// Generate MD5 checksum for blob
-async function generateBlobChecksum(blob: Blob): Promise<string> {
-	// Skip checksum generation in client code to avoid crypto externalization issues
-	return '';
 }
 
 // Convert blob to base64
@@ -729,6 +720,7 @@ export async function downloadAlbum(
 		});
 
 		if (failedTracks.length > 0) {
+			// Handle failed tracks if needed
 		}
 
 		triggerFileDownload(zipBlob, `${artistName} - ${albumTitle}.zip`);
@@ -953,5 +945,6 @@ export async function downloadAlbum(
 
 	// Summary logging
 	if (failedCount > 0) {
+		// Log or handle failed downloads
 	}
 }
