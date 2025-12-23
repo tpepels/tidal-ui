@@ -33,6 +33,7 @@ WORKDIR /app
 # Copy the built app, server script, certs, and production node_modules from the builder stage
 COPY --from=builder /app/build build/
 COPY --from=builder /app/server.js server.js
+COPY --from=builder /app/start.sh start.sh
 COPY --from=builder /app/key.pem key.pem
 COPY --from=builder /app/cert.pem cert.pem
 COPY --from=builder /app/node_modules node_modules/
@@ -48,4 +49,4 @@ EXPOSE 5000
 ENV NODE_ENV=production
 
 # Specify the command to run the app with HTTPS and Redis
-CMD ["sh", "-c", "redis-server --daemonize yes && node server.js"]
+CMD ["sh", "start.sh"]
