@@ -2,8 +2,22 @@ import type { AudioQuality } from '$lib/types';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { createHash } from 'crypto';
+import Redis from 'ioredis';
 
 const STATE_FILE = path.join(process.cwd(), 'upload-state.json');
+
+// Redis client for persistence
+let redis: Redis | null = null;
+try {
+	const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+	redis = new Redis(redisUrl);
+	redis.on('error', (err) => {
+		console.warn('Redis connection error:', err);
+		redis = null; // Fallback to file
+	});
+} catch (err) {
+	console.warn('Failed to initialize Redis:', err);
+}
 
 export interface DownloadError {
 	code: string;
@@ -75,25 +89,69 @@ export const MAX_CONCURRENT_UPLOADS = parseInt(process.env.MAX_CONCURRENT_UPLOAD
 export const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || '524288000'); // 500MB default
 export const MAX_CHUNK_SIZE = parseInt(process.env.MAX_CHUNK_SIZE || '10485760'); // 10MB default
 
-// Save upload state to file
+// Save upload state
 const saveState = async () => {
-	try {
-		const state = {
-			pendingUploads: Object.fromEntries(pendingUploads),
-			chunkUploads: Object.fromEntries(chunkUploads),
-			activeUploads: Array.from(activeUploads)
-		};
-		await fs.writeFile(STATE_FILE, JSON.stringify(state, null, 2));
-	} catch (err) {
-		console.warn('Failed to save upload state:', err);
+	const state = {
+		pendingUploads: Object.fromEntries(pendingUploads),
+		chunkUploads: Object.fromEntries(chunkUploads),
+		activeUploads: Array.from(activeUploads),
+		timestamp: Date.now(),
+		version: 1
+	};
+
+	if (redis) {
+		try {
+			await redis.set('tidal:uploadState', JSON.stringify(state));
+			console.log('Saved upload state to Redis');
+		} catch (err) {
+			console.warn('Failed to save to Redis, falling back to file:', err);
+			await saveToFile(state);
+		}
+	} else {
+		await saveToFile(state);
 	}
 };
 
-// Load upload state from file
-const loadState = async () => {
+// Save to file as fallback
+const saveToFile = async (state: any) => {
 	try {
-		const data = await fs.readFile(STATE_FILE, 'utf8');
-		const state = JSON.parse(data);
+		await fs.writeFile(STATE_FILE, JSON.stringify(state, null, 2));
+		console.log('Saved upload state to file');
+	} catch (err) {
+		console.error('Failed to save upload state:', err);
+	}
+};
+
+// Load upload state
+const loadState = async () => {
+	let state: any = null;
+
+	if (redis) {
+		try {
+			const data = await redis.get('tidal:uploadState');
+			if (data) {
+				state = JSON.parse(data);
+				console.log('Loaded upload state from Redis');
+			}
+		} catch (err) {
+			console.warn('Failed to load from Redis, trying file:', err);
+		}
+	}
+
+	if (!state) {
+		// Fallback to file
+		try {
+			const data = await fs.readFile(STATE_FILE, 'utf8');
+			state = JSON.parse(data);
+			console.log('Loaded upload state from file');
+		} catch (err) {
+			console.warn('No saved upload state found');
+			return;
+		}
+	}
+
+	// Validate and load
+	if (state && state.version === 1) {
 		for (const [k, v] of Object.entries(state.pendingUploads || {})) {
 			pendingUploads.set(k, v as PendingUpload);
 		}
@@ -103,9 +161,11 @@ const loadState = async () => {
 		for (const id of state.activeUploads || []) {
 			activeUploads.add(id);
 		}
-		console.log('Loaded upload state from file');
-	} catch (err) {
-		// File doesn't exist or invalid, ignore
+		console.log(
+			`Recovered ${pendingUploads.size} pending, ${chunkUploads.size} chunk, ${activeUploads.size} active uploads`
+		);
+	} else {
+		console.warn('Invalid or outdated upload state, starting fresh');
 	}
 };
 
