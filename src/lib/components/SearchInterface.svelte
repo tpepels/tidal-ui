@@ -601,7 +601,7 @@ import {
 			toasts.error(`Search failed: ${message}`, {
 				action: {
 					label: 'Retry',
-					handler: () => performSearch()
+					handler: () => handleSearch()
 				}
 			});
 		} finally {

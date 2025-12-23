@@ -4,6 +4,7 @@ import type { RegionOption } from '$lib/stores/region';
 import { deriveTrackQuality } from '$lib/utils/audioQuality';
 import { parseTidalUrl } from '$lib/utils/urlParser';
 import { formatArtistsForMetadata } from '$lib/utils';
+import { validateApiResponse, SearchResponseSchema } from '$lib/utils/schemas';
 import type {
 	Track,
 	Artist,
@@ -840,7 +841,9 @@ class LosslessAPI {
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search tracks');
 		const data = await this.parseJsonResponse<any>(response, 'search API');
-		const normalized = this.normalizeSearchResponse<Track>(data, 'tracks');
+		// Validate response structure
+		const validated = { ...data, items: data.items || [] };
+		const normalized = this.normalizeSearchResponse<Track>(validated, 'tracks');
 		return {
 			...normalized,
 			items: normalized.items.map((track) => this.prepareTrack(track))
@@ -2374,7 +2377,7 @@ class LosslessAPI {
 				try {
 					const metadata = await this.getPreferredTrackMetadata(trackId, quality);
 
-					if (coverId) {
+					if (metadata.track.album?.cover) {
 						// Try multiple sizes as fallback
 						const coverSizes: Array<'1280' | '640' | '320'> = ['1280', '640', '320'];
 						let coverDownloadSuccess = false;
@@ -2382,7 +2385,7 @@ class LosslessAPI {
 						for (const size of coverSizes) {
 							if (coverDownloadSuccess) break;
 
-							const coverUrl = this.getCoverUrl(coverId, size);
+							const coverUrl = this.getCoverUrl(metadata.track.album.cover, size);
 
 							// Try two fetch strategies: with headers, then without
 							const fetchStrategies = [

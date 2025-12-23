@@ -123,6 +123,7 @@ let pendingPlayAfterSource = false;
 	let cleanupMediaSessionHandlers: (() => void) | null = null;
 	let lastKnownPlaybackState: 'none' | 'paused' | 'playing' = 'none';
 	let isSeeking = false;
+	let downloadTaskIdForCurrentTrack: string | null = null;
 	let seekBarElement = $state<HTMLButtonElement | null>(null);
 
 	// -----------------------------

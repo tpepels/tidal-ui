@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { downloadLogStore } from '$lib/stores/downloadLog';
-	import { downloadUiStore, activeTrackDownloads, completedTrackDownloads, erroredTrackDownloads } from '$lib/stores/downloadUi';
-	import { X, Copy, Trash2, CheckCircle, XCircle, Loader, Pause, Play, Heart } from 'lucide-svelte';
-	import { tick, onMount } from 'svelte';
+	import { activeTrackDownloads, completedTrackDownloads, erroredTrackDownloads } from '$lib/stores/downloadUi';
+	import { X, Copy, Trash2, CheckCircle, XCircle, Loader, Heart } from 'lucide-svelte';
+	import { tick } from 'svelte';
 
 	let scrollContainer: HTMLDivElement | null = null;
 	let healthData: any = null;
@@ -16,9 +16,7 @@
 		return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 	}
 
-	function isNearBottom(el: HTMLElement, px = 24) {
-		return el.scrollTop + el.clientHeight >= el.scrollHeight - px;
-	}
+
 
 	let cleanup: (() => void) | null = null;
 
