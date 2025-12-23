@@ -36,7 +36,7 @@ COPY --from=builder /app/node_modules node_modules/
 COPY package.json .
 
 # Set correct permissions for SSL certificates
-RUN chmod 644 cert.pem && chmod 600 key.pem
+RUN chown node:node key.pem cert.pem && chmod 644 cert.pem && chmod 600 key.pem
 
 # Expose the port the app runs on
 EXPOSE 5000
