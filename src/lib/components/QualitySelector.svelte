@@ -6,7 +6,8 @@
 	import { Settings, Check } from 'lucide-svelte';
 
 	let isOpen = $state(false);
-	const disabledQualities = new Set<AudioQuality>();
+	const isFirefox = typeof navigator !== 'undefined' && navigator.userAgent.includes('Firefox');
+	const disabledQualities = new Set<AudioQuality>(isFirefox ? ['HI_RES_LOSSLESS'] : []);
 
 	const qualities: { value: AudioQuality; label: string; description: string }[] = [
 		{
