@@ -18,8 +18,9 @@ export const saveToStorage = (key: string, data: any) => {
 			data
 		};
 		localStorage.setItem(`${STORAGE_PREFIX}${key}`, JSON.stringify(state));
+		console.log(`Saved ${key} state to storage`);
 	} catch (e) {
-		console.warn(`Failed to save ${key} to storage:`, e);
+		console.error(`Failed to save ${key} to storage:`, e);
 	}
 };
 
@@ -43,6 +44,7 @@ export const loadFromStorage = (key: string, defaultValue: any): any => {
 			return defaultValue;
 		}
 
+		console.log(`Loaded ${key} state from storage (version ${state.version})`);
 		return state.data;
 	} catch (e) {
 		console.warn(`Failed to load ${key} from storage:`, e);

@@ -9,6 +9,7 @@
 	import DownloadLog from '$lib/components/DownloadLog.svelte';
 	import DynamicBackground from '$lib/components/DynamicBackground.svelte';
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
+	import ErrorBoundary from '$lib/components/ErrorBoundary.svelte';
 	import { playerStore } from '$lib/stores/player';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { downloadLogStore } from '$lib/stores/downloadLog';
@@ -503,10 +504,13 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 </svelte:head>
 
 {#if isEmbed}
-	{@render children?.()}
+	<ErrorBoundary>
+		{@render children?.()}
+	</ErrorBoundary>
 	<AudioPlayer headless={true} />
 {:else}
-	<div class="app-root">
+	<ErrorBoundary>
+		<div class="app-root">
 		<DynamicBackground />
 		<div class="app-shell">
 			<div class="settings-fab" bind:this={settingsMenuContainer}>
@@ -763,9 +767,14 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 												tracks, while CSV exports capture the track links without downloading audio.
 											</p>
 										</section>
-									</div>
-								</div>
-							{/if}
+		</div>
+	</div>
+	</ErrorBoundary>
+
+	<LyricsPopup />
+	<DownloadLog />
+	<ToastContainer />
+{/if}
 			</div>
 
 			<main
@@ -773,7 +782,9 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 				style={`min-height: ${mainMinHeight}px; margin-bottom: ${mainMarginBottom}px;`}
 			>
 				<div class="app-main__inner">
-					{@render children?.()}
+					<ErrorBoundary>
+						{@render children?.()}
+					</ErrorBoundary>
 				</div>
 			</main>
 
