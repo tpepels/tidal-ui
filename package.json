@@ -34,7 +34,7 @@
 		"@testing-library/user-event": "^14.5.1",
 		"@types/colorthief": "^2.6.0",
 		"@types/node": "^20",
-		"@vitest/coverage-c8": "^0.33.0",
+		"@vitest/coverage-v8": "^1.6.1",
 		"eslint": "^9.22.0",
 		"eslint-config-prettier": "^10.0.1",
 		"eslint-plugin-svelte": "^3.0.0",
