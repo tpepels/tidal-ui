@@ -269,7 +269,7 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 		isCsvExporting = true;
 
 		try {
-			// @ts-ignore - buildTrackLinksCsv needs update but we can cast for now or update it later
+			// @ts-expect-error - buildTrackLinksCsv needs update but we can cast for now or update it later
 			const csvContent = await buildTrackLinksCsv(tracks, quality);
 			const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
 			triggerFileDownload(blob, timestampedFilename('csv'));
@@ -310,7 +310,6 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 				if (!trackId) continue;
 
 				const filename = buildQueueFilename(track, index, quality);
-				// @ts-ignore - downloadUiStore needs update to accept PlayableTrack or we cast
 				const { taskId, controller } = downloadUiStore.beginTrackDownload(
 					track as Track,
 					filename,
