@@ -498,7 +498,7 @@ let pendingPlayAfterSource = false;
 						state.currentTrack.id === current.id
 					) {
 						playerStore.setTrack(tidalTrack);
-						// Conversion completed
+					}
 				})
 				.catch((error) => {
 					console.error('[Conversion Effect] Conversion FAILED:', error);
