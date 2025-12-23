@@ -92,7 +92,12 @@ function applyProxyHeaders(sourceHeaders: Array<[string, string]>, origin: strin
 	headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
 	headers.set('Access-Control-Allow-Headers', 'Content-Type, Range');
 	headers.set('Vary', ensureVaryIncludesOrigin(headers.get('vary')));
-	if (!headers.has('Cache-Control')) {
+
+	// Don't cache audio/video content
+	const contentType = headers.get('content-type') || '';
+	const isMediaContent = contentType.includes('audio/') || contentType.includes('video/');
+
+	if (!headers.has('Cache-Control') && !isMediaContent) {
 		headers.set('Cache-Control', 'public, max-age=300');
 	}
 	return headers;
