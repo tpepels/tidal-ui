@@ -13,6 +13,10 @@ export default defineConfig(({ mode }) => {
 	return {
 		plugins: [tailwindcss(), sveltekit(), devtoolsJson()],
 		server: {
+			https: {
+				key: './key.pem',
+				cert: './cert.pem'
+			},
 			watch: { usePolling: true },
 			host: '0.0.0.0',
 			port: Number.isFinite(parsedPort) ? parsedPort : undefined

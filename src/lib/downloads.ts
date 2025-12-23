@@ -250,14 +250,19 @@ export async function downloadTrackServerSide(
 			};
 		}
 
-		const useChunks = options?.useChunks ?? blob.size > 5 * 1024 * 1024; // Use chunks for files > 5MB
+		const useChunks = false; // options?.useChunks ?? blob.size > 5 * 1024 * 1024; // Use chunks for files > 5MB
 		const chunkSize = options?.chunkSize ?? 1024 * 1024; // 1MB chunks
 
 		const sizeMsg = `[Server Download] Phase 1: Sending metadata for "${trackTitle}" (${(blob.size / 1024 / 1024).toFixed(2)} MB)${useChunks ? ' (chunked)' : ''}`;
 		downloadLogStore.log(sizeMsg);
 
 		// Generate checksum for integrity check
-		const checksum = await generateBlobChecksum(blob);
+		let checksum = '';
+		try {
+			checksum = await generateBlobChecksum(blob);
+		} catch {
+			// Skip checksum in browser environment
+		}
 
 		// Check if file already exists on server (if requested)
 		if (options?.checkExisting) {
@@ -324,16 +329,25 @@ export async function downloadTrackServerSide(
 			return await uploadInChunks(blob, uploadId, totalChunks, chunkSize, options?.onProgress);
 		} else {
 			// Single upload
-			const uploadResponse = await fetch(`/api/download-track/${uploadId}`, {
+			const base64 = await blobToBase64(blob);
+			const uploadResponse = await fetch('/api/download-track', {
 				method: 'POST',
-				body: blob,
-				headers: { 'Content-Type': 'application/octet-stream' }
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					trackId,
+					quality,
+					albumTitle,
+					artistName,
+					trackTitle,
+					blob: base64,
+					conflictResolution: options?.conflictResolution || 'overwrite_if_different'
+				})
 			});
 
 			if (!uploadResponse.ok) {
 				const errorData = await uploadResponse.json().catch(() => ({}));
 				const errMsg = errorData.error || `Upload failed: ${uploadResponse.status}`;
-				console.error(`[Server Download] Phase 2 failed: ${errMsg}`);
+				console.error(`[Server Download] Direct upload failed: ${errMsg}`);
 				throw new Error(errMsg);
 			}
 
@@ -357,9 +371,18 @@ export async function downloadTrackServerSide(
 
 // Generate MD5 checksum for blob
 async function generateBlobChecksum(blob: Blob): Promise<string> {
-	const buffer = await blob.arrayBuffer();
-	const crypto = await import('crypto');
-	return crypto.default.createHash('md5').update(Buffer.from(buffer)).digest('hex');
+	// Skip checksum generation in client code to avoid crypto externalization issues
+	return '';
+}
+
+// Convert blob to base64
+async function blobToBase64(blob: Blob): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onload = () => resolve(reader.result as string);
+		reader.onerror = reject;
+		reader.readAsDataURL(blob);
+	});
 }
 
 // Upload blob in chunks with progress tracking
@@ -396,7 +419,9 @@ async function uploadInChunks(
 
 		if (!response.ok) {
 			const errorData = await response.json().catch(() => ({}));
-			const errMsg = errorData.error || `Chunk ${i + 1} upload failed: ${response.status}`;
+			const errMsg = errorData.error
+				? JSON.stringify(errorData.error)
+				: `Chunk ${i + 1} upload failed: ${response.status}`;
 			console.error(`[Chunk Upload] Failed: ${errMsg}`);
 			throw new Error(errMsg);
 		}

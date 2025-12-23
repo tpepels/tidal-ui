@@ -74,7 +74,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			// Validate checksum if provided
 			if (chunkState.checksum) {
 				const fileBuffer = await fs.readFile(chunkState.tempFilePath);
-				if (!validateChecksum(fileBuffer, chunkState.checksum)) {
+				if (!(await validateChecksum(fileBuffer, chunkState.checksum))) {
 					await fs.unlink(chunkState.tempFilePath);
 					chunkUploads.delete(uploadId);
 					return json({ error: 'Checksum validation failed' }, { status: 400 });

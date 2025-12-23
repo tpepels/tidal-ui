@@ -382,9 +382,21 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 			}
 		}
 
+		// Force 200 for media content that returns 206 (some servers incorrectly return 206 without range requests)
+		let responseStatus = upstream.status;
+		let responseStatusText = upstream.statusText;
+		const contentType = upstream.headers.get('content-type') || '';
+		if (
+			(contentType.includes('audio/') || contentType.includes('video/')) &&
+			upstream.status === 206
+		) {
+			responseStatus = 200;
+			responseStatusText = 'OK';
+		}
+
 		return new Response(bodyArrayBuffer, {
-			status: upstream.status,
-			statusText: upstream.statusText,
+			status: responseStatus,
+			statusText: responseStatusText,
 			headers
 		});
 	} catch (error) {

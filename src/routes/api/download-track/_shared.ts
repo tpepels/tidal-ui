@@ -1,5 +1,7 @@
 import type { AudioQuality } from '$lib/types';
 import * as path from 'path';
+import * as fs from 'fs/promises';
+import { createHash } from 'crypto';
 
 export type ConflictResolution = 'overwrite' | 'skip' | 'rename' | 'overwrite_if_different';
 
@@ -83,7 +85,7 @@ export const pendingUploads = new Map<string, PendingUpload>();
 export const chunkUploads = new Map<string, ChunkUploadState>();
 export const activeUploads = new Set<string>();
 const UPLOAD_TTL = 5 * 60 * 1000; // 5 minutes
-export const MAX_CONCURRENT_UPLOADS = parseInt(process.env.MAX_CONCURRENT_UPLOADS || '3');
+export const MAX_CONCURRENT_UPLOADS = parseInt(process.env.MAX_CONCURRENT_UPLOADS || '10');
 
 // Clean up expired uploads periodically
 export const startCleanupInterval = () => {
@@ -99,7 +101,6 @@ export const startCleanupInterval = () => {
 			if (now - data.timestamp > UPLOAD_TTL) {
 				// Clean up temp files
 				try {
-					const fs = require('fs/promises');
 					fs.unlink(data.tempFilePath).catch(() => {});
 				} catch {}
 				chunkUploads.delete(uploadId);
@@ -136,15 +137,16 @@ export const sanitizePath = (input: string | null | undefined): string => {
 
 // Generate MD5 checksum for file integrity
 export const generateChecksum = async (buffer: Buffer): Promise<string> => {
-	const crypto = await import('crypto');
-	return crypto.default.createHash('md5').update(buffer).digest('hex');
+	return createHash('md5').update(buffer).digest('hex');
 };
 
 // Validate checksum
-export const validateChecksum = (buffer: Buffer, expectedChecksum: string): boolean => {
+export const validateChecksum = async (
+	buffer: Buffer,
+	expectedChecksum: string
+): Promise<boolean> => {
 	try {
-		const crypto = require('crypto');
-		const actualChecksum = crypto.createHash('md5').update(buffer).digest('hex');
+		const actualChecksum = createHash('md5').update(buffer).digest('hex');
 		return actualChecksum === expectedChecksum;
 	} catch {
 		return false;
@@ -202,8 +204,6 @@ export const resolveFileConflict = async (
 	newFileSize?: number,
 	newFileChecksum?: string
 ): Promise<{ finalPath: string; action: 'overwrite' | 'skip' | 'rename' }> => {
-	const fs = require('fs/promises');
-
 	try {
 		await fs.access(targetPath);
 

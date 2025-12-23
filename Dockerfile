@@ -1,6 +1,9 @@
 # Use a Node.js Slim image for the builder stage
 FROM node:24.0.1-slim AS builder
 
+# Install OpenSSL for cert generation
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
 # Set the working directory
 WORKDIR /app
 
@@ -12,6 +15,9 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
+# Generate self-signed SSL certificate
+RUN openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=localhost"
+
 # Prune dependencies to production-only
 RUN npm prune --production
 
@@ -21,8 +27,11 @@ FROM node:24.0.1-slim AS runner
 # Set the working directory
 WORKDIR /app
 
-# Copy the built app and production node_modules from the builder stage
+# Copy the built app, server script, certs, and production node_modules from the builder stage
 COPY --from=builder /app/build build/
+COPY --from=builder /app/server.js server.js
+COPY --from=builder /app/key.pem key.pem
+COPY --from=builder /app/cert.pem cert.pem
 COPY --from=builder /app/node_modules node_modules/
 COPY package.json .
 
@@ -32,5 +41,5 @@ EXPOSE 5000
 # Set the environment to production
 ENV NODE_ENV=production
 
-# Specify the command to run the app
-CMD ["node", "build"]
+# Specify the command to run the app with HTTPS
+CMD ["node", "server.js"]

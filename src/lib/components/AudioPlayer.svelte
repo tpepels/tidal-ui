@@ -912,7 +912,9 @@ let pendingPlayAfterSource = false;
 		const sequence = ++loadSequence;
 		try {
 			playerStore.setLoading(true);
-			await loadStandardTrack(track as Track, 'HIGH', sequence);
+			// For Firefox, use LOW quality since HIGH may not be supported and FLAC is returned for HIGH sometimes
+			const fallbackQuality = isFirefox ? 'LOW' : 'HIGH';
+			await loadStandardTrack(track as Track, fallbackQuality, sequence);
 			console.info('[AudioPlayer] Streaming fallback loaded for track', track.id);
 		} catch (fallbackError) {
 			console.error('Streaming fallback after lossless playback error failed', fallbackError);
@@ -1565,7 +1567,7 @@ let pendingPlayAfterSource = false;
 									{/if}
 								</div>
 								{#if $ffmpegBanner.phase === 'loading'}
-									<div class="mt-3 h-1.5 overflow-hidden rounded-full bg-blue-500/20">
+									<div class="mt-3 h-3 overflow-hidden rounded-full bg-blue-500/20">
 										<div
 											class="h-full rounded-full bg-blue-400 transition-all duration-200"
 											style="width: {Math.min(Math.max($ffmpegBanner.progress * 100, 6), 100)}%"
@@ -1607,7 +1609,7 @@ let pendingPlayAfterSource = false;
 										<X size={16} />
 									</button>
 								</div>
-								<div class="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-800">
+								<div class="mt-3 h-3 overflow-hidden rounded-full bg-gray-800">
 									<div
 										class="h-full rounded-full bg-blue-500 transition-all duration-200"
 										style="width: {Math.min(Math.max(task.progress * 100, 4), 100)}%"
