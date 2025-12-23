@@ -257,11 +257,15 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 	const target = url.searchParams.get('url');
 	const origin = request.headers.get('origin');
 
+	console.log('Proxy request for URL:', target);
+
 	if (!allowOrigin(origin)) {
+		console.log('Proxy request blocked by origin check');
 		return new Response('Forbidden', { status: 403 });
 	}
 
 	if (!target) {
+		console.log('Proxy request missing url parameter');
 		return new Response(JSON.stringify({ error: 'Missing url parameter' }), {
 			status: 400,
 			headers: { 'Content-Type': 'application/json' }
@@ -332,6 +336,7 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 	}
 
 	try {
+		console.log('Proxy fetching upstream URL:', parsedTarget.toString());
 		const upstream = await fetchWithRetry(
 			parsedTarget,
 			{
@@ -340,10 +345,13 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 			},
 			fetch
 		);
+		console.log('Proxy upstream response status:', upstream.status, upstream.statusText);
+		console.log('Proxy upstream content-type:', upstream.headers.get('content-type'));
 		const upstreamHeaderEntries = Array.from(upstream.headers.entries());
 		const sanitizedHeaderEntries = sanitizeHeaderEntries(upstreamHeaderEntries);
 		const headers = applyProxyHeaders(sanitizedHeaderEntries, origin);
 		const bodyArrayBuffer = await upstream.arrayBuffer();
+		console.log('Proxy response body size:', bodyArrayBuffer.byteLength);
 		const bodyBytes = new Uint8Array(bodyArrayBuffer);
 
 		if (redis && cacheKey) {
