@@ -17,12 +17,12 @@
 		Download,
 		Shuffle,
 		LoaderCircle,
-		Terminal
+
 	} from 'lucide-svelte';
 	import { playerStore } from '$lib/stores/player';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
-	import { downloadLogStore } from '$lib/stores/downloadLog';
+
 	import { downloadAlbum } from '$lib/downloads';
 
 	let album = $state<Album | null>(null);

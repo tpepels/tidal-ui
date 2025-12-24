@@ -22,8 +22,6 @@ interface PlayerState {
 	replayGain: number | null;
 }
 
-const initialPreferences = get(userPreferencesStore);
-
 const initialState: PlayerState = {
 	currentTrack: null,
 	isPlaying: false,
@@ -173,7 +171,6 @@ function createPlayerStore() {
 					return state;
 				}
 
-				const validStartIndex = Math.max(0, Math.min(startIndex, queue.length - 1));
 				const hasTracks = queue.length > 0;
 				const clampedIndex = hasTracks ? Math.min(Math.max(startIndex, 0), queue.length - 1) : -1;
 				const nextTrack = hasTracks ? queue[clampedIndex]! : null;

@@ -2,7 +2,7 @@
 import { API_CONFIG, fetchWithCORS, selectApiTargetForRegion } from './config';
 import type { RegionOption } from '$lib/stores/region';
 import { deriveTrackQuality } from '$lib/utils/audioQuality';
-import { parseTidalUrl } from '$lib/utils/urlParser';
+
 import { formatArtistsForMetadata } from '$lib/utils';
 
 import type {
@@ -12,7 +12,6 @@ import type {
 	Playlist,
 	SearchResponse,
 	AudioQuality,
-	StreamData,
 	CoverImage,
 	Lyrics,
 	TrackInfo,
@@ -890,10 +889,7 @@ class LosslessAPI {
 	/**
 	 * Search for artists
 	 */
-	async searchArtists(
-		query: string,
-		region: RegionOption = 'auto'
-	): Promise<SearchResponse<Artist>> {
+	async searchArtists(query: string): Promise<SearchResponse<Artist>> {
 		const response = await this.fetch(`${this.baseUrl}/search/?q=${encodeURIComponent(query)}`);
 		console.log('Search API call to:', `${this.baseUrl}/search/?q=${encodeURIComponent(query)}`);
 		this.ensureNotRateLimited(response);
@@ -901,7 +897,7 @@ class LosslessAPI {
 		return response.json();
 	}
 
-	async searchAlbums(query: string, region: RegionOption = 'auto'): Promise<SearchResponse<Album>> {
+	async searchAlbums(query: string): Promise<SearchResponse<Album>> {
 		const response = await this.fetch(`${this.baseUrl}/search/?al=${encodeURIComponent(query)}`);
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search albums');
@@ -915,10 +911,8 @@ class LosslessAPI {
 		};
 	}
 
-	async searchPlaylists(
-		query: string,
-		region: RegionOption = 'auto'
-	): Promise<SearchResponse<Playlist>> {
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	async searchPlaylists(_query: string): Promise<SearchResponse<Playlist>> {
 		// Playlists search not implemented in this API
 		return {
 			items: [],
