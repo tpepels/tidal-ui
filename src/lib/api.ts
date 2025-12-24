@@ -896,10 +896,10 @@ class LosslessAPI {
 	 * Search for artists
 	 */
 	async searchArtists(query: string, region?: RegionOption): Promise<SearchResponse<Artist>> {
-		const response = await this.fetch(`${this.baseUrl}/search/?q=${encodeURIComponent(query)}`);
-		console.log('Search API call to:', `${this.baseUrl}/search/?q=${encodeURIComponent(query)}`);
+		const response = await this.fetch(`${this.baseUrl}/search/?ar=${encodeURIComponent(query)}`);
+		console.log('Search API call to:', `${this.baseUrl}/search/?ar=${encodeURIComponent(query)}`);
 		this.ensureNotRateLimited(response);
-		if (!response.ok) throw new Error('Failed to get song');
+		if (!response.ok) throw new Error('Failed to search artists');
 		const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
 		const validated = { ...data, items: data.items || [] };
 		const normalized = this.normalizeSearchResponse<Artist>(validated, 'artists');
