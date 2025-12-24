@@ -109,6 +109,10 @@ import {
 	let cancelledIds = $state(new Set<number | string>());
 	let activeMenuId = $state<number | string | null>(null);
 
+	// Instrumentation for retry loops
+	let retryCallCount = $state(0);
+	let retryStartTime = $state(Date.now());
+
 	const albumDownloadQuality = $derived($userPreferencesStore.playbackQuality as AudioQuality);
 	const albumDownloadMode = $derived($downloadPreferencesStore.mode);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
@@ -241,6 +245,17 @@ import {
 		attempts = 3,
 		delayMs = 250
 	): Promise<T> {
+		retryCallCount++;
+		const elapsed = Date.now() - retryStartTime;
+		const rate = retryCallCount / (elapsed / 1000);
+
+		if (retryCallCount % 20 === 0) {
+			console.warn(`[Instrumentation] fetchWithRetry called ${retryCallCount} times in ${elapsed}ms (~${rate.toFixed(2)}/s)`);
+			if (retryCallCount > 100) {
+				console.error(`[Instrumentation] High frequency retries - sample stack:`, new Error().stack?.split('\n').slice(1, 5).join('\n'));
+			}
+		}
+
 		let lastError: unknown = null;
 		for (let attempt = 1; attempt <= attempts; attempt += 1) {
 			try {

@@ -70,8 +70,37 @@ class LosslessAPI {
 	private metadataQueue: Promise<void> = Promise.resolve();
 	private visitCount = 0;
 
+	// Instrumentation counters for debugging loops
+	private searchCallCount = 0;
+	private trackFetchCallCount = 0;
+	private startTime = Date.now();
+
 	constructor(baseUrl: string = API_BASE) {
 		this.baseUrl = baseUrl;
+	}
+
+	private logEntrypointCall(
+		type: 'search' | 'trackFetch',
+		name: string,
+		params: Record<string, any>
+	) {
+		const counter = type === 'search' ? ++this.searchCallCount : ++this.trackFetchCallCount;
+		const elapsed = Date.now() - this.startTime;
+		const rate = counter / (elapsed / 1000); // calls per second
+
+		if (counter % 20 === 0) {
+			console.warn(
+				`[Instrumentation] ${type} ${name} called ${counter} times in ${elapsed}ms (~${rate.toFixed(2)}/s)`,
+				params
+			);
+			if (counter > 100) {
+				// Sample stack trace when threshold exceeded
+				console.error(
+					`[Instrumentation] High frequency ${type} calls - sample stack:`,
+					new Error().stack?.split('\n').slice(1, 5).join('\n')
+				);
+			}
+		}
 	}
 
 	private resolveRegionalBase(region: RegionOption = 'auto'): string {
@@ -814,6 +843,8 @@ class LosslessAPI {
 	}
 
 	private async resolveHiResStreamFromDash(trackId: number): Promise<string> {
+		this.logEntrypointCall('trackFetch', 'resolveHiResStreamFromDash', { trackId });
+
 		const manifest = await this.getDashManifest(trackId, 'HI_RES_LOSSLESS');
 		if (manifest.kind === 'flac') {
 			const url = manifest.urls.find(
@@ -861,6 +892,8 @@ class LosslessAPI {
 	 * Search for tracks
 	 */
 	async searchTracks(query: string, region: RegionOption = 'auto'): Promise<SearchResponse<Track>> {
+		this.logEntrypointCall('search', 'searchTracks', { query, region });
+
 		// Input validation
 		if (!query || typeof query !== 'string' || query.trim().length === 0) {
 			throw new Error('Search query cannot be empty');
@@ -919,6 +952,8 @@ class LosslessAPI {
 	 * Search for artists
 	 */
 	async searchArtists(query: string): Promise<SearchResponse<Artist>> {
+		this.logEntrypointCall('search', 'searchArtists', { query });
+
 		const response = await this.fetch(`${this.baseUrl}/search/?q=${encodeURIComponent(query)}`);
 		console.log('Search API call to:', `${this.baseUrl}/search/?q=${encodeURIComponent(query)}`);
 		this.ensureNotRateLimited(response);
@@ -941,6 +976,8 @@ class LosslessAPI {
 	}
 
 	async searchAlbums(query: string): Promise<SearchResponse<Album>> {
+		this.logEntrypointCall('search', 'searchAlbums', { query });
+
 		const response = await this.fetch(`${this.baseUrl}/search/?al=${encodeURIComponent(query)}`);
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search albums');
@@ -975,6 +1012,8 @@ class LosslessAPI {
 		if (!['LOW', 'HIGH', 'LOSSLESS', 'HI_RES_LOSSLESS'].includes(quality)) {
 			throw new Error(`Invalid quality: ${quality}`);
 		}
+
+		this.logEntrypointCall('trackFetch', 'getTrack', { trackId, quality });
 
 		try {
 			return await this.getPreferredTrackMetadata(trackId, quality);
@@ -1443,6 +1482,8 @@ class LosslessAPI {
 	 * Get stream URL for a track
 	 */
 	async getStreamUrl(trackId: number, quality: AudioQuality = 'LOSSLESS'): Promise<string> {
+		this.logEntrypointCall('trackFetch', 'getStreamUrl', { trackId, quality });
+
 		const data = await this.getStreamData(trackId, quality);
 		return data.url;
 	}
