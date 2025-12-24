@@ -185,7 +185,7 @@
 		<div class="space-y-1">
 			{#each tracks as track, index (track.id)}
 				<div
-					class="track-glass group flex w-full items-center gap-3 rounded-lg p-3 text-left transition-colors {isCurrentTrack(
+					class="track-glass group flex w-full items-center gap-2 sm:gap-3 rounded-lg p-2 sm:p-3 text-left transition-colors overflow-hidden {isCurrentTrack(
 						track
 					)
 						? 'bg-blue-900/20 border-blue-500/30'
@@ -194,16 +194,16 @@
 					<!-- Track Number / Play Button -->
 					<button
 						onclick={() => isPlaying(track) ? playerStore.pause() : handlePlayTrack(track, index)}
-						class="flex w-8 flex-shrink-0 items-center justify-center transition-transform hover:scale-110"
+						class="flex w-6 sm:w-8 flex-shrink-0 items-center justify-center transition-transform hover:scale-110"
 						aria-label={isPlaying(track) ? 'Pause' : 'Play'}
 					>
 						{#if isPlaying(track)}
-							<Pause size={16} class="text-blue-500" />
+							<Pause size={14} class="sm:w-4 sm:h-4 text-blue-500" />
 						{:else if isCurrentTrack(track)}
-							<Play size={16} class="text-blue-500" />
+							<Play size={14} class="sm:w-4 sm:h-4 text-blue-500" />
 						{:else}
-							<span class="text-sm text-gray-400 hover:hidden">{formatTrackNumber(track)}</span>
-							<Play size={16} class="hidden text-white hover:block" />
+							<span class="text-xs sm:text-sm text-gray-400 hover:hidden">{formatTrackNumber(track)}</span>
+							<Play size={14} class="sm:w-4 sm:h-4 hidden text-white hover:block" />
 						{/if}
 					</button>
 
@@ -212,7 +212,7 @@
 						<LazyImage
 							src={losslessAPI.getCoverUrl(track.album.cover, '320')}
 							alt={track.title}
-							class="h-16 w-16 flex-shrink-0 rounded object-cover"
+							class="h-12 w-12 sm:h-16 sm:w-16 flex-shrink-0 rounded object-cover"
 						/>
 					{/if}
 
@@ -220,7 +220,7 @@
 					<div class="min-w-0 flex-1">
 						<button
 							onclick={() => handlePlayTrack(track, index)}
-							class="truncate font-medium text-left w-full {isCurrentTrack(track)
+							class="truncate font-medium text-left w-full text-sm sm:text-base {isCurrentTrack(track)
 								? 'text-blue-500'
 								: 'text-white hover:text-blue-400'}"
 							title="Play track"
@@ -242,7 +242,7 @@
 									>
 							{/if}
 						</button>
-						<div class="flex flex-wrap items-center gap-2 text-sm text-gray-400">
+						<div class="flex flex-wrap items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-400">
 							{#if showArtist && track.artists?.length}
 								<ArtistLinks artists={track.artists} />
 							{/if}
@@ -261,10 +261,10 @@
 					</div>
 
 					<!-- Actions -->
-					<div class="flex flex-shrink-0 items-center gap-2">
+					<div class="flex flex-shrink-0 items-center gap-1 sm:gap-2">
 						<button
 							onclick={(event) => handlePlayNext(track, event)}
-							class="p-2 text-gray-400 transition-colors hover:text-white"
+							class="hidden sm:flex p-2 text-gray-400 transition-colors hover:text-white"
 							title="Play next"
 							aria-label={`Play ${track.title} next`}
 						>
@@ -272,13 +272,13 @@
 						</button>
 						<button
 							onclick={(event) => handleAddToQueue(track, event)}
-							class="p-2 text-gray-400 transition-colors hover:text-white"
+							class="hidden sm:flex p-2 text-gray-400 transition-colors hover:text-white"
 							title="Add to queue"
 							aria-label={`Add ${track.title} to queue`}
 						>
 							<Plus size={18} />
 						</button>
-						
+
 						<div class="text-gray-400 hover:text-white">
 							<ShareButton type="track" id={track.id} iconOnly size={18} title="Share track" />
 						</div>
