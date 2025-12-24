@@ -91,89 +91,14 @@ class LosslessAPI {
 		return `${base}${normalizedPath}`;
 	}
 
-	private normalizeSearchResponse<T>(
-		data: unknown,
-		key: 'tracks' | 'albums' | 'artists' | 'playlists',
-		depth = 0,
-		maxDepth = 20
-	): SearchResponse<T> {
-		const section = this.findSearchSection<T>(data, key, new Set(), depth, maxDepth);
-		return this.buildSearchResponse<T>(section);
-	}
-
-	private buildSearchResponse<T>(
-		section: Partial<SearchResponse<T>> | undefined
-	): SearchResponse<T> {
-		const items = section?.items;
-		const list = Array.isArray(items) ? (items as T[]) : [];
-		const limit = typeof section?.limit === 'number' ? section.limit : list.length;
-		const offset = typeof section?.offset === 'number' ? section.offset : 0;
-		const total =
-			typeof section?.totalNumberOfItems === 'number' ? section.totalNumberOfItems : list.length;
-
+	private normalizeSearchResponse<T>(data: unknown): SearchResponse<T> {
+		const obj = data as Record<string, unknown>;
 		return {
-			items: list,
-			limit,
-			offset,
-			totalNumberOfItems: total
+			items: Array.isArray(obj.items) ? (obj.items as T[]) : [],
+			limit: typeof obj.limit === 'number' ? obj.limit : 0,
+			offset: typeof obj.offset === 'number' ? obj.offset : 0,
+			totalNumberOfItems: typeof obj.totalNumberOfItems === 'number' ? obj.totalNumberOfItems : 0
 		};
-	}
-
-	private findSearchSection<T>(
-		source: unknown,
-		key: 'tracks' | 'albums' | 'artists' | 'playlists',
-		visited: Set<object>,
-		depth = 0,
-		maxDepth = 20
-	): Partial<SearchResponse<T>> | undefined {
-		if (!source) {
-			return undefined;
-		}
-
-		if (depth > maxDepth) {
-			return undefined;
-		}
-
-		if (Array.isArray(source)) {
-			for (const entry of source) {
-				const found = this.findSearchSection<T>(entry, key, visited, depth + 1, maxDepth);
-				if (found) {
-					return found;
-				}
-			}
-			return undefined;
-		}
-
-		if (typeof source !== 'object') {
-			return undefined;
-		}
-
-		const objectRef = source as Record<string, unknown>;
-		if (visited.has(objectRef)) {
-			return undefined;
-		}
-		visited.add(objectRef);
-
-		if (!Array.isArray(source) && 'items' in objectRef && Array.isArray(objectRef.items)) {
-			return objectRef as Partial<SearchResponse<T>>;
-		}
-
-		if (key in objectRef) {
-			const nested = objectRef[key];
-			const fromKey = this.findSearchSection<T>(nested, key, visited, depth + 1, maxDepth);
-			if (fromKey) {
-				return fromKey;
-			}
-		}
-
-		for (const value of Object.values(objectRef)) {
-			const found = this.findSearchSection<T>(value, key, visited, depth + 1, maxDepth);
-			if (found) {
-				return found;
-			}
-		}
-
-		return undefined;
 	}
 
 	private prepareTrack(track: Track): Track {
@@ -869,14 +794,7 @@ class LosslessAPI {
 			}
 
 			const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
-
-			// Validate response structure defensively
-			if (!data || typeof data !== 'object') {
-				throw new Error('Invalid search response format');
-			}
-
-			const validated = { ...data, items: data.items || [] };
-			const normalized = this.normalizeSearchResponse<Track>(validated, 'tracks', 0, 20);
+			const normalized = this.normalizeSearchResponse<Track>(data);
 
 			// Ensure items is an array and validate each item
 			if (!Array.isArray(normalized.items)) {
@@ -901,8 +819,13 @@ class LosslessAPI {
 		const response = await this.fetch(`${this.baseUrl}/search/?q=${encodeURIComponent(query)}`);
 		console.log('Search API call to:', `${this.baseUrl}/search/?q=${encodeURIComponent(query)}`);
 		this.ensureNotRateLimited(response);
-		if (!response.ok) throw new Error('Failed to get song');
-		return response.json();
+		if (!response.ok) throw new Error('Failed to search artists');
+		const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
+		const normalized = this.normalizeSearchResponse<Artist>(data);
+		return {
+			...normalized,
+			items: normalized.items.map((artist) => this.prepareArtist(artist))
+		};
 	}
 
 	async searchAlbums(query: string, region?: RegionOption): Promise<SearchResponse<Album>> {
@@ -910,9 +833,7 @@ class LosslessAPI {
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search albums');
 		const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
-		// Validate response structure
-		const validated = { ...data, items: data.items || [] };
-		const normalized = this.normalizeSearchResponse<Album>(validated, 'albums', 0, 20);
+		const normalized = this.normalizeSearchResponse<Album>(data);
 		return {
 			...normalized,
 			items: normalized.items.map((album) => this.prepareAlbum(album))
