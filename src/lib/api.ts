@@ -120,15 +120,21 @@ class LosslessAPI {
 	private findSearchSection<T>(
 		source: unknown,
 		key: 'tracks' | 'albums' | 'artists' | 'playlists',
-		visited: Set<object>
+		visited: Set<object>,
+		depth = 0,
+		maxDepth = 20
 	): Partial<SearchResponse<T>> | undefined {
 		if (!source) {
 			return undefined;
 		}
 
+		if (depth > maxDepth) {
+			return undefined;
+		}
+
 		if (Array.isArray(source)) {
 			for (const entry of source) {
-				const found = this.findSearchSection<T>(entry, key, visited);
+				const found = this.findSearchSection<T>(entry, key, visited, depth + 1, maxDepth);
 				if (found) {
 					return found;
 				}
@@ -152,14 +158,14 @@ class LosslessAPI {
 
 		if (key in objectRef) {
 			const nested = objectRef[key];
-			const fromKey = this.findSearchSection<T>(nested, key, visited);
+			const fromKey = this.findSearchSection<T>(nested, key, visited, depth + 1, maxDepth);
 			if (fromKey) {
 				return fromKey;
 			}
 		}
 
 		for (const value of Object.values(objectRef)) {
-			const found = this.findSearchSection<T>(value, key, visited);
+			const found = this.findSearchSection<T>(value, key, visited, depth + 1, maxDepth);
 			if (found) {
 				return found;
 			}
