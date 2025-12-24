@@ -42,6 +42,9 @@ COPY package.json .
 # Set correct permissions for SSL certificates
 RUN chown node:node key.pem cert.pem && chmod 644 cert.pem && chmod 600 key.pem
 
+# Create data directory for upload state and ensure node user can write to it
+RUN mkdir -p /app/data && chown -R node:node /app && chmod -R 755 /app/data
+
 # Expose the port the app runs on
 EXPOSE 5000
 

@@ -4,7 +4,7 @@ import * as fs from 'fs/promises';
 import { createHash } from 'crypto';
 import Redis from 'ioredis';
 
-const STATE_FILE = path.join(process.cwd(), 'upload-state.json');
+const STATE_FILE = path.join(process.cwd(), 'data', 'upload-state.json');
 
 // Redis client for persistence
 let redis: Redis | null = null;
@@ -144,10 +144,17 @@ const saveState = async () => {
 // Save to file as fallback
 const saveToFile = async (state: any) => {
 	try {
+		// Ensure the data directory exists
+		const dataDir = path.dirname(STATE_FILE);
+		await fs.mkdir(dataDir, { recursive: true });
 		await fs.writeFile(STATE_FILE, JSON.stringify(state, null, 2));
 		console.log('Saved upload state to file');
 	} catch (err) {
-		console.error('Failed to save upload state:', err);
+		// Don't throw error - just log it. Upload state persistence is not critical.
+		console.warn(
+			'Failed to save upload state to file (non-critical):',
+			err instanceof Error ? err.message : String(err)
+		);
 	}
 };
 
