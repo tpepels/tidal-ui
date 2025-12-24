@@ -1189,7 +1189,7 @@ import {
 							handleTrackActivation(track);
 						}}
 						onkeydown={(event) => handleTrackKeydown(event, track)}
-						class="track-glass group flex w-full cursor-pointer items-center gap-3 rounded-lg p-3 transition-colors hover:brightness-110 focus:ring-2 focus:ring-blue-500 focus:outline-none {activeMenuId ===
+						class="track-glass group flex w-full cursor-pointer items-center gap-2 sm:gap-3 rounded-lg p-2 sm:p-3 transition-colors hover:brightness-110 focus:ring-2 focus:ring-blue-500 focus:outline-none overflow-hidden {activeMenuId ===
 						track.id
 							? 'relative z-20'
 							: ''}"
@@ -1199,13 +1199,13 @@ import {
 							<img
 								src={track.thumbnailUrl || '/placeholder-album.jpg'}
 								alt={`${track.title} by ${track.artistName}`}
-								class="h-12 w-12 flex-shrink-0 rounded object-cover"
+								class="h-10 w-10 sm:h-12 sm:w-12 flex-shrink-0 rounded object-cover"
 							/>
 							<div class="min-w-0 flex-1">
-								<h3 class="truncate font-semibold text-white group-hover:text-blue-400">
+								<h3 class="truncate font-semibold text-sm sm:text-base text-white group-hover:text-blue-400">
 									{track.title}
 								</h3>
-								<p class="truncate text-sm text-gray-400">
+								<p class="truncate text-xs sm:text-sm text-gray-400">
 									{track.artistName}
 								</p>
 								<p class="text-xs text-gray-500">
