@@ -30,7 +30,7 @@ const initialState: PlayerState = {
 	currentTime: 0,
 	duration: 0,
 	volume: 0.8,
-	quality: initialPreferences.playbackQuality,
+	quality: 'LOSSLESS',
 	qualitySource: 'manual',
 	isLoading: false,
 	queue: [],
