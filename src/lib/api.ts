@@ -809,9 +809,8 @@ class LosslessAPI {
 		}
 
 		try {
-			const response = await this.fetch(
-				`${this.baseUrl}/search/?s=${encodeURIComponent(query.trim())}`
-			);
+			const response = await this.fetch(`${this.baseUrl}/search/?ar=${encodeURIComponent(query)}`);
+			console.log('Search API call to:', `${this.baseUrl}/search/?ar=${encodeURIComponent(query)}`);
 			this.ensureNotRateLimited(response);
 			if (!response.ok) {
 				throw new Error(`Search API returned ${response.status}: ${response.statusText}`);
@@ -820,7 +819,7 @@ class LosslessAPI {
 			const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
 			const normalized = this.normalizeSearchResponse(data);
 			return {
-				items: (normalized.items as Artist[]).map((artist) => this.prepareArtist(artist)),
+				items: (normalized.items as Track[]).map((track) => this.prepareTrack(track)),
 				limit: normalized.limit,
 				offset: normalized.offset,
 				totalNumberOfItems: normalized.totalNumberOfItems
@@ -842,7 +841,7 @@ class LosslessAPI {
 		const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
 		const normalized = this.normalizeSearchResponse(data);
 		return {
-			items: (normalized.items as Track[]).map((track) => this.prepareTrack(track)),
+			items: (normalized.items as Artist[]).map((artist) => this.prepareArtist(artist)),
 			limit: normalized.limit,
 			offset: normalized.offset,
 			totalNumberOfItems: normalized.totalNumberOfItems
@@ -850,7 +849,13 @@ class LosslessAPI {
 	}
 
 	async searchAlbums(query: string, region?: RegionOption): Promise<SearchResponse<Album>> {
-		const response = await this.fetch(`${this.baseUrl}/search/?al=${encodeURIComponent(query)}`);
+		const response = await this.fetch(
+			`${this.baseUrl}/search/?artists=${encodeURIComponent(query)}&region=${region || 'auto'}`
+		);
+		console.log(
+			'Search API call to:',
+			`${this.baseUrl}/search/?artists=${encodeURIComponent(query)}&region=${region || 'auto'}`
+		);
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search albums');
 		const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
