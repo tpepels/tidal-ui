@@ -140,7 +140,9 @@ class LosslessAPI {
 		data: unknown,
 		key: 'tracks' | 'albums' | 'artists' | 'playlists'
 	): SearchResponse<T> {
-		const section = this.findSearchSection<T>(data, key, new Set());
+		// Handle nested data structure: {data: {artists: [...], albums: [...]}}
+		const searchData = (data as any)?.data || data;
+		const section = this.findSearchSection<T>(searchData, key, new Set());
 		return this.buildSearchResponse<T>(section);
 	}
 
