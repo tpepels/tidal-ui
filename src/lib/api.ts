@@ -122,13 +122,14 @@ class LosslessAPI {
 		key: 'tracks' | 'albums' | 'artists' | 'playlists',
 		visited: Set<object>,
 		depth = 0,
-		maxDepth = 20
+		maxDepth = 50
 	): Partial<SearchResponse<T>> | undefined {
 		if (!source) {
 			return undefined;
 		}
 
 		if (depth > maxDepth) {
+			console.warn(`findSearchSection exceeded max depth ${maxDepth} for key ${key}`);
 			return undefined;
 		}
 
