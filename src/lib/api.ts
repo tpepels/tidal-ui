@@ -74,6 +74,7 @@ class LosslessAPI {
 	private searchCallCount = 0;
 	private trackFetchCallCount = 0;
 	private startTime = Date.now();
+	private logged400Body = false;
 
 	constructor(baseUrl: string = API_BASE) {
 		this.baseUrl = baseUrl;
@@ -911,7 +912,21 @@ class LosslessAPI {
 			const response = await this.fetch(
 				`${this.baseUrl}/search/?s=${encodeURIComponent(query.trim())}`
 			);
+			if (response.status === 400 && !this.logged400Body) {
+				this.logged400Body = true;
+				const body = await response.clone().text();
+				console.error('[Instrumentation] 400 Bad Request body sample:', body);
+			}
 			this.ensureNotRateLimited(response);
+			if (response.status === 400) {
+				// Treat 400 as terminal client error, return empty results to prevent retry loops
+				return {
+					items: [],
+					limit: 0,
+					offset: 0,
+					totalNumberOfItems: 0
+				};
+			}
 			if (!response.ok) {
 				throw new Error(`Search API returned ${response.status}: ${response.statusText}`);
 			}
@@ -956,6 +971,20 @@ class LosslessAPI {
 
 		const response = await this.fetch(`${this.baseUrl}/search/?q=${encodeURIComponent(query)}`);
 		console.log('Search API call to:', `${this.baseUrl}/search/?q=${encodeURIComponent(query)}`);
+		if (response.status === 400 && !this.logged400Body) {
+			this.logged400Body = true;
+			const body = await response.clone().text();
+			console.error('[Instrumentation] 400 Bad Request body sample:', body);
+		}
+		if (response.status === 400) {
+			// Treat 400 as terminal client error, return empty results to prevent retry loops
+			return {
+				items: [],
+				limit: 0,
+				offset: 0,
+				totalNumberOfItems: 0
+			};
+		}
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to get song');
 		const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
@@ -979,6 +1008,20 @@ class LosslessAPI {
 		this.logEntrypointCall('search', 'searchAlbums', { query });
 
 		const response = await this.fetch(`${this.baseUrl}/search/?al=${encodeURIComponent(query)}`);
+		if (response.status === 400 && !this.logged400Body) {
+			this.logged400Body = true;
+			const body = await response.clone().text();
+			console.error('[Instrumentation] 400 Bad Request body sample:', body);
+		}
+		if (response.status === 400) {
+			// Treat 400 as terminal client error, return empty results to prevent retry loops
+			return {
+				items: [],
+				limit: 0,
+				offset: 0,
+				totalNumberOfItems: 0
+			};
+		}
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search albums');
 		const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
@@ -1016,7 +1059,13 @@ class LosslessAPI {
 		this.logEntrypointCall('trackFetch', 'getTrack', { trackId, quality });
 
 		try {
-			return await this.getPreferredTrackMetadata(trackId, quality);
+			const response = await this.fetch(`${this.baseUrl}/track/${trackId}?quality=${quality}`);
+			this.ensureNotRateLimited(response);
+			if (!response.ok) {
+				throw new Error(`Track API returned ${response.status}: ${response.statusText}`);
+			}
+			const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'track API');
+			return this.parseTrackLookup(data);
 		} catch (error) {
 			console.error(`Failed to get track ${trackId} with quality ${quality}:`, error);
 			throw error;
