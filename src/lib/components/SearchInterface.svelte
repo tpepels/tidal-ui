@@ -115,7 +115,7 @@ import {
 	const downloadCoverSeperatelyPreference = $derived(
 		$userPreferencesStore.downloadCoversSeperately
 	);
-	let selectedRegion = $state<RegionOption>('auto');
+	let selectedRegion = $state<RegionOption>('us');
 	let isRegionSelectorOpen = $state(false);
 	// Playlist state moved to searchStore
 
@@ -578,8 +578,13 @@ import {
 						losslessAPI.searchTracks(searchStore.query, selectedRegion)
 					);
 					console.log('Search response:', response);
+					console.log('Response items:', response?.items);
 					searchStore.tracks = Array.isArray(response?.items) ? response.items : [];
 					console.log('Setting tracks:', searchStore.tracks.length, 'results');
+					if (searchStore.tracks.length === 0) {
+						console.log('No tracks found, checking for errors...');
+						console.log('Response structure:', JSON.stringify(response, null, 2));
+					}
 					break;
 				}
 				case 'albums': {
@@ -888,7 +893,9 @@ import {
 	}
 
 	function handleKeyPress(event: KeyboardEvent) {
+		console.log('Key pressed:', event.key, 'query:', searchStore.query);
 		if (event.key === 'Enter') {
+			console.log('Enter pressed, calling handleSearch');
 			handleSearch();
 		}
 	}
