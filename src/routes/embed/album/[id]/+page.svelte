@@ -129,7 +129,7 @@
         </div>
 
         <div class="track-list">
-            {#each tracks as track, i}
+            {#each tracks as track, i (track.id)}
                 <button class="track-item" onclick={() => playTrack(track, i)} class:active={$playerStore.currentTrack?.id === track.id}>
                     <span class="track-number">{track.trackNumber}</span>
                     <div class="track-meta">

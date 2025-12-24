@@ -5,7 +5,13 @@
 	import { tick } from 'svelte';
 
 	let scrollContainer: HTMLDivElement | null = null;
-	let healthData: any = null;
+	let healthData: {
+		activeUploads: number;
+		maxConcurrent: number;
+		pendingUploads: number;
+		chunkUploads: number;
+		redisConnected: boolean;
+	} | null = null;
 	let loadingHealth = false;
 
 	function formatBytes(bytes: number): string {

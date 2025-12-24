@@ -285,7 +285,7 @@
 					{/if}
 					-->
 					{#if album.mediaMetadata?.tags}
-						{#each album.mediaMetadata.tags as tag}
+						{#each album.mediaMetadata.tags as tag (tag)}
 							<div class="rounded bg-blue-900/30 px-2 py-1 text-xs font-semibold text-blue-400">
 								{tag}
 							</div>

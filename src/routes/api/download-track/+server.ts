@@ -101,11 +101,12 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				);
 				try {
 					await fs.writeFile(finalPath, buffer);
-				} catch (err: any) {
+				} catch (err: unknown) {
 					console.error('Direct blob write error:', err);
-					if (err.code === 'ENOSPC')
+					const error = err as NodeJS.ErrnoException;
+					if (error.code === 'ENOSPC')
 						return json({ error: 'Not enough disk space' }, { status: 507 });
-					if (err.code === 'EACCES') return json({ error: 'Permission denied' }, { status: 403 });
+					if (error.code === 'EACCES') return json({ error: 'Permission denied' }, { status: 403 });
 					return json({ error: 'File write failed' }, { status: 500 });
 				}
 				const finalFilename = path.basename(finalPath);
@@ -209,7 +210,14 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					checksum,
 					conflictResolution
 				});
-				const response: any = {
+				const response: {
+					success: boolean;
+					uploadId: string;
+					message: string;
+					chunked?: boolean;
+					totalChunks?: number;
+					chunkSize?: number;
+				} = {
 					success: true,
 					uploadId: newUploadId,
 					message: 'Metadata registered'
@@ -266,10 +274,12 @@ export const POST: RequestHandler = async ({ request, url }) => {
 			);
 			try {
 				await retryFs(() => fs.writeFile(finalPath, buffer));
-			} catch (err: any) {
+			} catch (err: unknown) {
 				console.error('Blob upload write error:', err);
-				if (err.code === 'ENOSPC') return json({ error: 'Not enough disk space' }, { status: 507 });
-				if (err.code === 'EACCES') return json({ error: 'Permission denied' }, { status: 403 });
+				const error = err as NodeJS.ErrnoException;
+				if (error.code === 'ENOSPC')
+					return json({ error: 'Not enough disk space' }, { status: 507 });
+				if (error.code === 'EACCES') return json({ error: 'Permission denied' }, { status: 403 });
 				return json({ error: 'File write failed' }, { status: 500 });
 			}
 			pendingUploads.delete(uploadId);

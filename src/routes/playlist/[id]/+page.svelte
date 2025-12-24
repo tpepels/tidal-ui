@@ -179,7 +179,7 @@
 			<div>
 				<h3 class="mb-3 text-sm font-semibold text-gray-400">Featured Artists</h3>
 				<div class="flex flex-wrap gap-2">
-					{#each playlist.promotedArtists as artist}
+					{#each playlist.promotedArtists as artist (artist.id)}
 						<a
 							href={`/artist/${artist.id}`}
 							data-sveltekit-preload-data

@@ -350,7 +350,7 @@ async function loadArtist(id: number) {
 						</div>
 					{/if}
 					{#if artist.artistTypes && artist.artistTypes.length > 0}
-						{#each artist.artistTypes as type}
+						{#each artist.artistTypes as type (type)}
 							<div
 								class="rounded-full bg-blue-900/30 px-3 py-1 text-xs font-semibold text-blue-400"
 							>
@@ -364,7 +364,7 @@ async function loadArtist(id: number) {
 					<div class="mb-4">
 						<h3 class="mb-2 text-sm font-semibold text-gray-400">Roles</h3>
 						<div class="flex flex-wrap gap-2">
-							{#each artist.artistRoles as role}
+							{#each artist.artistRoles as role (role.category)}
 								<div class="rounded-full bg-gray-800 px-3 py-1 text-xs text-gray-300">
 									{role.category}
 								</div>

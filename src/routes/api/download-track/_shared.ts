@@ -34,7 +34,7 @@ function getRedisClient(): Redis | null {
 export interface DownloadError {
 	code: string;
 	message: string;
-	details?: any;
+	details?: unknown;
 	recoverable: boolean;
 	retryAfter?: number;
 	suggestion?: string;
@@ -44,7 +44,7 @@ export const createDownloadError = (
 	code: string,
 	message: string,
 	recoverable = false,
-	details?: any,
+	details?: unknown,
 	retryAfter?: number,
 	suggestion?: string
 ): DownloadError => ({
@@ -142,7 +142,7 @@ const saveState = async () => {
 };
 
 // Save to file as fallback
-const saveToFile = async (state: any) => {
+const saveToFile = async (state: unknown) => {
 	try {
 		// Ensure the data directory exists
 		const dataDir = path.dirname(STATE_FILE);
@@ -160,7 +160,12 @@ const saveToFile = async (state: any) => {
 
 // Load upload state
 const loadState = async () => {
-	let state: any = null;
+	let state: {
+		version?: number;
+		pendingUploads?: Record<string, PendingUpload>;
+		chunkUploads?: Record<string, ChunkUploadState>;
+		activeUploads?: string[];
+	} | null = null;
 
 	const redisClient = getRedisClient();
 	if (redisClient) {
@@ -207,17 +212,19 @@ const loadState = async () => {
 };
 
 // Retry wrapper for fs operations
-export const retryFs = async (fn: () => Promise<any>, retries = 3): Promise<any> => {
+export const retryFs = async <T>(fn: () => Promise<T>, retries = 3): Promise<T> => {
 	for (let i = 0; i < retries; i++) {
 		try {
 			return await fn();
-		} catch (err: any) {
-			if (i === retries - 1 || !['EAGAIN', 'EBUSY', 'EMFILE'].includes(err.code)) {
+		} catch (err: unknown) {
+			const error = err as NodeJS.ErrnoException;
+			if (i === retries - 1 || !error.code || !['EAGAIN', 'EBUSY', 'EMFILE'].includes(error.code)) {
 				throw err;
 			}
 			await new Promise((resolve) => setTimeout(resolve, 100 * (i + 1))); // Exponential backoff
 		}
 	}
+	throw new Error('Retry function should never reach this point');
 };
 
 // Clean up orphaned temp files

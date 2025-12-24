@@ -79,33 +79,37 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		// Append chunk to temp file
 		try {
 			await retryFs(() => fs.appendFile(chunkState.tempFilePath, chunkBuffer));
-		} catch (err: any) {
+		} catch (err: unknown) {
 			console.error('Chunk append error:', err);
+			const error = err as NodeJS.ErrnoException;
 			let downloadError;
-			if (err.code === 'ENOSPC' || err.message.includes('disk full')) {
+			if (error.code === 'ENOSPC' || (error.message && error.message.includes('disk full'))) {
 				downloadError = createDownloadError(
 					ERROR_CODES.DISK_FULL,
 					'Not enough disk space available for chunk',
 					false,
-					{ originalError: err.message, uploadId },
+					{ originalError: error.message, uploadId },
 					undefined,
 					'Please free up disk space and restart the download.'
 				);
-			} else if (err.code === 'EACCES' || err.message.includes('permission denied')) {
+			} else if (
+				error.code === 'EACCES' ||
+				(error.message && error.message.includes('permission denied'))
+			) {
 				downloadError = createDownloadError(
 					ERROR_CODES.PERMISSION_DENIED,
 					'Permission denied when appending chunk',
 					false,
-					{ originalError: err.message, uploadId },
+					{ originalError: error.message, uploadId },
 					undefined,
 					'Please check file permissions and restart the download.'
 				);
 			} else {
 				downloadError = createDownloadError(
 					ERROR_CODES.UNKNOWN_ERROR,
-					'Chunk append failed: ' + err.message,
+					'Chunk append failed: ' + (error.message || 'Unknown error'),
 					true,
-					{ originalError: err.message, uploadId },
+					{ originalError: error.message, uploadId },
 					10,
 					'Please try the download again.'
 				);
@@ -204,13 +208,14 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			// Move temp file to final location
 			try {
 				await retryFs(() => fs.rename(chunkState.tempFilePath, finalPath));
-			} catch (err: any) {
+			} catch (err: unknown) {
 				console.error('File rename error:', err);
+				const error = err as NodeJS.ErrnoException;
 				const downloadError = createDownloadError(
 					ERROR_CODES.UNKNOWN_ERROR,
-					'Failed to move file to final location: ' + err.message,
+					'Failed to move file to final location: ' + (error.message || 'Unknown error'),
 					false,
-					{ originalError: err.message, uploadId },
+					{ originalError: error.message, uploadId },
 					undefined,
 					'Please check disk space and permissions.'
 				);
