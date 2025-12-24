@@ -6,7 +6,7 @@
 	import TopTracksGrid from '$lib/components/TopTracksGrid.svelte';
 	import ShareButton from '$lib/components/ShareButton.svelte';
 import { ArrowLeft, User, Download, LoaderCircle } from 'lucide-svelte';
-import { playerStore } from '$lib/stores/player';
+
 import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 import { userPreferencesStore } from '$lib/stores/userPreferences';
 

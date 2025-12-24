@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Track } from '$lib/types';
 	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
-	import { getExtensionForQuality, buildTrackFilename } from '$lib/downloads';
+	import { buildTrackFilename } from '$lib/downloads';
 	import { playerStore } from '$lib/stores/player';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';

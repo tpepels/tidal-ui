@@ -260,7 +260,7 @@ export async function downloadTrackServerSide(
 		downloadLogStore.log(sizeMsg);
 
 		// Generate checksum for integrity check
-		let checksum = '';
+		const checksum = '';
 		// Skip checksum in browser environment
 
 		// Check if file already exists on server (if requested)
@@ -742,7 +742,7 @@ export async function downloadAlbum(
 		);
 
 		// Start tracking this track download
-		const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
+		const { taskId } = downloadUiStore.beginTrackDownload(track, filename, {
 			subtitle: artistName
 		});
 

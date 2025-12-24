@@ -4,7 +4,7 @@ import type { RegionOption } from '$lib/stores/region';
 import { deriveTrackQuality } from '$lib/utils/audioQuality';
 import { parseTidalUrl } from '$lib/utils/urlParser';
 import { formatArtistsForMetadata } from '$lib/utils';
-import { validateApiResponse, SearchResponseSchema } from '$lib/utils/schemas';
+
 import type {
 	Track,
 	Artist,

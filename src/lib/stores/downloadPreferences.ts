@@ -37,7 +37,7 @@ const createDownloadPreferencesStore = () => {
 		return 'server';
 	};
 
-	const { subscribe, set, update } = writable<DownloadPreferencesState>({
+	const { subscribe, update } = writable<DownloadPreferencesState>({
 		mode: readInitialMode(),
 		storage: readInitialStorage()
 	});

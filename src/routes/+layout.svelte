@@ -75,7 +75,7 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 		}
 	});
 	const mainMinHeight = $derived(() => Math.max(0, viewportHeight - headerHeight - playerHeight));
-	const contentPaddingBottom = $derived(() => Math.max(playerHeight, 24));
+
 	const mainMarginBottom = $derived(() => Math.max(playerHeight, 128));
 	const settingsMenuOffset = $derived(() => Math.max(0, headerHeight + 12));
 	const FRIENDLY_ROUTE_MESSAGES: Record<string, string> = {

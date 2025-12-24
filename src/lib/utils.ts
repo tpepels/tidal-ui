@@ -1,5 +1,3 @@
-import type { Artist } from './types';
-
 // ============================================================================
 // UTILITIES INDEX
 // Re-exports from specialized utility modules

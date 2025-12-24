@@ -61,7 +61,7 @@ export const loadFromStorage = (key: string, defaultValue: unknown): unknown => 
 };
 
 // Debounced save to avoid excessive writes
-let saveTimeouts: Record<string, ReturnType<typeof setTimeout>> = {};
+const saveTimeouts: Record<string, ReturnType<typeof setTimeout>> = {};
 export const debouncedSave = (key: string, data: unknown, delay = 1000) => {
 	if (saveTimeouts[key]) clearTimeout(saveTimeouts[key]);
 	saveTimeouts[key] = setTimeout(() => saveToStorage(key, data), delay);

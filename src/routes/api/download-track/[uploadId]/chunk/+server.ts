@@ -206,7 +206,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				await retryFs(() => fs.rename(chunkState.tempFilePath, finalPath));
 			} catch (err: any) {
 				console.error('File rename error:', err);
-				let downloadError = createDownloadError(
+				const downloadError = createDownloadError(
 					ERROR_CODES.UNKNOWN_ERROR,
 					'Failed to move file to final location: ' + err.message,
 					false,

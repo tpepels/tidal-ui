@@ -9,7 +9,7 @@
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { buildTrackFilename } from '$lib/downloads';
 	import ShareButton from '$lib/components/ShareButton.svelte';
-	import { LoaderCircle, Play, ArrowLeft, Disc, User, Clock, Download, X, Check } from 'lucide-svelte';
+	import { LoaderCircle, Play, ArrowLeft, Disc, User, Clock, Download, X } from 'lucide-svelte';
 	import { formatArtists } from '$lib/utils';
 
 	let track = $state<Track | null>(null);
@@ -129,8 +129,6 @@
 				markCancelled();
 			} else {
 				console.error('Failed to download track:', error);
-				const fallbackMessage = 'Failed to download track. Please try again.';
-				const message = error instanceof Error ? error.message : fallbackMessage;
 				downloadUiStore.cancelTrackDownload(taskId);
 			}
 		} finally {

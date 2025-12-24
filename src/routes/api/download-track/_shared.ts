@@ -174,7 +174,7 @@ const loadState = async () => {
 			const data = await fs.readFile(STATE_FILE, 'utf8');
 			state = JSON.parse(data);
 			console.log('Loaded upload state from file');
-		} catch (err) {
+		} catch {
 			console.warn('No saved upload state found');
 			return;
 		}
@@ -249,7 +249,9 @@ export const cleanupExpiredUploads = async () => {
 			// Clean up temp files
 			try {
 				await fs.unlink(data.tempFilePath).catch(() => {});
-			} catch {}
+			} catch {
+				// Ignore cleanup errors
+			}
 			chunkUploads.delete(uploadId);
 			activeUploads.delete(uploadId);
 		}

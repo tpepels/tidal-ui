@@ -1,8 +1,7 @@
 import { BaseApiService, type SearchResponse } from './base-api.service';
-import { CACHE_TTL, SEARCH_TYPES } from '../constants';
-import type { Track, Album, Artist, Playlist, AudioQuality } from '../types';
+import { CACHE_TTL } from '../constants';
+import type { Track, Album, Artist, Playlist } from '../types';
 import type { RegionOption } from '../stores/region';
-import type { SearchTab } from '../constants';
 
 export class SearchService extends BaseApiService {
 	async searchTracks(

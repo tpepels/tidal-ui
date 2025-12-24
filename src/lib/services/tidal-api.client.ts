@@ -96,7 +96,7 @@ export class TidalApiClient {
 	}
 
 	async getCover(coverId: string): Promise<CoverImage[]> {
-		return this.contentService.searchCovers(undefined, 1);
+		return this.contentService.searchCovers(coverId, 1);
 	}
 
 	// Utility methods
@@ -115,7 +115,7 @@ export class TidalApiClient {
 	// Legacy methods for backward compatibility
 	async importFromUrl(url: string): Promise<{ data: Track | Album | Artist | Playlist }> {
 		throw new TidalError(
-			'URL import not implemented in new architecture',
+			`URL import not implemented in new architecture for ${url}`,
 			'NOT_IMPLEMENTED',
 			501,
 			false
@@ -124,7 +124,7 @@ export class TidalApiClient {
 
 	async getSong(query: string, quality: AudioQuality = 'LOSSLESS'): Promise<StreamData> {
 		throw new TidalError(
-			'Song search not implemented in new architecture',
+			`Song search not implemented in new architecture for query "${query}" with quality ${quality}`,
 			'NOT_IMPLEMENTED',
 			501,
 			false

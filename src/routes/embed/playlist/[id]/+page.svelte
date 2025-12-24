@@ -29,7 +29,9 @@
             const referrer = document.referrer;
             const host = referrer ? new URL(referrer).hostname : 'direct';
             umami?.track('embed_loaded', { host, type: 'playlist' });
-        } catch {}
+        } catch {
+			// Ignore umami tracking errors
+		}
 
 		if (playlistId) {
 			await loadPlaylist(playlistId);
@@ -57,7 +59,9 @@
 						page: window.location.href,
 						id
 					});
-				} catch {}
+				} catch {
+					// Ignore umami tracking errors
+				}
 			}
 		} finally {
 			isLoading = false;

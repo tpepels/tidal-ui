@@ -6,7 +6,7 @@
 	import { playerStore } from '$lib/stores/player';
 	import { LoaderCircle, Play, Pause, ExternalLink } from 'lucide-svelte';
 	import { formatArtists } from '$lib/utils';
-    import { fade } from 'svelte/transition';
+
 
 	let track = $state<Track | null>(null);
     let trackInfo = $state<TrackInfo | null>(null);
@@ -27,7 +27,9 @@
             const referrer = document.referrer;
             const host = referrer ? new URL(referrer).hostname : 'direct';
             umami?.track('embed_loaded', { host, type: 'track' });
-        } catch {}
+        } catch {
+			// Ignore umami tracking errors
+		}
 
 		if (trackId) {
 			await loadTrack(parseInt(trackId));

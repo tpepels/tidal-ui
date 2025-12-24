@@ -85,7 +85,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				if (body.quality === 'HI_RES_LOSSLESS' || body.quality === 'LOSSLESS') {
 					ext = 'flac';
 				}
-				let filename = body.trackTitle
+				const filename = body.trackTitle
 					? `${sanitizePath(body.artistName || 'Unknown')} - ${sanitizePath(body.trackTitle)}.${ext}`
 					: `track-${body.trackId}.${ext}`;
 				const baseDir = getDownloadDir();
@@ -248,7 +248,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				uploadData;
 			let ext = 'm4a';
 			if (quality === 'HI_RES_LOSSLESS' || quality === 'LOSSLESS') ext = 'flac';
-			let filename = trackTitle
+			const filename = trackTitle
 				? `${sanitizePath(artistName || 'Unknown')} - ${sanitizePath(trackTitle)}.${ext}`
 				: `track-${trackId}.${ext}`;
 			const baseDir = getDownloadDir();

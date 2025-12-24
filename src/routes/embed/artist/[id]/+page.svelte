@@ -29,7 +29,9 @@
             const referrer = document.referrer;
             const host = referrer ? new URL(referrer).hostname : 'direct';
             umami?.track('embed_loaded', { host, type: 'artist' });
-        } catch {}
+        } catch {
+			// Ignore umami tracking errors
+		}
 
 		if (artistId) {
 			await loadArtist(parseInt(artistId));
@@ -57,7 +59,9 @@
 						page: window.location.href,
 						id
 					});
-				} catch {}
+				} catch {
+					// Ignore umami tracking errors
+				}
 			}
 		} finally {
 			isLoading = false;

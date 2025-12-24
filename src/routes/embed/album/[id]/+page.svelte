@@ -6,7 +6,7 @@
 	import { slide } from 'svelte/transition';
 	import { playerStore } from '$lib/stores/player';
 	import { LoaderCircle, Play, Pause, ExternalLink } from 'lucide-svelte';
-	import { formatArtists } from '$lib/utils';
+
 	import { isSonglinkTrack } from '$lib/types';
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
 	import AlbumLink from '$lib/components/AlbumLink.svelte';
@@ -32,7 +32,9 @@
             const referrer = document.referrer;
             const host = referrer ? new URL(referrer).hostname : 'direct';
             umami?.track('embed_loaded', { host, type: 'album' });
-        } catch {}
+        } catch {
+			// Ignore umami tracking errors
+		}
 
 		if (albumId) {
 			await loadAlbum(parseInt(albumId));
@@ -60,7 +62,9 @@
 						page: window.location.href,
 						id
 					});
-				} catch {}
+				} catch {
+					// Ignore umami tracking errors
+				}
 			}
 		} finally {
 			isLoading = false;

@@ -18,7 +18,7 @@
 
 
 
-	let cleanup: (() => void) | null = null;
+
 
 	$: if ($downloadLogStore.entries.length > 0 && scrollContainer) {
 		tick().then(() => {

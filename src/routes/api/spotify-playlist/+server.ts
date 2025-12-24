@@ -76,7 +76,7 @@ async function getSessionData() {
 			const decodedConfig = Buffer.from(base64Config, 'base64').toString('utf-8');
 			const serverConfig = JSON.parse(decodedConfig);
 			clientVersion = serverConfig.clientVersion || '';
-		} catch (e) {
+		} catch {
 			console.error('Failed to parse appServerConfig, falling back to regex');
 			// Fallback to old method if parsing fails
 			clientVersion = html.match(/"clientVersion":"([^"]+)"/)?.[1] || '';
@@ -241,11 +241,11 @@ async function getSha256Hash(jsPack: string): Promise<string> {
 		try {
 			// Try as query first
 			hash = rawHashes.split('"fetchPlaylist","query","')[1].split('"')[0];
-		} catch (e) {
+		} catch {
 			try {
 				// Try as mutation
 				hash = rawHashes.split('"fetchPlaylist","mutation","')[1].split('"')[0];
-			} catch (e2) {
+			} catch {
 				console.warn('Failed to extract fetchPlaylist hash, using fallback');
 				hash = 'a67612f8c59f4cb4a9723d8e0e0e7b7cb8c5c3d45e3d8c4f5e6f7e8f9a0b1c2d';
 			}

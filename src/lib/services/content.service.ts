@@ -1,6 +1,6 @@
 import { BaseApiService } from './base-api.service';
 import { CACHE_TTL } from '../constants';
-import type { Album, Artist, Playlist, ArtistDetails, Lyrics, CoverImage } from '../types';
+import type { Album, Playlist, ArtistDetails, Lyrics, CoverImage } from '../types';
 
 export class ContentService extends BaseApiService {
 	async getAlbum(id: number): Promise<{ album: Album; tracks: any[] }> {

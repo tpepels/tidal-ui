@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Share2, Link, Copy, Check, Code } from 'lucide-svelte';
-	import { fade, scale } from 'svelte/transition';
+	import { scale } from 'svelte/transition';
 	import { onMount } from 'svelte';
 
 	interface Props {
