@@ -91,13 +91,37 @@ class LosslessAPI {
 		return `${base}${normalizedPath}`;
 	}
 
-	private normalizeSearchResponse<T>(data: unknown): SearchResponse<T> {
+	private normalizeSearchResponse(data: unknown): SearchResponse<unknown> {
 		const obj = data as Record<string, unknown>;
+
+		const findItems = (o: Record<string, unknown>): unknown[] => {
+			if (Array.isArray(o.items)) return o.items;
+			if (o.data && typeof o.data === 'object') {
+				const data = o.data as Record<string, unknown>;
+				if (Array.isArray(data.items)) return data.items;
+			}
+			// Check for direct arrays under common keys
+			if (Array.isArray(o.tracks)) return o.tracks;
+			if (Array.isArray(o.albums)) return o.albums;
+			if (Array.isArray(o.artists)) return o.artists;
+			if (Array.isArray(o.playlists)) return o.playlists;
+			return [];
+		};
+
+		const findNumber = (o: Record<string, unknown>, key: string): number => {
+			if (typeof o[key] === 'number') return o[key] as number;
+			if (o.data && typeof o.data === 'object') {
+				const data = o.data as Record<string, unknown>;
+				if (typeof data[key] === 'number') return data[key] as number;
+			}
+			return 0;
+		};
+
 		return {
-			items: Array.isArray(obj.items) ? (obj.items as T[]) : [],
-			limit: typeof obj.limit === 'number' ? obj.limit : 0,
-			offset: typeof obj.offset === 'number' ? obj.offset : 0,
-			totalNumberOfItems: typeof obj.totalNumberOfItems === 'number' ? obj.totalNumberOfItems : 0
+			items: findItems(obj),
+			limit: findNumber(obj, 'limit'),
+			offset: findNumber(obj, 'offset'),
+			totalNumberOfItems: findNumber(obj, 'totalNumberOfItems')
 		};
 	}
 
@@ -794,17 +818,12 @@ class LosslessAPI {
 			}
 
 			const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
-			const normalized = this.normalizeSearchResponse<Track>(data);
-
-			// Ensure items is an array and validate each item
-			if (!Array.isArray(normalized.items)) {
-				console.warn('Search response items is not an array:', normalized.items);
-				normalized.items = [];
-			}
-
+			const normalized = this.normalizeSearchResponse(data);
 			return {
-				...normalized,
-				items: normalized.items.map((track) => this.prepareTrack(track)).filter(Boolean)
+				items: (normalized.items as Artist[]).map((artist) => this.prepareArtist(artist)),
+				limit: normalized.limit,
+				offset: normalized.offset,
+				totalNumberOfItems: normalized.totalNumberOfItems
 			};
 		} catch (error) {
 			console.error('Track search failed:', error);
@@ -821,10 +840,12 @@ class LosslessAPI {
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search artists');
 		const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
-		const normalized = this.normalizeSearchResponse<Artist>(data);
+		const normalized = this.normalizeSearchResponse(data);
 		return {
-			...normalized,
-			items: normalized.items.map((artist) => this.prepareArtist(artist))
+			items: (normalized.items as Track[]).map((track) => this.prepareTrack(track)),
+			limit: normalized.limit,
+			offset: normalized.offset,
+			totalNumberOfItems: normalized.totalNumberOfItems
 		};
 	}
 
@@ -833,10 +854,12 @@ class LosslessAPI {
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search albums');
 		const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
-		const normalized = this.normalizeSearchResponse<Album>(data);
+		const normalized = this.normalizeSearchResponse(data);
 		return {
-			...normalized,
-			items: normalized.items.map((album) => this.prepareAlbum(album))
+			items: (normalized.items as Album[]).map((album) => this.prepareAlbum(album)),
+			limit: normalized.limit,
+			offset: normalized.offset,
+			totalNumberOfItems: normalized.totalNumberOfItems
 		};
 	}
 
