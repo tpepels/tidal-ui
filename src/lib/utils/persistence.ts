@@ -3,7 +3,7 @@ import { browser } from '$app/environment';
 export interface PersistedState {
 	version: number;
 	timestamp: number;
-	data: any;
+	data: unknown;
 }
 
 const STORAGE_PREFIX = 'tidal-ui:';

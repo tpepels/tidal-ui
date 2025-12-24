@@ -5,7 +5,7 @@ interface CacheEntry<T> {
 }
 
 class ApiCache {
-	private cache = new Map<string, CacheEntry<any>>();
+	private cache = new Map<string, CacheEntry<unknown>>();
 	private maxSize = 100;
 
 	set<T>(key: string, data: T, ttlMs: number = 5 * 60 * 1000): void {

@@ -49,7 +49,7 @@ export abstract class BaseApiService {
 		return withErrorHandling(operation, `API request to ${endpoint}`);
 	}
 
-	protected generateCacheKey(endpoint: string, params?: Record<string, any>): string {
+	protected generateCacheKey(endpoint: string, params?: Record<string, unknown>): string {
 		const sortedParams = params
 			? Object.keys(params)
 					.sort()

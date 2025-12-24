@@ -50,11 +50,11 @@
             tracks = data.tracks;
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load album';
-			if (typeof window !== 'undefined' && (window as any).umami) {
+			if (typeof window !== 'undefined' && (window as unknown as { umami?: unknown }).umami) {
 				try {
 					const referrer = document.referrer;
 					const host = referrer ? new URL(referrer).hostname : 'direct';
-					(window as any).umami.track('embed_error', { 
+					((window as unknown as { umami?: { track: (event: string, data?: unknown) => void } }).umami)?.track('embed_error', { 
 						host, 
 						error, 
 						version: APP_VERSION,

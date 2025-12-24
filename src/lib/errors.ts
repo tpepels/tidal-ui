@@ -20,7 +20,7 @@ export class TidalError extends Error {
 		message?: string;
 		subStatus?: number;
 	}): TidalError {
-		if (response.status === 429) {
+		if (response?.status === 429) {
 			return new TidalError(ERROR_MESSAGES.RATE_LIMIT_ERROR, 'RATE_LIMIT', 429, true);
 		}
 
@@ -29,7 +29,7 @@ export class TidalError extends Error {
 		}
 
 		if (response?.status >= 500) {
-			return new TidalError(ERROR_MESSAGES.API_ERROR, 'SERVER_ERROR', response.status, true);
+			return new TidalError(ERROR_MESSAGES.API_ERROR, 'SERVER_ERROR', response?.status, true);
 		}
 
 		const message = response?.userMessage || response?.message || ERROR_MESSAGES.API_ERROR;
@@ -165,9 +165,9 @@ export async function retryWithBackoff<T>(
 	operation: () => Promise<T>,
 	maxRetries = 3,
 	baseDelay = 1000,
-	shouldRetry?: (error: any) => boolean
+	shouldRetry?: (error: unknown) => boolean
 ): Promise<T> {
-	let lastError: any;
+	let lastError: unknown;
 
 	for (let attempt = 0; attempt <= maxRetries; attempt++) {
 		try {

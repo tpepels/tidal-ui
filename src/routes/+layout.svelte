@@ -24,7 +24,7 @@
 	import { sanitizeForFilename, getExtensionForQuality, buildTrackLinksCsv } from '$lib/downloads';
 	import { formatArtists } from '$lib/utils';
 	import { navigating, page } from '$app/stores';
-	import { goto } from '$app/navigation';
+	import { goto, resolve } from '$app/navigation';
 	import JSZip from 'jszip';
 	import {
 		Archive,

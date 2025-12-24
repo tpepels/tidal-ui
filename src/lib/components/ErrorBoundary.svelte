@@ -1,15 +1,15 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, type Snippet } from 'svelte';
 	import { toasts } from '$lib/stores/toasts';
 
 	interface Props {
-		children: any;
+		children: Snippet;
 	}
 
 	let { children }: Props = $props();
 	let error = $state<Error | null>(null);
 
-	function handleError(err: any) {
+	function handleError(err: unknown) {
 		console.error('Global error boundary caught:', err);
 		error = err instanceof Error ? err : new Error(String(err));
 		toasts.error(`Application error: ${error.message}`, {

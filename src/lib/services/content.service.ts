@@ -1,12 +1,12 @@
 import { BaseApiService } from './base-api.service';
 import { CACHE_TTL } from '../constants';
-import type { Album, Playlist, ArtistDetails, Lyrics, CoverImage } from '../types';
+import type { Album, Playlist, ArtistDetails, Lyrics, CoverImage, Track } from '../types';
 
 export class ContentService extends BaseApiService {
-	async getAlbum(id: number): Promise<{ album: Album; tracks: any[] }> {
+	async getAlbum(id: number): Promise<{ album: Album; tracks: Track[] }> {
 		const cacheKey = this.generateCacheKey(`/album/${id}`);
 
-		return this.makeRequest<{ album: Album; tracks: any[] }>(
+		return this.makeRequest<{ album: Album; tracks: Track[] }>(
 			`/album/${id}`,
 			{ apiVersion: 'v2' },
 			cacheKey,
@@ -25,10 +25,10 @@ export class ContentService extends BaseApiService {
 		);
 	}
 
-	async getPlaylist(uuid: string): Promise<{ playlist: Playlist; items: Array<{ item: any }> }> {
+	async getPlaylist(uuid: string): Promise<{ playlist: Playlist; items: Array<{ item: Track }> }> {
 		const cacheKey = this.generateCacheKey(`/playlist/${uuid}`);
 
-		return this.makeRequest<{ playlist: Playlist; items: Array<{ item: any }> }>(
+		return this.makeRequest<{ playlist: Playlist; items: Array<{ item: Track }> }>(
 			`/playlist/${uuid}`,
 			{ apiVersion: 'v2' },
 			cacheKey,
@@ -48,7 +48,7 @@ export class ContentService extends BaseApiService {
 	}
 
 	async searchCovers(query?: string, limit = 20): Promise<CoverImage[]> {
-		const params: Record<string, any> = { limit };
+		const params: Record<string, unknown> = { limit };
 		if (query) {
 			params.query = query;
 		}
