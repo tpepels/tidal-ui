@@ -896,38 +896,31 @@ class LosslessAPI {
 	/**
 	 * Search for artists
 	 */
-	async searchArtists(query: string, region?: RegionOption): Promise<SearchResponse<Artist>> {
-		const response = await this.fetch(`${this.baseUrl}/search/?ar=${encodeURIComponent(query)}`);
-		console.log('Search API call to:', `${this.baseUrl}/search/?ar=${encodeURIComponent(query)}`);
+	async searchArtists(query: string): Promise<SearchResponse<Artist>> {
+		const response = await this.fetch(`${this.baseUrl}/search/?q=${encodeURIComponent(query)}`);
+		console.log('Search API call to:', `${this.baseUrl}/search/?q=${encodeURIComponent(query)}`);
 		this.ensureNotRateLimited(response);
-		if (!response.ok) throw new Error('Failed to search artists');
+		if (!response.ok) throw new Error('Failed to get song');
+		return response.json();
+	}
+
+	async searchAlbums(query: string): Promise<SearchResponse<Album>> {
+		const response = await this.fetch(`${this.baseUrl}/search/?al=${encodeURIComponent(query)}`);
+		this.ensureNotRateLimited(response);
+		if (!response.ok) throw new Error('Failed to search albums');
 		const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
 		const validated = { ...data, items: data.items || [] };
-		const normalized = this.normalizeSearchResponse<Artist>(validated, 'artists');
+		const normalized = this.normalizeSearchResponse<Album>(validated, 'albums');
 		return {
-			items: normalized.items.map((artist) => this.prepareArtist(artist as Artist)),
+			items: normalized.items.map((album) => this.prepareAlbum(album as Album)),
 			limit: normalized.limit,
 			offset: normalized.offset,
 			totalNumberOfItems: normalized.totalNumberOfItems
 		};
 	}
 
-	async searchAlbums(query: string, region?: RegionOption): Promise<SearchResponse<Album>> {
-		const response = await this.fetch(`${this.baseUrl}/search/?al=${encodeURIComponent(query)}`);
-		this.ensureNotRateLimited(response);
-		if (!response.ok) throw new Error('Failed to search albums');
-		const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
-		// Validate response structure
-		const validated = { ...data, items: data.items || [] };
-		const normalized = this.normalizeSearchResponse<Album>(validated, 'albums');
-		return {
-			...normalized,
-			items: normalized.items.map((album) => this.prepareAlbum(album))
-		};
-	}
-
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	async searchPlaylists(_query: string, _region?: RegionOption): Promise<SearchResponse<Playlist>> {
+	async searchPlaylists(_query: string): Promise<SearchResponse<Playlist>> {
 		return { items: [], limit: 0, offset: 0, totalNumberOfItems: 0 };
 	}
 

@@ -588,17 +588,17 @@ import {
 					break;
 				}
 				case 'albums': {
-					const response = await losslessAPI.searchAlbums(searchStore.query, selectedRegion);
+					const response = await losslessAPI.searchAlbums(searchStore.query);
 					searchStore.albums = Array.isArray(response?.items) ? response.items : [];
 					break;
 				}
 				case 'artists': {
-					const response = await losslessAPI.searchArtists(searchStore.query, selectedRegion);
+					const response = await losslessAPI.searchArtists(searchStore.query);
 					searchStore.artists = Array.isArray(response?.items) ? response.items : [];
 					break;
 				}
 				case 'playlists': {
-					const response = await losslessAPI.searchPlaylists(searchStore.query, selectedRegion);
+					const response = await losslessAPI.searchPlaylists(searchStore.query);
 					searchStore.playlists = Array.isArray(response?.items) ? response.items : [];
 					break;
 				}
