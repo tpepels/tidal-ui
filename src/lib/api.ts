@@ -969,8 +969,8 @@ class LosslessAPI {
 	async searchArtists(query: string): Promise<SearchResponse<Artist>> {
 		this.logEntrypointCall('search', 'searchArtists', { query });
 
-		const response = await this.fetch(`${this.baseUrl}/search/?q=${encodeURIComponent(query)}`);
-		console.log('Search API call to:', `${this.baseUrl}/search/?q=${encodeURIComponent(query)}`);
+		const response = await this.fetch(`${this.baseUrl}/search/?a=${encodeURIComponent(query)}`);
+		console.log('Search API call to:', `${this.baseUrl}/search/?a=${encodeURIComponent(query)}`);
 		if (response.status === 400 && !this.logged400Body) {
 			this.logged400Body = true;
 			const body = await response.clone().text();
