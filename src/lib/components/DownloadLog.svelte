@@ -469,6 +469,13 @@
 		gap: 8px;
 	}
 
+	@media (min-width: 768px) {
+		.download-progress-tasks {
+			flex-direction: row;
+			flex-wrap: wrap;
+		}
+	}
+
 	.download-progress-task {
 		padding: 8px 12px;
 		background: rgba(255, 255, 255, 0.05);

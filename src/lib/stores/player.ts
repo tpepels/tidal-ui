@@ -94,6 +94,10 @@ function createPlayerStore() {
 	}
 
 	const applyAutoQuality = (state: PlayerState, track: PlayableTrack | null): PlayerState => {
+		// IMPORTANT: This should ONLY affect playback quality, not the UI setting.
+		// The UI quality setting (shown in top-right menu) should remain as manually set by user
+		// and never change due to track-play-based fallback. Quality adjustments here are for
+		// internal playback optimization only and should not update the persisted user preference.
 		if (state.qualitySource === 'manual') {
 			return state;
 		}

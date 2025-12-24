@@ -324,14 +324,7 @@
 								? `Downloading ${downloadedCount}/${tracks.length}`
 								: 'Download All'}
 						</button>
-						<button
-							onclick={() => downloadLogStore.toggle()}
-							class="flex items-center gap-2 rounded-full border border-green-600/50 px-6 py-3 text-sm font-semibold text-green-300 transition-colors hover:border-green-500 hover:text-green-100"
-							title="Toggle download log"
-						>
-							<Terminal size={18} />
-							Logs
-						</button>
+
 						<ShareButton type="album" id={album.id} variant="secondary" />
 					</div>
 					{#if downloadError}

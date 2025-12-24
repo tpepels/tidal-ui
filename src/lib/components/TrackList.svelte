@@ -199,8 +199,6 @@
 					>
 						{#if isPlaying(track)}
 							<Pause size={14} class="sm:w-4 sm:h-4 text-blue-500" />
-						{:else if isCurrentTrack(track)}
-							<Play size={14} class="sm:w-4 sm:h-4 text-blue-500" />
 						{:else}
 							<span class="text-xs sm:text-sm text-gray-400 hover:hidden">{formatTrackNumber(track)}</span>
 							<Play size={14} class="sm:w-4 sm:h-4 hidden text-white hover:block" />
