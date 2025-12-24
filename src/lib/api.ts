@@ -893,6 +893,10 @@ class LosslessAPI {
 		};
 	}
 
+	async getTrack(trackId: number, quality: AudioQuality = 'LOSSLESS'): Promise<TrackLookup> {
+		return this.getPreferredTrackMetadata(trackId, quality);
+	}
+
 	/**
 	 * Get album details with track listing
 	 */
