@@ -197,6 +197,10 @@ class LosslessAPI {
 		return artist;
 	}
 
+	private preparePlaylist(playlist: Playlist): Playlist {
+		return playlist;
+	}
+
 	private ensureNotRateLimited(response: Response): void {
 		if (response.status === 429) {
 			throw new Error(RATE_LIMIT_ERROR_MESSAGE);
@@ -836,7 +840,7 @@ class LosslessAPI {
 	 */
 	async searchTracks(query: string, region: RegionOption = 'auto'): Promise<SearchResponse<Track>> {
 		const response = await this.fetch(
-			this.buildRegionalUrl(`/search/?s=${encodeURIComponent(query)}`, region)
+			`${this.baseUrl}/search/tracks?query=${encodeURIComponent(query)}&limit=50`
 		);
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search tracks');
@@ -858,225 +862,53 @@ class LosslessAPI {
 		region: RegionOption = 'auto'
 	): Promise<SearchResponse<Artist>> {
 		const response = await this.fetch(
-			this.buildRegionalUrl(`/search/?a=${encodeURIComponent(query)}`, region)
+			`${this.baseUrl}/search/artists?query=${encodeURIComponent(query)}&limit=50`
 		);
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search artists');
-		const data = await response.json();
-		const normalized = this.normalizeSearchResponse<Artist>(data, 'artists');
+		const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
+		// Validate response structure
+		const validated = { ...data, items: data.items || [] };
+		const normalized = this.normalizeSearchResponse<Artist>(validated, 'artists');
 		return {
 			...normalized,
 			items: normalized.items.map((artist) => this.prepareArtist(artist))
 		};
 	}
 
-	/**
-	 * Search for albums
-	 */
 	async searchAlbums(query: string, region: RegionOption = 'auto'): Promise<SearchResponse<Album>> {
 		const response = await this.fetch(
-			this.buildRegionalUrl(`/search/?al=${encodeURIComponent(query)}`, region)
+			`${this.baseUrl}/search/albums?query=${encodeURIComponent(query)}&limit=50`
 		);
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search albums');
-		const data = await response.json();
-		const normalized = this.normalizeSearchResponse<Album>(data, 'albums');
+		const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
+		// Validate response structure
+		const validated = { ...data, items: data.items || [] };
+		const normalized = this.normalizeSearchResponse<Album>(validated, 'albums');
 		return {
 			...normalized,
 			items: normalized.items.map((album) => this.prepareAlbum(album))
 		};
 	}
 
-	/**
-	 * Search for playlists
-	 */
 	async searchPlaylists(
 		query: string,
 		region: RegionOption = 'auto'
 	): Promise<SearchResponse<Playlist>> {
 		const response = await this.fetch(
-			this.buildRegionalUrl(`/search/?p=${encodeURIComponent(query)}`, region)
+			`${this.baseUrl}/search/playlists?query=${encodeURIComponent(query)}&limit=50`
 		);
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search playlists');
-		const data = await response.json();
-		return this.normalizeSearchResponse<Playlist>(data, 'playlists');
-	}
-
-	/**
-	 * Import content from a Tidal URL
-	 * Supports track, album, artist, and playlist URLs
-	 */
-	async importFromUrl(url: string): Promise<{
-		type: 'track' | 'album' | 'artist' | 'playlist';
-		data: Track | Album | Artist | { playlist: Playlist; tracks: Track[] };
-	}> {
-		const parsed = parseTidalUrl(url);
-
-		if (parsed.type === 'unknown') {
-			throw new Error(
-				'Invalid Tidal URL. Please provide a valid track, album, artist, or playlist URL.'
-			);
-		}
-
-		switch (parsed.type) {
-			case 'track': {
-				if (!parsed.trackId) {
-					throw new Error('Could not extract track ID from URL');
-				}
-				const lookup = await this.getTrack(parsed.trackId);
-				return {
-					type: 'track',
-					data: this.prepareTrack(lookup.track)
-				};
-			}
-
-			case 'album': {
-				if (!parsed.albumId) {
-					throw new Error('Could not extract album ID from URL');
-				}
-				const { album } = await this.getAlbum(parsed.albumId);
-				return {
-					type: 'album',
-					data: this.prepareAlbum(album)
-				};
-			}
-
-			case 'artist': {
-				if (!parsed.artistId) {
-					throw new Error('Could not extract artist ID from URL');
-				}
-				const artist = await this.getArtist(parsed.artistId);
-				return {
-					type: 'artist',
-					data: this.prepareArtist(artist)
-				};
-			}
-
-			case 'playlist': {
-				if (!parsed.playlistId) {
-					throw new Error('Could not extract playlist ID from URL');
-				}
-				const { playlist, items } = await this.getPlaylist(parsed.playlistId);
-				const tracks = items.map((item) => this.prepareTrack(item.item));
-				return {
-					type: 'playlist',
-					data: { playlist, tracks }
-				};
-			}
-
-			default:
-				throw new Error('Unsupported URL type');
-		}
-	}
-
-	/**
-	 * Get track info and stream URL (with retries for quality fallback)
-	 */
-	async getTrack(id: number, quality: AudioQuality = 'LOSSLESS'): Promise<TrackLookup> {
-		const url = `${this.baseUrl}/track/?id=${id}&quality=${quality}`;
-		let lastError: Error | null = null;
-
-		for (let attempt = 1; attempt <= 3; attempt += 1) {
-			const response = await this.fetch(url, { apiVersion: 'v2' });
-			this.ensureNotRateLimited(response);
-			if (response.ok) {
-				const data = await response.json();
-				if (this.isV2ApiContainer(data)) {
-					return await this.parseTrackLookupV2(id, data, 'v2');
-				}
-				return this.parseTrackLookup(data);
-			}
-
-			let detail: string | undefined;
-			let userMessage: string | undefined;
-			let subStatus: number | undefined;
-			try {
-				const errorData = (await response.json()) as {
-					detail?: unknown;
-					subStatus?: unknown;
-					userMessage?: unknown;
-				};
-				if (typeof errorData?.detail === 'string') {
-					detail = errorData.detail;
-				}
-				if (typeof errorData?.userMessage === 'string') {
-					userMessage = errorData.userMessage;
-					if (!detail) {
-						detail = errorData.userMessage;
-					}
-				}
-				if (typeof errorData?.subStatus === 'number') {
-					subStatus = errorData.subStatus;
-				}
-			} catch {
-				// Ignore JSON parse errors
-			}
-
-			const isTokenRetry = response.status === 401 && subStatus === 11002;
-			const message = detail ?? `Failed to get track (status ${response.status})`;
-			lastError = new Error(isTokenRetry ? (userMessage ?? message) : message);
-			const shouldRetry =
-				isTokenRetry || (detail ? /quality not found/i.test(detail) : response.status >= 500);
-
-			if (attempt === 3 || !shouldRetry) {
-				throw lastError;
-			}
-
-			await this.delay(RETRY_DELAY_MS * attempt);
-		}
-
-		throw lastError ?? new Error('Failed to get track');
-	}
-
-	async getDashManifest(
-		trackId: number,
-		quality: AudioQuality = 'HI_RES_LOSSLESS'
-	): Promise<DashManifestResult> {
-		const { result } = await this.getDashManifestWithMetadata(trackId, quality);
-		return result;
-	}
-
-	async getDashManifestWithMetadata(
-		trackId: number,
-		quality: AudioQuality = 'HI_RES_LOSSLESS'
-	): Promise<DashManifestWithMetadata> {
-		let lastError: Error | null = null;
-
-		for (let attempt = 1; attempt <= 3; attempt += 1) {
-			try {
-				const lookup = await this.getTrack(trackId, quality);
-				const manifestPayload = lookup.info?.manifest ?? '';
-				const contentType = lookup.info?.manifestMimeType ?? null;
-				const result = this.buildDashManifestResult(manifestPayload, contentType);
-				const trackInfo = {
-					sampleRate: lookup.info?.sampleRate ?? null,
-					bitDepth: lookup.info?.bitDepth ?? null,
-					replayGain: lookup.info?.trackReplayGain ?? null
-				};
-				return { result, trackInfo };
-			} catch (error) {
-				lastError = error instanceof Error ? error : new Error(String(error));
-			}
-
-			if (attempt < 3) {
-				await this.delay(RETRY_DELAY_MS * attempt);
-			}
-		}
-
-		throw lastError ?? this.createDashUnavailableError('Unable to load dash manifest for track');
-	}
-
-	/**
-	 * Get song with stream info
-	 */
-	async getSong(query: string, quality: AudioQuality = 'LOSSLESS'): Promise<StreamData> {
-		const response = await this.fetch(
-			`${this.baseUrl}/song/?q=${encodeURIComponent(query)}&quality=${quality}`
-		);
-		this.ensureNotRateLimited(response);
-		if (!response.ok) throw new Error('Failed to get song');
-		return response.json();
+		const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
+		// Validate response structure
+		const validated = { ...data, items: data.items || [] };
+		const normalized = this.normalizeSearchResponse<Playlist>(validated, 'playlists');
+		return {
+			...normalized,
+			items: normalized.items.map((playlist) => this.preparePlaylist(playlist))
+		};
 	}
 
 	/**
