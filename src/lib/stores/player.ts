@@ -167,6 +167,13 @@ function createPlayerStore() {
 		setLoading: (isLoading: boolean) => update((state) => ({ ...state, isLoading })),
 		setQueue: (queue: PlayableTrack[], startIndex: number = 0) =>
 			update((state) => {
+				// Input validation
+				if (!Array.isArray(queue)) {
+					console.error('setQueue called with invalid queue:', queue);
+					return state;
+				}
+
+				const validStartIndex = Math.max(0, Math.min(startIndex, queue.length - 1));
 				const hasTracks = queue.length > 0;
 				const clampedIndex = hasTracks ? Math.min(Math.max(startIndex, 0), queue.length - 1) : -1;
 				const nextTrack = hasTracks ? queue[clampedIndex]! : null;

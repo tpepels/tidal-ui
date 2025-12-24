@@ -839,17 +839,52 @@ class LosslessAPI {
 	 * Search for tracks
 	 */
 	async searchTracks(query: string, region: RegionOption = 'auto'): Promise<SearchResponse<Track>> {
-		const response = await this.fetch(`${this.baseUrl}/search/?s=${encodeURIComponent(query)}`);
-		this.ensureNotRateLimited(response);
-		if (!response.ok) throw new Error('Failed to search tracks');
-		const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
-		// Validate response structure
-		const validated = { ...data, items: data.items || [] };
-		const normalized = this.normalizeSearchResponse<Track>(validated, 'tracks');
-		return {
-			...normalized,
-			items: normalized.items.map((track) => this.prepareTrack(track))
-		};
+		// Input validation
+		if (!query || typeof query !== 'string' || query.trim().length === 0) {
+			throw new Error('Search query cannot be empty');
+		}
+
+		if (query.length > 200) {
+			throw new Error('Search query too long (maximum 200 characters)');
+		}
+
+		if (!['auto', 'us', 'eu'].includes(region)) {
+			throw new Error(`Invalid region: ${region}`);
+		}
+
+		try {
+			const response = await this.fetch(
+				`${this.baseUrl}/search/?s=${encodeURIComponent(query.trim())}`
+			);
+			this.ensureNotRateLimited(response);
+			if (!response.ok) {
+				throw new Error(`Search API returned ${response.status}: ${response.statusText}`);
+			}
+
+			const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
+
+			// Validate response structure defensively
+			if (!data || typeof data !== 'object') {
+				throw new Error('Invalid search response format');
+			}
+
+			const validated = { ...data, items: data.items || [] };
+			const normalized = this.normalizeSearchResponse<Track>(validated, 'tracks');
+
+			// Ensure items is an array and validate each item
+			if (!Array.isArray(normalized.items)) {
+				console.warn('Search response items is not an array:', normalized.items);
+				normalized.items = [];
+			}
+
+			return {
+				...normalized,
+				items: normalized.items.map((track) => this.prepareTrack(track)).filter(Boolean)
+			};
+		} catch (error) {
+			console.error('Track search failed:', error);
+			throw error;
+		}
 	}
 
 	/**
@@ -894,7 +929,21 @@ class LosslessAPI {
 	}
 
 	async getTrack(trackId: number, quality: AudioQuality = 'LOSSLESS'): Promise<TrackLookup> {
-		return this.getPreferredTrackMetadata(trackId, quality);
+		// Input validation
+		if (!Number.isFinite(trackId) || trackId <= 0) {
+			throw new Error(`Invalid track ID: ${trackId}`);
+		}
+
+		if (!['LOW', 'HIGH', 'LOSSLESS', 'HI_RES_LOSSLESS'].includes(quality)) {
+			throw new Error(`Invalid quality: ${quality}`);
+		}
+
+		try {
+			return await this.getPreferredTrackMetadata(trackId, quality);
+		} catch (error) {
+			console.error(`Failed to get track ${trackId} with quality ${quality}:`, error);
+			throw error;
+		}
 	}
 
 	/**

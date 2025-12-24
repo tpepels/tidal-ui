@@ -416,13 +416,18 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 	let controllerChangeHandler: (() => void) | null = null;
 
 	onMount(() => {
-		// Subscribe to performance level and update data attribute
-		const unsubPerf = effectivePerformanceLevel.subscribe((level) => {
-			performanceLevel = level;
-			if (typeof document !== 'undefined') {
-				document.documentElement.setAttribute('data-performance', level);
-			}
-		});
+		try {
+			// Subscribe to performance level and update data attribute
+			const unsubPerf = effectivePerformanceLevel.subscribe((level) => {
+				try {
+					performanceLevel = level;
+					if (typeof document !== 'undefined' && document.documentElement) {
+						document.documentElement.setAttribute('data-performance', level);
+					}
+				} catch (error) {
+					console.warn('Failed to update performance level:', error);
+				}
+			});
 
 		const updateViewportHeight = () => {
 			viewportHeight = window.innerHeight;
@@ -490,6 +495,10 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 				navigator.serviceWorker.removeEventListener('controllerchange', controllerChangeHandler);
 			}
 		};
+		} catch (error) {
+			console.error('Failed to initialize layout:', error);
+			// Continue with degraded functionality
+		}
 	});
 </script>
 

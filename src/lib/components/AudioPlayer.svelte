@@ -715,11 +715,29 @@ let pendingPlayAfterSource = false;
 	}
 
 	async function loadTrack(track: PlayableTrack) {
+		// Input validation
+		if (!track) {
+			console.error('loadTrack called with null/undefined track');
+			return;
+		}
+
 		if (isSonglinkTrack(track)) {
 			console.error('Attempted to load SonglinkTrack directly - this should not happen!', track);
 			return;
 		}
+
 		const tidalTrack = track as Track;
+
+		// Validate track structure
+		if (!tidalTrack || typeof tidalTrack !== 'object') {
+			console.error('Invalid track object:', tidalTrack);
+			return;
+		}
+
+		if (!tidalTrack.id) {
+			console.error('Track missing ID:', tidalTrack);
+			return;
+		}
 
 		const trackId = Number(tidalTrack.id);
 		if (!Number.isFinite(trackId) || trackId <= 0) {

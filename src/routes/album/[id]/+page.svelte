@@ -62,9 +62,18 @@
 	}
 
 	function handlePlayAll() {
-		if (tracks.length > 0) {
+		// Validate tracks array
+		if (!Array.isArray(tracks) || tracks.length === 0) {
+			console.warn('No tracks available to play');
+			return;
+		}
+
+		try {
 			playerStore.setQueue(tracks, 0);
 			playerStore.play();
+		} catch (error) {
+			console.error('Failed to play album:', error);
+			// Could show error toast here
 		}
 	}
 

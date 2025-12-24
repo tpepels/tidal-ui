@@ -18,8 +18,19 @@
 	});
 
 	function handleTrackSelect(track: PlayableTrack) {
-		playerStore.setQueue([track], 0);
-		playerStore.play();
+		// Input validation
+		if (!track) {
+			console.error('handleTrackSelect called with null/undefined track');
+			return;
+		}
+
+		try {
+			playerStore.setQueue([track], 0);
+			playerStore.play();
+		} catch (error) {
+			console.error('Failed to play track:', error);
+			// Could show a toast notification here
+		}
 	}
 </script>
 
