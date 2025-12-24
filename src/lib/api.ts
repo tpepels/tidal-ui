@@ -76,20 +76,6 @@ class LosslessAPI {
 	private startTime = Date.now();
 	private logged400Body = false;
 
-	// Known queries for baseline testing
-	private knownQueries = [
-		'adele',
-		'taylor',
-		'beatles',
-		'radiohead',
-		'mozart',
-		'bach',
-		'nirvana',
-		'metallica',
-		'madonna',
-		'coldplay'
-	];
-
 	constructor(baseUrl: string = API_BASE) {
 		this.baseUrl = baseUrl;
 	}
@@ -1012,21 +998,6 @@ class LosslessAPI {
 		);
 		const validated = { ...data, items: data.items || [] };
 		const normalized = this.normalizeSearchResponse<Artist>(validated, 'artists');
-		if (normalized.items.length === 0 && this.knownQueries.includes(query.toLowerCase())) {
-			console.log(
-				`[Baseline] Known query "${query}" artists: response keys: ${Object.keys(validated).join(', ')}`
-			);
-			if (
-				'data' in validated &&
-				typeof validated.data === 'object' &&
-				validated.data !== null &&
-				!Array.isArray(validated.data)
-			) {
-				console.log(
-					`[Baseline] data keys: ${Object.keys(validated.data as Record<string, unknown>).join(', ')}`
-				);
-			}
-		}
 		return {
 			items: normalized.items.map((artist) => this.prepareArtist(artist as Artist)),
 			limit: normalized.limit,
@@ -1064,21 +1035,6 @@ class LosslessAPI {
 		);
 		const validated = { ...data, items: data.items || [] };
 		const normalized = this.normalizeSearchResponse<Album>(validated, 'albums');
-		if (normalized.items.length === 0 && this.knownQueries.includes(query.toLowerCase())) {
-			console.log(
-				`[Baseline] Known query "${query}" albums: response keys: ${Object.keys(validated).join(', ')}`
-			);
-			if (
-				'data' in validated &&
-				typeof validated.data === 'object' &&
-				validated.data !== null &&
-				!Array.isArray(validated.data)
-			) {
-				console.log(
-					`[Baseline] data keys: ${Object.keys(validated.data as Record<string, unknown>).join(', ')}`
-				);
-			}
-		}
 		return {
 			items: normalized.items.map((album) => this.prepareAlbum(album as Album)),
 			limit: normalized.limit,
