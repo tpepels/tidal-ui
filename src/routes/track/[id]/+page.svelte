@@ -58,6 +58,50 @@
 		return `${mins}:${secs.toString().padStart(2, '0')}`;
 	}
 
+	function handleBackNavigation() {
+		// Try to determine the most appropriate destination based on context
+
+		// 1. If we came from an album page and this track belongs to an album, go back to album
+		if (track?.album?.id && document.referrer?.includes(`/album/${track.album.id}`)) {
+			goto(`/album/${track.album.id}`);
+			return;
+		}
+
+		// 2. If we came from an artist page and this track has artists, go back to the first artist
+		if (track?.artists?.length && document.referrer?.includes('/artist/')) {
+			// Try to find the artist ID in the referrer
+			const artistMatch = document.referrer.match(/\/artist\/(\d+)/);
+			if (artistMatch) {
+				goto(`/artist/${artistMatch[1]}`);
+				return;
+			}
+		}
+
+		// 3. If we came from a playlist page, try to go back there
+		if (document.referrer?.includes('/playlist/')) {
+			const playlistMatch = document.referrer.match(/\/playlist\/([^/?]+)/);
+			if (playlistMatch) {
+				goto(`/playlist/${playlistMatch[1]}`);
+				return;
+			}
+		}
+
+		// 4. If we came from search results, go back to search
+		if (document.referrer?.includes('#') || $page.url.searchParams.has('q')) {
+			goto('/');
+			return;
+		}
+
+		// 5. Check browser history (current implementation as fallback)
+		if (window.history.state && window.history.state.idx > 0) {
+			window.history.back();
+			return;
+		}
+
+		// 6. Default fallback to home
+		goto('/');
+	}
+
 	function markCancelled() {
 		isCancelled = true;
 		setTimeout(() => {
@@ -163,13 +207,7 @@
 	<div class="mx-auto max-w-4xl space-y-8 py-8">
 		<!-- Back Button -->
 		<button
-			onclick={() => {
-				if (window.history.state && window.history.state.idx > 0) {
-					window.history.back();
-				} else {
-					goto('/');
-				}
-			}}
+			onclick={handleBackNavigation}
 			class="flex items-center gap-2 text-gray-400 transition-colors hover:text-white"
 		>
 			<ArrowLeft size={20} />

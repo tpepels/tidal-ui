@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
 	import { losslessAPI } from '$lib/api';
 	import { downloadAlbum } from '$lib/downloads';
 	import type { Album, ArtistDetails, AudioQuality } from '$lib/types';
@@ -247,6 +248,34 @@ async function loadArtist(id: number) {
 			}
 		}
 	}
+
+	function handleBackNavigation() {
+		// Try to determine the most appropriate destination based on context
+
+		// 1. If we came from search results, go back to search
+		if (document.referrer?.includes('#') || $page.url.searchParams.has('q')) {
+			goto('/');
+			return;
+		}
+
+		// 2. If we came from an album page that belongs to this artist, go back to that album
+		if (document.referrer?.includes('/album/')) {
+			const albumMatch = document.referrer.match(/\/album\/(\d+)/);
+			if (albumMatch && artist?.albums?.some(album => album.id === parseInt(albumMatch[1]))) {
+				goto(`/album/${albumMatch[1]}`);
+				return;
+			}
+		}
+
+		// 3. Check browser history (current implementation as fallback)
+		if (window.history.state && window.history.state.idx > 0) {
+			window.history.back();
+			return;
+		}
+
+		// 4. Default fallback to home
+		goto('/');
+	}
 </script>
 
 <svelte:head>
@@ -274,7 +303,7 @@ async function loadArtist(id: number) {
 	<div class="space-y-6 pb-32 lg:pb-40">
 		<!-- Back Button -->
 		<button
-			onclick={() => window.history.back()}
+			onclick={handleBackNavigation}
 			class="flex items-center gap-2 text-gray-400 transition-colors hover:text-white"
 		>
 			<ArrowLeft size={20} />
