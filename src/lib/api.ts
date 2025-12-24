@@ -68,6 +68,7 @@ export interface DownloadTrackOptions {
 class LosslessAPI {
 	public baseUrl: string;
 	private metadataQueue: Promise<void> = Promise.resolve();
+	private visitCount = 0;
 
 	constructor(baseUrl: string = API_BASE) {
 		this.baseUrl = baseUrl;
@@ -124,6 +125,21 @@ class LosslessAPI {
 		depth = 0,
 		maxDepth = 50
 	): Partial<SearchResponse<T>> | undefined {
+		this.visitCount++;
+		if (this.visitCount > 10000) {
+			console.error('Too many visits in findSearchSection, possible infinite recursion');
+			return undefined;
+		}
+
+		if (!source) {
+			return undefined;
+		}
+
+		if (depth > maxDepth) {
+			console.warn(`findSearchSection exceeded max depth ${maxDepth} for key ${key}`);
+			return undefined;
+		}
+
 		if (!source) {
 			return undefined;
 		}
@@ -868,6 +884,12 @@ class LosslessAPI {
 			}
 
 			const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
+			console.log(
+				'Tracks response keys:',
+				Object.keys(data),
+				'items length:',
+				Array.isArray(data.items) ? data.items.length : 0
+			);
 
 			// Validate response structure defensively
 			if (!data || typeof data !== 'object') {
@@ -901,7 +923,21 @@ class LosslessAPI {
 		console.log('Search API call to:', `${this.baseUrl}/search/?q=${encodeURIComponent(query)}`);
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to get song');
-		return response.json();
+		const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
+		console.log(
+			'Artists response keys:',
+			Object.keys(data),
+			'items length:',
+			Array.isArray(data.items) ? data.items.length : 0
+		);
+		const validated = { ...data, items: data.items || [] };
+		const normalized = this.normalizeSearchResponse<Artist>(validated, 'artists');
+		return {
+			items: normalized.items.map((artist) => this.prepareArtist(artist as Artist)),
+			limit: normalized.limit,
+			offset: normalized.offset,
+			totalNumberOfItems: normalized.totalNumberOfItems
+		};
 	}
 
 	async searchAlbums(query: string): Promise<SearchResponse<Album>> {
@@ -909,6 +945,12 @@ class LosslessAPI {
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search albums');
 		const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
+		console.log(
+			'Albums response keys:',
+			Object.keys(data),
+			'items length:',
+			Array.isArray(data.items) ? data.items.length : 0
+		);
 		const validated = { ...data, items: data.items || [] };
 		const normalized = this.normalizeSearchResponse<Album>(validated, 'albums');
 		return {
