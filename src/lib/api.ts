@@ -122,6 +122,13 @@ class LosslessAPI {
 		return `${base}${normalizedPath}`;
 	}
 
+	/**
+	 * Normalize search response data.
+	 * API response structure: {version: ..., data: {artists: [...], albums: [...], tracks: [...], ...}}
+	 * Extracts the relevant array from data.data[key] and builds SearchResponse.
+	 * Handles fallback if no data wrapper.
+	 * REGRESSION PREVENTION: Always check response keys if items=0; may indicate parsing or API changes.
+	 */
 	private normalizeSearchResponse<T>(
 		data: unknown,
 		key: 'tracks' | 'albums' | 'artists' | 'playlists'
@@ -893,6 +900,8 @@ class LosslessAPI {
 
 	/**
 	 * Search for tracks
+	 * API endpoint: /search/?s=<query>
+	 * Returns tracks matching the query.
 	 */
 	async searchTracks(query: string, region: RegionOption = 'auto'): Promise<SearchResponse<Track>> {
 		this.logEntrypointCall('search', 'searchTracks', { query, region });
@@ -920,8 +929,9 @@ class LosslessAPI {
 				console.error('[Instrumentation] 400 Bad Request body sample:', body);
 			}
 			this.ensureNotRateLimited(response);
+			// REGRESSION PREVENTION: On 400 Bad Request, return empty results to prevent infinite retry loops.
+			// Do NOT throw or retry; upstream API rejects invalid params like ?q= for artists.
 			if (response.status === 400) {
-				// Treat 400 as terminal client error, return empty results to prevent retry loops
 				return {
 					items: [],
 					limit: 0,
@@ -967,6 +977,9 @@ class LosslessAPI {
 
 	/**
 	 * Search for artists
+	 * API endpoint: /search/?a=<query>
+	 * Note: Using ?q= causes 400 "Provide one of s, a, al, v, or p"
+	 * Returns artists matching the query.
 	 */
 	async searchArtists(query: string): Promise<SearchResponse<Artist>> {
 		this.logEntrypointCall('search', 'searchArtists', { query });
@@ -1006,6 +1019,11 @@ class LosslessAPI {
 		};
 	}
 
+	/**
+	 * Search for albums
+	 * API endpoint: /search/?al=<query>
+	 * Returns albums matching the query.
+	 */
 	async searchAlbums(query: string): Promise<SearchResponse<Album>> {
 		this.logEntrypointCall('search', 'searchAlbums', { query });
 
