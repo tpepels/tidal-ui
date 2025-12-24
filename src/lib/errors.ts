@@ -28,8 +28,8 @@ export class TidalError extends Error {
 			return new TidalError(ERROR_MESSAGES.TRACK_NOT_FOUND, 'NOT_FOUND', 404, false);
 		}
 
-		if (response?.status >= 500) {
-			return new TidalError(ERROR_MESSAGES.API_ERROR, 'SERVER_ERROR', response?.status, true);
+		if (response?.status && response.status >= 500) {
+			return new TidalError(ERROR_MESSAGES.API_ERROR, 'SERVER_ERROR', response.status, true);
 		}
 
 		const message = response?.userMessage || response?.message || ERROR_MESSAGES.API_ERROR;
