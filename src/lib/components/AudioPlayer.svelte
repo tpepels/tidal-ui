@@ -1450,10 +1450,10 @@ let pendingPlayAfterSource = false;
 				const state = get(playerStore);
 				if (state.currentTrack) {
 					console.info(
-						'[AudioPlayer] Re-loading current track with streaming quality due to unsupported FLAC playback.'
+						'[AudioPlayer] Re-loading current track with LOSSLESS quality due to unsupported FLAC playback.'
 					);
-					// Change quality to LOSSLESS for browsers that don't support FLAC
-					playerStore.setQuality('LOSSLESS');
+					// loadTrack() will automatically use LOSSLESS quality for playback when FLAC is not supported
+					// without changing the UI quality setting
 					loadTrack(state.currentTrack);
 				}
 			}

@@ -546,6 +546,7 @@ import {
 	}
 
 	async function handleSearch() {
+		console.log('handleSearch called with query:', searchStore.query);
 		if (!searchStore.query.trim()) return;
 
 		// Auto-detect: if query is a Tidal URL, import it directly
@@ -572,10 +573,13 @@ import {
 		try {
 			switch (searchStore.activeTab) {
 				case 'tracks': {
+					console.log('Searching for tracks:', searchStore.query, 'region:', selectedRegion);
 					const response = await fetchWithRetry(() =>
 						losslessAPI.searchTracks(searchStore.query, selectedRegion)
 					);
+					console.log('Search response:', response);
 					searchStore.tracks = Array.isArray(response?.items) ? response.items : [];
+					console.log('Setting tracks:', searchStore.tracks.length, 'results');
 					break;
 				}
 				case 'albums': {

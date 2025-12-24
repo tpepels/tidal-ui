@@ -194,14 +194,14 @@
 					<!-- Track Number / Play Button -->
 					<button
 						onclick={() => isPlaying(track) ? playerStore.pause() : handlePlayTrack(track, index)}
-						class="flex w-6 sm:w-8 flex-shrink-0 items-center justify-center transition-transform hover:scale-110"
+						class="group flex w-6 sm:w-8 flex-shrink-0 items-center justify-center transition-transform hover:scale-110"
 						aria-label={isPlaying(track) ? 'Pause' : 'Play'}
 					>
 						{#if isPlaying(track)}
 							<Pause size={14} class="sm:w-4 sm:h-4 text-blue-500" />
 						{:else}
-							<span class="text-xs sm:text-sm text-gray-400 hover:hidden">{formatTrackNumber(track)}</span>
-							<Play size={14} class="sm:w-4 sm:h-4 hidden text-white hover:block" />
+							<span class="text-xs sm:text-sm text-gray-400 group-hover:hidden">{formatTrackNumber(track)}</span>
+							<Play size={14} class="sm:w-4 sm:h-4 hidden text-white group-hover:block" />
 						{/if}
 					</button>
 
