@@ -839,9 +839,7 @@ class LosslessAPI {
 	 * Search for tracks
 	 */
 	async searchTracks(query: string, region: RegionOption = 'auto'): Promise<SearchResponse<Track>> {
-		const response = await this.fetch(
-			`${this.baseUrl}/search/tracks?query=${encodeURIComponent(query)}&limit=50`
-		);
+		const response = await this.fetch(`${this.baseUrl}/search/?s=${encodeURIComponent(query)}`);
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search tracks');
 		const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
@@ -861,25 +859,15 @@ class LosslessAPI {
 		query: string,
 		region: RegionOption = 'auto'
 	): Promise<SearchResponse<Artist>> {
-		const response = await this.fetch(
-			`${this.baseUrl}/search/artists?query=${encodeURIComponent(query)}&limit=50`
-		);
+		const response = await this.fetch(`${this.baseUrl}/search/?q=${encodeURIComponent(query)}`);
+		console.log('Search API call to:', `${this.baseUrl}/search/?q=${encodeURIComponent(query)}`);
 		this.ensureNotRateLimited(response);
-		if (!response.ok) throw new Error('Failed to search artists');
-		const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
-		// Validate response structure
-		const validated = { ...data, items: data.items || [] };
-		const normalized = this.normalizeSearchResponse<Artist>(validated, 'artists');
-		return {
-			...normalized,
-			items: normalized.items.map((artist) => this.prepareArtist(artist))
-		};
+		if (!response.ok) throw new Error('Failed to get song');
+		return response.json();
 	}
 
 	async searchAlbums(query: string, region: RegionOption = 'auto'): Promise<SearchResponse<Album>> {
-		const response = await this.fetch(
-			`${this.baseUrl}/search/albums?query=${encodeURIComponent(query)}&limit=50`
-		);
+		const response = await this.fetch(`${this.baseUrl}/search/?al=${encodeURIComponent(query)}`);
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search albums');
 		const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
@@ -896,18 +884,12 @@ class LosslessAPI {
 		query: string,
 		region: RegionOption = 'auto'
 	): Promise<SearchResponse<Playlist>> {
-		const response = await this.fetch(
-			`${this.baseUrl}/search/playlists?query=${encodeURIComponent(query)}&limit=50`
-		);
-		this.ensureNotRateLimited(response);
-		if (!response.ok) throw new Error('Failed to search playlists');
-		const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
-		// Validate response structure
-		const validated = { ...data, items: data.items || [] };
-		const normalized = this.normalizeSearchResponse<Playlist>(validated, 'playlists');
+		// Playlists search not implemented in this API
 		return {
-			...normalized,
-			items: normalized.items.map((playlist) => this.preparePlaylist(playlist))
+			items: [],
+			limit: 0,
+			offset: 0,
+			totalNumberOfItems: 0
 		};
 	}
 
