@@ -93,9 +93,11 @@ class LosslessAPI {
 
 	private normalizeSearchResponse<T>(
 		data: unknown,
-		key: 'tracks' | 'albums' | 'artists' | 'playlists'
+		key: 'tracks' | 'albums' | 'artists' | 'playlists',
+		depth = 0,
+		maxDepth = 20
 	): SearchResponse<T> {
-		const section = this.findSearchSection<T>(data, key, new Set());
+		const section = this.findSearchSection<T>(data, key, new Set(), depth, maxDepth);
 		return this.buildSearchResponse<T>(section);
 	}
 
@@ -120,15 +122,21 @@ class LosslessAPI {
 	private findSearchSection<T>(
 		source: unknown,
 		key: 'tracks' | 'albums' | 'artists' | 'playlists',
-		visited: Set<object>
+		visited: Set<object>,
+		depth = 0,
+		maxDepth = 20
 	): Partial<SearchResponse<T>> | undefined {
 		if (!source) {
 			return undefined;
 		}
 
+		if (depth > maxDepth) {
+			return undefined;
+		}
+
 		if (Array.isArray(source)) {
 			for (const entry of source) {
-				const found = this.findSearchSection<T>(entry, key, visited);
+				const found = this.findSearchSection<T>(entry, key, visited, depth + 1, maxDepth);
 				if (found) {
 					return found;
 				}
@@ -152,14 +160,14 @@ class LosslessAPI {
 
 		if (key in objectRef) {
 			const nested = objectRef[key];
-			const fromKey = this.findSearchSection<T>(nested, key, visited);
+			const fromKey = this.findSearchSection<T>(nested, key, visited, depth + 1, maxDepth);
 			if (fromKey) {
 				return fromKey;
 			}
 		}
 
 		for (const value of Object.values(objectRef)) {
-			const found = this.findSearchSection<T>(value, key, visited);
+			const found = this.findSearchSection<T>(value, key, visited, depth + 1, maxDepth);
 			if (found) {
 				return found;
 			}
@@ -794,7 +802,7 @@ class LosslessAPI {
 		const manifest = await this.getDashManifest(trackId, 'HI_RES_LOSSLESS');
 		if (manifest.kind === 'flac') {
 			const url = manifest.urls.find(
-				(candidate) => typeof candidate === 'string' && candidate.length > 0
+				(candidate: unknown) => typeof candidate === 'string' && candidate.length > 0
 			);
 			if (url) {
 				return url;
@@ -868,7 +876,7 @@ class LosslessAPI {
 			}
 
 			const validated = { ...data, items: data.items || [] };
-			const normalized = this.normalizeSearchResponse<Track>(validated, 'tracks');
+			const normalized = this.normalizeSearchResponse<Track>(validated, 'tracks', 0, 20);
 
 			// Ensure items is an array and validate each item
 			if (!Array.isArray(normalized.items)) {
@@ -889,7 +897,7 @@ class LosslessAPI {
 	/**
 	 * Search for artists
 	 */
-	async searchArtists(query: string): Promise<SearchResponse<Artist>> {
+	async searchArtists(query: string, region?: RegionOption): Promise<SearchResponse<Artist>> {
 		const response = await this.fetch(`${this.baseUrl}/search/?q=${encodeURIComponent(query)}`);
 		console.log('Search API call to:', `${this.baseUrl}/search/?q=${encodeURIComponent(query)}`);
 		this.ensureNotRateLimited(response);
@@ -897,14 +905,14 @@ class LosslessAPI {
 		return response.json();
 	}
 
-	async searchAlbums(query: string): Promise<SearchResponse<Album>> {
+	async searchAlbums(query: string, region?: RegionOption): Promise<SearchResponse<Album>> {
 		const response = await this.fetch(`${this.baseUrl}/search/?al=${encodeURIComponent(query)}`);
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search albums');
 		const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
 		// Validate response structure
 		const validated = { ...data, items: data.items || [] };
-		const normalized = this.normalizeSearchResponse<Album>(validated, 'albums');
+		const normalized = this.normalizeSearchResponse<Album>(validated, 'albums', 0, 20);
 		return {
 			...normalized,
 			items: normalized.items.map((album) => this.prepareAlbum(album))
@@ -912,7 +920,7 @@ class LosslessAPI {
 	}
 
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	async searchPlaylists(_query: string): Promise<SearchResponse<Playlist>> {
+	async searchPlaylists(_query: string, _region?: RegionOption): Promise<SearchResponse<Playlist>> {
 		// Playlists search not implemented in this API
 		return {
 			items: [],
@@ -1359,7 +1367,7 @@ class LosslessAPI {
 				const url = await this.resolveHiResStreamFromDash(trackId);
 				return { url, replayGain, sampleRate, bitDepth };
 			} catch (error) {
-				console.warn('Failed to resolve hi-res stream via DASH manifest', error);
+				console.error('Failed to resolve hi-res stream via DASH manifest', error);
 				quality = 'LOSSLESS';
 			}
 		}
@@ -2395,6 +2403,24 @@ class LosslessAPI {
 	 */
 	getArtistPictureUrl(pictureId: string, size: '750' = '750'): string {
 		return `https://resources.tidal.com/images/${pictureId.replace(/-/g, '/')}/${size}x${size}.jpg`;
+	}
+
+	async getDashManifest(
+		trackId: number,
+		quality: AudioQuality = 'HI_RES_LOSSLESS'
+	): Promise<DashManifestResult> {
+		throw new Error('getDashManifest not implemented in LosslessAPI');
+	}
+
+	async getDashManifestWithMetadata(
+		trackId: number,
+		quality: AudioQuality = 'HI_RES_LOSSLESS'
+	): Promise<DashManifestWithMetadata> {
+		throw new Error('getDashManifestWithMetadata not implemented in LosslessAPI');
+	}
+
+	async importFromUrl(url: string) {
+		throw new Error('importFromUrl not implemented in LosslessAPI');
 	}
 }
 
