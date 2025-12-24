@@ -47,11 +47,11 @@
             tracks = data.tracks;
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load artist';
-			if (typeof window !== 'undefined' && (window as any).umami) {
+			if (typeof window !== 'undefined' && umami) {
 				try {
 					const referrer = document.referrer;
 					const host = referrer ? new URL(referrer).hostname : 'direct';
-					(window as any).umami.track('embed_error', { 
+					umami.track('embed_error', { 
 						host, 
 						error, 
 						version: APP_VERSION,

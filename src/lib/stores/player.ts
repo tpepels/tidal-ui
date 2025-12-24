@@ -44,7 +44,7 @@ function createPlayerStore() {
 	let startState = initialState;
 	if (browser) {
 		// Load persisted state
-		const persisted = loadFromStorage('player', {});
+		const persisted = loadFromStorage('player', {}) as Partial<PlayerState>;
 		startState = {
 			...initialState,
 			...persisted,
