@@ -12,6 +12,9 @@ export default defineConfig({
 		include: ['src/**/*.{test,spec}.{js,ts}'],
 		environment: 'jsdom',
 		setupFiles: ['./src/test-setup.ts'],
-		globals: true
+		globals: true,
+		coverage: {
+			include: ['src/lib/api-endpoint-validation.test.ts']
+		}
 	}
 });

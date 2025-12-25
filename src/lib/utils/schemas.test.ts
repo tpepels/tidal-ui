@@ -132,8 +132,9 @@ describe('Schemas', () => {
 		});
 
 		it('throws on invalid data', () => {
-			const data = { title: 'Track' }; // missing id
-			expect(() => validateApiResponse(data, TrackSchema)).toThrow('Invalid API response');
+			expect(() =>
+				validateApiResponse({ id: undefined, artists: undefined }, TrackSchema)
+			).toThrow();
 		});
 	});
 

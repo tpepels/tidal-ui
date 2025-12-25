@@ -2,9 +2,8 @@
 import { API_CONFIG, fetchWithCORS, selectApiTargetForRegion } from './config';
 import type { RegionOption } from '$lib/stores/region';
 import { deriveTrackQuality } from '$lib/utils/audioQuality';
-
+import { parseTidalUrl } from '$lib/utils/urlParser';
 import { formatArtistsForMetadata } from '$lib/utils';
-
 import type {
 	Track,
 	Artist,
@@ -12,6 +11,7 @@ import type {
 	Playlist,
 	SearchResponse,
 	AudioQuality,
+	StreamData,
 	CoverImage,
 	Lyrics,
 	TrackInfo,
@@ -22,7 +22,6 @@ import type {
 const API_BASE = API_CONFIG.baseUrl;
 const RATE_LIMIT_ERROR_MESSAGE = 'Too Many Requests. Please wait a moment and try again.';
 export const DASH_MANIFEST_UNAVAILABLE_CODE = 'DASH_MANIFEST_UNAVAILABLE';
-const RETRY_DELAY_MS = 200;
 
 type CodedError = Error & { code?: string };
 
@@ -68,40 +67,9 @@ export interface DownloadTrackOptions {
 class LosslessAPI {
 	public baseUrl: string;
 	private metadataQueue: Promise<void> = Promise.resolve();
-	private visitCount = 0;
-
-	// Instrumentation counters for debugging loops
-	private searchCallCount = 0;
-	private trackFetchCallCount = 0;
-	private startTime = Date.now();
-	private logged400Body = false;
 
 	constructor(baseUrl: string = API_BASE) {
 		this.baseUrl = baseUrl;
-	}
-
-	private logEntrypointCall(
-		type: 'search' | 'trackFetch',
-		name: string,
-		params: Record<string, unknown>
-	) {
-		const counter = type === 'search' ? ++this.searchCallCount : ++this.trackFetchCallCount;
-		const elapsed = Date.now() - this.startTime;
-		const rate = counter / (elapsed / 1000); // calls per second
-
-		if (counter % 20 === 0) {
-			console.warn(
-				`[Instrumentation] ${type} ${name} called ${counter} times in ${elapsed}ms (~${rate.toFixed(2)}/s)`,
-				params
-			);
-			if (counter > 100) {
-				// Sample stack trace when threshold exceeded
-				console.error(
-					`[Instrumentation] High frequency ${type} calls - sample stack:`,
-					new Error().stack?.split('\n').slice(1, 5).join('\n')
-				);
-			}
-		}
 	}
 
 	private resolveRegionalBase(region: RegionOption = 'auto'): string {
@@ -122,20 +90,11 @@ class LosslessAPI {
 		return `${base}${normalizedPath}`;
 	}
 
-	/**
-	 * Normalize search response data.
-	 * API response structure: {version: ..., data: {artists: [...], albums: [...], tracks: [...], ...}}
-	 * Extracts the relevant array from data.data[key] and builds SearchResponse.
-	 * Handles fallback if no data wrapper.
-	 * REGRESSION PREVENTION: Always check response keys if items=0; may indicate parsing or API changes.
-	 */
 	private normalizeSearchResponse<T>(
 		data: unknown,
 		key: 'tracks' | 'albums' | 'artists' | 'playlists'
 	): SearchResponse<T> {
-		// Handle nested data structure: {data: {artists: [...], albums: [...]}}
-		const searchData = (data as Record<string, unknown>)?.data || data;
-		const section = this.findSearchSection<T>(searchData, key, new Set());
+		const section = this.findSearchSection<T>(data, key, new Set());
 		return this.buildSearchResponse<T>(section);
 	}
 
@@ -160,37 +119,15 @@ class LosslessAPI {
 	private findSearchSection<T>(
 		source: unknown,
 		key: 'tracks' | 'albums' | 'artists' | 'playlists',
-		visited: Set<object>,
-		depth = 0,
-		maxDepth = 50
+		visited: Set<object>
 	): Partial<SearchResponse<T>> | undefined {
-		this.visitCount++;
-		if (this.visitCount > 10000) {
-			console.error('Too many visits in findSearchSection, possible infinite recursion');
-			return undefined;
-		}
-
 		if (!source) {
-			return undefined;
-		}
-
-		if (depth > maxDepth) {
-			console.warn(`findSearchSection exceeded max depth ${maxDepth} for key ${key}`);
-			return undefined;
-		}
-
-		if (!source) {
-			return undefined;
-		}
-
-		if (depth > maxDepth) {
-			console.warn(`findSearchSection exceeded max depth ${maxDepth} for key ${key}`);
 			return undefined;
 		}
 
 		if (Array.isArray(source)) {
 			for (const entry of source) {
-				const found = this.findSearchSection<T>(entry, key, visited, depth + 1, maxDepth);
+				const found = this.findSearchSection<T>(entry, key, visited);
 				if (found) {
 					return found;
 				}
@@ -214,14 +151,14 @@ class LosslessAPI {
 
 		if (key in objectRef) {
 			const nested = objectRef[key];
-			const fromKey = this.findSearchSection<T>(nested, key, visited, depth + 1, maxDepth);
+			const fromKey = this.findSearchSection<T>(nested, key, visited);
 			if (fromKey) {
 				return fromKey;
 			}
 		}
 
 		for (const value of Object.values(objectRef)) {
-			const found = this.findSearchSection<T>(value, key, visited, depth + 1, maxDepth);
+			const found = this.findSearchSection<T>(value, key, visited);
 			if (found) {
 				return found;
 			}
@@ -256,10 +193,6 @@ class LosslessAPI {
 			return { ...artist, type: artist.artistTypes[0]! } as Artist;
 		}
 		return artist;
-	}
-
-	private preparePlaylist(playlist: Playlist): Playlist {
-		return playlist;
 	}
 
 	private ensureNotRateLimited(response: Response): void {
@@ -452,11 +385,11 @@ class LosslessAPI {
 
 		const isTrackLike = (entry: unknown): entry is Track => {
 			if (!entry || typeof entry !== 'object') return false;
-			const record = entry as Record<string, unknown>;
+			const candidate = entry as Record<string, unknown>;
 			return (
-				typeof record.id === 'number' &&
-				typeof record.title === 'string' &&
-				typeof record.duration === 'number'
+				typeof candidate.id === 'number' &&
+				typeof candidate.title === 'string' &&
+				typeof candidate.duration === 'number'
 			);
 		};
 
@@ -853,12 +786,10 @@ class LosslessAPI {
 	}
 
 	private async resolveHiResStreamFromDash(trackId: number): Promise<string> {
-		this.logEntrypointCall('trackFetch', 'resolveHiResStreamFromDash', { trackId });
-
 		const manifest = await this.getDashManifest(trackId, 'HI_RES_LOSSLESS');
 		if (manifest.kind === 'flac') {
 			const url = manifest.urls.find(
-				(candidate: unknown) => typeof candidate === 'string' && candidate.length > 0
+				(candidate) => typeof candidate === 'string' && candidate.length > 0
 			);
 			if (url) {
 				return url;
@@ -883,213 +814,249 @@ class LosslessAPI {
 	}
 
 	/**
-	 * Parse and validate JSON response
-	 */
-	private async parseJsonResponse<T>(response: Response, context: string): Promise<T> {
-		let data: unknown;
-		try {
-			data = await response.json();
-		} catch {
-			throw new Error(`Invalid JSON response from ${context}`);
-		}
-		if (!data || typeof data !== 'object') {
-			throw new Error(`Invalid response structure from ${context}`);
-		}
-		return data as T;
-	}
-
-	/**
 	 * Search for tracks
-	 * API endpoint: /search/?s=<query>
-	 * Returns tracks matching the query.
 	 */
 	async searchTracks(query: string, region: RegionOption = 'auto'): Promise<SearchResponse<Track>> {
-		this.logEntrypointCall('search', 'searchTracks', { query, region });
-
-		// Input validation
-		if (!query || typeof query !== 'string' || query.trim().length === 0) {
-			throw new Error('Search query cannot be empty');
-		}
-
-		if (query.length > 200) {
-			throw new Error('Search query too long (maximum 200 characters)');
-		}
-
-		if (!['auto', 'us', 'eu'].includes(region)) {
-			throw new Error(`Invalid region: ${region}`);
-		}
-
-		try {
-			const response = await this.fetch(
-				`${this.baseUrl}/search/?s=${encodeURIComponent(query.trim())}`
-			);
-			if (response.status === 400 && !this.logged400Body) {
-				this.logged400Body = true;
-				const body = await response.clone().text();
-				console.error('[Instrumentation] 400 Bad Request body sample:', body);
-			}
-			this.ensureNotRateLimited(response);
-			// REGRESSION PREVENTION: On 400 Bad Request, return empty results to prevent infinite retry loops.
-			// Do NOT throw or retry; upstream API rejects invalid params like ?q= for artists.
-			if (response.status === 400) {
-				return {
-					items: [],
-					limit: 0,
-					offset: 0,
-					totalNumberOfItems: 0
-				};
-			}
-			if (!response.ok) {
-				throw new Error(`Search API returned ${response.status}: ${response.statusText}`);
-			}
-
-			const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
-			console.log(
-				'Tracks response keys:',
-				Object.keys(data),
-				'items length:',
-				Array.isArray(data.items) ? data.items.length : 0
-			);
-
-			// Validate response structure defensively
-			if (!data || typeof data !== 'object') {
-				throw new Error('Invalid search response format');
-			}
-
-			const validated = { ...data, items: data.items || [] };
-			const normalized = this.normalizeSearchResponse<Track>(validated, 'tracks');
-
-			// Ensure items is an array and validate each item
-			if (!Array.isArray(normalized.items)) {
-				console.warn('Search response items is not an array:', normalized.items);
-				normalized.items = [];
-			}
-
-			return {
-				...normalized,
-				items: normalized.items.map((track) => this.prepareTrack(track)).filter(Boolean)
-			};
-		} catch (error) {
-			console.error('Track search failed:', error);
-			throw error;
-		}
+		const response = await this.fetch(
+			this.buildRegionalUrl(`/search/?s=${encodeURIComponent(query)}`, region)
+		);
+		this.ensureNotRateLimited(response);
+		if (!response.ok) throw new Error('Failed to search tracks');
+		const data = await response.json();
+		const normalized = this.normalizeSearchResponse<Track>(data, 'tracks');
+		return {
+			...normalized,
+			items: normalized.items.map((track) => this.prepareTrack(track))
+		};
 	}
 
 	/**
 	 * Search for artists
-	 * API endpoint: /search/?a=<query>
-	 * Note: Using ?q= causes 400 "Provide one of s, a, al, v, or p"
-	 * Returns artists matching the query.
 	 */
-	async searchArtists(query: string): Promise<SearchResponse<Artist>> {
-		this.logEntrypointCall('search', 'searchArtists', { query });
-
-		const response = await this.fetch(`${this.baseUrl}/search/?a=${encodeURIComponent(query)}`);
-		console.log('Search API call to:', `${this.baseUrl}/search/?a=${encodeURIComponent(query)}`);
-		if (response.status === 400 && !this.logged400Body) {
-			this.logged400Body = true;
-			const body = await response.clone().text();
-			console.error('[Instrumentation] 400 Bad Request body sample:', body);
-		}
-		if (response.status === 400) {
-			// Treat 400 as terminal client error, return empty results to prevent retry loops
-			return {
-				items: [],
-				limit: 0,
-				offset: 0,
-				totalNumberOfItems: 0
-			};
-		}
-		this.ensureNotRateLimited(response);
-		if (!response.ok) throw new Error('Failed to get song');
-		const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
-		console.log(
-			'Artists response keys:',
-			Object.keys(data),
-			'items length:',
-			Array.isArray(data.items) ? data.items.length : 0
+	async searchArtists(
+		query: string,
+		region: RegionOption = 'auto'
+	): Promise<SearchResponse<Artist>> {
+		const response = await this.fetch(
+			this.buildRegionalUrl(`/search/?a=${encodeURIComponent(query)}`, region)
 		);
-		const validated = { ...data, items: data.items || [] };
-		const normalized = this.normalizeSearchResponse<Artist>(validated, 'artists');
+		this.ensureNotRateLimited(response);
+		if (!response.ok) throw new Error('Failed to search artists');
+		const data = await response.json();
+		const normalized = this.normalizeSearchResponse<Artist>(data, 'artists');
 		return {
-			items: normalized.items.map((artist) => this.prepareArtist(artist as Artist)),
-			limit: normalized.limit,
-			offset: normalized.offset,
-			totalNumberOfItems: normalized.totalNumberOfItems
+			...normalized,
+			items: normalized.items.map((artist) => this.prepareArtist(artist))
 		};
 	}
 
 	/**
 	 * Search for albums
-	 * API endpoint: /search/?al=<query>
-	 * Returns albums matching the query.
 	 */
-	async searchAlbums(query: string): Promise<SearchResponse<Album>> {
-		this.logEntrypointCall('search', 'searchAlbums', { query });
-
-		const response = await this.fetch(`${this.baseUrl}/search/?al=${encodeURIComponent(query)}`);
-		if (response.status === 400 && !this.logged400Body) {
-			this.logged400Body = true;
-			const body = await response.clone().text();
-			console.error('[Instrumentation] 400 Bad Request body sample:', body);
-		}
-		if (response.status === 400) {
-			// Treat 400 as terminal client error, return empty results to prevent retry loops
-			return {
-				items: [],
-				limit: 0,
-				offset: 0,
-				totalNumberOfItems: 0
-			};
-		}
+	async searchAlbums(query: string, region: RegionOption = 'auto'): Promise<SearchResponse<Album>> {
+		const response = await this.fetch(
+			this.buildRegionalUrl(`/search/?al=${encodeURIComponent(query)}`, region)
+		);
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search albums');
-		const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'search API');
-		console.log(
-			'Albums response keys:',
-			Object.keys(data),
-			'items length:',
-			Array.isArray(data.items) ? data.items.length : 0
-		);
-		const validated = { ...data, items: data.items || [] };
-		const normalized = this.normalizeSearchResponse<Album>(validated, 'albums');
+		const data = await response.json();
+		const normalized = this.normalizeSearchResponse<Album>(data, 'albums');
 		return {
-			items: normalized.items.map((album) => this.prepareAlbum(album as Album)),
-			limit: normalized.limit,
-			offset: normalized.offset,
-			totalNumberOfItems: normalized.totalNumberOfItems
+			...normalized,
+			items: normalized.items.map((album) => this.prepareAlbum(album))
 		};
 	}
 
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	async searchPlaylists(_query: string): Promise<SearchResponse<Playlist>> {
-		return { items: [], limit: 0, offset: 0, totalNumberOfItems: 0 };
+	/**
+	 * Search for playlists
+	 */
+	async searchPlaylists(
+		query: string,
+		region: RegionOption = 'auto'
+	): Promise<SearchResponse<Playlist>> {
+		const response = await this.fetch(
+			this.buildRegionalUrl(`/search/?p=${encodeURIComponent(query)}`, region)
+		);
+		this.ensureNotRateLimited(response);
+		if (!response.ok) throw new Error('Failed to search playlists');
+		const data = await response.json();
+		return this.normalizeSearchResponse<Playlist>(data, 'playlists');
 	}
 
-	async getTrack(trackId: number, quality: AudioQuality = 'LOSSLESS'): Promise<TrackLookup> {
-		// Input validation
-		if (!Number.isFinite(trackId) || trackId <= 0) {
-			throw new Error(`Invalid track ID: ${trackId}`);
+	/**
+	 * Import content from a Tidal URL
+	 * Supports track, album, artist, and playlist URLs
+	 */
+	async importFromUrl(url: string): Promise<{
+		type: 'track' | 'album' | 'artist' | 'playlist';
+		data: Track | Album | Artist | { playlist: Playlist; tracks: Track[] };
+	}> {
+		const parsed = parseTidalUrl(url);
+
+		if (parsed.type === 'unknown') {
+			throw new Error(
+				'Invalid Tidal URL. Please provide a valid track, album, artist, or playlist URL.'
+			);
 		}
 
-		if (!['LOW', 'HIGH', 'LOSSLESS', 'HI_RES_LOSSLESS'].includes(quality)) {
-			throw new Error(`Invalid quality: ${quality}`);
-		}
-
-		this.logEntrypointCall('trackFetch', 'getTrack', { trackId, quality });
-
-		try {
-			const response = await this.fetch(`${this.baseUrl}/track/${trackId}?quality=${quality}`);
-			this.ensureNotRateLimited(response);
-			if (!response.ok) {
-				throw new Error(`Track API returned ${response.status}: ${response.statusText}`);
+		switch (parsed.type) {
+			case 'track': {
+				if (!parsed.trackId) {
+					throw new Error('Could not extract track ID from URL');
+				}
+				const lookup = await this.getTrack(parsed.trackId);
+				return {
+					type: 'track',
+					data: this.prepareTrack(lookup.track)
+				};
 			}
-			const data = await this.parseJsonResponse<Record<string, unknown>>(response, 'track API');
-			return this.parseTrackLookup(data);
-		} catch (error) {
-			console.error(`Failed to get track ${trackId} with quality ${quality}:`, error);
-			throw error;
+
+			case 'album': {
+				if (!parsed.albumId) {
+					throw new Error('Could not extract album ID from URL');
+				}
+				const { album } = await this.getAlbum(parsed.albumId);
+				return {
+					type: 'album',
+					data: this.prepareAlbum(album)
+				};
+			}
+
+			case 'artist': {
+				if (!parsed.artistId) {
+					throw new Error('Could not extract artist ID from URL');
+				}
+				const artist = await this.getArtist(parsed.artistId);
+				return {
+					type: 'artist',
+					data: this.prepareArtist(artist)
+				};
+			}
+
+			case 'playlist': {
+				if (!parsed.playlistId) {
+					throw new Error('Could not extract playlist ID from URL');
+				}
+				const { playlist, items } = await this.getPlaylist(parsed.playlistId);
+				const tracks = items.map((item) => this.prepareTrack(item.item));
+				return {
+					type: 'playlist',
+					data: { playlist, tracks }
+				};
+			}
+
+			default:
+				throw new Error('Unsupported URL type');
 		}
+	}
+
+	/**
+	 * Get track info and stream URL (with retries for quality fallback)
+	 */
+	async getTrack(id: number, quality: AudioQuality = 'LOSSLESS'): Promise<TrackLookup> {
+		const url = `${this.baseUrl}/track/?id=${id}&quality=${quality}`;
+		let lastError: Error | null = null;
+
+		for (let attempt = 1; attempt <= 3; attempt += 1) {
+			const response = await this.fetch(url, { apiVersion: 'v2' });
+			this.ensureNotRateLimited(response);
+			if (response.ok) {
+				const data = await response.json();
+				if (this.isV2ApiContainer(data)) {
+					return await this.parseTrackLookupV2(id, data, 'v2');
+				}
+				return this.parseTrackLookup(data);
+			}
+
+			let detail: string | undefined;
+			let userMessage: string | undefined;
+			let subStatus: number | undefined;
+			try {
+				const errorData = (await response.json()) as {
+					detail?: unknown;
+					subStatus?: unknown;
+					userMessage?: unknown;
+				};
+				if (typeof errorData?.detail === 'string') {
+					detail = errorData.detail;
+				}
+				if (typeof errorData?.userMessage === 'string') {
+					userMessage = errorData.userMessage;
+					if (!detail) {
+						detail = errorData.userMessage;
+					}
+				}
+				if (typeof errorData?.subStatus === 'number') {
+					subStatus = errorData.subStatus;
+				}
+			} catch {
+				// Ignore JSON parse errors
+			}
+
+			const isTokenRetry = response.status === 401 && subStatus === 11002;
+			const message = detail ?? `Failed to get track (status ${response.status})`;
+			lastError = new Error(isTokenRetry ? (userMessage ?? message) : message);
+			const shouldRetry =
+				isTokenRetry || (detail ? /quality not found/i.test(detail) : response.status >= 500);
+
+			if (attempt === 3 || !shouldRetry) {
+				throw lastError;
+			}
+
+			await this.delay(200 * attempt);
+		}
+
+		throw lastError ?? new Error('Failed to get track');
+	}
+
+	async getDashManifest(
+		trackId: number,
+		quality: AudioQuality = 'HI_RES_LOSSLESS'
+	): Promise<DashManifestResult> {
+		const { result } = await this.getDashManifestWithMetadata(trackId, quality);
+		return result;
+	}
+
+	async getDashManifestWithMetadata(
+		trackId: number,
+		quality: AudioQuality = 'HI_RES_LOSSLESS'
+	): Promise<DashManifestWithMetadata> {
+		let lastError: Error | null = null;
+
+		for (let attempt = 1; attempt <= 3; attempt += 1) {
+			try {
+				const lookup = await this.getTrack(trackId, quality);
+				const manifestPayload = lookup.info?.manifest ?? '';
+				const contentType = lookup.info?.manifestMimeType ?? null;
+				const result = this.buildDashManifestResult(manifestPayload, contentType);
+				const trackInfo = {
+					sampleRate: lookup.info?.sampleRate ?? null,
+					bitDepth: lookup.info?.bitDepth ?? null,
+					replayGain: lookup.info?.trackReplayGain ?? null
+				};
+				return { result, trackInfo };
+			} catch (error) {
+				lastError = error instanceof Error ? error : new Error(String(error));
+			}
+
+			if (attempt < 3) {
+				await this.delay(200 * attempt);
+			}
+		}
+
+		throw lastError ?? this.createDashUnavailableError('Unable to load dash manifest for track');
+	}
+
+	/**
+	 * Get song with stream info
+	 */
+	async getSong(query: string, quality: AudioQuality = 'LOSSLESS'): Promise<StreamData> {
+		const response = await this.fetch(
+			`${this.baseUrl}/song/?q=${encodeURIComponent(query)}&quality=${quality}`
+		);
+		this.ensureNotRateLimited(response);
+		if (!response.ok) throw new Error('Failed to get song');
+		return response.json();
 	}
 
 	/**
@@ -1260,7 +1227,7 @@ class LosslessAPI {
 		const recordArtist = (candidate: Artist | undefined) => {
 			if (!candidate) return;
 			const normalized = this.prepareArtist(candidate);
-			if (!artist || normalized.id === id || artist.id === normalized.id) {
+			if (!artist || artist.id === normalized.id) {
 				artist = normalized;
 			}
 		};
@@ -1540,7 +1507,7 @@ class LosslessAPI {
 			}
 
 			if (attempt < 3) {
-				await this.delay(RETRY_DELAY_MS * attempt);
+				await this.delay(200 * attempt);
 			}
 		}
 
@@ -1551,8 +1518,6 @@ class LosslessAPI {
 	 * Get stream URL for a track
 	 */
 	async getStreamUrl(trackId: number, quality: AudioQuality = 'LOSSLESS'): Promise<string> {
-		this.logEntrypointCall('trackFetch', 'getStreamUrl', { trackId, quality });
-
 		const data = await this.getStreamData(trackId, quality);
 		return data.url;
 	}
@@ -1877,9 +1842,12 @@ class LosslessAPI {
 					totalBytes?: number;
 				}) => {
 					if (totalBytes && totalBytes > 0) {
-						options?.onFfmpegProgress?.(Math.max(0, Math.min(1, receivedBytes / totalBytes)));
+						options?.onProgress?.({
+							stage: 'embedding',
+							progress: Math.max(0, Math.min(1, receivedBytes / totalBytes))
+						});
 					} else if (receivedBytes > 0) {
-						options?.onFfmpegProgress?.(0);
+						options?.onProgress?.({ stage: 'embedding', progress: 0 });
 					}
 				}
 			};
@@ -1906,8 +1874,10 @@ class LosslessAPI {
 		const inputName = `source-${uniqueSuffix}.${extension}`;
 		const outputName = `output-${uniqueSuffix}.${outputExtension}`;
 
-		let coverWritten = false;
-		let coverExtension = 'jpg';
+		const coverWritten = false;
+		const coverExtension = 'jpg';
+		let coverDownloadSuccess = false;
+		const finalCoverName = `cover-${uniqueSuffix}.${coverExtension}`;
 
 		try {
 			if (options?.onProgress) {
@@ -1925,12 +1895,13 @@ class LosslessAPI {
 			if (artworkId) {
 				// Try multiple sizes as fallback
 				const coverSizes: Array<'1280' | '640' | '320'> = ['1280', '640', '320'];
-				let coverFetchSuccess = false;
+				const coverFetchSuccess = false;
 
 				for (const size of coverSizes) {
 					if (coverFetchSuccess) break;
 
 					const coverUrl = this.getCoverUrl(artworkId, size);
+					console.log(`[Cover Download] Attempting size ${size}:`, coverUrl);
 
 					// Try two fetch strategies: with headers, then without
 					const fetchStrategies = [
@@ -1957,63 +1928,98 @@ class LosslessAPI {
 					for (const strategy of fetchStrategies) {
 						if (coverFetchSuccess) break;
 
+						console.log(`[Cover Download] Trying strategy: ${strategy.name}`);
+
 						try {
 							const coverResponse = await fetch(coverUrl, strategy.options);
 
+							console.log(
+								`[Cover Download] Response status: ${coverResponse.status}, Content-Length: ${coverResponse.headers.get('Content-Length')}`
+							);
+
 							if (!coverResponse.ok) {
-								continue; // Try next size
+								console.warn(
+									`[Cover Download] Failed with status ${coverResponse.status} for size ${size}`
+								);
+								continue;
 							}
 
 							const contentType = coverResponse.headers.get('Content-Type');
 							const contentLength = coverResponse.headers.get('Content-Length');
 
-							// Check if Content-Length indicates empty response
 							if (contentLength && parseInt(contentLength, 10) === 0) {
-								continue; // Try next size
+								console.warn(`[Cover Download] Content-Length is 0 for size ${size}`);
+								continue;
 							}
 
 							if (contentType && !contentType.startsWith('image/')) {
-								continue; // Try next size
+								console.warn(`[Cover Download] Invalid content type: ${contentType}`);
+								continue;
 							}
 
-							// Try arrayBuffer directly instead of blob first (more reliable)
-							let coverArrayBuffer: ArrayBuffer;
+							// Use arrayBuffer directly for more reliable data retrieval
+							const arrayBuffer = await coverResponse.arrayBuffer();
 
-							try {
-								coverArrayBuffer = await coverResponse.arrayBuffer();
-							} catch {
-								continue; // Try next size
+							if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+								console.warn(`[Cover Download] Empty array buffer for size ${size}`);
+								continue;
 							}
 
-							if (!coverArrayBuffer || coverArrayBuffer.byteLength === 0) {
-								continue; // Try next size
+							const uint8Array = new Uint8Array(arrayBuffer);
+							console.log(`[Cover Download] Received ${uint8Array.length} bytes`);
+							console.log(
+								`[Cover Download] First 16 bytes:`,
+								Array.from(uint8Array.slice(0, 16))
+									.map((b) => b.toString(16).padStart(2, '0'))
+									.join(' ')
+							);
+
+							// Validate image data
+							if (!this.validateImageData(uint8Array)) {
+								console.warn(`[Cover Download] Invalid image data for size ${size}`);
+								continue;
 							}
 
-							const coverUint8Array = new Uint8Array(coverArrayBuffer);
-
-							// Detect image format from magic bytes
-							const imageFormat = this.detectImageFormat(coverUint8Array);
+							// Detect image format
+							const imageFormat = this.detectImageFormat(uint8Array);
 							if (!imageFormat) {
-								continue; // Try next size
+								console.warn(`[Cover Download] Unknown image format for size ${size}`);
+								continue;
 							}
 
-							coverExtension = imageFormat.extension;
-							const finalCoverName = `cover-${uniqueSuffix}.${coverExtension}`;
+							// Create blob with correct MIME type
+							const coverBlob = new Blob([uint8Array], { type: imageFormat.mimeType });
 
-							await ffmpeg.writeFile(finalCoverName, coverUint8Array);
-							coverWritten = true;
-							coverFetchSuccess = true;
-							break; // Success, exit strategy loop
-						} catch {
-							// Continue to next strategy
+							const coverObjectUrl = URL.createObjectURL(coverBlob);
+							const coverLink = document.createElement('a');
+							coverLink.href = coverObjectUrl;
+							coverLink.download = `cover.${imageFormat.extension}`;
+							document.body.appendChild(coverLink);
+							coverLink.click();
+							document.body.removeChild(coverLink);
+							URL.revokeObjectURL(coverObjectUrl);
+
+							coverDownloadSuccess = true;
+							console.log(
+								`[Cover Download] Successfully downloaded (${size}x${size}, format: ${imageFormat.extension}, strategy: ${strategy.name})`
+							);
+							break;
+						} catch (sizeError) {
+							console.warn(
+								`[Cover Download] Failed at size ${size} with strategy ${strategy.name}:`,
+								sizeError
+							);
 						}
 					} // End strategy loop
 				} // End size loop
+
+				if (!coverFetchSuccess) {
+					console.warn('[Cover Download] All attempts failed');
+				}
 			}
 
 			const args: string[] = ['-i', inputName];
 			if (coverWritten) {
-				const finalCoverName = `cover-${uniqueSuffix}.${coverExtension}`;
 				args.push('-i', finalCoverName);
 			}
 
@@ -2202,7 +2208,7 @@ class LosslessAPI {
 
 			streamUrl = manifestLookup.originalTrackUrl || null;
 			if (streamUrl) {
-				response = await fetch(streamUrl, { signal: options?.signal });
+				response = await this.fetch(streamUrl, { signal: options?.signal });
 				if (response.status === 429) {
 					throw new Error(RATE_LIMIT_ERROR_MESSAGE);
 				}
@@ -2257,7 +2263,7 @@ class LosslessAPI {
 
 					if (fallbackUrl) {
 						streamUrl = fallbackUrl;
-						response = await fetch(fallbackUrl, { signal: options?.signal });
+						response = await this.fetch(fallbackUrl, { signal: options?.signal });
 						if (response.status === 429) {
 							throw new Error(RATE_LIMIT_ERROR_MESSAGE);
 						}
@@ -2375,6 +2381,7 @@ class LosslessAPI {
 		options?: DownloadTrackOptions
 	): Promise<void> {
 		try {
+			let coverDownloadSuccess = false;
 			const { blob } = await this.fetchTrackBlob(trackId, quality, filename, options);
 			const url = URL.createObjectURL(blob);
 
@@ -2391,16 +2398,19 @@ class LosslessAPI {
 			if (options?.downloadCoverSeperately) {
 				try {
 					const metadata = await this.getPreferredTrackMetadata(trackId, quality);
+					const coverId = metadata.track.album?.cover;
+					if (coverId) {
+						console.log('[Cover Download] Fetching cover for separate download...');
 
-					if (metadata.track.album?.cover) {
 						// Try multiple sizes as fallback
 						const coverSizes: Array<'1280' | '640' | '320'> = ['1280', '640', '320'];
-						let coverDownloadSuccess = false;
+						const coverFetchSuccess = false;
 
 						for (const size of coverSizes) {
-							if (coverDownloadSuccess) break;
+							if (coverFetchSuccess) break;
 
-							const coverUrl = this.getCoverUrl(metadata.track.album.cover, size);
+							const coverUrl = this.getCoverUrl(coverId, size);
+							console.log(`[Cover Download] Attempting size ${size}:`, coverUrl);
 
 							// Try two fetch strategies: with headers, then without
 							const fetchStrategies = [
@@ -2425,10 +2435,16 @@ class LosslessAPI {
 							];
 
 							for (const strategy of fetchStrategies) {
-								if (coverDownloadSuccess) break;
+								if (coverFetchSuccess) break;
+
+								console.log(`[Cover Download] Trying strategy: ${strategy.name}`);
 
 								try {
 									const coverResponse = await fetch(coverUrl, strategy.options);
+
+									console.log(
+										`[Cover Download] Response status: ${coverResponse.status}, Content-Length: ${coverResponse.headers.get('Content-Length')}`
+									);
 
 									if (!coverResponse.ok) {
 										console.warn(
@@ -2459,6 +2475,13 @@ class LosslessAPI {
 									}
 
 									const uint8Array = new Uint8Array(arrayBuffer);
+									console.log(`[Cover Download] Received ${uint8Array.length} bytes`);
+									console.log(
+										`[Cover Download] First 16 bytes:`,
+										Array.from(uint8Array.slice(0, 16))
+											.map((b) => b.toString(16).padStart(2, '0'))
+											.join(' ')
+									);
 
 									// Validate image data
 									if (!this.validateImageData(uint8Array)) {
@@ -2486,6 +2509,9 @@ class LosslessAPI {
 									URL.revokeObjectURL(coverObjectUrl);
 
 									coverDownloadSuccess = true;
+									console.log(
+										`[Cover Download] Successfully downloaded (${size}x${size}, format: ${imageFormat.extension}, strategy: ${strategy.name})`
+									);
 									break;
 								} catch (sizeError) {
 									console.warn(
@@ -2496,7 +2522,7 @@ class LosslessAPI {
 							} // End strategy loop
 						} // End size loop
 
-						if (!coverDownloadSuccess) {
+						if (!coverFetchSuccess) {
 							console.warn('[Cover Download] All attempts failed');
 						}
 					}
@@ -2549,29 +2575,6 @@ class LosslessAPI {
 	 */
 	getArtistPictureUrl(pictureId: string, size: '750' = '750'): string {
 		return `https://resources.tidal.com/images/${pictureId.replace(/-/g, '/')}/${size}x${size}.jpg`;
-	}
-
-	async getDashManifest(
-		trackId: number,
-		// eslint-disable-next-line @typescript-eslint/no-unused-vars
-		quality: AudioQuality = 'HI_RES_LOSSLESS'
-	): Promise<DashManifestResult> {
-		throw new Error('getDashManifest not implemented in LosslessAPI');
-	}
-
-	async getDashManifestWithMetadata(
-		trackId: number,
-		// eslint-disable-next-line @typescript-eslint/no-unused-vars
-		quality: AudioQuality = 'HI_RES_LOSSLESS'
-	): Promise<DashManifestWithMetadata> {
-		throw new Error('getDashManifestWithMetadata not implemented in LosslessAPI');
-	}
-
-	async importFromUrl(
-		// eslint-disable-next-line @typescript-eslint/no-unused-vars
-		url: string
-	) {
-		throw new Error('importFromUrl not implemented in LosslessAPI');
 	}
 }
 
