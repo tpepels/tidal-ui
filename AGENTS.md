@@ -255,5 +255,152 @@ describe('ContentService', () => {
 - **API endpoints**: Configurable base URLs for different environments
 - **Feature flags**: Use environment variables for feature toggles
 
+## ⚠️ CRITICAL API DEVELOPMENT GUIDELINES
+
+### **DO NOT** Change Code to Make Tests Work
+
+**STOP MODIFYING CODE TO PASS TESTS INSTEAD OF FIXING UNDERLYING ISSUES**
+
+This has been a recurring problem causing constant regressions. When tests fail:
+
+1. **Identify the root cause** - Do not modify implementation to match broken tests
+2. **Fix the actual issue** - Address the underlying problem, not symptoms
+3. **Update tests if needed** - Only after confirming the fix is correct
+4. **Validate against working references** - Check against the documented API endpoints
+
+### Working API Implementation Reference
+
+**ALL API CHANGES MUST BE VALIDATED AGAINST:**
+
+1. **Working API Code**: See `src/lib/api.ts` - This contains the validated, working implementation
+2. **API Endpoint Documentation**: See `docs/API_ENDPOINT_REFERENCE.md` - Only documented endpoints are confirmed working
+3. **OpenAPI Specification**: See `docs/specs/api-endpoints.yaml` - Official endpoint specifications
+4. **Original Working Implementation**: Reference the comprehensive API code provided in commit history
+
+### API Change Protocol
+
+**BEFORE making ANY API changes:**
+
+1. **Check References**: Verify changes align with `docs/API_ENDPOINT_REFERENCE.md`
+2. **Test Against Working Code**: Compare with the implementation in `src/lib/api.ts`
+3. **Validate Endpoints**: Ensure endpoints match OpenAPI spec in `docs/specs/api-endpoints.yaml`
+4. **Run Full Test Suite**: All tests must pass, not just modified ones
+
+**AFTER making API changes:**
+
+1. **Update Documentation**: Modify `docs/API_ENDPOINT_REFERENCE.md` if endpoints change
+2. **Update OpenAPI Spec**: Keep `docs/specs/api-endpoints.yaml` in sync
+3. **Run API Health Checks**: Pre-commit hooks validate endpoint functionality
+4. **Test Integration**: Ensure all services work with the updated API
+
+### Preventing Regressions
+
+- **Never modify implementation to pass tests** - Fix the root cause instead
+- **Always reference working API code** before making changes
+- **Use documented endpoints only** - See `docs/API_ENDPOINT_REFERENCE.md`
+- **Keep OpenAPI spec updated** - `docs/specs/api-endpoints.yaml` is authoritative
+- **Run pre-commit validations** - API health checks prevent broken deployments
+
+## Code of Conduct
+
+### Our Pledge
+
+We as members, contributors, and leaders pledge to make participation in our community a harassment-free experience for everyone, regardless of age, body size, visible or invisible disability, ethnicity, sex characteristics, gender identity and expression, level of experience, education, socio-economic status, nationality, personal appearance, race, religion, or sexual identity and orientation.
+
+We pledge to act and interact in ways that contribute to an open, welcoming, diverse, inclusive, and healthy community.
+
+### Our Standards
+
+Examples of behavior that contributes to a positive environment for our community include:
+
+- Demonstrating empathy and kindness toward other people
+- Being respectful of differing opinions, viewpoints, and experiences
+- Giving and gracefully accepting constructive feedback
+- Accepting responsibility and apologizing to those affected by our mistakes, and learning from the experience
+- Focusing on what is best not just for us as individuals, but for the overall community
+
+Examples of unacceptable behavior include:
+
+- The use of sexualized language or imagery, and sexual attention or advances of any kind
+- Trolling, insulting or derogatory comments, and personal or political attacks
+- Public or private harassment
+- Publishing others' private information, such as a physical or email address, without their explicit permission
+- Other conduct which could reasonably be considered inappropriate in a professional setting
+
+### Development Standards
+
+In addition to community standards, we maintain high development standards:
+
+- **Quality over Speed**: Take time to implement correctly rather than rushing broken code
+- **Test-Driven Development**: Write tests that validate correct behavior, not broken implementations
+- **Documentation First**: Update documentation before implementing changes
+- **Peer Review**: All changes should be reviewed for correctness and adherence to standards
+- **Accountability**: Accept responsibility for mistakes and learn from them
+
+### Enforcement Responsibilities
+
+Community leaders are responsible for clarifying and enforcing our standards of acceptable behavior and will take appropriate and fair corrective action in response to any behavior that they deem inappropriate, threatening, offensive, or harmful.
+
+Community leaders have the right and responsibility to remove, edit, or reject comments, commits, code, wiki edits, issues, and other contributions that are not aligned to this Code of Conduct, and will communicate reasons for moderation decisions when appropriate.
+
+### Development Enforcement
+
+For development practices:
+
+- **API Changes**: Must be validated against working references (`docs/API_ENDPOINT_REFERENCE.md`, `src/lib/api.ts`)
+- **Test Failures**: Root causes must be identified and fixed, not worked around
+- **Documentation**: Must be kept current with implementation changes
+- **Code Quality**: Must pass all linting, type checking, and testing requirements
+
+### Scope
+
+This Code of Conduct applies within all community spaces, and also applies when an individual is officially representing the community in public spaces. Examples of representing our community include using an official e-mail address, posting via an official social media account, or acting as an appointed representative at an online or offline event.
+
+### Enforcement
+
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement at max@binimum.org.
+
+All complaints will be reviewed and investigated promptly and fairly.
+
+All community leaders are obligated to respect the privacy and security of the reporter of any incident.
+
+### Development Enforcement Guidelines
+
+Community leaders will follow these Development Impact Guidelines in determining the consequences for development practices:
+
+#### 1. Correction
+
+**Development Impact**: Quick fixes that bypass proper testing or documentation.
+
+**Consequence**: A private, written warning from community leaders, providing clarity around the nature of the violation and an explanation of why the behavior was inappropriate. Code must be corrected properly.
+
+#### 2. Warning
+
+**Development Impact**: Repeated violations of development standards, such as modifying code to pass tests instead of fixing root causes.
+
+**Consequence**: A warning with consequences for continued behavior. No code commits allowed until proper practices are demonstrated. This includes avoiding shortcuts in development processes.
+
+#### 3. Temporary Ban
+
+**Development Impact**: Serious violations causing system instability or data loss, such as breaking API endpoints without proper validation.
+
+**Consequence**: A temporary ban from code contributions for a specified period of time. No commits or pull requests allowed during this period.
+
+#### 4. Permanent Ban
+
+**Development Impact**: Demonstrating a pattern of reckless development practices that endanger the project stability.
+
+**Consequence**: A permanent ban from code contributions to the project.
+
+### Attribution
+
+This Code of Conduct is adapted from the [Contributor Covenant][homepage], version 2.0, available at https://www.contributor-covenant.org/version/2/0/code_of_conduct.html.
+
+Community Impact Guidelines were inspired by [Mozilla's code of conduct enforcement ladder](https://github.com/mozilla/diversity).
+
+[homepage]: https://www.contributor-covenant.org
+
+For answers to common questions about this code of conduct, see the FAQ at https://www.contributor-covenant.org/faq. Translations are available at https://www.contributor-covenant.org/translations.
+
 No Cursor or Copilot rules found.</content>
 <parameter name="filePath">/home/tom/Projects/tidal-ui/AGENTS.md

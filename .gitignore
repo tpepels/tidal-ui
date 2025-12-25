@@ -128,3 +128,6 @@ docker-compose.yml
 
 .venv
 downloaded_files
+
+# Removed files (keep in gitignore to prevent re-addition)
+CODE_OF_CONDUCT.md
