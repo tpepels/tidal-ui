@@ -8,6 +8,7 @@
 	import AudioPlayer from '$lib/components/AudioPlayer.svelte';
 	import LyricsPopup from '$lib/components/LyricsPopup.svelte';
 	import DownloadLog from '$lib/components/DownloadLog.svelte';
+	import DownloadProgress from '$lib/components/DownloadProgress.svelte';
 
 	import DynamicBackground from '$lib/components/DynamicBackground.svelte';
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
@@ -807,6 +808,7 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 
 	<LyricsPopup />
 	<ToastContainer />
+	<DownloadProgress />
 {/if}
 
 <!--
