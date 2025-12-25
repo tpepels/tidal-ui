@@ -14,16 +14,6 @@ export const saveToStorage = (key: string, data: unknown): void => {
 	if (!browser) return;
 	try {
 		const existing = localStorage.getItem(`${STORAGE_PREFIX}${key}`);
-		let expectedTimestamp = 0;
-
-		if (existing) {
-			try {
-				const parsed = JSON.parse(existing) as PersistedState;
-				expectedTimestamp = parsed.timestamp || 0;
-			} catch {
-				// Ignore parse errors for existing data
-			}
-		}
 
 		const state: PersistedState = {
 			version: CURRENT_VERSION,

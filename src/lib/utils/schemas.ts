@@ -55,6 +55,22 @@ export const PlaylistSchema = z.object({
 	cover: z.string().optional()
 });
 
+export const TrackInfoSchema = z.object({
+	trackId: z.number(),
+	audioQuality: z.string(),
+	audioMode: z.string(),
+	manifest: z.string(),
+	manifestMimeType: z.string(),
+	manifestHash: z.string().optional(),
+	assetPresentation: z.string(),
+	albumReplayGain: z.number().optional(),
+	albumPeakAmplitude: z.number().optional(),
+	trackReplayGain: z.number().optional(),
+	trackPeakAmplitude: z.number().optional(),
+	bitDepth: z.number().optional(),
+	sampleRate: z.number().optional()
+});
+
 export const SearchResponseSchema = z.object({
 	items: z.array(z.unknown()), // Will be narrowed per type
 	totalNumberOfItems: z.number().optional(),

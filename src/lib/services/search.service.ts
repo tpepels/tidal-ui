@@ -6,7 +6,7 @@ import type { RegionOption } from '../stores/region';
 export class SearchService extends BaseApiService {
 	async searchTracks(
 		query: string,
-		_region: RegionOption = 'auto', // eslint-disable-line @typescript-eslint/no-unused-vars
+		region: RegionOption = 'auto',
 		limit = 50,
 		offset = 0
 	): Promise<SearchResponse<Track>> {
@@ -17,7 +17,10 @@ export class SearchService extends BaseApiService {
 		});
 
 		return this.makeRequest<SearchResponse<Track>>(
-			`/search/?s=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`,
+			this.buildRegionalUrl(
+				`/search/?s=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`,
+				region
+			),
 			{ apiVersion: 'v2' },
 			cacheKey,
 			CACHE_TTL.SEARCH
@@ -26,7 +29,7 @@ export class SearchService extends BaseApiService {
 
 	async searchAlbums(
 		query: string,
-		_region: RegionOption = 'auto', // eslint-disable-line @typescript-eslint/no-unused-vars
+		region: RegionOption = 'auto',
 		limit = 50,
 		offset = 0
 	): Promise<SearchResponse<Album>> {
@@ -37,7 +40,10 @@ export class SearchService extends BaseApiService {
 		});
 
 		return this.makeRequest<SearchResponse<Album>>(
-			`/search/?al=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`,
+			this.buildRegionalUrl(
+				`/search/?al=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`,
+				region
+			),
 			{ apiVersion: 'v2' },
 			cacheKey,
 			CACHE_TTL.SEARCH
@@ -46,7 +52,7 @@ export class SearchService extends BaseApiService {
 
 	async searchArtists(
 		query: string,
-		_region: RegionOption = 'auto', // eslint-disable-line @typescript-eslint/no-unused-vars
+		region: RegionOption = 'auto',
 		limit = 50,
 		offset = 0
 	): Promise<SearchResponse<Artist>> {
@@ -57,7 +63,10 @@ export class SearchService extends BaseApiService {
 		});
 
 		return this.makeRequest<SearchResponse<Artist>>(
-			`/search/?a=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`,
+			this.buildRegionalUrl(
+				`/search/?a=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`,
+				region
+			),
 			{ apiVersion: 'v2' },
 			cacheKey,
 			CACHE_TTL.SEARCH
@@ -66,7 +75,7 @@ export class SearchService extends BaseApiService {
 
 	async searchPlaylists(
 		query: string,
-		_region: RegionOption = 'auto', // eslint-disable-line @typescript-eslint/no-unused-vars
+		region: RegionOption = 'auto',
 		limit = 50,
 		offset = 0
 	): Promise<SearchResponse<Playlist>> {
@@ -77,7 +86,10 @@ export class SearchService extends BaseApiService {
 		});
 
 		return this.makeRequest<SearchResponse<Playlist>>(
-			`/search/?p=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`,
+			this.buildRegionalUrl(
+				`/search/?p=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`,
+				region
+			),
 			{ apiVersion: 'v2' },
 			cacheKey,
 			CACHE_TTL.SEARCH

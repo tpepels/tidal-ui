@@ -1,8 +1,9 @@
 import { ApiCache } from '../utils/cache';
 import { TidalError, withErrorHandling, retryWithBackoff } from '../errors';
-import { fetchWithCORS } from '../config';
+import { fetchWithCORS, selectApiTargetForRegion } from '../config';
 import { validateApiResponse } from '../utils/api-contracts';
 import type { ZodSchema } from 'zod';
+import type { RegionOption } from '../stores/region';
 
 const API_BASE = 'https://tidal.401658.xyz';
 
@@ -13,6 +14,24 @@ export abstract class BaseApiService {
 	constructor(baseUrl: string = API_BASE) {
 		this.baseUrl = baseUrl;
 		this.cache = new ApiCache();
+	}
+
+	protected resolveRegionalBase(region: RegionOption = 'auto'): string {
+		try {
+			const target = selectApiTargetForRegion(region);
+			if (target?.baseUrl) {
+				return target.baseUrl;
+			}
+		} catch (error) {
+			console.warn('Falling back to default API base URL for region selection', { region, error });
+		}
+		return this.baseUrl;
+	}
+
+	protected buildRegionalUrl(path: string, region: RegionOption = 'auto'): string {
+		const base = this.resolveRegionalBase(region).replace(/\/+$/, '');
+		const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+		return `${base}${normalizedPath}`;
 	}
 
 	protected async makeRequest<T>(

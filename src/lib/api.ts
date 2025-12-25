@@ -4,6 +4,7 @@ import type { RegionOption } from './stores/region';
 import { deriveTrackQuality } from './utils/audioQuality';
 import { parseTidalUrl } from './utils/urlParser';
 import { formatArtistsForMetadata } from './utils';
+import { TrackInfoSchema } from './utils/schemas';
 import type {
 	Track,
 	Artist,
@@ -218,7 +219,10 @@ class LosslessAPI {
 				continue;
 			}
 			if (!info && 'manifest' in entry) {
-				info = entry as TrackInfo;
+				const parsed = TrackInfoSchema.safeParse(entry);
+				if (parsed.success) {
+					info = parsed.data;
+				}
 				continue;
 			}
 			if (!originalTrackUrl && 'OriginalTrackUrl' in entry) {

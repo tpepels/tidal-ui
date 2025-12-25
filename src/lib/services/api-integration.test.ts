@@ -10,6 +10,7 @@ vi.mock('./base-api.service', () => ({
 	BaseApiService: class {
 		makeRequest = vi.fn();
 		generateCacheKey = vi.fn();
+		buildRegionalUrl = vi.fn();
 	}
 }));
 
