@@ -78,7 +78,7 @@
 </script>
 
 <!-- Compact progress indicator (visible when downloading and log is closed) -->
-{#if $activeTrackDownloads.length > 0 && !$downloadLogStore.isVisible}
+{#if $activeTrackDownloads.length === 0 && !$downloadLogStore.isVisible}
 	<div class="download-progress-compact">
 		<div class="download-progress-compact-header">
 			<span class="download-progress-compact-title">
@@ -113,7 +113,7 @@
 {/if}
 
 <!-- Full download log (only when toggled) -->
-<div class="download-log-container" class:is-visible={$downloadLogStore.isVisible}>
+<div class="download-log-container" class:is-visible={$downloadLogStore.isVisible || $activeTrackDownloads.length > 0} on:click|stopPropagation role="presentation">
 	<div class="download-log-panel">
 		<div class="download-log-header">
 			<h3 class="download-log-title">Download Log</h3>

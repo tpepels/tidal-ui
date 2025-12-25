@@ -587,20 +587,25 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 											</button>
 											<button
 												type="button"
-												onclick={toggleDownloadCoversSeperately}
-												class={`glass-option ${downloadCoversSeperately ? 'is-active' : ''}`}
+												onclick={() => {
+													if ($downloadPreferencesStore.storage !== 'server') {
+														toggleDownloadCoversSeperately();
+													}
+												}}
+												class={`glass-option ${downloadCoversSeperately ? 'is-active' : ''} ${$downloadPreferencesStore.storage === 'server' ? 'cursor-not-allowed opacity-50' : ''}`}
 												aria-pressed={downloadCoversSeperately}
+												disabled={$downloadPreferencesStore.storage === 'server'}
 											>
 												<span class="glass-option__content">
 													<span class="glass-option__label">Download covers separately</span>
 													<span class="glass-option__description"
-														>Save cover.jpg alongside audio files.</span
+														>{$downloadPreferencesStore.storage === 'server' ? 'Not available when downloading to server.' : 'Save cover.jpg alongside audio files.'}</span
 													>
 												</span>
 												<span
 													class={`glass-option__chip ${downloadCoversSeperately ? 'is-active' : ''}`}
 												>
-													{downloadCoversSeperately ? 'On' : 'Off'}
+													{$downloadPreferencesStore.storage === 'server' ? 'N/A' : (downloadCoversSeperately ? 'On' : 'Off')}
 												</span>
 											</button>
 										</section>
