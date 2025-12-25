@@ -4,10 +4,10 @@ import type { Album, Playlist, ArtistDetails, Lyrics, CoverImage, Track } from '
 
 export class ContentService extends BaseApiService {
 	async getAlbum(id: number): Promise<{ album: Album; tracks: Track[] }> {
-		const cacheKey = this.generateCacheKey(`/albums/${id}`);
+		const cacheKey = this.generateCacheKey(`/album/${id}`);
 
 		return this.makeRequest<{ album: Album; tracks: Track[] }>(
-			`/albums/${id}`,
+			`/album/?id=${id}`,
 			{ apiVersion: 'v2' },
 			cacheKey,
 			CACHE_TTL.ALBUM
@@ -15,10 +15,10 @@ export class ContentService extends BaseApiService {
 	}
 
 	async getArtist(id: number): Promise<ArtistDetails> {
-		const cacheKey = this.generateCacheKey(`/artists/${id}`);
+		const cacheKey = this.generateCacheKey(`/artist/${id}`);
 
 		return this.makeRequest<ArtistDetails>(
-			`/artists/${id}`,
+			`/artist/?id=${id}`,
 			{ apiVersion: 'v2' },
 			cacheKey,
 			CACHE_TTL.ARTIST
@@ -26,10 +26,10 @@ export class ContentService extends BaseApiService {
 	}
 
 	async getPlaylist(uuid: string): Promise<{ playlist: Playlist; items: Array<{ item: Track }> }> {
-		const cacheKey = this.generateCacheKey(`/playlists/${uuid}`);
+		const cacheKey = this.generateCacheKey(`/playlist/${uuid}`);
 
 		return this.makeRequest<{ playlist: Playlist; items: Array<{ item: Track }> }>(
-			`/playlists/${uuid}`,
+			`/playlist/?id=${uuid}`,
 			{ apiVersion: 'v2' },
 			cacheKey,
 			CACHE_TTL.PLAYLIST
@@ -37,10 +37,10 @@ export class ContentService extends BaseApiService {
 	}
 
 	async getLyrics(trackId: number): Promise<Lyrics> {
-		const cacheKey = this.generateCacheKey(`/tracks/${trackId}/lyrics`);
+		const cacheKey = this.generateCacheKey(`/lyrics/${trackId}`);
 
 		return this.makeRequest<Lyrics>(
-			`/tracks/${trackId}/lyrics`,
+			`/lyrics/?id=${trackId}`,
 			{ apiVersion: 'v2' },
 			cacheKey,
 			CACHE_TTL.LYRICS

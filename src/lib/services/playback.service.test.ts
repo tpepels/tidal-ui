@@ -33,7 +33,7 @@ describe('PlaybackService', () => {
 		const result = await service.getTrackInfo(123, 'LOSSLESS');
 
 		expect(mockedFetchWithCORS).toHaveBeenCalledWith(
-			'https://test-api.com/tracks/123?quality=LOSSLESS',
+			'https://test-api.com/track/?id=123&quality=LOSSLESS',
 			{ apiVersion: 'v2' }
 		);
 		expect(result).toEqual(mockData);
@@ -54,7 +54,7 @@ describe('PlaybackService', () => {
 		const result = await service.getStreamData(123, 'LOSSLESS');
 
 		expect(mockedFetchWithCORS).toHaveBeenCalledWith(
-			'https://test-api.com/tracks/123/stream?quality=LOSSLESS',
+			'https://test-api.com/track/?id=123&quality=LOSSLESS',
 			{ apiVersion: 'v2' }
 		);
 		expect(result).toEqual(mockData);
@@ -63,7 +63,7 @@ describe('PlaybackService', () => {
 	it('gets DASH manifest with well-known data', async () => {
 		const mockData = {
 			trackId: 123,
-			manifest: 'dash-xml',
+			manifest: '<?xml version="1.0"?><MPD>...</MPD>',
 			quality: 'HI_RES_LOSSLESS'
 		};
 		const mockResponse = new Response(JSON.stringify(mockData), { status: 200 });
@@ -73,7 +73,7 @@ describe('PlaybackService', () => {
 		const result = await service.getDashManifest(123, 'HI_RES_LOSSLESS');
 
 		expect(mockedFetchWithCORS).toHaveBeenCalledWith(
-			'https://test-api.com/tracks/123/dash?quality=HI_RES_LOSSLESS',
+			'https://test-api.com/dash/?id=123&quality=HI_RES_LOSSLESS',
 			{ apiVersion: 'v2' }
 		);
 		expect(result).toEqual(mockData);
@@ -97,25 +97,6 @@ describe('PlaybackService', () => {
 	it('gets artist picture URL with default size', () => {
 		const result = service.getArtistPictureUrl('test-picture-id');
 		expect(result).toBe('https://test-api.com/artists/test-picture-id/picture?size=750');
-	});
-
-	it('gets DASH manifest with well-known data', async () => {
-		const mockData = {
-			trackId: 123,
-			manifest: '<?xml version="1.0"?><MPD>...</MPD>',
-			quality: 'HI_RES_LOSSLESS'
-		};
-		const mockResponse = new Response(JSON.stringify(mockData), { status: 200 });
-
-		mockedFetchWithCORS.mockResolvedValue(mockResponse);
-
-		const result = await service.getDashManifest(123, 'HI_RES_LOSSLESS');
-
-		expect(mockedFetchWithCORS).toHaveBeenCalledWith(
-			'https://test-api.com/tracks/123/dash?quality=HI_RES_LOSSLESS',
-			{ apiVersion: 'v2' }
-		);
-		expect(result).toEqual(mockData);
 	});
 
 	it('gets cover URL', () => {
@@ -162,7 +143,7 @@ describe('PlaybackService', () => {
 			await service.getTrackInfo(123, quality);
 
 			expect(mockedFetchWithCORS).toHaveBeenCalledWith(
-				`https://test-api.com/tracks/123?quality=${quality}`,
+				`https://test-api.com/track/?id=123&quality=${quality}`,
 				{ apiVersion: 'v2' }
 			);
 

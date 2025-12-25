@@ -1,5 +1,5 @@
 // Audio player store for managing playback state
-import { writable, derived, get } from 'svelte/store';
+import { writable, derived } from 'svelte/store';
 import { browser } from '$app/environment';
 import type { Track, AudioQuality, PlayableTrack } from '$lib/types';
 import { deriveTrackQuality } from '$lib/utils/audioQuality';

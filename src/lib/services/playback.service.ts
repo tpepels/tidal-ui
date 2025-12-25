@@ -7,10 +7,10 @@ export class PlaybackService extends BaseApiService {
 		trackId: number,
 		quality: AudioQuality = AUDIO_QUALITIES.LOSSLESS
 	): Promise<TrackLookup> {
-		const cacheKey = this.generateCacheKey(`/tracks/${trackId}`, { quality });
+		const cacheKey = this.generateCacheKey(`/track/${trackId}`, { quality });
 
 		return this.makeRequest<TrackLookup>(
-			`/tracks/${trackId}?quality=${quality}`,
+			`/track/?id=${trackId}&quality=${quality}`,
 			{ apiVersion: 'v2' },
 			cacheKey,
 			CACHE_TTL.TRACK
@@ -21,10 +21,10 @@ export class PlaybackService extends BaseApiService {
 		trackId: number,
 		quality: AudioQuality = AUDIO_QUALITIES.LOSSLESS
 	): Promise<StreamData> {
-		const cacheKey = this.generateCacheKey(`/tracks/${trackId}/stream`, { quality });
+		const cacheKey = this.generateCacheKey(`/track/${trackId}/stream`, { quality });
 
 		return this.makeRequest<StreamData>(
-			`/tracks/${trackId}/stream?quality=${quality}`,
+			`/track/?id=${trackId}&quality=${quality}`,
 			{ apiVersion: 'v2' },
 			cacheKey,
 			CACHE_TTL.TRACK
@@ -32,10 +32,10 @@ export class PlaybackService extends BaseApiService {
 	}
 
 	async getDashManifest(trackId: number, quality: AudioQuality = AUDIO_QUALITIES.HI_RES_LOSSLESS) {
-		const cacheKey = this.generateCacheKey(`/tracks/${trackId}/dash`, { quality });
+		const cacheKey = this.generateCacheKey(`/track/${trackId}/dash`, { quality });
 
 		return this.makeRequest(
-			`/tracks/${trackId}/dash?quality=${quality}`,
+			`/dash/?id=${trackId}&quality=${quality}`,
 			{ apiVersion: 'v2' },
 			cacheKey,
 			CACHE_TTL.TRACK

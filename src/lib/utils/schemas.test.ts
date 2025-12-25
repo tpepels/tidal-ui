@@ -145,9 +145,9 @@ describe('Schemas', () => {
 		it('throws in dev mode on false condition', () => {
 			// Mock DEV env
 			const originalDev = import.meta.env.DEV;
-			(import.meta.env as any).DEV = true;
+			(import.meta.env as any).DEV = true; // eslint-disable-line @typescript-eslint/no-explicit-any
 			expect(() => assertInvariant(false, 'test')).toThrow('Invariant violation: test');
-			(import.meta.env as any).DEV = originalDev;
+			(import.meta.env as any).DEV = originalDev; // eslint-disable-line @typescript-eslint/no-explicit-any
 		});
 	});
 });

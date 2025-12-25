@@ -16,6 +16,9 @@ export interface ApiClusterTarget {
 }
 
 const V2_API_TARGETS = [
+	// NOTE: Most proxy APIs are currently down (returning 404).
+	// These need to be updated with working Tidal proxy services.
+	// Search for "working tidal api proxies" in Tidal communities.
 	{
 		name: 'squid-api',
 		baseUrl: 'https://triton.squid.wtf',

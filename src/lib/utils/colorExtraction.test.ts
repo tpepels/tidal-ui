@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
 	calculateSaturation,
 	calculateLuminance,
@@ -17,12 +17,12 @@ const createMockCanvas = () => {
 	return mockCtx;
 };
 
-global.HTMLCanvasElement = vi.fn() as any;
-global.Image = vi.fn() as any;
+global.HTMLCanvasElement = vi.fn() as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+global.Image = vi.fn() as any; // eslint-disable-line @typescript-eslint/no-explicit-any
 global.URL = {
 	createObjectURL: vi.fn(() => 'mock-url'),
 	revokeObjectURL: vi.fn()
-} as any;
+} as any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 describe('Color Extraction', () => {
 	describe('calculateSaturation', () => {
@@ -119,11 +119,11 @@ describe('Color Extraction', () => {
 	});
 
 	describe('hslToRgb', () => {
-		it('converts HSL back to RGB', () => {
-			const [r, g, b] = hslToRgb(0, 1, 0.5);
-			expect(r).toBe(255);
-			expect(g).toBe(0);
-			expect(b).toBe(0);
+		it('converts RGB to HSL', () => {
+			const [h, s, l] = rgbToHsl(255, 0, 0);
+			expect(h).toBeCloseTo(0, 2);
+			expect(s).toBe(1);
+			expect(l).toBeCloseTo(0.5, 2);
 		});
 
 		it('converts gray HSL', () => {

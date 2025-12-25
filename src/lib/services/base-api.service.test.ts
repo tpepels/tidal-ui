@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { BaseApiService } from './base-api.service';
 import { fetchWithCORS } from '../config';
 import { ApiCache } from '../utils/cache';
@@ -20,17 +20,19 @@ const MockedApiCache = ApiCache as any;
 // Concrete subclass for testing
 class TestApiService extends BaseApiService {
 	public testMakeRequest(endpoint: string, options?: any, cacheKey?: string, cacheTtl?: number) {
+		// eslint-disable-line @typescript-eslint/no-explicit-any
 		return this.makeRequest(endpoint, options, cacheKey, cacheTtl);
 	}
 
 	public testGenerateCacheKey(endpoint: string, params?: any) {
+		// eslint-disable-line @typescript-eslint/no-explicit-any
 		return this.generateCacheKey(endpoint, params);
 	}
 }
 
 describe('BaseApiService', () => {
 	let service: TestApiService;
-	let mockCache: InstanceType<typeof MockedApiCache>;
+	let mockCache: Record<string, Mock>;
 
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -39,7 +41,7 @@ describe('BaseApiService', () => {
 			get: vi.fn(),
 			set: vi.fn()
 		};
-		MockedApiCache.mockImplementation(() => mockCache);
+		MockedApiCache.mockImplementation(() => mockCache as any); // eslint-disable-line @typescript-eslint/no-explicit-any
 
 		service = new TestApiService('https://test-api.com');
 	});
