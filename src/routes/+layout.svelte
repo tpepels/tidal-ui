@@ -510,7 +510,7 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 	<title>{pageTitle}</title>
 	<link rel="icon" href={favicon} />
 	<link rel="manifest" href="/manifest.webmanifest" />
-	<link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+
 	<meta name="theme-color" content="#0f172a" />
 	<meta name="apple-mobile-web-app-capable" content="yes" />
 	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -543,7 +543,7 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 				</span>
 			</button>
 				{#if showSettingsMenu}
-					<div class="settings-menu glass-popover" style={`--settings-menu-offset: ${settingsMenuOffset()}px;`} onclick={(e) => e.stopPropagation()}>
+					<div class="settings-menu glass-popover" style={`--settings-menu-offset: ${settingsMenuOffset()}px;`} onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Escape') showSettingsMenu = false; }} role="menu" tabindex="-1">
 						<div class="settings-grid">
 										<section class="settings-section settings-section--wide">
 											<p class="section-heading">Streaming & Downloads</p>
