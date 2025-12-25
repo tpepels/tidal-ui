@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { sanitizeForFilename } from './downloads';
 
+import { sanitizeForFilename, getExtensionForQuality, buildTrackFilename } from './downloads';
 // Test the internal detectImageFormat function
 function detectImageFormat(data: Uint8Array): { extension: string; mimeType: string } | null {
 	if (!data || data.length < 4) {
@@ -202,14 +202,102 @@ describe('Downloads Utils', () => {
 		});
 
 		it('handles edge cases', () => {
-			// Data that's long enough but not WebP
-			const longData = new Uint8Array(20);
-			longData[0] = 0x52; // R
-			longData[1] = 0x49; // I
-			longData[2] = 0x46; // F
-			longData[3] = 0x46; // F
-			// But not WEBP at positions 8-11
-			expect(detectImageFormat(longData)).toBeNull();
+			expect(detectImageFormat(new Uint8Array([]))).toBeNull();
+			expect(detectImageFormat(new Uint8Array([0xff]))).toBeNull();
+			expect(detectImageFormat(new Uint8Array([0xff, 0xd8]))).toBeNull();
+		});
+	});
+
+	describe('getExtensionForQuality', () => {
+		it('returns "flac" for lossless and hi-res qualities', () => {
+			expect(getExtensionForQuality('LOSSLESS')).toBe('flac');
+			expect(getExtensionForQuality('HI_RES_LOSSLESS')).toBe('flac');
+		});
+
+		it('returns "m4a" for low/high quality when not converting to mp3', () => {
+			expect(getExtensionForQuality('LOW')).toBe('m4a');
+			expect(getExtensionForQuality('HIGH')).toBe('m4a');
+		});
+
+		it('returns "mp3" for low/high quality when converting to mp3', () => {
+			expect(getExtensionForQuality('LOW', true)).toBe('mp3');
+			expect(getExtensionForQuality('HIGH', true)).toBe('mp3');
+		});
+	});
+
+	describe('buildTrackFilename', () => {
+		const mockAlbum = {
+			id: 1,
+			title: 'Test Album',
+			numberOfVolumes: 1,
+			cover: 'cover.jpg',
+			videoCover: null
+		};
+
+		const mockTrack = {
+			id: 1,
+			title: 'Test Track',
+			duration: 180,
+			trackNumber: 5,
+			volumeNumber: undefined,
+			version: null,
+			artists: [{ id: 1, name: 'Test Artist', type: 'artist' }]
+		};
+
+		it('builds filename for single volume album', () => {
+			const result = buildTrackFilename(mockAlbum as any, mockTrack as any, 'LOSSLESS');
+			expect(result).toBe('Test Artist - Test Album - 05 Test Track.flac');
+		});
+
+		it('builds filename with version', () => {
+			const trackWithVersion = { ...mockTrack, version: 'Remix' };
+			const result = buildTrackFilename(mockAlbum as any, trackWithVersion as any, 'LOSSLESS');
+			expect(result).toBe('Test Artist - Test Album - 05 Test Track (Remix).flac');
+		});
+
+		it('builds filename for multi-volume album', () => {
+			const multiVolumeAlbum = { ...mockAlbum, numberOfVolumes: 2 };
+			const trackOnVolume2 = { ...mockTrack, volumeNumber: 2, trackNumber: 3 };
+			const result = buildTrackFilename(multiVolumeAlbum as any, trackOnVolume2 as any, 'HIGH');
+			expect(result).toBe('Test Artist - Test Album - 02-03 Test Track.m4a');
+		});
+
+		it('handles missing track numbers', () => {
+			const trackWithoutNumber = { ...mockTrack, trackNumber: null };
+			const result = buildTrackFilename(mockAlbum as any, trackWithoutNumber as any, 'LOSSLESS');
+			expect(result).toBe('Test Artist - Test Album - 00 Test Track.flac');
+		});
+
+		it('uses custom artist name when provided', () => {
+			const result = buildTrackFilename(
+				mockAlbum as any,
+				mockTrack as any,
+				'LOSSLESS',
+				'Custom Artist'
+			);
+			expect(result).toBe('Custom Artist - Test Album - 05 Test Track.flac');
+		});
+
+		it('applies mp3 conversion for AAC qualities', () => {
+			const result = buildTrackFilename(
+				mockAlbum as any,
+				mockTrack as any,
+				'HIGH',
+				undefined,
+				true
+			);
+			expect(result).toBe('Test Artist - Test Album - 05 Test Track.mp3');
+		});
+
+		it('sanitizes special characters in names', () => {
+			const albumWithSpecialChars = { ...mockAlbum, title: 'Album: With/Special*Chars?' };
+			const trackWithSpecialChars = { ...mockTrack, title: 'Track "With" Quotes' };
+			const result = buildTrackFilename(
+				albumWithSpecialChars as any,
+				trackWithSpecialChars as any,
+				'LOSSLESS'
+			);
+			expect(result).toBe('Test Artist - Album_ With_Special_Chars_ - 05 Track _With_ Quotes.flac');
 		});
 	});
 });

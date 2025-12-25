@@ -1224,11 +1224,18 @@ class LosslessAPI {
 			);
 		};
 
-		const recordArtist = (candidate: Artist | undefined) => {
+		const recordArtist = (candidate: Artist | undefined, requestedArtistId: number) => {
 			if (!candidate) return;
 			const normalized = this.prepareArtist(candidate);
-			if (!artist || artist.id === normalized.id) {
+			// Prioritize artist with requested ID, otherwise keep existing artist or use any artist
+			if (!artist) {
 				artist = normalized;
+			} else if (normalized.id === requestedArtistId) {
+				// Always prefer the artist with the requested ID
+				artist = normalized;
+			} else if (artist.id !== requestedArtistId) {
+				// If current artist doesn't have the requested ID but new one might, keep current
+				// This preserves the first artist found when we don't have the requested one
 			}
 		};
 
@@ -1236,7 +1243,7 @@ class LosslessAPI {
 			if (!candidate || typeof candidate.id !== 'number') return;
 			const normalized = this.prepareAlbum({ ...candidate });
 			albumMap.set(normalized.id, normalized);
-			recordArtist(normalized.artist ?? normalized.artists?.[0]);
+			recordArtist(normalized.artist ?? normalized.artists?.[0], id);
 		};
 
 		const addTrack = (candidate: Track | undefined) => {
@@ -1251,7 +1258,7 @@ class LosslessAPI {
 				normalized.album = knownAlbum;
 			}
 			trackMap.set(normalized.id, normalized);
-			recordArtist(normalized.artist);
+			recordArtist(normalized.artist, id);
 		};
 
 		const parseModuleItems = (items: unknown) => {
@@ -1265,7 +1272,7 @@ class LosslessAPI {
 				if (isAlbumLike(candidate)) {
 					addAlbum(candidate as Album);
 					const normalizedAlbum = albumMap.get((candidate as Album).id);
-					recordArtist(normalizedAlbum?.artist ?? normalizedAlbum?.artists?.[0]);
+					recordArtist(normalizedAlbum?.artist ?? normalizedAlbum?.artists?.[0], id);
 					continue;
 				}
 				if (isTrackLike(candidate)) {
@@ -1304,7 +1311,7 @@ class LosslessAPI {
 			visited.add(objectRef);
 
 			if (isArtistLike(objectRef)) {
-				recordArtist(objectRef as Artist);
+				recordArtist(objectRef as Artist, id);
 			}
 
 			if ('modules' in objectRef && Array.isArray(objectRef.modules)) {
@@ -1350,7 +1357,7 @@ class LosslessAPI {
 			const albumPrimaryArtist = Array.from(albumMap.values())
 				.map((album) => album.artist ?? album.artists?.[0])
 				.find(Boolean);
-			recordArtist(trackPrimaryArtist ?? albumPrimaryArtist);
+			recordArtist(trackPrimaryArtist ?? albumPrimaryArtist, id);
 		}
 
 		if (!artist) {
@@ -1361,7 +1368,7 @@ class LosslessAPI {
 					const fallbackData = await fallbackResponse.json();
 					const baseArtist = Array.isArray(fallbackData) ? fallbackData[0] : fallbackData;
 					if (baseArtist && typeof baseArtist === 'object') {
-						recordArtist(baseArtist as Artist);
+						recordArtist(baseArtist as Artist, id);
 					}
 				}
 			} catch (fallbackError) {
