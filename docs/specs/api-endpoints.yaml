@@ -1,0 +1,270 @@
+openapi: 3.0.0
+info:
+  title: Tidal UI API Endpoints
+  version: 1.0.0
+  description: Endpoints used by the Tidal UI codebase via proxy APIs
+servers:
+  - url: '{baseUrl}'
+    variables:
+      baseUrl:
+        default: https://triton.squid.wtf
+        description: Base URL of the proxy API
+paths:
+  /search/tracks:
+    get:
+      summary: Search tracks
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: region
+          in: query
+          schema:
+            type: string
+            default: auto
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Search results
+  /search/albums:
+    get:
+      summary: Search albums
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: region
+          in: query
+          schema:
+            type: string
+            default: auto
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Search results
+  /search/artists:
+    get:
+      summary: Search artists
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: region
+          in: query
+          schema:
+            type: string
+            default: auto
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Search results
+  /search/playlists:
+    get:
+      summary: Search playlists
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: region
+          in: query
+          schema:
+            type: string
+            default: auto
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Search results
+  /album/{id}:
+    get:
+      summary: Get album details and tracks
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Album data
+  /artist/{id}:
+    get:
+      summary: Get artist details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Artist data
+  /playlist/{uuid}:
+    get:
+      summary: Get playlist details and items
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Playlist data
+  /track/{trackId}:
+    get:
+      summary: Get track info
+      parameters:
+        - name: trackId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: quality
+          in: query
+          schema:
+            type: string
+            default: LOSSLESS
+      responses:
+        '200':
+          description: Track data
+  /track/{trackId}/stream:
+    get:
+      summary: Get track stream data
+      parameters:
+        - name: trackId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: quality
+          in: query
+          schema:
+            type: string
+            default: LOSSLESS
+      responses:
+        '200':
+          description: Stream data
+  /track/{trackId}/dash:
+    get:
+      summary: Get DASH manifest
+      parameters:
+        - name: trackId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: quality
+          in: query
+          schema:
+            type: string
+            default: HI_RES_LOSSLESS
+      responses:
+        '200':
+          description: DASH manifest
+  /track/{trackId}/lyrics:
+    get:
+      summary: Get track lyrics
+      parameters:
+        - name: trackId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Lyrics data
+  /covers:
+    get:
+      summary: Search covers
+      parameters:
+        - name: query
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Cover images
+  /cover/{coverId}:
+    get:
+      summary: Get cover image
+      parameters:
+        - name: coverId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: size
+          in: query
+          schema:
+            type: string
+            enum: [1280, 640, 320, 160, 80]
+            default: 640
+      responses:
+        '200':
+          description: Cover image URL
+  /artist/{pictureId}/picture:
+    get:
+      summary: Get artist picture
+      parameters:
+        - name: pictureId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: size
+          in: query
+          schema:
+            type: string
+            default: 750
+      responses:
+        '200':
+          description: Artist picture URL

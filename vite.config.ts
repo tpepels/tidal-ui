@@ -10,8 +10,10 @@ export default defineConfig(({ mode }) => {
 
 	const parsedPort = env.PORT ? Number.parseInt(env.PORT, 10) : undefined;
 
+	const isTest = mode === 'test';
+
 	return {
-		plugins: [tailwindcss(), sveltekit(), devtoolsJson()],
+		plugins: [tailwindcss(), ...(isTest ? [] : [sveltekit(), devtoolsJson()])],
 		server: {
 			https: {
 				key: './key.pem',
@@ -31,7 +33,13 @@ export default defineConfig(({ mode }) => {
 			include: ['src/**/*.{test,spec}.{js,ts}'],
 			environment: 'jsdom',
 			setupFiles: ['./src/test-setup.ts'],
-			globals: true
+			globals: true,
+			server: {
+				deps: {
+					inline: ['@sveltejs/kit']
+				},
+				hmr: false
+			}
 		}
 	};
 });

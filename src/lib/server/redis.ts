@@ -16,11 +16,7 @@ function buildOptions(): RedisOptions | string | null {
 		return url;
 	}
 
-	const host = env.REDIS_HOST;
-	if (!host) {
-		return null;
-	}
-
+	const host = env.REDIS_HOST || 'localhost';
 	const port = env.REDIS_PORT ? Number.parseInt(env.REDIS_PORT, 10) : 6379;
 	const tlsEnabled = (env.REDIS_TLS || '').toLowerCase() === 'true';
 

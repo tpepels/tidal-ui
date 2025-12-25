@@ -7,10 +7,10 @@ export class PlaybackService extends BaseApiService {
 		trackId: number,
 		quality: AudioQuality = AUDIO_QUALITIES.LOSSLESS
 	): Promise<TrackLookup> {
-		const cacheKey = this.generateCacheKey(`/track/${trackId}`, { quality });
+		const cacheKey = this.generateCacheKey(`/tracks/${trackId}`, { quality });
 
 		return this.makeRequest<TrackLookup>(
-			`/track/${trackId}?quality=${quality}`,
+			`/tracks/${trackId}?quality=${quality}`,
 			{ apiVersion: 'v2' },
 			cacheKey,
 			CACHE_TTL.TRACK
@@ -21,10 +21,10 @@ export class PlaybackService extends BaseApiService {
 		trackId: number,
 		quality: AudioQuality = AUDIO_QUALITIES.LOSSLESS
 	): Promise<StreamData> {
-		const cacheKey = this.generateCacheKey(`/track/${trackId}/stream`, { quality });
+		const cacheKey = this.generateCacheKey(`/tracks/${trackId}/stream`, { quality });
 
 		return this.makeRequest<StreamData>(
-			`/track/${trackId}/stream?quality=${quality}`,
+			`/tracks/${trackId}/stream?quality=${quality}`,
 			{ apiVersion: 'v2' },
 			cacheKey,
 			CACHE_TTL.TRACK
@@ -32,10 +32,10 @@ export class PlaybackService extends BaseApiService {
 	}
 
 	async getDashManifest(trackId: number, quality: AudioQuality = AUDIO_QUALITIES.HI_RES_LOSSLESS) {
-		const cacheKey = this.generateCacheKey(`/track/${trackId}/dash`, { quality });
+		const cacheKey = this.generateCacheKey(`/tracks/${trackId}/dash`, { quality });
 
 		return this.makeRequest(
-			`/track/${trackId}/dash?quality=${quality}`,
+			`/tracks/${trackId}/dash?quality=${quality}`,
 			{ apiVersion: 'v2' },
 			cacheKey,
 			CACHE_TTL.TRACK
@@ -43,11 +43,11 @@ export class PlaybackService extends BaseApiService {
 	}
 
 	getCoverUrl(coverId: string, size: '1280' | '640' | '320' | '160' | '80' = '640'): string {
-		return `${this.baseUrl}/cover/${coverId}?size=${size}`;
+		return `${this.baseUrl}/covers/${coverId}?size=${size}`;
 	}
 
 	getArtistPictureUrl(pictureId: string, size: '750' = '750'): string {
-		return `${this.baseUrl}/artist/${pictureId}/picture?size=${size}`;
+		return `${this.baseUrl}/artists/${pictureId}/picture?size=${size}`;
 	}
 
 	formatDuration(seconds: number): string {
