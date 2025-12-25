@@ -1,6 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-import { sanitizeForFilename, getExtensionForQuality, buildTrackFilename } from './downloads';
+// Mock the API before importing downloads
+vi.mock('./api', () => ({
+	losslessAPI: {
+		getTrackStreamUrl: vi.fn(),
+		formatDuration: vi.fn()
+	}
+}));
+
+import {
+	sanitizeForFilename,
+	getExtensionForQuality,
+	buildTrackFilename,
+	buildTrackLinksCsv
+} from './downloads';
+import { losslessAPI } from './api';
 // Test the internal detectImageFormat function
 function detectImageFormat(data: Uint8Array): { extension: string; mimeType: string } | null {
 	if (!data || data.length < 4) {
@@ -298,6 +312,213 @@ describe('Downloads Utils', () => {
 				'LOSSLESS'
 			);
 			expect(result).toBe('Test Artist - Album_ With_Special_Chars_ - 05 Track _With_ Quotes.flac');
+		});
+	});
+
+	describe('buildTrackLinksCsv', () => {
+		const mockTracks = [
+			{
+				id: 1,
+				title: 'Test Track 1',
+				duration: 180,
+				artists: [{ id: 1, name: 'Test Artist 1', type: 'artist' }],
+				album: { id: 1, title: 'Test Album 1' }
+			},
+			{
+				id: 2,
+				title: 'Test Track 2',
+				duration: 240,
+				artists: [{ id: 2, name: 'Test Artist 2', type: 'artist' }],
+				album: { id: 2, title: 'Test Album 2' }
+			}
+		];
+
+		beforeEach(() => {
+			vi.clearAllMocks();
+		});
+
+		it('builds CSV with correct headers and data', async () => {
+			vi.mocked(losslessAPI.getTrackStreamUrl).mockResolvedValueOnce(
+				'https://example.com/track1.flac'
+			);
+			vi.mocked(losslessAPI.getTrackStreamUrl).mockResolvedValueOnce(
+				'https://example.com/track2.flac'
+			);
+			vi.mocked(losslessAPI.formatDuration).mockReturnValueOnce('3:00');
+			vi.mocked(losslessAPI.formatDuration).mockReturnValueOnce('4:00');
+
+			const result = await buildTrackLinksCsv(mockTracks as any, 'LOSSLESS');
+
+			const lines = result.split('\n');
+			expect(lines[0]).toBe('Index,Title,Artist,Album,Duration,FLAC URL');
+			expect(lines[1]).toBe(
+				'1,Test Track 1,Test Artist 1,Test Album 1,3:00,https://example.com/track1.flac'
+			);
+			expect(lines[2]).toBe(
+				'2,Test Track 2,Test Artist 2,Test Album 2,4:00,https://example.com/track2.flac'
+			);
+		});
+
+		it('handles tracks with missing data', async () => {
+			const trackWithMissingData = [
+				{
+					id: 1,
+					title: null,
+					duration: null,
+					artists: [],
+					album: null
+				}
+			];
+
+			vi.mocked(losslessAPI.getTrackStreamUrl).mockResolvedValueOnce(
+				'https://example.com/track.flac'
+			);
+			vi.mocked(losslessAPI.formatDuration).mockReturnValueOnce('0:00');
+
+			const result = await buildTrackLinksCsv(trackWithMissingData as any, 'LOSSLESS');
+
+			const lines = result.split('\n');
+			expect(lines[1]).toBe('1,,Unknown Artist,,0:00,https://example.com/track.flac');
+		});
+
+		it('escapes CSV values with commas and quotes', async () => {
+			const trackWithSpecialChars = [
+				{
+					id: 1,
+					title: 'Track "With" Quotes, and Comma',
+					duration: 120,
+					artists: [{ id: 1, name: 'Artist, Name', type: 'artist' }],
+					album: { id: 1, title: 'Album "Title"' }
+				}
+			];
+
+			vi.mocked(losslessAPI.getTrackStreamUrl).mockResolvedValueOnce(
+				'https://example.com/track.flac'
+			);
+			vi.mocked(losslessAPI.formatDuration).mockReturnValueOnce('2:00');
+
+			const result = await buildTrackLinksCsv(trackWithSpecialChars as any, 'LOSSLESS');
+
+			const lines = result.split('\n');
+			expect(lines[1]).toBe(
+				'1,"Track ""With"" Quotes, and Comma","Artist, Name","Album ""Title""",2:00,https://example.com/track.flac'
+			);
+		});
+
+		it('handles tracks with missing data', async () => {
+			const trackWithMissingData = [
+				{
+					id: 1,
+					title: null,
+					duration: null,
+					artists: [],
+					album: null
+				}
+			];
+
+			vi.mocked(losslessAPI.getTrackStreamUrl).mockResolvedValueOnce(
+				'https://example.com/track.flac'
+			);
+			vi.mocked(losslessAPI.formatDuration).mockReturnValueOnce('0:00');
+
+			const result = await buildTrackLinksCsv(trackWithMissingData as any, 'LOSSLESS');
+
+			const lines = result.split('\n');
+			expect(lines[1]).toBe('1,,Unknown Artist,,0:00,https://example.com/track.flac');
+		});
+
+		it('escapes CSV values with commas and quotes', async () => {
+			const trackWithSpecialChars = [
+				{
+					id: 1,
+					title: 'Track "With" Quotes, and Comma',
+					duration: 120,
+					artists: [{ id: 1, name: 'Artist, Name', type: 'artist' }],
+					album: { id: 1, title: 'Album "Title"' }
+				}
+			];
+
+			vi.mocked(losslessAPI.getTrackStreamUrl).mockResolvedValueOnce(
+				'https://example.com/track.flac'
+			);
+			vi.mocked(losslessAPI.formatDuration).mockReturnValueOnce('2:00');
+
+			const result = await buildTrackLinksCsv(trackWithSpecialChars as any, 'LOSSLESS');
+
+			const lines = result.split('\n');
+			expect(lines[1]).toBe(
+				'1,"Track ""With"" Quotes, and Comma","Artist, Name","Album ""Title""",2:00,https://example.com/track.flac'
+			);
+		});
+
+		it('handles tracks with missing data', async () => {
+			const trackWithMissingData = [
+				{
+					id: 1,
+					title: null,
+					duration: null,
+					artists: [],
+					album: null
+				}
+			];
+
+			vi.mocked(losslessAPI.getTrackStreamUrl).mockResolvedValueOnce(
+				'https://example.com/track.flac'
+			);
+			vi.mocked(losslessAPI.formatDuration).mockReturnValueOnce('0:00');
+
+			const result = await buildTrackLinksCsv(trackWithMissingData as any, 'LOSSLESS');
+
+			const lines = result.split('\n');
+			expect(lines[1]).toBe('1,,Unknown Artist,,0:00,https://example.com/track.flac');
+		});
+
+		it('escapes CSV values with commas and quotes', async () => {
+			const trackWithSpecialChars = [
+				{
+					id: 1,
+					title: 'Track "With" Quotes, and Comma',
+					duration: 120,
+					artists: [{ id: 1, name: 'Artist, Name', type: 'artist' }],
+					album: { id: 1, title: 'Album "Title"' }
+				}
+			];
+
+			vi.mocked(losslessAPI.getTrackStreamUrl).mockResolvedValueOnce(
+				'https://example.com/track.flac'
+			);
+			vi.mocked(losslessAPI.formatDuration).mockReturnValueOnce('2:00');
+
+			const result = await buildTrackLinksCsv(trackWithSpecialChars as any, 'LOSSLESS');
+
+			const lines = result.split('\n');
+			expect(lines[1]).toBe(
+				'1,"Track ""With"" Quotes, and Comma","Artist, Name","Album ""Title""",2:00,https://example.com/track.flac'
+			);
+		});
+
+		it('escapes CSV values with commas and quotes', async () => {
+			const trackWithSpecialChars = [
+				{
+					id: 1,
+					title: 'Track "With" Quotes, and Comma',
+					duration: 120,
+					artists: [{ id: 1, name: 'Artist, Name', type: 'artist' }],
+					album: { id: 1, title: 'Album "Title"' }
+				}
+			];
+
+			vi.mocked(losslessAPI.getTrackStreamUrl).mockResolvedValueOnce(
+				'https://example.com/track.flac'
+			);
+			vi.mocked(losslessAPI.formatDuration).mockReturnValueOnce('2:00');
+
+			const result = await buildTrackLinksCsv(trackWithSpecialChars as any, 'LOSSLESS');
+
+			const lines = result.split('\n');
+			expect(lines[1]).toBe(
+				'1,"Track ""With"" Quotes, and Comma","Artist, Name","Album ""Title""",2:00,https://example.com/track.flac'
+			);
 		});
 	});
 });
