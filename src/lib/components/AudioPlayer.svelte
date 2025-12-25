@@ -1885,25 +1885,6 @@ let pendingPlayAfterSource = false;
 		transition: border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
 	}
 
-	.ffmpeg-banner {
-		background: rgba(11, 16, 26, 0.98);
-		border-color: var(--bloom-accent, rgba(59, 130, 246, 0.7));
-		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
-		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
-		box-shadow: 0 12px 32px rgba(2, 6, 23, 0.5), 0 2px 8px rgba(59, 130, 246, 0.2),
-			inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 0 30px rgba(59, 130, 246, 0.08);
-		transition: border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
-	}
-
-	.download-popup {
-		background: rgba(11, 16, 26, 0.98);
-		border-color: rgba(148, 163, 184, 0.2);
-		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
-		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
-		box-shadow: 0 12px 32px rgba(2, 6, 23, 0.5), 0 2px 8px rgba(15, 23, 42, 0.35),
-			inset 0 1px 0 rgba(255, 255, 255, 0.06);
-		transition: border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
-	}
 
 	.audio-player-backdrop {
 		isolation: isolate;
