@@ -271,7 +271,7 @@ export async function downloadTrackServerSide(
 
 		const totalBytes = blob.size;
 		const useChunks = blob.size > 1024 * 1024; // Use chunks for files > 1MB for better progress granularity
-		const chunkSize = options?.chunkSize ?? 1024 * 1024; // 1MB chunks
+		const chunkSize = options?.chunkSize ?? 2 * 1024 * 1024; // 2MB chunks (reduced CPU load)
 		const conflictResolution = options?.conflictResolution ?? 'overwrite_if_different';
 
 		const sizeMsg = `[Server Download] Phase 1: Sending metadata for "${trackTitle}" (${(blob.size / 1024 / 1024).toFixed(2)} MB)${useChunks ? ' (chunked)' : ''}`;
@@ -765,7 +765,7 @@ export async function downloadAlbum(
 	// Individual download mode - process in parallel (adaptive concurrency based on memory)
 
 	// Adaptive concurrency: reduce when memory usage is high
-	const maxConcurrent = isHighMemoryUsage() ? 1 : 3;
+	const maxConcurrent = isHighMemoryUsage() ? 1 : 2;
 	console.log(
 		`[Album Download] Using max ${maxConcurrent} concurrent downloads (memory: ${Math.round(getMemoryUsage() / 1024 / 1024)}MB)`
 	);
@@ -782,8 +782,11 @@ export async function downloadAlbum(
 
 		// Start tracking this track download
 		const { taskId } = downloadUiStore.beginTrackDownload(track, filename, {
-			subtitle: artistName
+			subtitle: album.title
 		});
+
+		// Initialize progress to show download has started
+		downloadUiStore.updateTrackStage(taskId, 0.1);
 
 		try {
 			if (storage === 'server') {
@@ -867,6 +870,9 @@ export async function downloadAlbum(
 				);
 
 				if (result.success && result.blob) {
+					// Update progress to show download is starting
+					downloadUiStore.updateTrackStage(taskId, 0.5);
+
 					// Trigger individual download
 					let url: string | null = null;
 					try {
@@ -994,6 +1000,8 @@ export async function downloadAlbum(
 					return { success: false, track, error: result.error };
 				}
 
+				// Mark as 100% complete
+				downloadUiStore.updateTrackStage(taskId, 1.0);
 				downloadUiStore.completeTrackDownload(taskId);
 				return { success: true, track };
 			}
