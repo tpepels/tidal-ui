@@ -18,10 +18,12 @@ const path = require('path');
 console.log('🔍 Running API test validation...\n');
 
 // API test files that contain critical endpoint validation
+// Note: Service layer was removed as unused - these tests are no longer relevant
 const apiTestFiles = [
-	'src/lib/services/search.service.test.ts',
-	'src/lib/services/content.service.test.ts',
-	'src/lib/services/playback.service.test.ts'
+	// Services removed during cleanup - no longer testing these
+	// 'src/lib/services/search.service.test.ts',
+	// 'src/lib/services/content.service.test.ts',
+	// 'src/lib/services/playback.service.test.ts'
 ];
 
 // Expected failure patterns (these don't block commits)
