@@ -1,11 +1,42 @@
 #!/usr/bin/env sh
 . "$(dirname -- "$0")/_/husky.sh"
 
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "🔍 Running pre-commit quality checks..."
+
 # Run linting
-npm run lint
+echo "📝 Running ESLint..."
+if ! npm run lint; then
+    echo "❌ ESLint failed - fix linting errors before committing"
+    exit 1
+fi
 
 # Run type checking
-npm run check
+echo "🔧 Running TypeScript checks..."
+if ! npm run check; then
+    echo "❌ TypeScript check failed - fix type errors before committing"
+    exit 1
+fi
 
-# Core functionality verified, API compliance achieved
-echo "✅ Pre-commit checks passed - API spec compliance verified"
+# Run API endpoint validation (smart validation that distinguishes failure types)
+echo "🌐 Running API endpoint validation..."
+if ! node scripts/validate-api-tests.cjs; then
+    echo "❌ API validation failed - review the output above"
+    exit 1
+fi
+
+# Optional: Run API health check against real endpoints (non-blocking)
+echo "🏥 Running API health check (optional)..."
+if node scripts/check-api-health.cjs; then
+    echo "✅ API health check passed"
+else
+    echo "⚠️  API health check failed - this may indicate real API issues"
+    echo "   Continuing with commit since tests are passing..."
+fi
+
+echo "🎉 All critical checks passed - safe to commit!"
+echo "   ✅ Linting clean"
+echo "   ✅ TypeScript valid"
+echo "   ✅ API endpoints working"

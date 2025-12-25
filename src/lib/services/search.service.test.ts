@@ -37,7 +37,7 @@ describe('SearchService', () => {
 		const result = await service.searchTracks('test query', 'us', 10, 0);
 
 		expect(mockedFetchWithCORS).toHaveBeenCalledWith(
-			'https://test-api.com/search/tracks?query=test%20query&region=us&limit=10&offset=0',
+			'https://test-api.com/search/?s=test%20query&limit=10&offset=0',
 			{ apiVersion: 'v2' }
 		);
 		expect(result).toEqual(mockData);
@@ -62,7 +62,7 @@ describe('SearchService', () => {
 		const result = await service.searchAlbums('test album', 'us', 10, 0);
 
 		expect(mockedFetchWithCORS).toHaveBeenCalledWith(
-			'https://test-api.com/search/albums?query=test%20album&region=us&limit=10&offset=0',
+			'https://test-api.com/search/?al=test%20album&limit=10&offset=0',
 			{ apiVersion: 'v2' }
 		);
 		expect(result).toEqual(mockData);
@@ -86,7 +86,7 @@ describe('SearchService', () => {
 		const result = await service.searchArtists('test artist', 'us', 10, 0);
 
 		expect(mockedFetchWithCORS).toHaveBeenCalledWith(
-			'https://test-api.com/search/artists?query=test%20artist&region=us&limit=10&offset=0',
+			'https://test-api.com/search/?a=test%20artist&limit=10&offset=0',
 			{ apiVersion: 'v2' }
 		);
 		expect(result).toEqual(mockData);
@@ -111,7 +111,7 @@ describe('SearchService', () => {
 		const result = await service.searchPlaylists('test playlist', 'us', 10, 0);
 
 		expect(mockedFetchWithCORS).toHaveBeenCalledWith(
-			'https://test-api.com/search/playlists?query=test%20playlist&region=us&limit=10&offset=0',
+			'https://test-api.com/search/?p=test%20playlist&limit=10&offset=0',
 			{ apiVersion: 'v2' }
 		);
 		expect(result).toEqual(mockData);

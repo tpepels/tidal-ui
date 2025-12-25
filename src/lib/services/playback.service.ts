@@ -10,7 +10,7 @@ export class PlaybackService extends BaseApiService {
 		const cacheKey = this.generateCacheKey(`/track/${trackId}`, { quality });
 
 		return this.makeRequest<TrackLookup>(
-			`/track/${trackId}?quality=${quality}`,
+			`/track/?id=${trackId}&quality=${quality}`,
 			{ apiVersion: 'v2' },
 			cacheKey,
 			CACHE_TTL.TRACK
@@ -24,7 +24,7 @@ export class PlaybackService extends BaseApiService {
 		const cacheKey = this.generateCacheKey(`/track/${trackId}/stream`, { quality });
 
 		return this.makeRequest<StreamData>(
-			`/track/${trackId}/stream?quality=${quality}`,
+			`/track/?id=${trackId}&quality=${quality}`,
 			{ apiVersion: 'v2' },
 			cacheKey,
 			CACHE_TTL.TRACK
@@ -35,7 +35,7 @@ export class PlaybackService extends BaseApiService {
 		const cacheKey = this.generateCacheKey(`/track/${trackId}/dash`, { quality });
 
 		return this.makeRequest(
-			`/track/${trackId}/dash?quality=${quality}`,
+			`/dash/?id=${trackId}&quality=${quality}`,
 			{ apiVersion: 'v2' },
 			cacheKey,
 			CACHE_TTL.TRACK

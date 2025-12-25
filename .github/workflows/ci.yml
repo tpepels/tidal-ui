@@ -38,6 +38,10 @@ jobs:
       - name: Build project
         run: npm run build
 
+      - name: Run API health check
+        run: node scripts/check-api-health.cjs
+        continue-on-error: true # Don't fail CI if API is temporarily down
+
       - name: Upload coverage reports
         uses: codecov/codecov-action@v4
         with:

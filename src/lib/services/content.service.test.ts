@@ -41,7 +41,7 @@ describe('ContentService', () => {
 
 		const result = await service.getAlbum(123);
 
-		expect(mockedFetchWithCORS).toHaveBeenCalledWith('https://test-api.com/album/123', {
+		expect(mockedFetchWithCORS).toHaveBeenCalledWith('https://test-api.com/album/?id=123', {
 			apiVersion: 'v2'
 		});
 		expect(result).toEqual(mockData);
@@ -61,7 +61,7 @@ describe('ContentService', () => {
 
 		const result = await service.getArtist(789);
 
-		expect(mockedFetchWithCORS).toHaveBeenCalledWith('https://test-api.com/artist/789', {
+		expect(mockedFetchWithCORS).toHaveBeenCalledWith('https://test-api.com/artist/?id=789', {
 			apiVersion: 'v2'
 		});
 		expect(result).toEqual(mockData);
@@ -83,9 +83,12 @@ describe('ContentService', () => {
 
 		const result = await service.getPlaylist('test-uuid');
 
-		expect(mockedFetchWithCORS).toHaveBeenCalledWith('https://test-api.com/playlist/test-uuid', {
-			apiVersion: 'v2'
-		});
+		expect(mockedFetchWithCORS).toHaveBeenCalledWith(
+			'https://test-api.com/playlist/?id=test-uuid',
+			{
+				apiVersion: 'v2'
+			}
+		);
 		expect(result).toEqual(mockData);
 	});
 
@@ -101,7 +104,7 @@ describe('ContentService', () => {
 
 		const result = await service.getLyrics(123);
 
-		expect(mockedFetchWithCORS).toHaveBeenCalledWith('https://test-api.com/track/123/lyrics', {
+		expect(mockedFetchWithCORS).toHaveBeenCalledWith('https://test-api.com/lyrics/?id=123', {
 			apiVersion: 'v2'
 		});
 		expect(result).toEqual(mockData);
@@ -123,9 +126,12 @@ describe('ContentService', () => {
 
 		const result = await service.getPlaylist('test-uuid');
 
-		expect(mockedFetchWithCORS).toHaveBeenCalledWith('https://test-api.com/playlist/test-uuid', {
-			apiVersion: 'v2'
-		});
+		expect(mockedFetchWithCORS).toHaveBeenCalledWith(
+			'https://test-api.com/playlist/?id=test-uuid',
+			{
+				apiVersion: 'v2'
+			}
+		);
 		expect(result).toEqual(mockData);
 	});
 
@@ -141,7 +147,7 @@ describe('ContentService', () => {
 
 		const result = await service.getLyrics(123);
 
-		expect(mockedFetchWithCORS).toHaveBeenCalledWith('https://test-api.com/track/123/lyrics', {
+		expect(mockedFetchWithCORS).toHaveBeenCalledWith('https://test-api.com/lyrics/?id=123', {
 			apiVersion: 'v2'
 		});
 		expect(result).toEqual(mockData);
@@ -160,7 +166,9 @@ describe('ContentService', () => {
 
 		expect(mockedFetchWithCORS).toHaveBeenCalledWith(
 			'https://test-api.com/covers?query=test%20query&limit=10',
-			{ apiVersion: 'v2' }
+			{
+				apiVersion: 'v2'
+			}
 		);
 		expect(result).toEqual(mockData);
 	});

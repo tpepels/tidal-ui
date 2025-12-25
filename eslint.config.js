@@ -31,7 +31,15 @@ export default defineConfig(
 			// Temporarily disable Svelte 5 migration warnings
 			'svelte/no-navigation-without-resolve': 'off',
 			'svelte/prefer-svelte-reactivity': 'off',
-			'svelte/prefer-writable-derived': 'off'
+			'svelte/prefer-writable-derived': 'off',
+			// Allow require() in CommonJS files
+			'@typescript-eslint/no-require-imports': 'off'
+		}
+	},
+	{
+		files: ['**/*.cjs'],
+		rules: {
+			'@typescript-eslint/no-require-imports': 'off'
 		}
 	},
 	{
