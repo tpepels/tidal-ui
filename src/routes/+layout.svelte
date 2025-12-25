@@ -7,6 +7,7 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import AudioPlayer from '$lib/components/AudioPlayer.svelte';
 	import LyricsPopup from '$lib/components/LyricsPopup.svelte';
+	import DownloadLog from '$lib/components/DownloadLog.svelte';
 
 	import DynamicBackground from '$lib/components/DynamicBackground.svelte';
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
@@ -780,6 +781,7 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 
 	<LyricsPopup />
 	<ToastContainer />
+	<DownloadLog />
 {/if}
 			</div>
 
@@ -815,6 +817,10 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 			<span class="navigation-overlay__label">{navigationMessage()}</span>
 		</div>
 	</div>
+
+	<LyricsPopup />
+	<ToastContainer />
+	<DownloadLog />
 {/if}
 -->
 

@@ -871,15 +871,19 @@ export async function downloadAlbum(
 						}
 					}, 100);
 
-					// Download cover separately if enabled and not already downloaded
+					// Download cover separately if enabled, not server storage, and not already downloaded
 					if (
 						downloadCoverSeperately &&
+						storage === 'client' &&
 						track.album?.cover &&
 						!downloadedCovers.has(track.album.cover)
 					) {
+						console.log(
+							`[Cover Download] Starting download for cover ${track.album.cover}, downloadedCovers:`,
+							Array.from(downloadedCovers)
+						);
 						try {
 							const coverId = track.album.cover;
-							downloadedCovers.add(coverId);
 							const coverSizes: Array<'1280' | '640' | '320'> = ['1280', '640', '320'];
 							let coverDownloadSuccess = false;
 
@@ -938,6 +942,11 @@ export async function downloadAlbum(
 										coverLink.click();
 										document.body.removeChild(coverLink);
 										URL.revokeObjectURL(coverObjectUrl);
+
+										downloadedCovers.add(coverId);
+										console.log(
+											`[Cover Download] Successfully downloaded cover ${coverId}, added to set`
+										);
 
 										coverDownloadSuccess = true;
 										break;

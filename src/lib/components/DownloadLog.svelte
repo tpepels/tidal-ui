@@ -77,6 +77,42 @@
 	}
 </script>
 
+<!-- Compact progress indicator (visible when downloading and log is closed) -->
+{#if $activeTrackDownloads.length > 0 && !$downloadLogStore.isVisible}
+	<div class="download-progress-compact">
+		<div class="download-progress-compact-header">
+			<span class="download-progress-compact-title">
+				Downloading {$activeTrackDownloads.length} track{$activeTrackDownloads.length > 1 ? 's' : ''}
+			</span>
+			<button
+				type="button"
+				class="download-progress-compact-toggle"
+				on:click={() => downloadLogStore.toggle()}
+				title={$downloadLogStore.isVisible ? 'Hide details' : 'Show details'}
+			>
+				{$downloadLogStore.isVisible ? '▼' : '▶'}
+			</button>
+		</div>
+		<div class="download-progress-compact-tasks">
+			{#each $activeTrackDownloads.slice(0, 3) as task (task.id)}
+				<div class="download-progress-compact-task">
+					<span class="download-progress-compact-task-title" title="{task.title}">{task.title}</span>
+					<div class="download-progress-compact-bar">
+						<div class="download-progress-compact-bar-fill" style="width: {task.progress * 100}%"></div>
+					</div>
+					<span class="download-progress-compact-percent">{Math.round(task.progress * 100)}%</span>
+				</div>
+			{/each}
+			{#if $activeTrackDownloads.length > 3}
+				<div class="download-progress-compact-more">
+					+{$activeTrackDownloads.length - 3} more...
+				</div>
+			{/if}
+		</div>
+	</div>
+{/if}
+
+<!-- Full download log (only when toggled) -->
 <div class="download-log-container" class:is-visible={$downloadLogStore.isVisible}>
 	<div class="download-log-panel">
 		<div class="download-log-header">
@@ -621,5 +657,115 @@
 
 .download-health-btn:active {
 	background: rgba(255, 255, 255, 0.25);
+}
+
+/* Compact Progress Indicator Styles */
+.download-progress-compact {
+	position: fixed;
+	bottom: 20px;
+	right: 20px;
+	background: rgba(11, 16, 26, 0.95);
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	border-radius: 12px;
+	padding: 12px 16px;
+	min-width: 280px;
+	max-width: 400px;
+	backdrop-filter: blur(10px);
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+	z-index: 1000;
+}
+
+.download-progress-compact-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 8px;
+}
+
+.download-progress-compact-title {
+	font-size: 14px;
+	font-weight: 600;
+	color: #fff;
+}
+
+.download-progress-compact-toggle {
+	background: none;
+	border: none;
+	color: #888;
+	cursor: pointer;
+	font-size: 12px;
+	padding: 2px 6px;
+	border-radius: 4px;
+	transition: color 0.2s;
+}
+
+.download-progress-compact-toggle:hover {
+	color: #fff;
+}
+
+.download-progress-compact-tasks {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.download-progress-compact-task {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.download-progress-compact-task-title {
+	flex: 1;
+	font-size: 12px;
+	color: #ccc;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-width: 0;
+}
+
+.download-progress-compact-bar {
+	flex: 0 0 60px;
+	height: 4px;
+	background: rgba(255, 255, 255, 0.2);
+	border-radius: 2px;
+	overflow: hidden;
+}
+
+.download-progress-compact-bar-fill {
+	height: 100%;
+	background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+	border-radius: 2px;
+	transition: width 0.3s ease;
+}
+
+.download-progress-compact-percent {
+	font-size: 11px;
+	color: #888;
+	min-width: 32px;
+	text-align: right;
+}
+
+.download-progress-compact-more {
+	font-size: 11px;
+	color: #666;
+	text-align: center;
+	padding: 4px 0;
+}
+
+/* Responsive: horizontal layout on larger screens */
+@media (min-width: 768px) {
+	.download-progress-compact-tasks {
+		flex-direction: row;
+		flex-wrap: wrap;
+		gap: 12px;
+	}
+
+	.download-progress-compact-task {
+		flex: 1;
+		min-width: 200px;
+		max-width: 300px;
+	}
 }
 </style>
