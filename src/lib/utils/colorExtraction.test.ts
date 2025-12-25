@@ -79,7 +79,7 @@ describe('Color Extraction', () => {
 				data: new Uint8ClampedArray([255, 0, 0, 255, 0, 255, 0, 255]) // 2 pixels: red and green
 			});
 
-			const result = getAverageColor(mockCtx as any, 0, 0, 2, 1);
+			const result = getAverageColor(mockCtx as unknown as CanvasRenderingContext2D, 0, 0, 2, 1);
 
 			expect(result.r).toBe(128); // (255+0)/2
 			expect(result.g).toBe(128); // (0+255)/2
@@ -94,7 +94,7 @@ describe('Color Extraction', () => {
 				data: new Uint8ClampedArray([128, 128, 128, 255, 255, 0, 0, 255])
 			});
 
-			const result = getAverageColor(mockCtx as any, 0, 0, 2, 1);
+			const result = getAverageColor(mockCtx as unknown as CanvasRenderingContext2D, 0, 0, 2, 1);
 
 			// Should select the red pixel as more vibrant
 			expect(result.r).toBe(255);
@@ -112,7 +112,8 @@ describe('Color Extraction', () => {
 		});
 
 		it('converts white to HSL', () => {
-			const [h, s, l] = rgbToHsl(255, 255, 255);
+			// eslint-disable-next-line @typescript-eslint/no-unused-vars
+			const [_h, s, l] = rgbToHsl(255, 255, 255);
 			expect(s).toBe(0);
 			expect(l).toBe(1);
 		});

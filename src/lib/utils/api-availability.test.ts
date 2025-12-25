@@ -38,10 +38,12 @@ describe('API Availability', () => {
 
 		for (const target of targets) {
 			try {
+				// eslint-disable-next-line @typescript-eslint/no-unused-vars
 				const response = await fetchWithCORS(`${target}/search/tracks?query=test&limit=1`, {
 					apiVersion: 'v2'
 				});
 				workingCount++;
+				// eslint-disable-next-line @typescript-eslint/no-unused-vars
 			} catch (error) {
 				// Continue checking other APIs
 			}

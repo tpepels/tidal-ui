@@ -10,14 +10,15 @@ export class SearchService extends BaseApiService {
 		limit = 50,
 		offset = 0
 	): Promise<SearchResponse<Track>> {
-		const cacheKey = this.generateCacheKey('/search', {
-			s: query,
+		const cacheKey = this.generateCacheKey('/search/tracks', {
+			query,
+			region,
 			limit,
 			offset
 		});
 
 		return this.makeRequest<SearchResponse<Track>>(
-			`/search/?s=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`,
+			`/search/tracks?query=${encodeURIComponent(query)}&region=${region}&limit=${limit}&offset=${offset}`,
 			{ apiVersion: 'v2' },
 			cacheKey,
 			CACHE_TTL.SEARCH
@@ -30,14 +31,15 @@ export class SearchService extends BaseApiService {
 		limit = 50,
 		offset = 0
 	): Promise<SearchResponse<Album>> {
-		const cacheKey = this.generateCacheKey('/search', {
-			al: query,
+		const cacheKey = this.generateCacheKey('/search/albums', {
+			query,
+			region,
 			limit,
 			offset
 		});
 
 		return this.makeRequest<SearchResponse<Album>>(
-			`/search/?al=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`,
+			`/search/albums?query=${encodeURIComponent(query)}&region=${region}&limit=${limit}&offset=${offset}`,
 			{ apiVersion: 'v2' },
 			cacheKey,
 			CACHE_TTL.SEARCH
@@ -50,14 +52,15 @@ export class SearchService extends BaseApiService {
 		limit = 50,
 		offset = 0
 	): Promise<SearchResponse<Artist>> {
-		const cacheKey = this.generateCacheKey('/search', {
-			a: query,
+		const cacheKey = this.generateCacheKey('/search/artists', {
+			query,
+			region,
 			limit,
 			offset
 		});
 
 		return this.makeRequest<SearchResponse<Artist>>(
-			`/search/?a=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`,
+			`/search/artists?query=${encodeURIComponent(query)}&region=${region}&limit=${limit}&offset=${offset}`,
 			{ apiVersion: 'v2' },
 			cacheKey,
 			CACHE_TTL.SEARCH
@@ -70,14 +73,15 @@ export class SearchService extends BaseApiService {
 		limit = 50,
 		offset = 0
 	): Promise<SearchResponse<Playlist>> {
-		const cacheKey = this.generateCacheKey('/search', {
-			p: query,
+		const cacheKey = this.generateCacheKey('/search/playlists', {
+			query,
+			region,
 			limit,
 			offset
 		});
 
 		return this.makeRequest<SearchResponse<Playlist>>(
-			`/search/?p=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`,
+			`/search/playlists?query=${encodeURIComponent(query)}&region=${region}&limit=${limit}&offset=${offset}`,
 			{ apiVersion: 'v2' },
 			cacheKey,
 			CACHE_TTL.SEARCH

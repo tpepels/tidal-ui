@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	import { fade } from 'svelte/transition';
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
@@ -45,7 +46,7 @@
 	let viewportHeight = $state(0);
 	let navigationState = $state<Navigation | null>(null);
 	let showSettingsMenu = $state(false);
-	let performanceLevel = $state<'high' | 'medium' | 'low'>('high');
+
 	let isZipDownloading = $state(false);
 	let isCsvExporting = $state(false);
 	let isLegacyQueueDownloading = $state(false);
@@ -169,6 +170,7 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 		userPreferencesStore.setPerformanceMode(mode);
 	}
 
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const navigationMessage = $derived(() => {
 		if (!navigationState) return '';
 		const pathname = navigationState.to?.url?.pathname ?? '';
@@ -420,7 +422,7 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 			// Subscribe to performance level and update data attribute
 			const unsubPerf = effectivePerformanceLevel.subscribe((level) => {
 				try {
-					performanceLevel = level;
+
 					if (typeof document !== 'undefined' && document.documentElement) {
 						document.documentElement.setAttribute('data-performance', level);
 					}

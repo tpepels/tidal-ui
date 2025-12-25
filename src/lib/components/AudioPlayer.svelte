@@ -2054,51 +2054,11 @@ let pendingPlayAfterSource = false;
 		border: none;
 	}
 
-	.loading-overlay {
-		position: absolute;
-		inset: 0;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 0.75rem;
-		background: rgba(17, 24, 39, 0.65);
-		backdrop-filter: blur(6px);
-	}
 
-	.loading-equalizer {
-		display: flex;
-		align-items: flex-end;
-		gap: 0.4rem;
-		height: 1.75rem;
-	}
 
-	.loading-equalizer .bar {
-		width: 0.3rem;
-		height: 0.6rem;
-		border-radius: 9999px;
-		background: rgba(255, 255, 255, 0.85);
-		animation: equalize 1s ease-in-out infinite;
-	}
 
-	@keyframes equalize {
-		0% {
-			opacity: 0.4;
-			height: 0.5rem;
-		}
-		40% {
-			opacity: 1;
-			height: 1.7rem;
-		}
-		80% {
-			opacity: 0.6;
-			height: 0.8rem;
-		}
-		100% {
-			opacity: 0.4;
-			height: 0.5rem;
-		}
-	}
+
+
 
 	button.rounded-full {
 		transition: border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s ease, background 0.2s ease;

@@ -33,7 +33,7 @@ describe('PlaybackService', () => {
 		const result = await service.getTrackInfo(123, 'LOSSLESS');
 
 		expect(mockedFetchWithCORS).toHaveBeenCalledWith(
-			'https://test-api.com/track/?id=123&quality=LOSSLESS',
+			'https://test-api.com/track/123?quality=LOSSLESS',
 			{ apiVersion: 'v2' }
 		);
 		expect(result).toEqual(mockData);
@@ -54,7 +54,7 @@ describe('PlaybackService', () => {
 		const result = await service.getStreamData(123, 'LOSSLESS');
 
 		expect(mockedFetchWithCORS).toHaveBeenCalledWith(
-			'https://test-api.com/track/?id=123&quality=LOSSLESS',
+			'https://test-api.com/track/123?quality=LOSSLESS',
 			{ apiVersion: 'v2' }
 		);
 		expect(result).toEqual(mockData);
@@ -73,7 +73,7 @@ describe('PlaybackService', () => {
 		const result = await service.getDashManifest(123, 'HI_RES_LOSSLESS');
 
 		expect(mockedFetchWithCORS).toHaveBeenCalledWith(
-			'https://test-api.com/dash/?id=123&quality=HI_RES_LOSSLESS',
+			'https://test-api.com/track/123/stream?quality=LOSSLESS',
 			{ apiVersion: 'v2' }
 		);
 		expect(result).toEqual(mockData);
@@ -143,7 +143,7 @@ describe('PlaybackService', () => {
 			await service.getTrackInfo(123, quality);
 
 			expect(mockedFetchWithCORS).toHaveBeenCalledWith(
-				`https://test-api.com/track/?id=123&quality=${quality}`,
+				`https://test-api.com/track/123?quality=${quality}`,
 				{ apiVersion: 'v2' }
 			);
 

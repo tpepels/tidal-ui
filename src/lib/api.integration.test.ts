@@ -1,0 +1,37 @@
+import { describe, it, expect } from 'vitest';
+import { losslessAPI } from './api';
+import { TidalError } from './errors';
+
+describe('API Integration Tests', () => {
+	describe('LosslessAPI error handling', () => {
+		it('throws error for unimplemented methods', async () => {
+			await expect(losslessAPI.importFromUrl('test-url')).rejects.toThrow('not implemented');
+			await expect(losslessAPI.getDashManifest(123)).rejects.toThrow('not implemented');
+			await expect(losslessAPI.getDashManifestWithMetadata(123)).rejects.toThrow('not implemented');
+		});
+
+		it('returns proper error types', async () => {
+			try {
+				await losslessAPI.importFromUrl('test-url');
+				expect.fail('Should have thrown');
+			} catch (error) {
+				expect(error).toBeInstanceOf(Error);
+				expect((error as Error).message).toContain('not implemented');
+			}
+		});
+	});
+
+	describe('Error handling edge cases', () => {
+		it('handles network errors gracefully', () => {
+			const error = TidalError.networkError(new Error('Connection timeout'));
+			expect(error.isRetryable).toBe(true);
+			expect(error.code).toBe('NETWORK_ERROR');
+		});
+
+		it('handles validation errors', () => {
+			const error = TidalError.validationError('Invalid quality');
+			expect(error.statusCode).toBe(400);
+			expect(error.isRetryable).toBe(false);
+		});
+	});
+});

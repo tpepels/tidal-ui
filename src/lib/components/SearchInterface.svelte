@@ -22,8 +22,6 @@
 	import type {
 		Track,
 		Album,
-		Artist,
-		Playlist,
 		AudioQuality,
 		SonglinkTrack,
 		PlayableTrack
@@ -515,60 +513,18 @@ import {
 		}
 	});
 
-	async function handleUrlImport() {
-		if (!searchStore.query.trim()) return;
 
-		searchStore.isLoading = true;
-		searchStore.error = null;
-
-		try {
-			const result = await losslessAPI.importFromUrl(searchStore.query);
-
-			// Clear previous results
-			searchStore.tracks = [];
-			searchStore.albums = [];
-			searchStore.artists = [];
-			searchStore.playlists = [];
-
-			// Set results based on type
-			switch (result.type) {
-				case 'track':
-					searchStore.tracks = [result.data as Track];
-					searchStore.activeTab = 'tracks';
-					break;
-				case 'album':
-					searchStore.albums = [result.data as Album];
-					searchStore.activeTab = 'albums';
-					break;
-				case 'artist':
-					searchStore.artists = [result.data as Artist];
-					searchStore.activeTab = 'artists';
-					break;
-				case 'playlist': {
-					const playlistData = result.data as { playlist: Playlist; tracks: Track[] };
-					searchStore.playlists = [playlistData.playlist];
-					searchStore.tracks = playlistData.tracks;
-					searchStore.activeTab = 'playlists';
-					break;
-				}
-			}
-		} catch (err) {
-			searchStore.error = err instanceof Error ? err.message : 'Failed to import from URL';
-			console.error('URL import error:', err);
-		} finally {
-			searchStore.isLoading = false;
-		}
-	}
 
 	async function handleSearch() {
 		console.log('handleSearch called with query:', searchStore.query);
 		if (!searchStore.query.trim()) return;
 
 		// Auto-detect: if query is a Tidal URL, import it directly
-		if (isQueryATidalUrl) {
-			await handleUrlImport();
-			return;
-		}
+		// TODO: Implement URL import functionality
+		// if (isQueryATidalUrl) {
+		// 	await handleUrlImport();
+		// 	return;
+		// }
 
 		// Auto-detect: if query is a Spotify playlist, convert it
 		if (isQueryASpotifyPlaylist) {
@@ -1112,7 +1068,9 @@ import {
 	{#if searchStore.isLoading}
 		{#if searchStore.activeTab === 'tracks'}
 			<div class="space-y-2">
-				{#each trackSkeletons as _, i (i)}
+				<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
+				<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
+				{#each trackSkeletons as item, i (i)}
 					<div class="flex w-full items-center gap-3 rounded-lg bg-gray-800/70 p-3">
 						<div class="h-12 w-12 flex-shrink-0 animate-pulse rounded bg-gray-700/80"></div>
 						<div class="flex-1 space-y-2">
@@ -1126,7 +1084,9 @@ import {
 			</div>
 		{:else if searchStore.activeTab === 'albums' || searchStore.activeTab === 'playlists'}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-				{#each gridSkeletons as _, i (i)}
+				<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
+				<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
+				{#each gridSkeletons as item, i (i)}
 					<div class="space-y-3">
 						<div class="aspect-square w-full animate-pulse rounded-lg bg-gray-800/70"></div>
 						<div class="h-4 w-3/4 animate-pulse rounded bg-gray-700/80"></div>
@@ -1136,7 +1096,8 @@ import {
 			</div>
 		{:else if searchStore.activeTab === 'artists'}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-				{#each gridSkeletons as _, i (i)}
+				<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
+				{#each gridSkeletons as item, i (i)}
 					<div class="flex flex-col items-center gap-3">
 						<div class="aspect-square w-full animate-pulse rounded-full bg-gray-800/70"></div>
 						<div class="h-4 w-3/4 animate-pulse rounded bg-gray-700/80"></div>

@@ -46,7 +46,7 @@ global.document = {
 			}))
 		}))
 	}))
-} as any;
+} as unknown as Document;
 
 describe('Color Palette Utils', () => {
 	describe('rgbToCss', () => {

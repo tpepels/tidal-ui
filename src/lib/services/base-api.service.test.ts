@@ -15,17 +15,20 @@ vi.mock('../errors', () => ({
 }));
 
 const mockedFetchWithCORS = vi.mocked(fetchWithCORS);
-const MockedApiCache = ApiCache as any;
+const MockedApiCache = vi.mocked(ApiCache);
 
 // Concrete subclass for testing
 class TestApiService extends BaseApiService {
-	public testMakeRequest(endpoint: string, options?: any, cacheKey?: string, cacheTtl?: number) {
-		// eslint-disable-line @typescript-eslint/no-explicit-any
+	public testMakeRequest(
+		endpoint: string,
+		options?: Record<string, unknown>,
+		cacheKey?: string,
+		cacheTtl?: number
+	) {
 		return this.makeRequest(endpoint, options, cacheKey, cacheTtl);
 	}
 
-	public testGenerateCacheKey(endpoint: string, params?: any) {
-		// eslint-disable-line @typescript-eslint/no-explicit-any
+	public testGenerateCacheKey(endpoint: string, params?: Record<string, unknown>) {
 		return this.generateCacheKey(endpoint, params);
 	}
 }

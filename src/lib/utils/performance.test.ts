@@ -101,7 +101,7 @@ describe('Performance Utils', () => {
 	describe('prefersReducedMotion', () => {
 		it('returns false when window is undefined', () => {
 			const originalWindow = global.window;
-			delete (global as any).window;
+			delete (global as Record<string, unknown>).window;
 			expect(prefersReducedMotion()).toBe(false);
 			global.window = originalWindow;
 		});

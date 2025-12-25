@@ -83,7 +83,7 @@ class LosslessAPI {
 	private logEntrypointCall(
 		type: 'search' | 'trackFetch',
 		name: string,
-		params: Record<string, any>
+		params: Record<string, unknown>
 	) {
 		const counter = type === 'search' ? ++this.searchCallCount : ++this.trackFetchCallCount;
 		const elapsed = Date.now() - this.startTime;
@@ -134,7 +134,7 @@ class LosslessAPI {
 		key: 'tracks' | 'albums' | 'artists' | 'playlists'
 	): SearchResponse<T> {
 		// Handle nested data structure: {data: {artists: [...], albums: [...]}}
-		const searchData = (data as any)?.data || data;
+		const searchData = (data as Record<string, unknown>)?.data || data;
 		const section = this.findSearchSection<T>(searchData, key, new Set());
 		return this.buildSearchResponse<T>(section);
 	}
@@ -2553,6 +2553,7 @@ class LosslessAPI {
 
 	async getDashManifest(
 		trackId: number,
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 		quality: AudioQuality = 'HI_RES_LOSSLESS'
 	): Promise<DashManifestResult> {
 		throw new Error('getDashManifest not implemented in LosslessAPI');
@@ -2560,12 +2561,16 @@ class LosslessAPI {
 
 	async getDashManifestWithMetadata(
 		trackId: number,
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 		quality: AudioQuality = 'HI_RES_LOSSLESS'
 	): Promise<DashManifestWithMetadata> {
 		throw new Error('getDashManifestWithMetadata not implemented in LosslessAPI');
 	}
 
-	async importFromUrl(url: string) {
+	async importFromUrl(
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
+		url: string
+	) {
 		throw new Error('importFromUrl not implemented in LosslessAPI');
 	}
 }

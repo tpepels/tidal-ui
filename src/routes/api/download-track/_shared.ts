@@ -311,7 +311,8 @@ export const sanitizePath = (input: string | null | undefined): string => {
 		String(input)
 			// Replace problematic characters with safe alternatives
 			.replace(/[<>:"/\\|?*]/g, '_') // Windows forbidden chars
-			.replace(/\x00-\x1f/g, '_') // Control characters
+			// eslint-disable-next-line no-control-regex
+			.replace(/[\x00-\x1F]/g, '_') // Control characters
 			.replace(/^\.+/, '_') // Leading dots (hidden files on Unix)
 			.replace(/\.\./g, '__') // Path traversal prevention
 			.replace(/\.+$/, '') // Trailing dots

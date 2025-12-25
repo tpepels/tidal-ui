@@ -2,6 +2,8 @@ import { API_BASE } from '../constants';
 import { TidalError, withErrorHandling, retryWithBackoff } from '../errors';
 import { ApiCache } from '../utils/cache';
 import { fetchWithCORS } from '../config';
+import { validateApiResponse } from '../utils/api-contracts';
+import type { ZodSchema } from 'zod';
 
 export abstract class BaseApiService {
 	protected baseUrl: string;
@@ -14,7 +16,7 @@ export abstract class BaseApiService {
 
 	protected async makeRequest<T>(
 		endpoint: string,
-		options?: RequestInit & { apiVersion?: 'v1' | 'v2' },
+		options?: RequestInit & { apiVersion?: 'v1' | 'v2'; responseSchema?: ZodSchema<T> },
 		cacheKey?: string,
 		cacheTtl?: number
 	): Promise<T> {
@@ -37,6 +39,11 @@ export abstract class BaseApiService {
 				}
 				return response.json();
 			});
+
+			// Validate response against schema if provided
+			if (options?.responseSchema) {
+				validateApiResponse(result, options.responseSchema, endpoint);
+			}
 
 			// Cache the result
 			if (cacheKey && cacheTtl) {
