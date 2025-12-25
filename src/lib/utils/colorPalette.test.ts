@@ -25,15 +25,13 @@ vi.mock('colorthief', () => ({
 }));
 
 // Mock Image and Canvas
-global.HTMLImageElement = vi.fn() as any; // eslint-disable-line @typescript-eslint/no-explicit-any
-global.HTMLCanvasElement = vi.fn() as any; // eslint-disable-line @typescript-eslint/no-explicit-any
 global.Image = vi.fn().mockImplementation(() => ({
 	crossOrigin: '',
 	decoding: '',
 	onload: null,
 	onerror: null,
 	src: ''
-})) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+}));
 
 global.document = {
 	createElement: vi.fn(() => ({

@@ -17,12 +17,11 @@ const createMockCanvas = () => {
 	return mockCtx;
 };
 
-global.HTMLCanvasElement = vi.fn() as any; // eslint-disable-line @typescript-eslint/no-explicit-any
-global.Image = vi.fn() as any; // eslint-disable-line @typescript-eslint/no-explicit-any
-global.URL = {
-	createObjectURL: vi.fn(() => 'mock-url'),
-	revokeObjectURL: vi.fn()
-} as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+// Skip URL mocking for now to avoid type conflicts
+// global.URL = {
+// 	createObjectURL: vi.fn(() => 'mock-url'),
+// 	revokeObjectURL: vi.fn()
+// };
 
 describe('Color Extraction', () => {
 	describe('calculateSaturation', () => {
@@ -112,7 +111,6 @@ describe('Color Extraction', () => {
 		});
 
 		it('converts white to HSL', () => {
-			// eslint-disable-next-line @typescript-eslint/no-unused-vars
 			const [_h, s, l] = rgbToHsl(255, 255, 255);
 			expect(s).toBe(0);
 			expect(l).toBe(1);

@@ -44,7 +44,7 @@ describe('BaseApiService', () => {
 			get: vi.fn(),
 			set: vi.fn()
 		};
-		MockedApiCache.mockImplementation(() => mockCache as any); // eslint-disable-line @typescript-eslint/no-explicit-any
+		MockedApiCache.mockImplementation(() => mockCache as any);
 
 		service = new TestApiService('https://test-api.com');
 	});
