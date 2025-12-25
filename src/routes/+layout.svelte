@@ -543,7 +543,7 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 				</span>
 			</button>
 				{#if showSettingsMenu}
-					<div class="settings-menu glass-popover" style={`--settings-menu-offset: ${settingsMenuOffset()}px;`} on:click|stopPropagation>
+					<div class="settings-menu glass-popover" style={`--settings-menu-offset: ${settingsMenuOffset()}px;`} onclick={(e) => e.stopPropagation()}>
 						<div class="settings-grid">
 										<section class="settings-section settings-section--wide">
 											<p class="section-heading">Streaming & Downloads</p>
