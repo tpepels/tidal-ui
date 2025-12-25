@@ -10,7 +10,7 @@
 	import DownloadLog from '$lib/components/DownloadLog.svelte';
 	import DownloadProgress from '$lib/components/DownloadProgress.svelte';
 
-	import DynamicBackground from '$lib/components/DynamicBackground.svelte';
+
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
 
 	import { playerStore } from '$lib/stores/player';
@@ -521,7 +521,6 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 	<AudioPlayer headless={true} />
 {:else}
 	<div class="app-root">
-	<DynamicBackground />
 	<div class="app-shell">
 		<div class="settings-fab" bind:this={settingsMenuContainer}>
 			<button

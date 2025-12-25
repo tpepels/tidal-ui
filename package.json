@@ -35,7 +35,6 @@
 		"@testing-library/jest-dom": "^6.1.4",
 		"@testing-library/svelte": "^4.0.3",
 		"@testing-library/user-event": "^14.5.1",
-		"@types/colorthief": "^2.6.0",
 		"@types/node": "^20",
 		"@vitest/coverage-v8": "^1.6.1",
 		"eslint": "^9.22.0",
@@ -59,7 +58,6 @@
 	"dependencies": {
 		"@ffmpeg/ffmpeg": "^0.12.6",
 		"@ffmpeg/util": "^0.12.1",
-		"colorthief": "^2.6.0",
 		"ioredis": "^5.4.1",
 		"jszip": "^3.10.1",
 		"lucide-svelte": "^0.544.0",
