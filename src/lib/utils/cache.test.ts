@@ -42,8 +42,8 @@ describe('ApiCache', () => {
 	});
 
 	it('evicts oldest entry when max size reached', () => {
-		// Set max size to 2 for testing
-
+		const cache = new ApiCache();
+		(cache as any).maxSize = 2; // Set max size for test
 		cache.set('key1', 'data1');
 		cache.set('key2', 'data2');
 		expect(cache.size()).toBe(2);

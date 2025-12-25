@@ -49,10 +49,14 @@ describe('API Services Integration Tests', () => {
 		});
 
 		it('should handle malformed API responses', async () => {
-			const mockMakeRequest = vi.fn().mockResolvedValue(null);
+			const mockMakeRequest = vi
+				.fn()
+				.mockRejectedValue(new Error('API returned null or undefined response'));
 			(service as any).makeRequest = mockMakeRequest;
 
-			await expect(service.searchTracks('test', 'us')).rejects.toThrow();
+			await expect(service.searchTracks('test', 'us')).rejects.toThrow(
+				'API returned null or undefined response'
+			);
 		});
 	});
 

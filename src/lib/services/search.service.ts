@@ -101,10 +101,22 @@ export class SearchService extends BaseApiService {
 		]);
 
 		return {
-			tracks: tracks.status === 'fulfilled' ? tracks.value : { items: [] },
-			albums: albums.status === 'fulfilled' ? albums.value : { items: [] },
-			artists: artists.status === 'fulfilled' ? artists.value : { items: [] },
-			playlists: playlists.status === 'fulfilled' ? playlists.value : { items: [] }
+			tracks:
+				tracks.status === 'fulfilled'
+					? tracks.value
+					: { items: [], limit: 0, offset: 0, totalNumberOfItems: 0 },
+			albums:
+				albums.status === 'fulfilled'
+					? albums.value
+					: { items: [], limit: 0, offset: 0, totalNumberOfItems: 0 },
+			artists:
+				artists.status === 'fulfilled'
+					? artists.value
+					: { items: [], limit: 0, offset: 0, totalNumberOfItems: 0 },
+			playlists:
+				playlists.status === 'fulfilled'
+					? playlists.value
+					: { items: [], limit: 0, offset: 0, totalNumberOfItems: 0 }
 		};
 	}
 }

@@ -1,9 +1,10 @@
-import { API_BASE } from '../constants';
-import { TidalError, withErrorHandling, retryWithBackoff } from '../errors';
 import { ApiCache } from '../utils/cache';
+import { TidalError, withErrorHandling, retryWithBackoff } from '../errors';
 import { fetchWithCORS } from '../config';
 import { validateApiResponse } from '../utils/api-contracts';
 import type { ZodSchema } from 'zod';
+
+const API_BASE = 'https://tidal.401658.xyz';
 
 export abstract class BaseApiService {
 	protected baseUrl: string;
@@ -16,7 +17,11 @@ export abstract class BaseApiService {
 
 	protected async makeRequest<T>(
 		endpoint: string,
-		options?: RequestInit & { apiVersion?: 'v1' | 'v2'; responseSchema?: ZodSchema<T> },
+		options?: RequestInit & {
+			apiVersion?: 'v1' | 'v2';
+			preferredQuality?: string;
+			responseSchema?: ZodSchema;
+		},
 		cacheKey?: string,
 		cacheTtl?: number
 	): Promise<T> {
@@ -37,7 +42,14 @@ export abstract class BaseApiService {
 						statusText: response.statusText
 					});
 				}
-				return response.json();
+				const data = await response.json();
+
+				// Validate response is not null/undefined
+				if (data == null) {
+					throw new Error('API returned null or undefined response');
+				}
+
+				return data;
 			});
 
 			// Validate response against schema if provided
@@ -69,13 +81,7 @@ export abstract class BaseApiService {
 
 export interface SearchResponse<T> {
 	items: T[];
-	totalNumberOfItems?: number;
-	limit?: number;
-	offset?: number;
-}
-
-export interface ApiResponse<T> {
-	data?: T;
-	status?: string;
-	message?: string;
+	limit: number;
+	offset: number;
+	totalNumberOfItems: number;
 }
