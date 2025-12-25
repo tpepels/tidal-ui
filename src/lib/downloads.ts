@@ -582,7 +582,6 @@ export async function downloadAlbum(
 		return usage > limit;
 	};
 
-	downloadLogStore.show();
 	downloadLogStore.log(`Starting: "${albumTitle}" by ${artistName}`);
 	downloadLogStore.log(`Tracks: ${total} | Quality: ${quality} | Mode: ${mode}`);
 
