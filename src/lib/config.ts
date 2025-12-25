@@ -5,97 +5,14 @@ import { retryFetch } from './errors';
 // CORS Proxy Configuration
 // If you're experiencing CORS issues with the HIFI API, you can set up a proxy
 
+import { API_CONFIG } from './config/targets';
+import type { ApiClusterTarget } from './config/targets';
+
+// Re-export for backwards compatibility
+export { API_CONFIG };
+export type { ApiClusterTarget };
+
 type RegionPreference = 'auto' | 'us' | 'eu';
-
-export interface ApiClusterTarget {
-	name: string;
-	baseUrl: string;
-	weight: number;
-	requiresProxy: boolean;
-	category: 'auto-only';
-}
-
-const V2_API_TARGETS = [
-	// NOTE: Most proxy APIs are currently down (returning 404).
-	// These need to be updated with working Tidal proxy services.
-	// Search for "working tidal api proxies" in Tidal communities.
-	{
-		name: 'squid-api',
-		baseUrl: 'https://triton.squid.wtf',
-		weight: 30,
-		requiresProxy: true,
-		category: 'auto-only'
-	},
-	{
-		name: 'kinoplus',
-		baseUrl: 'https://tidal.kinoplus.online',
-		weight: 20,
-		requiresProxy: true,
-		category: 'auto-only'
-	},
-	{
-		name: 'binimum',
-		baseUrl: 'https://tidal-api.binimum.org',
-		weight: 10,
-		requiresProxy: true,
-		category: 'auto-only'
-	},
-
-	{
-		name: 'hund',
-		baseUrl: 'https://hund.qqdl.site',
-		weight: 15,
-		requiresProxy: true,
-		category: 'auto-only'
-	},
-	{
-		name: 'katze',
-		baseUrl: 'https://katze.qqdl.site',
-		weight: 15,
-		requiresProxy: true,
-		category: 'auto-only'
-	},
-	{
-		name: 'maus',
-		baseUrl: 'https://maus.qqdl.site',
-		weight: 15,
-		requiresProxy: true,
-		category: 'auto-only'
-	},
-	{
-		name: 'vogel',
-		baseUrl: 'https://vogel.qqdl.site',
-		weight: 15,
-		requiresProxy: true,
-		category: 'auto-only'
-	},
-	{
-		name: 'wolf',
-		baseUrl: 'https://wolf.qqdl.site',
-		weight: 15,
-		requiresProxy: true,
-		category: 'auto-only'
-	}
-] satisfies ApiClusterTarget[];
-
-const ALL_API_TARGETS = [...V2_API_TARGETS] satisfies ApiClusterTarget[];
-const US_API_TARGETS = [] satisfies ApiClusterTarget[];
-const TARGET_COLLECTIONS: Record<RegionPreference, ApiClusterTarget[]> = {
-	auto: [...ALL_API_TARGETS],
-	eu: [],
-	us: [...US_API_TARGETS]
-};
-
-const TARGETS = TARGET_COLLECTIONS.auto;
-
-export const API_CONFIG = {
-	// Cluster of target endpoints for load distribution and redundancy
-	targets: TARGETS,
-	baseUrl: TARGETS[0]?.baseUrl ?? 'https://tidal.401658.xyz',
-	// Proxy configuration for endpoints that need it
-	useProxy: true,
-	proxyUrl: '/api/proxy'
-};
 
 type WeightedTarget = ApiClusterTarget & { cumulativeWeight: number };
 
@@ -135,14 +52,14 @@ function buildWeightedTargets(targets: ApiClusterTarget[]): WeightedTarget[] {
 function ensureWeightedTargets(apiVersion: 'v1' | 'v2' = 'v2'): WeightedTarget[] {
 	if (apiVersion === 'v2') {
 		if (!v2WeightedTargets) {
-			v2WeightedTargets = buildWeightedTargets(V2_API_TARGETS);
+			v2WeightedTargets = buildWeightedTargets(API_CONFIG.targets);
 		}
 		return v2WeightedTargets;
 	} else {
 		if (!v1WeightedTargets) {
-			// v1 includes ALL_API_TARGETS (v1) + V2_API_TARGETS (fallback with low weight)
-			const v2Fallback = V2_API_TARGETS.map((t) => ({ ...t, weight: 1 }));
-			v1WeightedTargets = buildWeightedTargets([...ALL_API_TARGETS, ...v2Fallback]);
+			// v1 includes API_CONFIG.targets with fallback weighting
+			const fallbackTargets = API_CONFIG.targets.map((t) => ({ ...t, weight: 1 }));
+			v1WeightedTargets = buildWeightedTargets([...API_CONFIG.targets, ...fallbackTargets]);
 		}
 		return v1WeightedTargets;
 	}
@@ -178,8 +95,8 @@ function selectFromWeightedTargets(weighted: WeightedTarget[]): ApiClusterTarget
 }
 
 export function getTargetsForRegion(region: RegionPreference = 'auto'): ApiClusterTarget[] {
-	const targets = TARGET_COLLECTIONS[region];
-	return Array.isArray(targets) ? targets : [];
+	// Currently only 'auto' region is supported
+	return region === 'auto' ? API_CONFIG.targets : [];
 }
 
 export function selectApiTargetForRegion(region: RegionPreference): ApiClusterTarget {
@@ -198,7 +115,7 @@ export function selectApiTargetForRegion(region: RegionPreference): ApiClusterTa
 
 export function hasRegionTargets(region: RegionPreference): boolean {
 	if (region === 'auto') {
-		return TARGET_COLLECTIONS.auto.length > 0;
+		return API_CONFIG.targets.length > 0;
 	}
 
 	return getTargetsForRegion(region).length > 0;
@@ -401,7 +318,7 @@ async function isUnexpectedProxyResponse(response: Response): Promise<boolean> {
 }
 
 function isV2Target(target: ApiClusterTarget): boolean {
-	return V2_API_TARGETS.some((t) => t.name === target.name);
+	return API_CONFIG.targets.some((t) => t.name === target.name);
 }
 
 /**
@@ -490,7 +407,7 @@ export async function fetchWithCORS(
 
 		const headers = new Headers(options?.headers);
 		const isCustom =
-			[...V2_API_TARGETS].some((t) => t.name === target.name) &&
+			API_CONFIG.targets.some((t) => t.name === target.name) &&
 			!target.baseUrl.includes('tidal.com') &&
 			!target.baseUrl.includes('api.tidal.com') &&
 			!target.baseUrl.includes('monochrome.tf');
