@@ -549,8 +549,9 @@ export async function downloadAlbum(
 	const shouldZip = mode === 'zip' && total > 1;
 	const useCsv = mode === 'csv';
 	const convertAacToMp3 = options?.convertAacToMp3 ?? false;
-	const downloadCoverSeperately = options?.downloadCoverSeperately ?? false;
 	const storage = options?.storage ?? 'client';
+	const downloadCoverSeperately =
+		storage === 'server' ? false : (options?.downloadCoverSeperately ?? false);
 	const artistName = sanitizeForFilename(
 		preferredArtistName ?? canonicalAlbum.artist?.name ?? 'Unknown Artist'
 	);

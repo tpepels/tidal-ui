@@ -78,7 +78,7 @@
 </script>
 
 <!-- Compact progress indicator (visible when downloading and log is closed) -->
-{#if $activeTrackDownloads.length === 0 && !$downloadLogStore.isVisible}
+{#if $activeTrackDownloads.length > 0 && !$downloadLogStore.isVisible}
 	<div class="download-progress-compact">
 		<div class="download-progress-compact-header">
 			<span class="download-progress-compact-title">

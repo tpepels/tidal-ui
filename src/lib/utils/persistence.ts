@@ -10,14 +10,34 @@ export interface PersistedState {
 const STORAGE_PREFIX = 'tidal-ui:';
 const CURRENT_VERSION = 1;
 
-export const saveToStorage = (key: string, data: unknown) => {
+export const saveToStorage = (key: string, data: unknown): void => {
 	if (!browser) return;
 	try {
+		const existing = localStorage.getItem(`${STORAGE_PREFIX}${key}`);
+		let expectedTimestamp = 0;
+
+		if (existing) {
+			try {
+				const parsed = JSON.parse(existing) as PersistedState;
+				expectedTimestamp = parsed.timestamp || 0;
+			} catch {
+				// Ignore parse errors for existing data
+			}
+		}
+
 		const state: PersistedState = {
 			version: CURRENT_VERSION,
 			timestamp: Date.now(),
 			data
 		};
+
+		// Double-check that no other tab modified the data since we read it
+		const current = localStorage.getItem(`${STORAGE_PREFIX}${key}`);
+		if (current !== existing) {
+			console.warn(`Concurrent storage modification detected for ${key}, skipping save`);
+			return;
+		}
+
 		localStorage.setItem(`${STORAGE_PREFIX}${key}`, JSON.stringify(state));
 		console.log(`Saved ${key} state to storage`);
 	} catch (e) {

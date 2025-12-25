@@ -194,7 +194,7 @@ export const downloadUiStore = {
 			...task,
 			receivedBytes: received,
 			totalBytes: total,
-			progress: total ? clampProgress(received / total) : task.progress
+			progress: total ? clampProgress(received / total) : received > 0 ? 0.5 : 0
 		}));
 	},
 	updateTrackStage(taskId: string, progress: number): void {

@@ -24,6 +24,7 @@ let loadPromise: Promise<FFmpegInstance> | null = null;
 let fetchFileFn: FetchFileFn | null = null;
 let assetsPromise: Promise<{ coreUrl: string; wasmUrl: string; totalBytes?: number }> | null = null;
 let estimatedSizePromise: Promise<number | undefined> | null = null;
+let assetsLock = false;
 
 async function ensureFFmpegClass(): Promise<FFmpegClass> {
 	const module = await import('@ffmpeg/ffmpeg');
@@ -101,10 +102,24 @@ async function streamAsset(
 }
 
 async function ensureAssets(options?: FfmpegLoadOptions) {
+	// Check if already loading
 	if (assetsPromise) {
 		return assetsPromise;
 	}
 
+	// Prevent concurrent access
+	if (assetsLock) {
+		// Wait for the lock to be released, then retry
+		while (assetsLock) {
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+		// Retry the check
+		return ensureAssets(options);
+	}
+
+	assetsLock = true;
+
+	// Create the promise that will do the actual work
 	assetsPromise = (async () => {
 		const [jsSize, wasmSize] = await Promise.all([
 			fetchHeadSize(CORE_JS_NAME),
@@ -143,10 +158,15 @@ async function ensureAssets(options?: FfmpegLoadOptions) {
 			wasmUrl,
 			totalBytes: totalBytes > 0 ? totalBytes : undefined
 		};
-	})().catch((error) => {
-		assetsPromise = null;
-		throw error;
-	});
+	})()
+		.catch((error) => {
+			assetsPromise = null;
+			assetsLock = false;
+			throw error;
+		})
+		.finally(() => {
+			assetsLock = false;
+		});
 
 	return assetsPromise;
 }

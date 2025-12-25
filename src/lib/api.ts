@@ -1904,7 +1904,7 @@ class LosslessAPI {
 
 			const artworkId = lookup.track.album?.cover;
 
-			if (artworkId) {
+			if (artworkId && options?.downloadCoverSeperately) {
 				// Try multiple sizes as fallback
 				const coverSizes: Array<'1280' | '640' | '320'> = ['1280', '640', '320'];
 				const coverFetchSuccess = false;
