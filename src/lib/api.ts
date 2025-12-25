@@ -1227,16 +1227,21 @@ class LosslessAPI {
 		const recordArtist = (candidate: Artist | undefined, requestedArtistId: number) => {
 			if (!candidate) return;
 			const normalized = this.prepareArtist(candidate);
-			// Prioritize artist with requested ID, otherwise keep existing artist or use any artist
+
+			// Priority order:
+			// 1. Artist with requested ID (highest priority)
+			// 2. First artist found (for stability when neither has requested ID)
 			if (!artist) {
+				// No artist yet, use this one
 				artist = normalized;
 			} else if (normalized.id === requestedArtistId) {
-				// Always prefer the artist with the requested ID
+				// This artist has the requested ID, always prefer it
 				artist = normalized;
 			} else if (artist.id !== requestedArtistId) {
-				// If current artist doesn't have the requested ID but new one might, keep current
-				// This preserves the first artist found when we don't have the requested one
+				// Neither artist has the requested ID, keep the first one found for stability
+				// Don't change artist to maintain consistent behavior
 			}
+			// If current artist already has requested ID, keep it (no change needed)
 		};
 
 		const addAlbum = (candidate: Album | undefined) => {

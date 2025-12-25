@@ -11,6 +11,17 @@ import JSZip from 'jszip';
 
 const BASE_DELAY_MS = 1000;
 
+/**
+ * Calculate a simple checksum for a blob (first 1MB or entire blob if smaller)
+ */
+async function calculateBlobChecksum(blob: Blob): Promise<string> {
+	const chunkSize = Math.min(blob.size, 1024 * 1024); // Use first 1MB or entire blob if smaller
+	const buffer = await blob.slice(0, chunkSize).arrayBuffer();
+	const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+	const hashArray = Array.from(new Uint8Array(hashBuffer));
+	return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 function detectImageFormat(data: Uint8Array): { extension: string; mimeType: string } | null {
 	if (!data || data.length < 4) {
 		return null;
@@ -260,8 +271,7 @@ export async function downloadTrackServerSide(
 		downloadLogStore.log(sizeMsg);
 
 		// Generate checksum for integrity check
-		const checksum = '';
-		// Skip checksum in browser environment
+		const checksum = await calculateBlobChecksum(blob);
 
 		// Check if file already exists on server (if requested)
 		if (options?.checkExisting) {

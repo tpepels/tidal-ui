@@ -33,7 +33,9 @@ function createDownloadQueue() {
 			update((queue) => {
 				const newItem: DownloadQueueItem = {
 					...item,
-					id: `${item.trackId}-${Date.now()}`,
+					id: crypto.randomUUID
+						? crypto.randomUUID()
+						: `${item.trackId}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
 					status: 'pending',
 					progress: 0
 				};

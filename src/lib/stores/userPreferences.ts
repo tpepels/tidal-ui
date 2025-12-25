@@ -126,8 +126,13 @@ const createUserPreferencesStore = () => {
 			});
 		},
 		getEffectivePerformanceLevel(): PerformanceLevel {
-			const state = readInitialPreferences();
-			return state.performanceMode as PerformanceLevel;
+			// Read current store state instead of localStorage
+			let currentState: UserPreferencesState | undefined;
+			const unsubscribe = subscribe((state) => {
+				currentState = state;
+			});
+			unsubscribe(); // Immediately unsubscribe after getting current state
+			return (currentState?.performanceMode ?? DEFAULT_STATE.performanceMode) as PerformanceLevel;
 		},
 		reset() {
 			set(DEFAULT_STATE);
