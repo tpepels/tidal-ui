@@ -9,15 +9,6 @@ import {
 	forceCleanupAllUploads
 } from '../routes/api/download-track/_shared';
 
-// Mock saveState to prevent Redis/file I/O timeouts
-vi.mock('../routes/api/download-track/_shared', async () => {
-	const actual = await vi.importActual('../routes/api/download-track/_shared');
-	return {
-		...actual,
-		saveState: vi.fn().mockResolvedValue(undefined)
-	};
-});
-
 describe('Upload Queue Management', () => {
 	beforeEach(() => {
 		// Clear all upload state before each test
@@ -63,7 +54,7 @@ describe('Upload Queue Management', () => {
 			expect(pendingUploads.has(uploadId)).toBe(false);
 		});
 
-		it.skip('should handle expired upload cleanup', async () => {
+		it('should handle expired upload cleanup', async () => {
 			const uploadId = 'expired-upload-123';
 
 			// Add an expired upload
@@ -91,7 +82,7 @@ describe('Upload Queue Management', () => {
 			expect(activeUploads.has(uploadId)).toBe(false);
 		});
 
-		it.skip('should force cleanup all uploads', async () => {
+		it('should force cleanup all uploads', async () => {
 			const uploadId1 = 'upload-1';
 			const uploadId2 = 'upload-2';
 

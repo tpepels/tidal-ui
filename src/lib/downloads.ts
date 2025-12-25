@@ -552,7 +552,8 @@ export async function downloadAlbum(
 	// Memory monitoring for adaptive concurrency
 	const getMemoryUsage = (): number => {
 		if (typeof performance !== 'undefined' && 'memory' in performance) {
-			return (performance as any).memory.usedJSHeapSize;
+			const perfMemory = (performance as { memory?: { usedJSHeapSize: number } }).memory;
+			return perfMemory?.usedJSHeapSize ?? 0;
 		}
 		return 0;
 	};
@@ -865,7 +866,8 @@ export async function downloadAlbum(
 					setTimeout(() => {
 						// Force garbage collection hint for memory-constrained browsers
 						if (typeof window !== 'undefined' && 'gc' in window) {
-							(window as any).gc();
+							const winWithGC = window as { gc?: () => void };
+							winWithGC.gc?.();
 						}
 					}, 100);
 
