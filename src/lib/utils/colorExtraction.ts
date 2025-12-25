@@ -273,10 +273,7 @@ export function hslToRgb(h: number, s: number, l: number): [number, number, numb
 /**
  * Get most vibrant color from palette for lyrics highlighting
  */
-export function getMostVibrantColor(
-	palette: Color[],
-	minLuminanceThreshold: number = 0.15
-): Color {
+export function getMostVibrantColor(palette: Color[], minLuminanceThreshold: number = 0.15): Color {
 	// Filter out very dark colors
 	const filteredPalette = palette.filter(
 		(color) => calculateLuminance(color) > minLuminanceThreshold

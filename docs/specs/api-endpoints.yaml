@@ -2,7 +2,7 @@ openapi: 3.0.0
 info:
   title: Tidal UI API Endpoints
   version: 1.0.0
-  description: Endpoints used by the Tidal UI codebase via proxy APIs
+  description: WORKING API endpoints used by the Tidal UI codebase - DO NOT use untested endpoints
 servers:
   - url: '{baseUrl}'
     variables:
@@ -10,261 +10,362 @@ servers:
         default: https://triton.squid.wtf
         description: Base URL of the proxy API
 paths:
-  /search/tracks:
+  /track/:
     get:
-      summary: Search tracks
-      parameters:
-        - name: query
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: region
-          in: query
-          schema:
-            type: string
-            default: auto
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            default: 50
-        - name: offset
-          in: query
-          schema:
-            type: integer
-            default: 0
-      responses:
-        '200':
-          description: Search results
-  /search/albums:
-    get:
-      summary: Search albums
-      parameters:
-        - name: query
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: region
-          in: query
-          schema:
-            type: string
-            default: auto
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            default: 50
-        - name: offset
-          in: query
-          schema:
-            type: integer
-            default: 0
-      responses:
-        '200':
-          description: Search results
-  /search/artists:
-    get:
-      summary: Search artists
-      parameters:
-        - name: query
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: region
-          in: query
-          schema:
-            type: string
-            default: auto
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            default: 50
-        - name: offset
-          in: query
-          schema:
-            type: integer
-            default: 0
-      responses:
-        '200':
-          description: Search results
-  /search/playlists:
-    get:
-      summary: Search playlists
-      parameters:
-        - name: query
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: region
-          in: query
-          schema:
-            type: string
-            default: auto
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            default: 50
-        - name: offset
-          in: query
-          schema:
-            type: integer
-            default: 0
-      responses:
-        '200':
-          description: Search results
-  /album/{id}:
-    get:
-      summary: Get album details and tracks
+      summary: Get track info and streaming URLs
+      description: Primary endpoint for retrieving track information, manifest, and streaming URLs
       parameters:
         - name: id
-          in: path
+          in: query
           required: true
           schema:
             type: integer
+          description: Track ID
+        - name: quality
+          in: query
+          schema:
+            type: string
+            enum: [LOSSLESS, HIGH, LOW, HI_RES_LOSSLESS]
+            default: LOSSLESS
+          description: Audio quality level
       responses:
         '200':
-          description: Album data
-  /artist/{id}:
+          description: Track lookup data with manifest and URLs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackLookup'
+  /album/:
     get:
-      summary: Get artist details
+      summary: Get album details and track listing
       parameters:
         - name: id
-          in: path
+          in: query
           required: true
           schema:
             type: integer
+          description: Album ID
       responses:
         '200':
-          description: Artist data
-  /playlist/{uuid}:
+          description: Album data with tracks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  album:
+                    $ref: '#/components/schemas/Album'
+                  tracks:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Track'
+  /artist/:
+    get:
+      summary: Get artist details and discography
+      parameters:
+        - name: f
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: Artist ID (using 'f' parameter)
+      responses:
+        '200':
+          description: Artist details with albums and tracks
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArtistDetails'
+  /playlist/:
     get:
       summary: Get playlist details and items
       parameters:
-        - name: uuid
-          in: path
+        - name: id
+          in: query
           required: true
           schema:
             type: string
+          description: Playlist UUID
       responses:
         '200':
-          description: Playlist data
-  /track/{trackId}:
+          description: Playlist data with track items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  playlist:
+                    $ref: '#/components/schemas/Playlist'
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        item:
+                          $ref: '#/components/schemas/Track'
+  /search/:
     get:
-      summary: Get track info
+      summary: Search across tracks, albums, artists, and playlists
+      description: Unified search endpoint with different query parameters for different content types
       parameters:
-        - name: trackId
-          in: path
-          required: true
-          schema:
-            type: integer
-        - name: quality
+        - name: s
           in: query
           schema:
             type: string
-            default: LOSSLESS
-      responses:
-        '200':
-          description: Track data
-  /track/{trackId}/stream:
-    get:
-      summary: Get track stream data
-      parameters:
-        - name: trackId
-          in: path
-          required: true
-          schema:
-            type: integer
-        - name: quality
+          description: Search tracks
+        - name: al
           in: query
           schema:
             type: string
-            default: LOSSLESS
-      responses:
-        '200':
-          description: Stream data
-  /track/{trackId}/dash:
-    get:
-      summary: Get DASH manifest
-      parameters:
-        - name: trackId
-          in: path
-          required: true
-          schema:
-            type: integer
-        - name: quality
+          description: Search albums
+        - name: a
           in: query
           schema:
             type: string
-            default: HI_RES_LOSSLESS
+          description: Search artists
+        - name: p
+          in: query
+          schema:
+            type: string
+          description: Search playlists
       responses:
         '200':
-          description: DASH manifest
-  /track/{trackId}/lyrics:
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+  /lyrics/:
     get:
       summary: Get track lyrics
       parameters:
-        - name: trackId
-          in: path
+        - name: id
+          in: query
           required: true
           schema:
             type: integer
+          description: Track ID
       responses:
         '200':
           description: Lyrics data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lyrics'
   /covers:
     get:
-      summary: Search covers
+      summary: Search for cover images
       parameters:
         - name: query
           in: query
           schema:
             type: string
+          description: Search query for covers
         - name: limit
           in: query
           schema:
             type: integer
             default: 20
+          description: Maximum number of results
       responses:
         '200':
-          description: Cover images
-  /cover/{coverId}:
+          description: Cover image search results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CoverImage'
+  /dash/:
     get:
-      summary: Get cover image
+      summary: Get DASH manifest for high-resolution audio
       parameters:
-        - name: coverId
-          in: path
+        - name: id
+          in: query
           required: true
           schema:
-            type: string
-        - name: size
+            type: integer
+          description: Track ID
+        - name: quality
           in: query
           schema:
             type: string
-            enum: [1280, 640, 320, 160, 80]
-            default: 640
+            enum: [HI_RES_LOSSLESS]
+            default: HI_RES_LOSSLESS
+          description: Audio quality (DASH specific)
       responses:
         '200':
-          description: Cover image URL
-  /artist/{pictureId}/picture:
-    get:
-      summary: Get artist picture
-      parameters:
-        - name: pictureId
-          in: path
-          required: true
-          schema:
+          description: DASH manifest data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashManifestResult'
+
+components:
+  schemas:
+    TrackLookup:
+      type: object
+      properties:
+        track:
+          $ref: '#/components/schemas/Track'
+        info:
+          $ref: '#/components/schemas/TrackInfo'
+        originalTrackUrl:
+          type: string
+          description: Direct stream URL if available
+    Track:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        artists:
+          type: array
+          items:
+            $ref: '#/components/schemas/Artist'
+        album:
+          $ref: '#/components/schemas/Album'
+        duration:
+          type: integer
+        audioQuality:
+          type: string
+          enum: [LOSSLESS, HIGH, LOW, HI_RES_LOSSLESS]
+    TrackInfo:
+      type: object
+      properties:
+        trackId:
+          type: integer
+        audioMode:
+          type: string
+        audioQuality:
+          type: string
+        manifest:
+          type: string
+          description: Base64 encoded manifest
+        manifestMimeType:
+          type: string
+        trackReplayGain:
+          type: number
+        albumReplayGain:
+          type: number
+        sampleRate:
+          type: integer
+        bitDepth:
+          type: integer
+    Album:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        artists:
+          type: array
+          items:
+            $ref: '#/components/schemas/Artist'
+        cover:
+          type: string
+        releaseDate:
+          type: string
+        numberOfTracks:
+          type: integer
+        numberOfVolumes:
+          type: integer
+    Artist:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+        artistTypes:
+          type: array
+          items:
             type: string
-        - name: size
-          in: query
-          schema:
-            type: string
-            default: 750
-      responses:
-        '200':
-          description: Artist picture URL
+    ArtistDetails:
+      allOf:
+        - $ref: '#/components/schemas/Artist'
+        - type: object
+          properties:
+            albums:
+              type: array
+              items:
+                $ref: '#/components/schemas/Album'
+            tracks:
+              type: array
+              items:
+                $ref: '#/components/schemas/Track'
+    Playlist:
+      type: object
+      properties:
+        uuid:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        duration:
+          type: integer
+        numberOfTracks:
+          type: integer
+        creator:
+          $ref: '#/components/schemas/Artist'
+        squareImage:
+          type: string
+        image:
+          type: string
+    SearchResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          description: Array of search results (tracks, albums, artists, or playlists)
+        limit:
+          type: integer
+        offset:
+          type: integer
+        totalNumberOfItems:
+          type: integer
+    Lyrics:
+      type: object
+      properties:
+        trackId:
+          type: integer
+        lyricsProvider:
+          type: string
+        providerLyricsId:
+          type: string
+        lyrics:
+          type: string
+        subtitles:
+          type: string
+    CoverImage:
+      type: object
+      description: Cover image metadata
+    DashManifestResult:
+      oneOf:
+        - type: object
+          properties:
+            kind:
+              type: string
+              enum: [dash]
+            manifest:
+              type: string
+            contentType:
+              type: string
+        - type: object
+          properties:
+            kind:
+              type: string
+              enum: [flac]
+            manifestText:
+              type: string
+            urls:
+              type: array
+              items:
+                type: string
+            contentType:
+              type: string

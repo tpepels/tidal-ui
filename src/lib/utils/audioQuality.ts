@@ -1,11 +1,6 @@
 import type { AudioQuality, Track } from '$lib/types';
 
-const QUALITY_PRIORITY: readonly AudioQuality[] = [
-	'HI_RES_LOSSLESS',
-	'LOSSLESS',
-	'HIGH',
-	'LOW'
-];
+const QUALITY_PRIORITY: readonly AudioQuality[] = ['HI_RES_LOSSLESS', 'LOSSLESS', 'HIGH', 'LOW'];
 
 const QUALITY_TOKENS: Record<AudioQuality, readonly string[]> = {
 	HI_RES_LOSSLESS: [
@@ -29,7 +24,11 @@ const QUALITY_RANK = new Map<AudioQuality, number>(
 	QUALITY_PRIORITY.map((quality, index) => [quality, index])
 );
 
-const sanitizeToken = (value: string): string => value.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+const sanitizeToken = (value: string): string =>
+	value
+		.trim()
+		.toUpperCase()
+		.replace(/[^A-Z0-9]+/g, '_');
 
 export function normalizeQualityToken(value?: string | null): AudioQuality | null {
 	if (!value) {
@@ -38,10 +37,9 @@ export function normalizeQualityToken(value?: string | null): AudioQuality | nul
 
 	const token = sanitizeToken(value);
 
-	for (const [quality, aliases] of Object.entries(QUALITY_TOKENS) as Array<[
-		AudioQuality,
-		readonly string[]
-	]>) {
+	for (const [quality, aliases] of Object.entries(QUALITY_TOKENS) as Array<
+		[AudioQuality, readonly string[]]
+	>) {
 		if (aliases.includes(token)) {
 			return quality;
 		}

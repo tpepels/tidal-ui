@@ -1,12 +1,12 @@
 import type { Handle } from '@sveltejs/kit';
 
 export const handle: Handle = async ({ event, resolve }) => {
-    // Increase request body size limit for audio file uploads
-    // Default is 512KB, we need ~100MB for FLAC files
-    const contentLength = event.request.headers.get('content-length');
-    if (contentLength && parseInt(contentLength) > 512 * 1024) {
-        // This is handled by the underlying server, but we log it for debugging
-    }
+	// Increase request body size limit for audio file uploads
+	// Default is 512KB, we need ~100MB for FLAC files
+	const contentLength = event.request.headers.get('content-length');
+	if (contentLength && parseInt(contentLength) > 512 * 1024) {
+		// This is handled by the underlying server, but we log it for debugging
+	}
 
-    return resolve(event);
+	return resolve(event);
 };

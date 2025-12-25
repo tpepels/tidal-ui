@@ -225,17 +225,7 @@ export function createTexture(
 	if (!texture) return null;
 
 	gl.bindTexture(gl.TEXTURE_2D, texture);
-	gl.texImage2D(
-		gl.TEXTURE_2D,
-		0,
-		gl.RGBA,
-		width,
-		height,
-		0,
-		gl.RGBA,
-		gl.UNSIGNED_BYTE,
-		data
-	);
+	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
 
 	// Use nearest neighbor filtering for palette and state textures
 	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);

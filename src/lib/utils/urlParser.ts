@@ -112,9 +112,11 @@ export function parseTidalUrl(url: string): TidalUrlParseResult {
  */
 export function isTidalUrl(url: string): boolean {
 	const cleaned = url.trim().toLowerCase();
-	return cleaned.includes('tidal.com') &&
-	       (cleaned.startsWith('http://') ||
-	        cleaned.startsWith('https://') ||
-	        cleaned.startsWith('tidal.com') ||
-	        cleaned.startsWith('listen.tidal.com'));
+	return (
+		cleaned.includes('tidal.com') &&
+		(cleaned.startsWith('http://') ||
+			cleaned.startsWith('https://') ||
+			cleaned.startsWith('tidal.com') ||
+			cleaned.startsWith('listen.tidal.com'))
+	);
 }

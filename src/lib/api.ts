@@ -1999,6 +1999,7 @@ class LosslessAPI {
 							document.body.removeChild(coverLink);
 							URL.revokeObjectURL(coverObjectUrl);
 
+							// eslint-disable-next-line @typescript-eslint/no-unused-vars
 							coverDownloadSuccess = true;
 							console.log(
 								`[Cover Download] Successfully downloaded (${size}x${size}, format: ${imageFormat.extension}, strategy: ${strategy.name})`
@@ -2508,6 +2509,7 @@ class LosslessAPI {
 									document.body.removeChild(coverLink);
 									URL.revokeObjectURL(coverObjectUrl);
 
+									// eslint-disable-next-line @typescript-eslint/no-unused-vars
 									coverDownloadSuccess = true;
 									console.log(
 										`[Cover Download] Successfully downloaded (${size}x${size}, format: ${imageFormat.extension}, strategy: ${strategy.name})`
