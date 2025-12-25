@@ -1,12 +1,12 @@
-import { losslessAPI } from '$lib/api';
-import type { Album, Track, AudioQuality } from '$lib/types';
-import type { DownloadMode, DownloadStorage } from '$lib/stores/downloadPreferences';
+import { losslessAPI } from './api';
+import type { Album, Track, AudioQuality } from './types';
+import type { DownloadMode, DownloadStorage } from './stores/downloadPreferences';
 
-import { downloadLogStore } from '$lib/stores/downloadLog';
-import { downloadUiStore } from '$lib/stores/downloadUi';
-import { retryFetch } from '$lib/errors';
-import { toasts } from '$lib/stores/toasts';
-import { formatArtists } from '$lib/utils';
+import { downloadLogStore } from './stores/downloadLog';
+import { downloadUiStore } from './stores/downloadUi';
+import { retryFetch } from './errors';
+import { toasts } from './stores/toasts';
+import { formatArtists } from './utils';
 import JSZip from 'jszip';
 
 const BASE_DELAY_MS = 1000;
@@ -546,6 +546,9 @@ export async function downloadAlbum(
 	);
 	const albumTitle = sanitizeForFilename(canonicalAlbum.title ?? 'Unknown Album');
 
+	// Track which album covers have already been downloaded to avoid duplicates
+	const downloadedCovers = new Set<string>();
+
 	downloadLogStore.show();
 	downloadLogStore.log(`Starting: "${albumTitle}" by ${artistName}`);
 	downloadLogStore.log(`Tracks: ${total} | Quality: ${quality} | Mode: ${mode}`);
@@ -838,10 +841,15 @@ export async function downloadAlbum(
 					document.body.removeChild(a);
 					URL.revokeObjectURL(url);
 
-					// Download cover separately if enabled
-					if (downloadCoverSeperately && track.album?.cover) {
+					// Download cover separately if enabled and not already downloaded
+					if (
+						downloadCoverSeperately &&
+						track.album?.cover &&
+						!downloadedCovers.has(track.album.cover)
+					) {
 						try {
 							const coverId = track.album.cover;
+							downloadedCovers.add(coverId);
 							const coverSizes: Array<'1280' | '640' | '320'> = ['1280', '640', '320'];
 							let coverDownloadSuccess = false;
 

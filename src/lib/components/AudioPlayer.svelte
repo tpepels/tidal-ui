@@ -7,7 +7,7 @@
 	import { losslessAPI, DASH_MANIFEST_UNAVAILABLE_CODE, type TrackDownloadProgress } from '$lib/api';
 	import type { DashManifestResult, DashManifestWithMetadata } from '$lib/api';
 	import { API_CONFIG } from '$lib/config';
-	import { downloadUiStore, ffmpegBanner, activeTrackDownloads } from '$lib/stores/downloadUi';
+	import { downloadUiStore, ffmpegBanner } from '$lib/stores/downloadUi';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { buildTrackFilename } from '$lib/downloads';
 	import { formatArtists } from '$lib/utils';
@@ -133,7 +133,7 @@ let pendingPlayAfterSource = false;
 	let playerDismissed = $state(false);
 
 	const hasTrack = $derived(Boolean($playerStore.currentTrack));
-	const hasOverlays = $derived($ffmpegBanner.phase !== 'idle' || $activeTrackDownloads.length > 0);
+ 	const hasOverlays = $derived($ffmpegBanner.phase !== 'idle');
 
 	// Show player when:
 	// - not dismissed
@@ -1219,28 +1219,9 @@ let pendingPlayAfterSource = false;
 		return `${value}-bit`;
 	}
 
-	function formatMegabytes(bytes?: number | null): string | null {
-		if (!Number.isFinite(bytes ?? NaN) || !bytes || bytes <= 0) {
-			return null;
-		}
-		const value = bytes / (1024 * 1024);
-		const digits = value >= 100 ? 0 : value >= 10 ? 1 : 2;
-		return `${value.toFixed(digits)} MB`;
-	}
 
-	function formatPercent(value: number | null | undefined): string {
-		if (!Number.isFinite(value ?? NaN)) {
-			return '0%';
-		}
-		const percent = Math.max(0, Math.min(100, Math.round((value ?? 0) * 100)));
-		return `${percent}%`;
-	}
 
-	function formatTransferStatus(received: number, total?: number): string {
-		const receivedLabel = formatMegabytes(received) ?? '0 MB';
-		const totalLabel = formatMegabytes(total) ?? null;
-		return totalLabel ? `${receivedLabel} / ${totalLabel}` : receivedLabel;
-	}
+
 
 	$effect(() => {
 		if ($ffmpegBanner.phase === 'ready') {
@@ -1554,99 +1535,7 @@ let pendingPlayAfterSource = false;
 		bind:this={containerElement}
 	>
 		<div class="relative mx-auto w-full max-w-screen-2xl">
-			{#if $ffmpegBanner.phase !== 'idle' || $activeTrackDownloads.length > 0}
-				<div class="pointer-events-none absolute top-0 right-0 left-0 -translate-y-full transform pb-4">
-					<div class="mx-auto flex w-full max-w-2xl flex-col gap-2 px-4">
-						{#if $ffmpegBanner.phase !== 'idle'}
-							<div class="ffmpeg-banner pointer-events-auto rounded-2xl border px-4 py-3 text-sm text-blue-100 shadow-xl">
-								<div class="flex items-start gap-3">
-									<div class="min-w-0 flex-1">
-										<p class="leading-5 font-semibold text-blue-50">
-											Downloading FFmpeg
-											{#if formatMegabytes($ffmpegBanner.totalBytes)}
-												<span class="text-blue-100/80">({formatMegabytes($ffmpegBanner.totalBytes)})</span>
-											{/if}
-										</p>
-										{#if $ffmpegBanner.phase === 'countdown'}
-											<p class="mt-1 text-xs text-blue-100/80">
-												Starting in {$ffmpegBanner.countdownSeconds} seconds…
-											</p>
-										{:else if $ffmpegBanner.phase === 'loading'}
-											<p class="mt-1 text-xs text-blue-100/80">
-												Preparing encoder… {formatPercent($ffmpegBanner.progress)}
-											</p>
-										{:else if $ffmpegBanner.phase === 'ready'}
-											<p class="mt-1 text-xs text-blue-100/80">FFmpeg is ready to use.</p>
-										{:else if $ffmpegBanner.phase === 'error'}
-											<p class="mt-1 text-xs text-red-200">
-												{$ffmpegBanner.error ?? 'Failed to load FFmpeg.'}
-											</p>
-										{/if}
-									</div>
-									{#if $ffmpegBanner.dismissible}
-										<button
-											onclick={() => downloadUiStore.dismissFfmpeg()}
-											class="rounded-full p-1 text-blue-100/70 transition-colors hover:bg-blue-500/20 hover:text-blue-50"
-											aria-label="Dismiss FFmpeg download"
-										>
-											<X size={16} />
-										</button>
-									{/if}
-								</div>
-								{#if $ffmpegBanner.phase === 'loading'}
-									<div class="mt-3 h-3 overflow-hidden rounded-full bg-blue-500/20">
-										<div
-											class="h-full rounded-full bg-blue-400 transition-all duration-200"
-											style="width: {Math.min(Math.max($ffmpegBanner.progress * 100, 6), 100)}%"
-										></div>
-									</div>
-								{/if}
-							</div>
-						{/if}
 
-						{#each $activeTrackDownloads as task (task.id)}
-							<div class="download-popup pointer-events-auto rounded-2xl border px-4 py-3 text-sm text-gray-100 shadow-xl">
-								<div class="flex items-start gap-3">
-									<div class="flex min-w-0 flex-1 flex-col gap-1">
-										<p class="flex items-center gap-2 text-sm font-semibold text-gray-50">
-											{#if task.progress < 0.02}
-												<LoaderCircle size={16} class="animate-spin text-blue-300" />
-											{:else}
-												<Download size={16} class="text-blue-300" />
-											{/if}
-											<span class="truncate">{task.title}</span>
-										</p>
-										{#if task.subtitle}
-											<p class="truncate text-xs text-gray-400">{task.subtitle}</p>
-										{/if}
-										<div class="flex flex-wrap items-center gap-2 text-xs text-gray-400">
-											<span>{formatTransferStatus(task.receivedBytes, task.totalBytes)}</span>
-											<span aria-hidden="true">•</span>
-											<span>{formatPercent(task.progress)}</span>
-										</div>
-									</div>
-									<button
-										onclick={() =>
-											task.cancellable
-												? downloadUiStore.cancelTrackDownload(task.id)
-												: downloadUiStore.dismissTrackTask(task.id)}
-										class="rounded-full p-1 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
-										aria-label={task.cancellable ? `Cancel download for ${task.title}` : `Dismiss download for ${task.title}`}
-									>
-										<X size={16} />
-									</button>
-								</div>
-								<div class="mt-3 h-3 overflow-hidden rounded-full bg-gray-800">
-									<div
-										class="h-full rounded-full bg-blue-500 transition-all duration-200"
-										style="width: {Math.min(Math.max(task.progress * 100, 4), 100)}%"
-									></div>
-								</div>
-							</div>
-						{/each}
-					</div>
-				</div>
-			{/if}
 
 			<div class="audio-player-glass overflow-hidden rounded-2xl border shadow-2xl">
 				<div class="relative px-4 pb-3 pt-8">

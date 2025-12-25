@@ -1,7 +1,7 @@
 import { browser } from '$app/environment';
 import { writable } from 'svelte/store';
-import type { AudioQuality } from '$lib/types';
-import { type PerformanceLevel } from '$lib/utils/performance';
+import type { AudioQuality } from '../types';
+import { type PerformanceLevel } from '../utils/performance';
 
 export type PerformanceMode = 'medium' | 'low';
 

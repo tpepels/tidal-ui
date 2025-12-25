@@ -1,7 +1,7 @@
 import { derived, get, writable } from 'svelte/store';
-import type { PlayableTrack } from '$lib/types';
-import { isSonglinkTrack } from '$lib/types';
-import { formatArtists } from '$lib/utils';
+import type { PlayableTrack } from '../types';
+import { isSonglinkTrack } from '../types';
+import { formatArtists } from '../utils';
 
 export type FfmpegPhase = 'idle' | 'countdown' | 'loading' | 'ready' | 'error';
 

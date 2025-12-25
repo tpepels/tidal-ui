@@ -1,4 +1,5 @@
-import { browser } from '$app/environment';
+// Browser check for compatibility - will be mocked in tests
+const browser = typeof window !== 'undefined';
 type ColorThiefModule = typeof import('colorthief');
 type ColorThiefConstructor = ColorThiefModule extends { default: infer D }
 	? D extends new (...args: unknown[]) => unknown

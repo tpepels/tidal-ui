@@ -1,4 +1,5 @@
-import { browser } from '$app/environment';
+// Browser check for compatibility - will be mocked in tests
+const browser = typeof window !== 'undefined';
 
 export interface PersistedState {
 	version: number;

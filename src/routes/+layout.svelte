@@ -7,7 +7,7 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import AudioPlayer from '$lib/components/AudioPlayer.svelte';
 	import LyricsPopup from '$lib/components/LyricsPopup.svelte';
-	import DownloadLog from '$lib/components/DownloadLog.svelte';
+
 	import DynamicBackground from '$lib/components/DynamicBackground.svelte';
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
 
@@ -518,29 +518,29 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 	{@render children?.()}
 	<AudioPlayer headless={true} />
 {:else}
-		<div class="app-root">
-		<DynamicBackground />
-		<div class="app-shell">
-			<div class="settings-fab" bind:this={settingsMenuContainer}>
-				<button
-					onclick={() => {
-						showSettingsMenu = !showSettingsMenu;
-					}}
-					type="button"
-					class={`toolbar-button glass-button ${showSettingsMenu ? 'is-active' : ''}`}
-					aria-haspopup="true"
-					aria-expanded={showSettingsMenu}
-					aria-label={`Settings menu (${playbackQualityLabel()})`}
-				>
-					<span class="toolbar-button__label">
-						<Settings size={16} />
-						<span class="toolbar-button__text">Settings</span>
-					</span>
-					<span class="text-gray-400">{playbackQualityLabel()}</span>
-					<span class={`toolbar-button__chevron ${showSettingsMenu ? 'is-open' : ''}`}>
-						<ChevronDown size={16} />
-					</span>
-				</button>
+	<div class="app-root">
+	<DynamicBackground />
+	<div class="app-shell">
+		<div class="settings-fab" bind:this={settingsMenuContainer}>
+			<button
+				onclick={() => {
+					showSettingsMenu = !showSettingsMenu;
+				}}
+				type="button"
+				class={`toolbar-button glass-button ${showSettingsMenu ? 'is-active' : ''}`}
+				aria-haspopup="true"
+				aria-expanded={showSettingsMenu}
+				aria-label={`Settings menu (${playbackQualityLabel()})`}
+			>
+				<span class="toolbar-button__label">
+					<Settings size={16} />
+					<span class="toolbar-button__text">Settings</span>
+				</span>
+				<span class="text-gray-400">{playbackQualityLabel()}</span>
+				<span class={`toolbar-button__chevron ${showSettingsMenu ? 'is-open' : ''}`}>
+					<ChevronDown size={16} />
+				</span>
+			</button>
 				{#if showSettingsMenu}
 					<div class="settings-menu glass-popover" style={`--settings-menu-offset: ${settingsMenuOffset()}px;`}>
 						<div class="settings-grid">
@@ -779,7 +779,6 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 	</div>
 
 	<LyricsPopup />
-	<DownloadLog />
 	<ToastContainer />
 {/if}
 			</div>
@@ -800,7 +799,6 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 	</div>
 
 	<LyricsPopup />
-	<DownloadLog />
 	<ToastContainer />
 {/if}
 

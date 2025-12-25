@@ -1,4 +1,4 @@
-import { APP_VERSION } from '$lib/version';
+import { APP_VERSION } from './version';
 
 import { retryFetch } from './errors';
 

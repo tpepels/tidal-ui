@@ -14,7 +14,8 @@ export default defineConfig({
 		setupFiles: ['./src/test-setup.ts'],
 		globals: true,
 		coverage: {
-			include: ['src/lib/api-endpoint-validation.test.ts']
+			include: ['src/lib/**/*.ts'],
+			exclude: ['src/lib/**/*.test.ts', 'src/lib/**/*.d.ts']
 		}
 	}
 });

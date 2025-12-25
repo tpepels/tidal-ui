@@ -1,7 +1,7 @@
 import { browser } from '$app/environment';
 import { get, writable } from 'svelte/store';
-import type { PlayableTrack } from '$lib/types';
-import { currentTrack as currentTrackStore } from '$lib/stores/player';
+import type { PlayableTrack } from '../types';
+import { currentTrack as currentTrackStore } from './player';
 
 export interface LyricsState {
 	open: boolean;

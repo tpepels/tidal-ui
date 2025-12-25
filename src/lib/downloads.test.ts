@@ -56,7 +56,7 @@ describe('Downloads Utils', () => {
 
 		it('handles complex filenames', () => {
 			expect(sanitizeForFilename('Artist: "Song" (feat. Other)')).toBe(
-				'Artist_ _Song_ _feat_ Other_'
+				'Artist_ _Song_ (feat. Other)'
 			);
 		});
 

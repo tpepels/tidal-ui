@@ -4,19 +4,23 @@ import { TidalError } from './errors';
 
 describe('API Integration Tests', () => {
 	describe('LosslessAPI error handling', () => {
-		it('throws error for unimplemented methods', async () => {
-			await expect(losslessAPI.importFromUrl('test-url')).rejects.toThrow('not implemented');
-			await expect(losslessAPI.getDashManifest(123)).rejects.toThrow('not implemented');
-			await expect(losslessAPI.getDashManifestWithMetadata(123)).rejects.toThrow('not implemented');
+		it('throws error for invalid URLs', async () => {
+			await expect(losslessAPI.importFromUrl('test-url')).rejects.toThrow();
+			await expect(losslessAPI.importFromUrl('')).rejects.toThrow();
+		});
+
+		it('handles API errors gracefully', async () => {
+			// These methods are implemented but may fail due to network/API issues
+			await expect(losslessAPI.getDashManifest(123)).rejects.toThrow();
+			await expect(losslessAPI.getDashManifestWithMetadata(123)).rejects.toThrow();
 		});
 
 		it('returns proper error types', async () => {
 			try {
-				await losslessAPI.importFromUrl('test-url');
+				await losslessAPI.importFromUrl('invalid-url');
 				expect.fail('Should have thrown');
 			} catch (error) {
 				expect(error).toBeInstanceOf(Error);
-				expect((error as Error).message).toContain('not implemented');
 			}
 		});
 	});

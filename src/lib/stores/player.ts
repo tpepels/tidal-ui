@@ -1,10 +1,10 @@
 // Audio player store for managing playback state
 import { writable, derived } from 'svelte/store';
 import { browser } from '$app/environment';
-import type { Track, AudioQuality, PlayableTrack } from '$lib/types';
-import { deriveTrackQuality } from '$lib/utils/audioQuality';
-import { userPreferencesStore } from '$lib/stores/userPreferences';
-import { loadFromStorage, debouncedSave } from '$lib/utils/persistence';
+import type { Track, AudioQuality, PlayableTrack } from '../types';
+import { deriveTrackQuality } from '../utils/audioQuality';
+import { userPreferencesStore } from './userPreferences';
+import { loadFromStorage, debouncedSave } from '../utils/persistence';
 
 interface PlayerState {
 	currentTrack: PlayableTrack | null;

@@ -1,7 +1,7 @@
 import { derived, readable } from 'svelte/store';
 import { browser } from '$app/environment';
 import { userPreferencesStore } from './userPreferences';
-import { type PerformanceLevel } from '$lib/utils/performance';
+import { type PerformanceLevel } from '../utils/performance';
 
 /**
  * Derived store that provides the effective performance level

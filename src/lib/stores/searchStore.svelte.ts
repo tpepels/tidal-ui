@@ -1,5 +1,5 @@
 import { browser } from '$app/environment';
-import type { Track, Album, Artist, Playlist, SonglinkTrack } from '$lib/types';
+import type { Track, Album, Artist, Playlist, SonglinkTrack } from '../types';
 
 export type SearchTab = 'tracks' | 'albums' | 'artists' | 'playlists';
 
