@@ -133,8 +133,8 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 		}
 	];
 
-	const playbackQualityLabel = $derived(() => {
-		const quality = $playerStore.quality;
+	const downloadQualityLabel = $derived(() => {
+		const quality = $downloadPreferencesStore.downloadQuality;
 		if (quality === 'HI_RES_LOSSLESS') {
 			return 'Hi-Res';
 		}
@@ -147,8 +147,8 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 	const convertAacToMp3 = $derived($userPreferencesStore.convertAacToMp3);
 	const downloadCoversSeperately = $derived($userPreferencesStore.downloadCoversSeperately);
 
-	function selectPlaybackQuality(quality: AudioQuality): void {
-		playerStore.setQuality(quality);
+	function selectDownloadQuality(quality: AudioQuality): void {
+		downloadPreferencesStore.setDownloadQuality(quality);
 		showSettingsMenu = false;
 	}
 
@@ -510,7 +510,7 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 	<title>{pageTitle}</title>
 	<link rel="icon" href={favicon} />
 	<link rel="manifest" href="/manifest.webmanifest" />
-	<link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+
 	<meta name="theme-color" content="#0f172a" />
 	<meta name="apple-mobile-web-app-capable" content="yes" />
 	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -531,19 +531,19 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 				class={`toolbar-button glass-button ${showSettingsMenu ? 'is-active' : ''}`}
 				aria-haspopup="true"
 				aria-expanded={showSettingsMenu}
-				aria-label={`Settings menu (${playbackQualityLabel()})`}
+				aria-label={`Settings menu (${downloadQualityLabel()})`}
 			>
 				<span class="toolbar-button__label">
 					<Settings size={16} />
 					<span class="toolbar-button__text">Settings</span>
 				</span>
-				<span class="text-gray-400">{playbackQualityLabel()}</span>
+				<span class="text-gray-400">{downloadQualityLabel()}</span>
 				<span class={`toolbar-button__chevron ${showSettingsMenu ? 'is-open' : ''}`}>
 					<ChevronDown size={16} />
 				</span>
 			</button>
 				{#if showSettingsMenu}
-					<div class="settings-menu glass-popover" style={`--settings-menu-offset: ${settingsMenuOffset()}px;`} onclick={(e) => e.stopPropagation()}>
+					<div class="settings-menu glass-popover" style={`--settings-menu-offset: ${settingsMenuOffset()}px;`} onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Escape') showSettingsMenu = false; }} role="menu" tabindex="-1">
 						<div class="settings-grid">
 										<section class="settings-section settings-section--wide">
 											<p class="section-heading">Streaming & Downloads</p>
@@ -551,9 +551,9 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 												{#each QUALITY_OPTIONS as option (option.value)}
 													<button
 														type="button"
-														onclick={() => selectPlaybackQuality(option.value)}
-														class={`glass-option ${option.value === $playerStore.quality ? 'is-active' : ''} ${option.disabled ? 'cursor-not-allowed opacity-50' : ''}`}
-														aria-pressed={option.value === $playerStore.quality}
+														onclick={() => selectDownloadQuality(option.value)}
+													class={`glass-option ${option.value === $downloadPreferencesStore.downloadQuality ? 'is-active' : ''} ${option.disabled ? 'cursor-not-allowed opacity-50' : ''}`}
+													aria-pressed={option.value === $downloadPreferencesStore.downloadQuality}
 														disabled={option.disabled}
 													>
 														<div class="glass-option__content">
