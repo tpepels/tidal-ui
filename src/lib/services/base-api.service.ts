@@ -54,7 +54,8 @@ export abstract class BaseApiService {
 			}
 
 			const result = await retryWithBackoff(async (): Promise<T> => {
-				const response = await fetchWithCORS(`${this.baseUrl}${endpoint}`, options);
+				const fullUrl = endpoint.startsWith('http') ? endpoint : `${this.baseUrl}${endpoint}`;
+				const response = await fetchWithCORS(fullUrl, options);
 				if (!response.ok) {
 					throw TidalError.fromApiResponse({
 						status: response.status,

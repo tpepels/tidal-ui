@@ -113,7 +113,7 @@
 {/if}
 
 <!-- Full download log (only when toggled) -->
-<div class="download-log-container" class:is-visible={$downloadLogStore.isVisible || $activeTrackDownloads.length > 0} on:click|stopPropagation role="presentation">
+<div class="download-log-container" class:is-visible={$downloadLogStore.isVisible} on:click|stopPropagation role="presentation">
 	<div class="download-log-panel">
 		<div class="download-log-header">
 			<h3 class="download-log-title">Download Log</h3>
