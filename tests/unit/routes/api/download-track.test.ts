@@ -71,7 +71,7 @@ describe('Download Track API', () => {
 
 			// For validation testing, we'll expect the request to pass field validation
 			// The actual file saving is tested separately in integration tests
-			const { POST } = await import('../../../routes/api/download-track/+server');
+			const { POST } = await import('../../../../src/routes/api/download-track/+server');
 
 			// This should pass validation and attempt to save (may fail due to missing mocks)
 			const response = await POST(createMockRequestEvent(mockRequest));
@@ -90,7 +90,7 @@ describe('Download Track API', () => {
 				})
 			};
 
-			const { POST } = await import('../../../routes/api/download-track/+server');
+			const { POST } = await import('../../../../src/routes/api/download-track/+server');
 			const response = await POST(createMockRequestEvent(mockRequest));
 
 			expect(response.status).toBe(400);
@@ -107,7 +107,7 @@ describe('Download Track API', () => {
 				})
 			};
 
-			const { POST } = await import('../../../routes/api/download-track/+server');
+			const { POST } = await import('../../../../src/routes/api/download-track/+server');
 			const response = await POST(createMockRequestEvent(mockRequest));
 
 			expect(response.status).toBe(400);
@@ -130,7 +130,7 @@ describe('Download Track API', () => {
 				})
 			};
 
-			const { POST } = await import('../../../routes/api/download-track/+server');
+			const { POST } = await import('../../../../src/routes/api/download-track/+server');
 			const response = await POST(createMockRequestEvent(mockRequest));
 
 			expect(response.status).toBe(400);
@@ -147,7 +147,7 @@ describe('Download Track API', () => {
 				})
 			};
 
-			const { POST } = await import('../../../routes/api/download-track/+server');
+			const { POST } = await import('../../../../src/routes/api/download-track/+server');
 			const response = await POST(createMockRequestEvent(mockRequest));
 
 			expect(response.status).toBe(400);
