@@ -13,7 +13,8 @@ export class SearchService extends BaseApiService {
 		const cacheKey = this.generateCacheKey('/search', {
 			s: query,
 			limit,
-			offset
+			offset,
+			region
 		});
 
 		return this.makeRequest<SearchResponse<Track>>(
@@ -36,7 +37,8 @@ export class SearchService extends BaseApiService {
 		const cacheKey = this.generateCacheKey('/search', {
 			al: query,
 			limit,
-			offset
+			offset,
+			region
 		});
 
 		return this.makeRequest<SearchResponse<Album>>(
@@ -59,7 +61,8 @@ export class SearchService extends BaseApiService {
 		const cacheKey = this.generateCacheKey('/search', {
 			a: query,
 			limit,
-			offset
+			offset,
+			region
 		});
 
 		return this.makeRequest<SearchResponse<Artist>>(
@@ -82,7 +85,8 @@ export class SearchService extends BaseApiService {
 		const cacheKey = this.generateCacheKey('/search', {
 			p: query,
 			limit,
-			offset
+			offset,
+			region
 		});
 
 		return this.makeRequest<SearchResponse<Playlist>>(
@@ -111,6 +115,20 @@ export class SearchService extends BaseApiService {
 			this.searchArtists(query, region, 10),
 			this.searchPlaylists(query, region, 10)
 		]);
+
+		// Log any search failures for debugging
+		if (tracks.status === 'rejected') {
+			console.warn('Tracks search failed:', tracks.reason);
+		}
+		if (albums.status === 'rejected') {
+			console.warn('Albums search failed:', albums.reason);
+		}
+		if (artists.status === 'rejected') {
+			console.warn('Artists search failed:', artists.reason);
+		}
+		if (playlists.status === 'rejected') {
+			console.warn('Playlists search failed:', playlists.reason);
+		}
 
 		return {
 			tracks:

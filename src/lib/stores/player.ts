@@ -57,13 +57,6 @@ function createPlayerStore() {
 			'Volume must be between 0 and 1'
 		);
 		console.assert(startState.queueIndex >= -1, 'Queue index must be valid');
-
-		// Invariants
-		console.assert(Array.isArray(startState.queue), 'Player queue must be an array');
-		console.assert(
-			typeof startState.volume === 'number' && startState.volume >= 0 && startState.volume <= 1,
-			'Volume must be between 0 and 1'
-		);
 	}
 
 	const { subscribe, set, update } = writable<PlayerState>(startState);
@@ -316,6 +309,7 @@ function createPlayerStore() {
 				const queue = originalQueue.slice();
 				let pinnedTrack: PlayableTrack | null = null;
 
+				// Try to pin the current track first
 				if (originalCurrent) {
 					const locatedIndex = queue.findIndex((track) => track.id === originalCurrent.id);
 					if (locatedIndex >= 0) {
@@ -323,10 +317,12 @@ function createPlayerStore() {
 					}
 				}
 
+				// Fallback to queue index if no current track found
 				if (!pinnedTrack && originalIndex >= 0 && originalIndex < queue.length) {
 					pinnedTrack = queue.splice(originalIndex, 1)[0] ?? null;
 				}
 
+				// Final fallback to original current track
 				if (!pinnedTrack && originalCurrent) {
 					pinnedTrack = originalCurrent;
 				}

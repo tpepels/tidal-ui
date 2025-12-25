@@ -890,7 +890,8 @@ let pendingPlayAfterSource = false;
 		const element = event.currentTarget as HTMLAudioElement | null;
 		const mediaError = element?.error ?? null;
 		const code = mediaError?.code;
-		const decodeConstant = mediaError?.MEDIA_ERR_DECODE;
+		// Safely check for decode error constant (may not exist on all browsers/platforms)
+		const decodeConstant = mediaError && 'MEDIA_ERR_DECODE' in mediaError ? mediaError.MEDIA_ERR_DECODE : undefined;
 		const isDecodeError =
 			typeof code === 'number' && typeof decodeConstant === 'number' ? code === decodeConstant : false;
 		if (dashPlaybackActive) {

@@ -217,14 +217,21 @@ async function downloadTrackWithRetry(
 }
 
 function triggerFileDownload(blob: Blob, filename: string): void {
-	const url = URL.createObjectURL(blob);
-	const link = document.createElement('a');
-	link.href = url;
-	link.download = filename;
-	document.body.appendChild(link);
-	link.click();
-	document.body.removeChild(link);
-	URL.revokeObjectURL(url);
+	let url: string | null = null;
+	try {
+		url = URL.createObjectURL(blob);
+		const link = document.createElement('a');
+		link.href = url;
+		link.download = filename;
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
+	} finally {
+		// Always revoke the URL to prevent memory leaks
+		if (url) {
+			URL.revokeObjectURL(url);
+		}
+	}
 }
 
 export async function downloadTrackServerSide(
@@ -757,8 +764,6 @@ export async function downloadAlbum(
 	}
 
 	// Individual download mode - process in parallel (adaptive concurrency based on memory)
-	let completedCount = 0;
-	let failedCount = 0;
 
 	// Adaptive concurrency: reduce when memory usage is high
 	const maxConcurrent = isHighMemoryUsage() ? 1 : 3;
@@ -864,14 +869,21 @@ export async function downloadAlbum(
 
 				if (result.success && result.blob) {
 					// Trigger individual download
-					const url = URL.createObjectURL(result.blob);
-					const a = document.createElement('a');
-					a.href = url;
-					a.download = filename;
-					document.body.appendChild(a);
-					a.click();
-					document.body.removeChild(a);
-					URL.revokeObjectURL(url);
+					let url: string | null = null;
+					try {
+						url = URL.createObjectURL(result.blob);
+						const a = document.createElement('a');
+						a.href = url;
+						a.download = filename;
+						document.body.appendChild(a);
+						a.click();
+						document.body.removeChild(a);
+					} finally {
+						// Always revoke the URL to prevent memory leaks
+						if (url) {
+							URL.revokeObjectURL(url);
+						}
+					}
 
 					// Explicit memory cleanup
 					setTimeout(() => {
@@ -945,14 +957,21 @@ export async function downloadAlbum(
 										if (!imageFormat) continue;
 
 										const coverBlob = new Blob([uint8Array], { type: imageFormat.mimeType });
-										const coverObjectUrl = URL.createObjectURL(coverBlob);
-										const coverLink = document.createElement('a');
-										coverLink.href = coverObjectUrl;
-										coverLink.download = `cover.${imageFormat.extension}`;
-										document.body.appendChild(coverLink);
-										coverLink.click();
-										document.body.removeChild(coverLink);
-										URL.revokeObjectURL(coverObjectUrl);
+										let coverObjectUrl: string | null = null;
+										try {
+											coverObjectUrl = URL.createObjectURL(coverBlob);
+											const coverLink = document.createElement('a');
+											coverLink.href = coverObjectUrl;
+											coverLink.download = `cover.${imageFormat.extension}`;
+											document.body.appendChild(coverLink);
+											coverLink.click();
+											document.body.removeChild(coverLink);
+										} finally {
+											// Always revoke the URL to prevent memory leaks
+											if (coverObjectUrl) {
+												URL.revokeObjectURL(coverObjectUrl);
+											}
+										}
 
 										downloadedCovers.add(coverId);
 										console.log(
@@ -984,25 +1003,29 @@ export async function downloadAlbum(
 			downloadUiStore.errorTrackDownload(taskId, error);
 			return { success: false, track, error };
 		} finally {
-			// Always increment progress counter and call callback as each task completes
-			completedCount++;
-			const progressMsg = `Progress: ${completedCount}/${total} tracks`;
-			downloadLogStore.log(progressMsg);
-			if (completedCount === total) {
-				downloadLogStore.success('All downloads completed!');
-			}
-			callbacks?.onTrackDownloaded?.(completedCount, total, track);
+			// Progress tracking is now handled after all tasks complete to avoid race conditions
 		}
 	});
 
 	// Wait for all downloads to complete (adaptive concurrency based on memory)
 	const results = await parallelMap(downloadTasks, (task) => task, maxConcurrent);
 
-	// Count successes/failures
-	failedCount = results.filter((r) => !r.success).length;
+	// Count successes/failures (avoiding race conditions)
+	const completedCount = results.filter((r) => r.success).length;
+	const failedCount = results.filter((r) => !r.success).length;
+
+	// Progress logging and callbacks (now safe since all tasks are complete)
+	const progressMsg = `Progress: ${completedCount}/${total} tracks`;
+	downloadLogStore.log(progressMsg);
+	if (completedCount === total) {
+		downloadLogStore.success('All downloads completed!');
+	}
+	results.forEach((result, index) => {
+		callbacks?.onTrackDownloaded?.(index + 1, total, result.track);
+	});
 
 	// Summary logging
 	if (failedCount > 0) {
-		// Log or handle failed downloads
+		downloadLogStore.warning(`${failedCount} downloads failed out of ${total} total tracks`);
 	}
 }
