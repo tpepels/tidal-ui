@@ -273,6 +273,45 @@ export const cleanupExpiredUploads = async () => {
 	await saveState();
 };
 
+// Force cleanup of all stuck/completed uploads (for manual intervention)
+export const forceCleanupAllUploads = async (): Promise<{ cleaned: number }> => {
+	let cleaned = 0;
+
+	// Clear all active uploads
+	for (const uploadId of activeUploads) {
+		activeUploads.delete(uploadId);
+		pendingUploads.delete(uploadId);
+		chunkUploads.delete(uploadId);
+		cleaned++;
+	}
+
+	// Clear expired pending uploads
+	const now = Date.now();
+	for (const [uploadId, data] of pendingUploads.entries()) {
+		if (now - data.timestamp > UPLOAD_TTL) {
+			pendingUploads.delete(uploadId);
+			cleaned++;
+		}
+	}
+
+	// Clear expired chunk uploads
+	for (const [uploadId, data] of chunkUploads.entries()) {
+		if (now - data.timestamp > UPLOAD_TTL) {
+			try {
+				await fs.unlink(data.tempFilePath).catch(() => {});
+			} catch {
+				// Ignore cleanup errors
+			}
+			chunkUploads.delete(uploadId);
+			cleaned++;
+		}
+	}
+
+	await saveState();
+	console.log(`Force cleaned ${cleaned} uploads`);
+	return { cleaned };
+};
+
 // Clean up expired uploads periodically
 export const startCleanupInterval = async () => {
 	// Clean up orphaned temp files on startup
@@ -368,7 +407,13 @@ export const startUpload = (uploadId: string): boolean => {
 };
 
 export const endUpload = (uploadId: string): void => {
+	// Clean up from all tracking structures
 	activeUploads.delete(uploadId);
+	pendingUploads.delete(uploadId);
+	chunkUploads.delete(uploadId);
+
+	// Save updated state
+	saveState().catch((err) => console.warn('Failed to save state after upload end:', err));
 };
 
 export const getActiveUploadCount = (): number => {

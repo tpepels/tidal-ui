@@ -1,6 +1,12 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
-import { pendingUploads, chunkUploads, activeUploads, cleanupExpiredUploads } from '../_shared';
+import {
+	pendingUploads,
+	chunkUploads,
+	activeUploads,
+	cleanupExpiredUploads,
+	forceCleanupAllUploads
+} from '../_shared';
 import Redis from 'ioredis';
 
 export const GET: RequestHandler = async () => {
@@ -41,8 +47,15 @@ export const POST: RequestHandler = async ({ request }) => {
 	try {
 		const body = await request.json();
 		if (body.action === 'cleanup') {
-			cleanupExpiredUploads();
-			return json({ status: 'ok', message: 'Cleanup completed' });
+			await cleanupExpiredUploads();
+			return json({ status: 'ok', message: 'Expired cleanup completed' });
+		}
+		if (body.action === 'force_cleanup') {
+			const result = await forceCleanupAllUploads();
+			return json({
+				status: 'ok',
+				message: `Force cleanup completed: ${result.cleaned} uploads cleaned`
+			});
 		}
 		return json({ error: 'Invalid action' }, { status: 400 });
 	} catch (error) {

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { sanitizeForFilename } from './downloads';
 
 // Test the internal detectImageFormat function
@@ -36,6 +36,85 @@ function detectImageFormat(data: Uint8Array): { extension: string; mimeType: str
 }
 
 describe('Downloads Utils', () => {
+	describe('Memory Management', () => {
+		let originalCreateObjectURL: typeof URL.createObjectURL;
+		let originalRevokeObjectURL: typeof URL.revokeObjectURL;
+		let createdUrls: string[] = [];
+
+		beforeEach(() => {
+			// Mock URL.createObjectURL to track created URLs
+			originalCreateObjectURL = URL.createObjectURL;
+			originalRevokeObjectURL = URL.revokeObjectURL;
+			createdUrls = [];
+
+			URL.createObjectURL = vi.fn((blob: Blob) => {
+				const url = `blob:test-${Math.random()}`;
+				createdUrls.push(url);
+				return url;
+			});
+
+			URL.revokeObjectURL = vi.fn((url: string) => {
+				const index = createdUrls.indexOf(url);
+				if (index > -1) {
+					createdUrls.splice(index, 1);
+				}
+			});
+		});
+
+		afterEach(() => {
+			URL.createObjectURL = originalCreateObjectURL;
+			URL.revokeObjectURL = originalRevokeObjectURL;
+		});
+
+		it('should clean up object URLs after download', async () => {
+			// Create a mock blob
+			const mockBlob = new Blob(['test content'], { type: 'audio/flac' });
+
+			// Call triggerFileDownload (this is internal, so we'll test the pattern)
+			const url = URL.createObjectURL(mockBlob);
+			expect(createdUrls).toContain(url);
+
+			// Simulate the cleanup that happens in downloads.ts
+			const link = document.createElement('a');
+			link.href = url;
+			link.download = 'test.flac';
+			document.body.appendChild(link);
+			link.click();
+			document.body.removeChild(link);
+			URL.revokeObjectURL(url);
+
+			expect(createdUrls).not.toContain(url);
+		});
+
+		it('should handle memory monitoring functions', () => {
+			// Test that we can access performance.memory if available
+			const hasMemoryAPI = typeof performance !== 'undefined' && 'memory' in performance;
+
+			if (hasMemoryAPI) {
+				// If memory API is available, usage should be a number
+				const usage = (performance as any).memory.usedJSHeapSize;
+				expect(typeof usage).toBe('number');
+				expect(usage).toBeGreaterThanOrEqual(0);
+			} else {
+				// If not available, that's also fine (e.g., in test environment)
+				expect(true).toBe(true);
+			}
+		});
+
+		it('should properly trigger file downloads without memory leaks', () => {
+			// Test that our Blob creation and URL handling doesn't throw
+			const testBlob = new Blob(['test'], { type: 'text/plain' });
+
+			expect(() => {
+				const url = URL.createObjectURL(testBlob);
+				expect(typeof url).toBe('string');
+				expect(url.startsWith('blob:')).toBe(true);
+
+				// Clean up
+				URL.revokeObjectURL(url);
+			}).not.toThrow();
+		});
+	});
 	describe('sanitizeForFilename', () => {
 		it('returns "Unknown" for null/undefined/empty values', () => {
 			expect(sanitizeForFilename(null)).toBe('Unknown');

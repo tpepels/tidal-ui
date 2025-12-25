@@ -549,6 +549,20 @@ export async function downloadAlbum(
 	// Track which album covers have already been downloaded to avoid duplicates
 	const downloadedCovers = new Set<string>();
 
+	// Memory monitoring for adaptive concurrency
+	const getMemoryUsage = (): number => {
+		if (typeof performance !== 'undefined' && 'memory' in performance) {
+			return (performance as any).memory.usedJSHeapSize;
+		}
+		return 0;
+	};
+
+	const isHighMemoryUsage = (): boolean => {
+		const usage = getMemoryUsage();
+		const limit = 500 * 1024 * 1024; // 500MB threshold
+		return usage > limit;
+	};
+
 	downloadLogStore.show();
 	downloadLogStore.log(`Starting: "${albumTitle}" by ${artistName}`);
 	downloadLogStore.log(`Tracks: ${total} | Quality: ${quality} | Mode: ${mode}`);
@@ -730,9 +744,15 @@ export async function downloadAlbum(
 		return;
 	}
 
-	// Individual download mode - process in parallel (up to 3 concurrent)
+	// Individual download mode - process in parallel (adaptive concurrency based on memory)
 	let completedCount = 0;
 	let failedCount = 0;
+
+	// Adaptive concurrency: reduce when memory usage is high
+	const maxConcurrent = isHighMemoryUsage() ? 1 : 3;
+	console.log(
+		`[Album Download] Using max ${maxConcurrent} concurrent downloads (memory: ${Math.round(getMemoryUsage() / 1024 / 1024)}MB)`
+	);
 
 	// Create async download task for each track
 	const downloadTasks = tracks.map(async (track) => {
@@ -841,6 +861,14 @@ export async function downloadAlbum(
 					document.body.removeChild(a);
 					URL.revokeObjectURL(url);
 
+					// Explicit memory cleanup
+					setTimeout(() => {
+						// Force garbage collection hint for memory-constrained browsers
+						if (typeof window !== 'undefined' && 'gc' in window) {
+							(window as any).gc();
+						}
+					}, 100);
+
 					// Download cover separately if enabled and not already downloaded
 					if (
 						downloadCoverSeperately &&
@@ -945,8 +973,8 @@ export async function downloadAlbum(
 		}
 	});
 
-	// Wait for all downloads to complete (still limits concurrency)
-	const results = await parallelMap(downloadTasks, (task) => task, 3);
+	// Wait for all downloads to complete (adaptive concurrency based on memory)
+	const results = await parallelMap(downloadTasks, (task) => task, maxConcurrent);
 
 	// Count successes/failures
 	failedCount = results.filter((r) => !r.success).length;
