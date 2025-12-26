@@ -4,10 +4,14 @@
 	import { playerStore } from '$lib/stores/player';
 	import { onMount } from 'svelte';
 	import { APP_VERSION } from '$lib/version';
+	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 
 	let { data } = $props();
 
 	onMount(() => {
+		// Clear breadcrumbs on home page
+		breadcrumbStore.clearBreadcrumbs();
+
 		if (APP_VERSION) {
 			try {
 				umami?.track('app_loaded', { version: APP_VERSION, host: window.location.hostname } );

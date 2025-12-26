@@ -8,6 +8,27 @@ vi.mock('./api', () => ({
 	}
 }));
 
+// Mock downloadLogStore to avoid $app/environment import issues
+vi.mock('./stores/downloadLog', () => ({
+	downloadLogStore: {
+		log: vi.fn(),
+		success: vi.fn(),
+		error: vi.fn(),
+		warning: vi.fn()
+	}
+}));
+
+// Mock downloadUiStore
+vi.mock('./stores/downloadUi', () => ({
+	downloadUiStore: {
+		beginTrackDownload: vi.fn(),
+		updateTrackProgress: vi.fn(),
+		updateTrackStage: vi.fn(),
+		completeTrackDownload: vi.fn(),
+		errorTrackDownload: vi.fn()
+	}
+}));
+
 import {
 	sanitizeForFilename,
 	getExtensionForQuality,

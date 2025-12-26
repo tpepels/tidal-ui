@@ -7,6 +7,7 @@
 	import { playerStore } from '$lib/stores/player';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
+	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 	import { buildTrackFilename } from '$lib/downloads';
 	import ShareButton from '$lib/components/ShareButton.svelte';
 	import { LoaderCircle, Play, ArrowLeft, Disc, User, Clock, Download, X } from 'lucide-svelte';
@@ -35,7 +36,25 @@
 			error = null;
 			const data = await losslessAPI.getTrack(id);
 			track = data.track;
-			
+
+			// Set breadcrumbs
+			if (data.track.album?.artist) {
+				breadcrumbStore.setBreadcrumbs([
+					{ label: data.track.album.artist.name, href: `/artist/${data.track.album.artist.id}` },
+					{ label: data.track.album.title, href: `/album/${data.track.album.id}` },
+					{ label: data.track.title, href: `/track/${data.track.id}` }
+				]);
+			} else if (data.track.album) {
+				breadcrumbStore.setBreadcrumbs([
+					{ label: data.track.album.title, href: `/album/${data.track.album.id}` },
+					{ label: data.track.title, href: `/track/${data.track.id}` }
+				]);
+			} else {
+				breadcrumbStore.setBreadcrumbs([
+					{ label: data.track.title, href: `/track/${data.track.id}` }
+				]);
+			}
+
 			// Automatically play the track if it's not already playing
 			if (track) {
 				const current = $playerStore.currentTrack;

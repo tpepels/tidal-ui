@@ -7,7 +7,7 @@
 	import { losslessAPI, DASH_MANIFEST_UNAVAILABLE_CODE, type TrackDownloadProgress } from '$lib/api';
 	import type { DashManifestResult, DashManifestWithMetadata } from '$lib/api';
 	import { API_CONFIG } from '$lib/config';
-	import { downloadUiStore, ffmpegBanner } from '$lib/stores/downloadUi';
+	import { downloadUiStore, ffmpegBanner, activeTrackDownloads, erroredTrackDownloads } from '$lib/stores/downloadUi';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { buildTrackFilename } from '$lib/downloads';
 	import { formatArtists } from '$lib/utils';
@@ -31,7 +31,8 @@
 		Shuffle,
 		ScrollText,
 		Download,
-		LoaderCircle
+		LoaderCircle,
+		Music
 	} from 'lucide-svelte';
 
 type ShakaPlayerInstance = {
@@ -132,8 +133,11 @@ let pendingPlayAfterSource = false;
 	// -----------------------------
 	let playerDismissed = $state(false);
 
-	const hasTrack = $derived(Boolean($playerStore.currentTrack));
- 	const hasOverlays = $derived($ffmpegBanner.phase !== 'idle');
+ 	const hasTrack = $derived(Boolean($playerStore.currentTrack));
+  	const hasOverlays = $derived($ffmpegBanner.phase !== 'idle');
+
+	const currentTrackDownloadTask = $derived($activeTrackDownloads.find(task => task.trackId === $playerStore.currentTrack?.id));
+	const currentTrackErrorTask = $derived($erroredTrackDownloads.find(task => task.trackId === $playerStore.currentTrack?.id));
 
 	// Show player when:
 	// - not dismissed
@@ -1647,39 +1651,39 @@ let pendingPlayAfterSource = false;
 								<div class="flex items-center justify-center gap-0.5 sm:gap-2">
 									<button
 										onclick={handlePrevious}
-										class="p-1 sm:p-1.5 md:p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
+										class="p-2 sm:p-1.5 md:p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
 										disabled={false}
 										aria-label="Previous track"
 									>
-										<SkipBack size={16} class="sm:w-4 sm:h-4 md:w-5 md:h-5" />
+										<SkipBack size={20} class="sm:w-4 sm:h-4 md:w-5 md:h-5" />
 									</button>
 
 									<button
 										onclick={() => playerStore.togglePlay()}
-										class="rounded-full bg-white p-2 sm:p-2.5 md:p-3 text-gray-900 transition-transform hover:scale-105"
+										class="rounded-full bg-white p-3 sm:p-2.5 md:p-3 text-gray-900 transition-transform hover:scale-105"
 										aria-label={$playerStore.isPlaying ? 'Pause' : 'Play'}
 									>
 										{#if $playerStore.isPlaying}
-											<Pause size={18} class="sm:w-5 sm:h-5 md:w-6 md:h-6" fill="currentColor" />
+											<Pause size={20} class="sm:w-5 sm:h-5 md:w-6 md:h-6" fill="currentColor" />
 										{:else}
-											<Play size={18} class="sm:w-5 sm:h-5 md:w-6 md:h-6" fill="currentColor" />
+											<Play size={20} class="sm:w-5 sm:h-5 md:w-6 md:h-6" fill="currentColor" />
 										{/if}
 									</button>
 
 									<button
 										onclick={() => playerStore.next()}
-										class="p-1 sm:p-1.5 md:p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
+										class="p-2 sm:p-1.5 md:p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
 										disabled={$playerStore.queueIndex >= $playerStore.queue.length - 1}
 										aria-label="Next track"
 									>
-										<SkipForward size={16} class="sm:w-4 sm:h-4 md:w-5 md:h-5" />
+										<SkipForward size={20} class="sm:w-4 sm:h-4 md:w-5 md:h-5" />
 									</button>
 								</div>
 
 								<div class="flex items-center gap-0.5 sm:gap-2">
 									<button
 										onclick={toggleMute}
-										class="player-toggle-button p-1 sm:hidden"
+										class="player-toggle-button p-2 sm:hidden"
 										aria-label={isMuted ? 'Unmute' : 'Mute'}
 										type="button"
 									>
@@ -1691,36 +1695,36 @@ let pendingPlayAfterSource = false;
 									</button>
 									<button
 										onclick={handleDownloadCurrentTrack}
-										class="player-toggle-button p-1 sm:p-1.5 md:p-2"
+										class="player-toggle-button p-2 sm:p-1.5 md:p-2"
 										aria-label="Download current track"
 										type="button"
 										disabled={!$playerStore.currentTrack || isDownloadingCurrentTrack}
 									>
 										{#if isDownloadingCurrentTrack}
-											<LoaderCircle size={14} class="sm:w-4 sm:h-4 md:w-[18px] md:h-[18px] animate-spin" />
+											<LoaderCircle size={16} class="sm:w-4 sm:h-4 md:w-[18px] md:h-[18px] animate-spin" />
 										{:else}
-											<Download size={14} class="sm:w-4 sm:h-4 md:w-[18px] md:h-[18px]" />
+											<Download size={16} class="sm:w-4 sm:h-4 md:w-[18px] md:h-[18px]" />
 										{/if}
 										<span class="hidden md:inline">Download</span>
 									</button>
 									<button
 										onclick={() => lyricsStore.toggle()}
-										class="player-toggle-button p-1 sm:p-1.5 md:p-2 {$lyricsStore.open ? 'player-toggle-button--active' : ''}"
+										class="player-toggle-button p-2 sm:p-1.5 md:p-2 {$lyricsStore.open ? 'player-toggle-button--active' : ''}"
 										aria-label={$lyricsStore.open ? 'Hide lyrics popup' : 'Show lyrics popup'}
 										aria-expanded={$lyricsStore.open}
 										type="button"
 									>
-										<ScrollText size={14} class="sm:w-4 sm:h-4 md:w-[18px] md:h-[18px]" />
+										<ScrollText size={16} class="sm:w-4 sm:h-4 md:w-[18px] md:h-[18px]" />
 										<span class="hidden md:inline">Lyrics</span>
 									</button>
 									<button
 										onclick={toggleQueuePanel}
-										class="player-toggle-button p-1 sm:p-1.5 md:p-2 {showQueuePanel ? 'player-toggle-button--active' : ''}"
+										class="player-toggle-button p-2 sm:p-1.5 md:p-2 {showQueuePanel ? 'player-toggle-button--active' : ''}"
 										aria-label="Toggle queue panel"
 										aria-expanded={showQueuePanel}
 										type="button"
 									>
-										<ListMusic size={14} class="sm:w-4 sm:h-4 md:w-[18px] md:h-[18px]" />
+										<ListMusic size={16} class="sm:w-4 sm:h-4 md:w-[18px] md:h-[18px]" />
 										<span class="hidden md:inline">Queue ({$playerStore.queue.length})</span>
 									</button>
 								</div>
@@ -1728,7 +1732,7 @@ let pendingPlayAfterSource = false;
 								<div class="hidden sm:flex items-center gap-2">
 									<button
 										onclick={toggleMute}
-										class="p-2 text-gray-400 transition-colors hover:text-white"
+										class="p-2 sm:p-2 md:p-2 text-gray-400 transition-colors hover:text-white"
 										aria-label={isMuted ? 'Unmute' : 'Mute'}
 									>
 										{#if isMuted || $playerStore.volume === 0}
@@ -1750,6 +1754,42 @@ let pendingPlayAfterSource = false;
 								</div>
 							</div>
 						</div>
+
+						{#if currentTrackDownloadTask}
+							<div class="download-progress-in-player mt-3">
+								<div class="flex items-center gap-3">
+									<div class="flex-1">
+										<div class="text-xs text-gray-400 mb-1">Downloading "{currentTrackDownloadTask.title}"</div>
+										<div class="download-progress-bar">
+											<div
+												class="download-progress-bar-fill"
+												style="width: {Math.max(0, Math.min(100, currentTrackDownloadTask.progress * 100))}%"
+											></div>
+										</div>
+									</div>
+									<span class="text-xs font-medium text-gray-300">{Math.round(currentTrackDownloadTask.progress * 100)}%</span>
+								</div>
+							</div>
+						{/if}
+
+						{#if currentTrackErrorTask}
+							<div class="download-error-in-player mt-3">
+								<div class="flex items-center gap-3">
+									<div class="flex-1">
+										<div class="text-xs text-red-400 mb-1">Download failed: {currentTrackErrorTask.error}</div>
+									</div>
+									<button
+										onclick={() => {
+											downloadUiStore.dismissTrackTask(currentTrackErrorTask.id);
+											handleDownloadCurrentTrack();
+										}}
+										class="px-3 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
+									>
+										Retry
+									</button>
+								</div>
+							</div>
+						{/if}
 
 						{#if showQueuePanel}
 							<div
@@ -1859,10 +1899,19 @@ let pendingPlayAfterSource = false;
 	</div>
 {/if}
 
-{#if !headless && shouldShowRestoreButton}
+ {#if !headless && shouldShowRestoreButton}
 	<button class="player-restore-button" type="button" onclick={restorePlayer} aria-label="Show player">
 		<Play size={18} />
 		Show player
+	</button>
+{/if}
+
+{#if !headless && playerDismissed && hasTrack}
+	<button class="playback-indicator" type="button" onclick={restorePlayer} aria-label="Show player - music is playing">
+		{#if $playerStore.isPlaying}
+			<div class="playback-indicator-pulse"></div>
+		{/if}
+		<Music size={16} />
 	</button>
 {/if}
 
@@ -1993,9 +2042,74 @@ let pendingPlayAfterSource = false;
 		box-shadow: 0 12px 32px rgba(2, 6, 23, 0.55);
 	}
 
+	.playback-indicator {
+		position: fixed;
+		bottom: 1rem;
+		right: 1rem;
+		z-index: 60;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 3rem;
+		height: 3rem;
+		border-radius: 50%;
+		background: rgba(11, 16, 26, 0.9);
+		border: 1px solid rgba(148, 163, 184, 0.3);
+		color: rgba(226, 232, 240, 0.9);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+		backdrop-filter: blur(8px);
+		transition: all 0.2s ease;
+		cursor: pointer;
+	}
+
+	.playback-indicator:hover {
+		background: rgba(15, 23, 42, 0.95);
+		border-color: rgba(148, 163, 184, 0.5);
+		transform: scale(1.05);
+	}
+
+	.playback-indicator-pulse {
+		position: absolute;
+		inset: 0;
+		border-radius: 50%;
+		background: rgba(59, 130, 246, 0.3);
+		animation: pulse 2s infinite;
+	}
+
+	@keyframes pulse {
+		0%, 100% {
+			opacity: 0.6;
+			transform: scale(1);
+		}
+		50% {
+			opacity: 0.3;
+			transform: scale(1.2);
+		}
+	}
+
 	@media (min-width: 640px) {
 		.player-restore-button {
 			bottom: 2.5rem;
 		}
+
+		.playback-indicator {
+			bottom: 1.5rem;
+			right: 1.5rem;
+		}
+	}
+
+	.download-progress-bar {
+		width: 100%;
+		height: 4px;
+		background: rgba(255, 255, 255, 0.2);
+		border-radius: 2px;
+		overflow: hidden;
+	}
+
+	.download-progress-bar-fill {
+		height: 100%;
+		background: linear-gradient(90deg, #3b82f6, #06b6d4);
+		border-radius: 2px;
+		transition: width 0.3s ease;
 	}
 </style>

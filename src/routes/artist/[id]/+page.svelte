@@ -10,6 +10,7 @@ import { ArrowLeft, User, Download, LoaderCircle } from 'lucide-svelte';
 
 import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 import { userPreferencesStore } from '$lib/stores/userPreferences';
+import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 
 let artist = $state<ArtistDetails | null>(null);
 let artistImage = $state<string | null>(null);
@@ -233,6 +234,11 @@ async function loadArtist(id: number) {
 			}
 			artist = data;
 
+			// Set breadcrumbs
+			breadcrumbStore.setBreadcrumbs([
+				{ label: data.name, href: `/artist/${data.id}` }
+			]);
+
 			// Get artist picture
 			if (artist.picture) {
 				artistImage = losslessAPI.getArtistPictureUrl(artist.picture);
@@ -310,14 +316,7 @@ async function loadArtist(id: number) {
 			Back
 		</button>
 
-		<!-- Breadcrumbs -->
-		{#if artist}
-			<nav class="flex items-center gap-2 text-sm text-gray-500" aria-label="Breadcrumb">
-				<a href="/" class="hover:text-gray-300 transition-colors">Home</a>
-				<span>/</span>
-				<span class="text-gray-400">{artist.name}</span>
-			</nav>
-		{/if}
+
 
 		<!-- Artist Header -->
 		<div class="flex flex-col items-start gap-8 md:flex-row md:items-end">

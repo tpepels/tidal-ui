@@ -22,6 +22,7 @@
 	import { playerStore } from '$lib/stores/player';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
+	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 
 	import { downloadAlbum } from '$lib/downloads';
 
@@ -53,6 +54,18 @@
 			const { album: albumData, tracks: albumTracks } = await losslessAPI.getAlbum(id);
 			album = albumData;
 			tracks = albumTracks;
+
+			// Set breadcrumbs
+			if (albumData.artist) {
+				breadcrumbStore.setBreadcrumbs([
+					{ label: albumData.artist.name, href: `/artist/${albumData.artist.id}` },
+					{ label: albumData.title, href: `/album/${albumData.id}` }
+				]);
+			} else {
+				breadcrumbStore.setBreadcrumbs([
+					{ label: albumData.title, href: `/album/${albumData.id}` }
+				]);
+			}
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load album';
 			console.error('Failed to load album:', err);
@@ -199,17 +212,6 @@
 			<ArrowLeft size={20} />
 			Back
 		</button>
-
-		<!-- Breadcrumbs -->
-		{#if album.artist}
-			<nav class="flex items-center gap-2 text-sm text-gray-500" aria-label="Breadcrumb">
-				<a href="/" class="hover:text-gray-300 transition-colors">Home</a>
-				<span>/</span>
-				<ArtistLinks artists={[album.artist]} class="hover:text-gray-300" />
-				<span>/</span>
-				<span class="text-gray-400">{album.title}</span>
-			</nav>
-		{/if}
 
 		<!-- Album Header -->
 		<div class="flex flex-col gap-8 md:flex-row">

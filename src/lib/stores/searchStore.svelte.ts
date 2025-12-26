@@ -7,6 +7,12 @@ class SearchStore {
 	query = $state('');
 	activeTab = $state<SearchTab>('tracks');
 	isLoading = $state(false);
+	tabLoading = $state<Record<SearchTab, boolean>>({
+		tracks: false,
+		albums: false,
+		artists: false,
+		playlists: false
+	});
 	tracks = $state<(Track | SonglinkTrack)[]>([]);
 	albums = $state<Album[]>([]);
 	artists = $state<Artist[]>([]);
@@ -34,6 +40,12 @@ class SearchStore {
 					const data = JSON.parse(stored);
 					this.query = data.query ?? '';
 					this.activeTab = data.activeTab ?? 'tracks';
+					this.tabLoading = data.tabLoading ?? {
+						tracks: false,
+						albums: false,
+						artists: false,
+						playlists: false
+					};
 					this.tracks = data.tracks ?? [];
 					this.albums = data.albums ?? [];
 					this.artists = data.artists ?? [];
@@ -56,6 +68,7 @@ class SearchStore {
 					const data = {
 						query: this.query,
 						activeTab: this.activeTab,
+						tabLoading: this.tabLoading,
 						tracks: this.tracks,
 						albums: this.albums,
 						artists: this.artists,
@@ -83,6 +96,12 @@ class SearchStore {
 		this.query = '';
 		this.activeTab = 'tracks';
 		this.isLoading = false;
+		this.tabLoading = {
+			tracks: false,
+			albums: false,
+			artists: false,
+			playlists: false
+		};
 		this.tracks = [];
 		this.albums = [];
 		this.artists = [];

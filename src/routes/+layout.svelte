@@ -12,6 +12,7 @@
 
 
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
+	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 
 	import { playerStore } from '$lib/stores/player';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
@@ -795,6 +796,7 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 				style={`min-height: ${mainMinHeight}px; margin-bottom: ${mainMarginBottom}px;`}
 			>
 				<div class="app-main__inner">
+						<Breadcrumb />
 						{@render children?.()}
 				</div>
 			</main>

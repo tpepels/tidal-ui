@@ -540,39 +540,72 @@ import {
 
 		searchStore.isLoading = true;
 		searchStore.error = null;
+		searchStore.tabLoading = {
+			tracks: true,
+			albums: true,
+			artists: true,
+			playlists: true
+		};
 
 		try {
-			switch (searchStore.activeTab) {
-				case 'tracks': {
-					console.log('Searching for tracks:', searchStore.query, 'region:', selectedRegion);
-					const response = await fetchWithRetry(() =>
-						losslessAPI.searchTracks(searchStore.query, selectedRegion)
-					);
-					console.log('Search response:', response);
-					console.log('Response items:', response?.items);
-					searchStore.tracks = Array.isArray(response?.items) ? response.items : [];
-					console.log('Setting tracks:', searchStore.tracks.length, 'results');
-					if (searchStore.tracks.length === 0) {
-						console.log('No tracks found, checking for errors...');
-						console.log('Response structure:', JSON.stringify(response, null, 2));
+			// Search all tabs in parallel
+			const [tracksResponse, albumsResponse, artistsResponse, playlistsResponse] = await Promise.allSettled([
+				fetchWithRetry(() => losslessAPI.searchTracks(searchStore.query, selectedRegion)),
+				losslessAPI.searchAlbums(searchStore.query),
+				losslessAPI.searchArtists(searchStore.query),
+				losslessAPI.searchPlaylists(searchStore.query)
+			]);
+
+			// Handle tracks
+			if (tracksResponse.status === 'fulfilled') {
+				const response = tracksResponse.value;
+				console.log('Search response:', response);
+				console.log('Response items:', response?.items);
+				searchStore.tracks = Array.isArray(response?.items) ? response.items : [];
+				console.log('Setting tracks:', searchStore.tracks.length, 'results');
+				if (searchStore.tracks.length === 0) {
+					console.log('No tracks found, checking for errors...');
+					console.log('Response structure:', JSON.stringify(response, null, 2));
+				}
+			} else {
+				console.error('Tracks search failed:', tracksResponse.reason);
+			}
+			searchStore.tabLoading.tracks = false;
+
+			// Handle albums
+			if (albumsResponse.status === 'fulfilled') {
+				searchStore.albums = Array.isArray(albumsResponse.value?.items) ? albumsResponse.value.items : [];
+			} else {
+				console.error('Albums search failed:', albumsResponse.reason);
+			}
+			searchStore.tabLoading.albums = false;
+
+			// Handle artists
+			if (artistsResponse.status === 'fulfilled') {
+				searchStore.artists = Array.isArray(artistsResponse.value?.items) ? artistsResponse.value.items : [];
+			} else {
+				console.error('Artists search failed:', artistsResponse.reason);
+			}
+			searchStore.tabLoading.artists = false;
+
+			// Handle playlists
+			if (playlistsResponse.status === 'fulfilled') {
+				searchStore.playlists = Array.isArray(playlistsResponse.value?.items) ? playlistsResponse.value.items : [];
+			} else {
+				console.error('Playlists search failed:', playlistsResponse.reason);
+			}
+			searchStore.tabLoading.playlists = false;
+
+			// If all searches failed, show error
+			if (tracksResponse.status === 'rejected' && albumsResponse.status === 'rejected' &&
+				artistsResponse.status === 'rejected' && playlistsResponse.status === 'rejected') {
+				searchStore.error = 'All searches failed. Please try again.';
+				toasts.error('Search failed for all categories', {
+					action: {
+						label: 'Retry',
+						handler: () => handleSearch()
 					}
-					break;
-				}
-				case 'albums': {
-					const response = await losslessAPI.searchAlbums(searchStore.query);
-					searchStore.albums = Array.isArray(response?.items) ? response.items : [];
-					break;
-				}
-				case 'artists': {
-					const response = await losslessAPI.searchArtists(searchStore.query);
-					searchStore.artists = Array.isArray(response?.items) ? response.items : [];
-					break;
-				}
-				case 'playlists': {
-					const response = await losslessAPI.searchPlaylists(searchStore.query);
-					searchStore.playlists = Array.isArray(response?.items) ? response.items : [];
-					break;
-				}
+				});
 			}
 		} catch (err) {
 			const message = err instanceof Error ? err.message : 'Search failed';
@@ -584,6 +617,13 @@ import {
 					handler: () => handleSearch()
 				}
 			});
+			// Reset loading states on error
+			searchStore.tabLoading = {
+				tracks: false,
+				albums: false,
+				artists: false,
+				playlists: false
+			};
 		} finally {
 			searchStore.isLoading = false;
 		}
@@ -1065,8 +1105,9 @@ import {
 	{/if}
 
 	<!-- Loading State -->
-	{#if searchStore.isLoading}
-		{#if searchStore.activeTab === 'tracks'}
+	{#if searchStore.tabLoading[searchStore.activeTab]}
+		{@const tab = searchStore.activeTab}
+		{#if tab === 'tracks'}
 			<div class="space-y-2">
 				<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
 				<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
@@ -1082,7 +1123,7 @@ import {
 					</div>
 				{/each}
 			</div>
-		{:else if searchStore.activeTab === 'albums' || searchStore.activeTab === 'playlists'}
+		{:else if tab === 'albums' || tab === 'playlists'}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
 				<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
 				<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
@@ -1094,8 +1135,9 @@ import {
 					</div>
 				{/each}
 			</div>
-		{:else if searchStore.activeTab === 'artists'}
+		{:else if tab === 'artists'}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+				<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
 				<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
 				{#each gridSkeletons as item, i (i)}
 					<div class="flex flex-col items-center gap-3">
