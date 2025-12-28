@@ -1,5 +1,6 @@
 import { browser } from '$app/environment';
 import type { Track, Album, Artist, Playlist, SonglinkTrack } from '../types';
+import { validateInvariant } from '../core/invariants';
 
 export type SearchTab = 'tracks' | 'albums' | 'artists' | 'playlists';
 
@@ -162,3 +163,26 @@ class SearchStore {
 }
 
 export const searchStore = new SearchStore();
+
+// Invariant checking for search state consistency
+// Note: Using a simple polling approach since Svelte stores don't support $effect outside components
+setInterval(() => {
+	// Invariant: If overall loading, at least one tab should be loading
+	if (searchStore.isLoading) {
+		const hasAnyTabLoading = Object.values(searchStore.tabLoading).some((loading) => loading);
+		validateInvariant(hasAnyTabLoading, 'Search is loading but no tabs are marked as loading', {
+			tabLoading: searchStore.tabLoading
+		});
+	}
+
+	// Invariant: Tab loading should not contradict overall loading
+	const anyTabLoading = Object.values(searchStore.tabLoading).some((loading) => loading);
+	if (!searchStore.isLoading && anyTabLoading) {
+		console.warn('Individual tabs are loading but overall loading is false');
+	}
+
+	// Invariant: Error state should clear loading states
+	if (searchStore.error && searchStore.isLoading) {
+		console.warn('Search has error but is still marked as loading');
+	}
+}, 1000); // Check every second in development

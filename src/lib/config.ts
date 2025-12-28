@@ -419,7 +419,8 @@ export async function fetchWithCORS(
 		try {
 			const response = await retryFetch(finalUrl, {
 				...options,
-				headers
+				headers,
+				timeout: 3000 // 3 second timeout for API endpoint checks
 			});
 			if (response.ok) {
 				const unexpected = await isUnexpectedProxyResponse(response);

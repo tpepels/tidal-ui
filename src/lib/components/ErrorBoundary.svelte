@@ -1,33 +1,74 @@
 <script lang="ts">
 	import { onMount, type Snippet } from 'svelte';
 	import { toasts } from '$lib/stores/toasts';
+	import { InvariantViolationError } from '$lib/core/invariants';
 
 	interface Props {
 		children: Snippet;
+		showDetails?: boolean;
 	}
 
-	let { children }: Props = $props();
+	let { children, showDetails = false }: Props = $props();
 	let error = $state<Error | null>(null);
+	let errorId = $state('');
 
-	function handleError(err: unknown) {
-		console.error('Global error boundary caught:', err);
-		error = err instanceof Error ? err : new Error(String(err));
-		toasts.error(`Application error: ${error.message}`, {
-			action: {
-				label: 'Reload',
-				handler: () => window.location.reload()
-			}
-		});
+	function generateErrorId(): string {
+		return `error-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 	}
 
-	// Catch unhandled errors
+	function handleError(err: unknown, context?: unknown) {
+		const processedError = err instanceof Error ? err : new Error(String(err));
+		errorId = generateErrorId();
+
+		console.error(`[ErrorBoundary:${errorId}]`, processedError, context);
+
+		// Handle invariant violations specially
+		if (processedError instanceof InvariantViolationError) {
+			console.error('[Invariant Violation]', processedError.context);
+			toasts.error('Application state inconsistency detected', {
+				action: {
+					label: 'Reload',
+					handler: () => window.location.reload()
+				}
+			});
+		} else {
+			error = processedError;
+			toasts.error(`Application error: ${processedError.message}`, {
+				action: {
+					label: 'Reload',
+					handler: () => window.location.reload()
+				}
+			});
+		}
+
+		// TODO: Send telemetry data in production
+	}
+
+	function resetError() {
+		error = null;
+		errorId = '';
+	}
+
+	// Catch unhandled errors and promise rejections
 	onMount(() => {
-		window.onerror = (message, source, lineno, colno, err) => {
-			handleError(err || new Error(String(message)));
+		const handleGlobalError = (event: ErrorEvent) => {
+			handleError(event.error || new Error(event.message), {
+				source: event.filename,
+				line: event.lineno,
+				column: event.colno
+			});
 		};
 
-		window.onunhandledrejection = (event) => {
-			handleError(event.reason);
+		const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+			handleError(event.reason, { type: 'unhandled-promise-rejection' });
+		};
+
+		window.addEventListener('error', handleGlobalError);
+		window.addEventListener('unhandledrejection', handleUnhandledRejection);
+
+		return () => {
+			window.removeEventListener('error', handleGlobalError);
+			window.removeEventListener('unhandledrejection', handleUnhandledRejection);
 		};
 	});
 </script>
@@ -37,7 +78,17 @@
 		<h2>Something went wrong</h2>
 		<p>{error.message}</p>
 		<p>Check the console for details.</p>
-		<button onclick={() => { error = null; window.location.reload(); }}>Reload App</button>
+		{#if showDetails}
+			<details class="error-details">
+				<summary>Error Details (for developers)</summary>
+				<pre class="error-stack">{error.stack}</pre>
+				<p class="error-id">Error ID: {errorId}</p>
+			</details>
+		{/if}
+		<div class="error-actions">
+			<button onclick={resetError}>Try Again</button>
+			<button onclick={() => window.location.reload()}>Reload App</button>
+		</div>
 	</div>
 {:else}
 	{@render children()}

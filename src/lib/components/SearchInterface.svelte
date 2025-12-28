@@ -54,6 +54,7 @@ import {
 
 
 	import { searchStore, type SearchTab } from '$lib/stores/searchStore.svelte';
+	import { uiStore } from '$lib/stores/uiStore';
 
 	function getLongLink(type: 'track' | 'album' | 'artist' | 'playlist', id: string | number) {
 		return `https://music.binimum.org/${type}/${id}`;
@@ -170,6 +171,24 @@ import {
 	};
 
 	let albumDownloadStates = $state<Record<number, AlbumDownloadState>>({});
+
+	// Subscribe to search state machine changes
+	const unsubscribeSearch = uiStore.subscribeToSearch((state, previousState) => {
+		// Update component state based on state machine transitions
+		if (state.status === 'searching' && previousState.status !== 'searching') {
+			// Search started
+			searchStore.isLoading = true;
+			searchStore.error = null;
+		} else if (state.status === 'results' && previousState.status === 'searching') {
+			// Search completed with results
+			searchStore.isLoading = false;
+			// Results will be set by the actual search logic
+		} else if (state.status === 'error' && previousState.status === 'searching') {
+			// Search failed
+			searchStore.isLoading = false;
+			searchStore.error = state.error.message;
+		}
+	});
 
 	const newsItems = [
 		{
@@ -311,9 +330,7 @@ import {
 				albumTitle = undefined;
 			} else {
 				console.warn('Cannot download SonglinkTrack directly - play it first to convert to TIDAL');
-				alert(
-					'This track needs to be played first before it can be downloaded. Click to play it, then download.'
-				);
+				toasts.info('This track needs to be played first before it can be downloaded. Click to play it, then download.');
 				return;
 			}
 		} else {
@@ -325,7 +342,7 @@ import {
 		// Guard against non-numeric IDs
 		if (!Number.isFinite(trackId) || trackId <= 0) {
 			console.error('Cannot download track with invalid ID:', track.id);
-			alert('Cannot download this track - invalid track ID');
+			toasts.error('Cannot download this track - invalid track ID');
 			return;
 		}
 
@@ -397,7 +414,7 @@ import {
 				const fallbackMessage = 'Failed to download track. Please try again.';
 				const message = error instanceof Error && error.message ? error.message : fallbackMessage;
 				downloadUiStore.errorTrackDownload(taskId, message);
-				alert(message);
+				toasts.error(message);
 			}
 		} finally {
 			const next = new Set(downloadingIds);
@@ -518,6 +535,16 @@ import {
 	async function handleSearch() {
 		console.log('handleSearch called with query:', searchStore.query);
 		if (!searchStore.query.trim()) return;
+
+		// Use state machine for search coordination
+		if (uiStore.searchState.status === 'searching' &&
+		    uiStore.searchState.query === searchStore.query) {
+			console.log('Search already in progress for this query, skipping');
+			return;
+		}
+
+		// Trigger search via state machine
+		uiStore.performSearch(searchStore.query.trim(), searchStore.activeTab);
 
 		// Auto-detect: if query is a Tidal URL, import it directly
 		// TODO: Implement URL import functionality
@@ -961,6 +988,11 @@ import {
 	function asTrack(track: PlayableTrack): Track {
 		return track as Track;
 	}
+
+	// Cleanup subscriptions on component destroy
+	onDestroy(() => {
+		unsubscribeSearch();
+	});
 </script>
 
 <div class="w-full">

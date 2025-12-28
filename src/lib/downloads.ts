@@ -241,11 +241,14 @@ export async function downloadTrackServerSide(
 	artistName: string,
 	trackTitle?: string,
 	blob?: Blob,
+	track?: Track, // Track object for metadata embedding
 	options?: {
 		useChunks?: boolean;
 		chunkSize?: number;
 		conflictResolution?: 'overwrite' | 'skip' | 'rename' | 'overwrite_if_different';
 		checkExisting?: boolean;
+		downloadCoverSeperately?: boolean;
+		coverUrl?: string;
 		onProgress?: (progress: {
 			uploaded: number;
 			total: number;
@@ -350,6 +353,38 @@ export async function downloadTrackServerSide(
 		} else {
 			// Single upload
 			const base64 = await blobToBase64(blob);
+			// Prepare track metadata for server-side embedding
+			const downloadCoverSeperately = options?.downloadCoverSeperately ?? false;
+			const trackMetadata = track
+				? {
+						track: {
+							id: track.id,
+							title: track.title,
+							duration: track.duration,
+							replayGain: track.replayGain,
+							peak: track.peak,
+							trackNumber: track.trackNumber,
+							volumeNumber: track.volumeNumber,
+							version: track.version,
+							isrc: track.isrc,
+							copyright: track.copyright,
+							artists: track.artists,
+							album: {
+								id: track.album.id,
+								title: track.album.title,
+								cover: track.album.cover,
+								releaseDate: track.album.releaseDate,
+								numberOfTracks: track.album.numberOfTracks,
+								numberOfVolumes: track.album.numberOfVolumes,
+								copyright: track.album.copyright,
+								artist: track.album.artist,
+								artists: track.album.artists
+							}
+						},
+						info: undefined // We don't have lookup info in server context
+					}
+				: undefined;
+
 			const uploadResponse = await fetch('/api/download-track', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -360,7 +395,10 @@ export async function downloadTrackServerSide(
 					artistName,
 					trackTitle,
 					blob: base64,
-					conflictResolution: options?.conflictResolution || 'overwrite_if_different'
+					conflictResolution: options?.conflictResolution || 'overwrite_if_different',
+					downloadCoverSeperately,
+					coverUrl: options?.coverUrl,
+					trackMetadata
 				})
 			});
 
@@ -394,6 +432,7 @@ export async function downloadTrackServerSide(
 						artistName,
 						trackTitle,
 						blob,
+						undefined, // No track metadata available for retry
 						options
 					)
 			}
@@ -557,8 +596,7 @@ export async function downloadAlbum(
 	const useCsv = mode === 'csv';
 	const convertAacToMp3 = options?.convertAacToMp3 ?? false;
 	const storage = options?.storage ?? 'client';
-	const downloadCoverSeperately =
-		storage === 'server' ? false : (options?.downloadCoverSeperately ?? false);
+	const downloadCoverSeperately = options?.downloadCoverSeperately ?? false;
 	const artistName = sanitizeForFilename(
 		preferredArtistName ?? canonicalAlbum.artist?.name ?? 'Unknown Artist'
 	);
@@ -823,7 +861,16 @@ export async function downloadAlbum(
 							albumTitle,
 							artistName,
 							track.title,
-							result.blob
+							result.blob,
+							track, // Pass track object for metadata
+							{
+								conflictResolution: 'overwrite_if_different',
+								downloadCoverSeperately,
+								coverUrl:
+									downloadCoverSeperately && canonicalAlbum.cover
+										? losslessAPI.getCoverUrl(canonicalAlbum.cover, '1280')
+										: undefined
+							}
 						);
 						if (serverResult.success) {
 							downloadUiStore.completeTrackDownload(taskId);

@@ -16,23 +16,30 @@ const V2_API_TARGETS = [
 	// These need to be updated with working Tidal proxy services.
 	// Search for "working tidal api proxies" in Tidal communities.
 	{
-		name: 'squid-api',
-		baseUrl: 'https://triton.squid.wtf',
-		weight: 30,
+		name: 'wolf',
+		baseUrl: 'https://wolf.qqdl.site',
+		weight: 40,
 		requiresProxy: true,
 		category: 'auto-only'
 	},
 	{
 		name: 'kinoplus',
 		baseUrl: 'https://tidal.kinoplus.online',
-		weight: 20,
+		weight: 30,
 		requiresProxy: true,
 		category: 'auto-only'
 	},
 	{
 		name: 'binimum',
 		baseUrl: 'https://tidal-api.binimum.org',
-		weight: 10,
+		weight: 20,
+		requiresProxy: true,
+		category: 'auto-only'
+	},
+	{
+		name: 'binimum-2',
+		baseUrl: 'https://tidal-api-2.binimum.org',
+		weight: 15,
 		requiresProxy: true,
 		category: 'auto-only'
 	},
@@ -44,30 +51,30 @@ const V2_API_TARGETS = [
 		category: 'auto-only'
 	},
 	{
-		name: 'katze',
-		baseUrl: 'https://katze.qqdl.site',
-		weight: 15,
+		name: 'maus',
+		baseUrl: 'https://maus.qqdl.site',
+		weight: 10,
 		requiresProxy: true,
 		category: 'auto-only'
 	},
 	{
-		name: 'maus',
-		baseUrl: 'https://maus.qqdl.site',
-		weight: 15,
+		name: 'squid-api',
+		baseUrl: 'https://triton.squid.wtf',
+		weight: 5,
+		requiresProxy: true,
+		category: 'auto-only'
+	},
+	{
+		name: 'katze',
+		baseUrl: 'https://katze.qqdl.site',
+		weight: 5,
 		requiresProxy: true,
 		category: 'auto-only'
 	},
 	{
 		name: 'vogel',
 		baseUrl: 'https://vogel.qqdl.site',
-		weight: 15,
-		requiresProxy: true,
-		category: 'auto-only'
-	},
-	{
-		name: 'wolf',
-		baseUrl: 'https://wolf.qqdl.site',
-		weight: 15,
+		weight: 5,
 		requiresProxy: true,
 		category: 'auto-only'
 	}

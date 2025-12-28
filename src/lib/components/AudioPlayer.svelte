@@ -1,8 +1,18 @@
+<!--
+	ARCHITECTURAL WARNING: This component has complex reactive effects that are prone to infinite loops.
+	DO NOT MODIFY the $effect blocks without architectural review. Changes here can cause:
+	- Infinite playback loops
+	- Unresponsive UI
+	- Battery drain on mobile devices
+
+	If you need to modify playback logic, consider the state machine approach from the stabilization plan.
+-->
 <script lang="ts">
 	console.log('[AudioPlayer] Component loading');
-	import { onMount, tick } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
 	import { get } from 'svelte/store';
 	import { playerStore } from '$lib/stores/player';
+	import { uiStore } from '$lib/stores/uiStore';
 	import { lyricsStore } from '$lib/stores/lyrics';
 	import { losslessAPI, DASH_MANIFEST_UNAVAILABLE_CODE, type TrackDownloadProgress } from '$lib/api';
 	import type { DashManifestResult, DashManifestWithMetadata } from '$lib/api';
@@ -111,6 +121,11 @@ let pendingPlayAfterSource = false;
 			promise.catch((error) => {
 				console.error(`[AudioPlayer] play() failed during ${reason}`, error);
 				playerStore.setLoading(false);
+				// Stop trying to play if we keep failing
+				if (reason === 'state machine play request') {
+					console.warn('[AudioPlayer] Playback failed, pausing to prevent loops');
+					uiStore.pausePlayback();
+				}
 				if (typeof DOMException !== 'undefined' && error instanceof DOMException) {
 					if (error.name === 'AbortError') {
 						pendingPlayAfterSource = true;
@@ -143,7 +158,6 @@ let pendingPlayAfterSource = false;
 	// - not dismissed
 	// - AND either a track exists OR overlays exist (downloads/ffmpeg banner)
 	const shouldShowPlayer = $derived(!playerDismissed && (hasTrack || hasOverlays));
-	const shouldShowRestoreButton = $derived(playerDismissed && (hasTrack || hasOverlays));
 
 	function dismissPlayer() {
 		playerDismissed = true;
@@ -546,13 +560,32 @@ let pendingPlayAfterSource = false;
 		}
 	});
 
-	$effect(() => {
-		if ($playerStore.isPlaying && !$playerStore.isLoading && audioElement) {
-			console.info('[AudioPlayer] store requested play; ensuring audio element is playing');
-			requestAudioPlayback('store play request');
-		} else if (!$playerStore.isPlaying && audioElement) {
+	// Integrate with state machine for deterministic playback control
+	let playbackAttemptCount = 0;
+
+	// Subscribe to state machine changes and handle playback
+	const unsubscribePlayback = uiStore.subscribeToPlayback((state, previousState) => {
+		if (state.status === 'playing' && previousState.status !== 'playing' && audioElement) {
+			// State machine transitioned to playing - start playback
+			playbackAttemptCount++;
+			console.info(`[AudioPlayer] State machine requested play (attempt ${playbackAttemptCount})`);
+			requestAudioPlayback('state machine play request');
+
+			// Reset counter after too many attempts
+			if (playbackAttemptCount > 5) {
+				console.warn('[AudioPlayer] Too many playback attempts, resetting counter');
+				playbackAttemptCount = 0;
+			}
+		} else if (state.status === 'paused' && audioElement) {
+			// State machine transitioned to paused - pause audio
 			audioElement.pause();
+			playbackAttemptCount = 0; // Reset on pause
 		}
+	});
+
+	// Cleanup subscription on destroy
+	onDestroy(() => {
+		unsubscribePlayback();
 	});
 
 	$effect(() => {
@@ -1899,13 +1932,6 @@ let pendingPlayAfterSource = false;
 	</div>
 {/if}
 
- {#if !headless && shouldShowRestoreButton}
-	<button class="player-restore-button" type="button" onclick={restorePlayer} aria-label="Show player">
-		<Play size={18} />
-		Show player
-	</button>
-{/if}
-
 {#if !headless && playerDismissed && hasTrack}
 	<button class="playback-indicator" type="button" onclick={restorePlayer} aria-label="Show player - music is playing">
 		{#if $playerStore.isPlaying}
@@ -2014,33 +2040,7 @@ let pendingPlayAfterSource = false;
 		box-shadow: inset 0 0 20px rgba(96, 165, 250, 0.15);
 	}
 
-	.player-restore-button {
-		position: fixed;
-		left: 50%;
-		bottom: 1.5rem;
-		transform: translateX(-50%);
-		z-index: 60;
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.65rem 1.25rem;
-		border-radius: 9999px;
-		border: 1px solid rgba(148, 163, 184, 0.3);
-		background: rgba(11, 16, 26, 0.9);
-		color: rgba(226, 232, 240, 0.95);
-		box-shadow: 0 8px 28px rgba(2, 6, 23, 0.4);
-		backdrop-filter: blur(16px) saturate(140%);
-		-webkit-backdrop-filter: blur(16px) saturate(140%);
-		transition: border-color 200ms ease, color 200ms ease, box-shadow 200ms ease,
-			background 200ms ease;
-	}
 
-	.player-restore-button:hover {
-		border-color: var(--bloom-accent, rgba(96, 165, 250, 0.7));
-		color: white;
-		background: rgba(15, 23, 42, 0.95);
-		box-shadow: 0 12px 32px rgba(2, 6, 23, 0.55);
-	}
 
 	.playback-indicator {
 		position: fixed;
@@ -2088,10 +2088,6 @@ let pendingPlayAfterSource = false;
 	}
 
 	@media (min-width: 640px) {
-		.player-restore-button {
-			bottom: 2.5rem;
-		}
-
 		.playback-indicator {
 			bottom: 1.5rem;
 			right: 1.5rem;

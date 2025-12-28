@@ -5,6 +5,7 @@ import type { Track, AudioQuality, PlayableTrack } from '../types';
 import { deriveTrackQuality } from '../utils/audioQuality';
 import { userPreferencesStore } from './userPreferences';
 import { loadFromStorage, debouncedSave } from '../utils/persistence';
+import { assertInvariant, validateInvariant } from '../core/invariants';
 
 interface PlayerState {
 	currentTrack: PlayableTrack | null;
@@ -475,6 +476,43 @@ function createPlayerStore() {
 }
 
 export const playerStore = createPlayerStore();
+
+// Invariant checking for critical state consistency
+playerStore.subscribe(($state) => {
+	// Invariant: Cannot be playing while loading
+	validateInvariant(
+		!($state.isPlaying && $state.isLoading),
+		'Player cannot be both playing and loading simultaneously',
+		{ isPlaying: $state.isPlaying, isLoading: $state.isLoading }
+	);
+
+	// Invariant: If playing, must have a current track
+	assertInvariant(
+		!$state.isPlaying || $state.currentTrack !== null,
+		'Player cannot be playing without a current track',
+		{ isPlaying: $state.isPlaying, currentTrack: $state.currentTrack }
+	);
+
+	// Invariant: Queue index must be valid
+	assertInvariant(
+		$state.queueIndex >= 0 && $state.queueIndex < $state.queue.length,
+		'Queue index must be within valid range',
+		{ queueIndex: $state.queueIndex, queueLength: $state.queue.length }
+	);
+
+	// Invariant: Current track should match queue item
+	if ($state.currentTrack && $state.queue.length > 0) {
+		validateInvariant(
+			$state.currentTrack.id === $state.queue[$state.queueIndex]?.id,
+			'Current track should match queue item at current index',
+			{
+				currentTrackId: $state.currentTrack.id,
+				queueTrackId: $state.queue[$state.queueIndex]?.id,
+				queueIndex: $state.queueIndex
+			}
+		);
+	}
+});
 
 // Derived stores for convenience
 export const currentTrack = derived(playerStore, ($store) => $store.currentTrack);

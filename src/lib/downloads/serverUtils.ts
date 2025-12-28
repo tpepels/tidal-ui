@@ -21,6 +21,8 @@ export async function downloadTrackServerSide(
 		chunkSize?: number;
 		conflictResolution?: 'overwrite' | 'skip' | 'rename' | 'overwrite_if_different';
 		checkExisting?: boolean;
+		downloadCoverSeperately?: boolean;
+		coverUrl?: string;
 		onProgress?: (progress: {
 			uploaded: number;
 			total: number;

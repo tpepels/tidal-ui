@@ -21,6 +21,7 @@ import {
 	MAX_FILE_SIZE,
 	retryFs
 } from './_shared';
+import { embedMetadataToFile } from '$lib/server/metadataEmbedder';
 
 // Start the cleanup interval when the module loads
 startCleanupInterval();
@@ -68,17 +69,13 @@ export const POST: RequestHandler = async ({ request, url }) => {
 						{ error: 'Invalid trackTitle: must be a string or undefined' },
 						{ status: 400 }
 					);
+				// Validate track metadata for embedding
 				if (
-					body.conflictResolution !== undefined &&
-					!['overwrite', 'skip', 'rename', 'overwrite_if_different'].includes(
-						body.conflictResolution
-					)
+					body.trackMetadata !== undefined &&
+					(typeof body.trackMetadata !== 'object' || body.trackMetadata === null)
 				)
 					return json(
-						{
-							error:
-								'Invalid conflictResolution: must be one of overwrite, skip, rename, overwrite_if_different'
-						},
+						{ error: 'Invalid trackMetadata: must be an object or undefined' },
 						{ status: 400 }
 					);
 				let ext = 'm4a';
@@ -109,14 +106,69 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					if (error.code === 'EACCES') return json({ error: 'Permission denied' }, { status: 403 });
 					return json({ error: 'File write failed' }, { status: 500 });
 				}
+
+				// Embed metadata into the file if track metadata is provided
+				if (body.trackMetadata) {
+					try {
+						await embedMetadataToFile(finalPath, body.trackMetadata);
+						console.log('[Server Download] Metadata embedded successfully');
+					} catch (metadataError) {
+						console.warn(
+							'[Server Download] Metadata embedding failed, continuing with raw file:',
+							metadataError
+						);
+						// Continue with raw file - better than no download
+					}
+				}
+
+				// Download album cover if requested
+				let coverDownloaded = false;
+				if (body.downloadCoverSeperately && body.coverUrl) {
+					try {
+						console.log('[Server Download] Downloading cover from:', body.coverUrl);
+						const coverResponse = await fetch(body.coverUrl, {
+							headers: {
+								Accept: 'image/jpeg,image/jpg,image/png,image/*',
+								'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+							},
+							signal: AbortSignal.timeout(10000)
+						});
+
+						if (coverResponse.ok) {
+							const coverBuffer = await coverResponse.arrayBuffer();
+							const coverFilename = 'cover.jpg';
+							const coverPath = path.join(targetDir, coverFilename);
+							await fs.writeFile(coverPath, Buffer.from(coverBuffer));
+							console.log('[Server Download] Cover saved to:', coverPath);
+							coverDownloaded = true;
+						} else {
+							console.warn(
+								'[Server Download] Cover download failed with status:',
+								coverResponse.status
+							);
+						}
+					} catch (coverError) {
+						console.warn('[Server Download] Cover download failed:', coverError);
+					}
+				}
 				const finalFilename = path.basename(finalPath);
 				let message = `File saved to ${artistDir}/${albumDir}/${finalFilename}`;
+				if (coverDownloaded) {
+					message += ' (with cover)';
+				}
 				if (action === 'rename')
 					message = `File renamed and saved to ${artistDir}/${albumDir}/${finalFilename}`;
 				else if (action === 'skip')
 					message = `File already exists, skipped: ${artistDir}/${albumDir}/${finalFilename}`;
 				return json(
-					{ success: true, filepath: finalPath, filename: finalFilename, action, message },
+					{
+						success: true,
+						filepath: finalPath,
+						filename: finalFilename,
+						action,
+						message,
+						coverDownloaded
+					},
 					{ status: 201 }
 				);
 			} else {
