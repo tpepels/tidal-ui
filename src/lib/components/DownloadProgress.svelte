@@ -80,11 +80,6 @@
 
 
 
-	@keyframes spin {
-		from { transform: rotate(0deg); }
-		to { transform: rotate(360deg); }
-	}
-
 	.download-progress-title {
 		font-size: 14px;
 		font-weight: 600;
@@ -92,8 +87,8 @@
 	}
 
 	.download-progress-standalone-list {
-		display: flex;
-		flex-direction: column;
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: 8px;
 	}
 
@@ -105,6 +100,12 @@
 		background: rgba(255, 255, 255, 0.05);
 		border-radius: 8px;
 		border: 1px solid rgba(255, 255, 255, 0.05);
+	}
+
+	@media (max-width: 520px) {
+		.download-progress-standalone-list {
+			grid-template-columns: 1fr;
+		}
 	}
 
 	.download-progress-item-info {

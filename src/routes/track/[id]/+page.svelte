@@ -11,7 +11,7 @@
 	import { buildTrackFilename } from '$lib/downloads';
 	import ShareButton from '$lib/components/ShareButton.svelte';
 	import { LoaderCircle, Play, ArrowLeft, Disc, User, Clock, Download, X } from 'lucide-svelte';
-	import { formatArtists } from '$lib/utils';
+	import { formatArtists } from '$lib/utils/formatters';
 
 	let track = $state<Track | null>(null);
 	let isLoading = $state(true);

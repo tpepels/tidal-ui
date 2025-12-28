@@ -1,5 +1,17 @@
 import { z } from 'zod';
 
+const ArtistRolesSchema = z
+	.array(
+		z.union([
+			z.string(),
+			z.object({
+				category: z.string().optional(),
+				categoryId: z.number().optional()
+			})
+		])
+	)
+	.optional();
+
 // API Response Schemas
 export const TrackSchema = z.object({
 	id: z.number(),
@@ -11,7 +23,7 @@ export const TrackSchema = z.object({
 				name: z.string(),
 				type: z.string().optional(),
 				artistTypes: z.array(z.string()).optional(),
-				artistRoles: z.array(z.string()).optional(),
+				artistRoles: ArtistRolesSchema,
 				url: z.string().optional(),
 				picture: z.string().optional()
 			})
@@ -23,7 +35,7 @@ export const TrackSchema = z.object({
 			name: z.string(),
 			type: z.string().optional(),
 			artistTypes: z.array(z.string()).optional(),
-			artistRoles: z.array(z.string()).optional(),
+			artistRoles: ArtistRolesSchema,
 			url: z.string().optional(),
 			picture: z.string().optional()
 		})
@@ -39,7 +51,7 @@ export const TrackSchema = z.object({
 					name: z.string(),
 					type: z.string().optional(),
 					artistTypes: z.array(z.string()).optional(),
-					artistRoles: z.array(z.string()).optional(),
+					artistRoles: ArtistRolesSchema,
 					url: z.string().optional(),
 					picture: z.string().optional()
 				})
@@ -51,7 +63,7 @@ export const TrackSchema = z.object({
 						name: z.string(),
 						type: z.string().optional(),
 						artistTypes: z.array(z.string()).optional(),
-						artistRoles: z.array(z.string()).optional(),
+						artistRoles: ArtistRolesSchema,
 						url: z.string().optional(),
 						picture: z.string().optional()
 					})
@@ -91,7 +103,7 @@ export const AlbumSchema = z.object({
 			name: z.string(),
 			type: z.string().optional(),
 			artistTypes: z.array(z.string()).optional(),
-			artistRoles: z.array(z.string()).optional(),
+			artistRoles: ArtistRolesSchema,
 			url: z.string().optional(),
 			picture: z.string().optional()
 		})
@@ -103,7 +115,7 @@ export const AlbumSchema = z.object({
 				name: z.string(),
 				type: z.string().optional(),
 				artistTypes: z.array(z.string()).optional(),
-				artistRoles: z.array(z.string()).optional(),
+				artistRoles: ArtistRolesSchema,
 				url: z.string().optional(),
 				picture: z.string().optional()
 			})
@@ -124,7 +136,7 @@ export const ArtistSchema = z.object({
 	picture: z.string().optional(),
 	type: z.string().optional(),
 	artistTypes: z.array(z.string()).optional(),
-	artistRoles: z.array(z.string()).optional(),
+	artistRoles: ArtistRolesSchema,
 	url: z.string().optional(),
 	popularity: z.number().optional()
 });
@@ -139,7 +151,7 @@ export const PlaylistSchema = z.object({
 			name: z.string(),
 			type: z.string().optional(),
 			artistTypes: z.array(z.string()).optional(),
-			artistRoles: z.array(z.string()).optional(),
+			artistRoles: ArtistRolesSchema,
 			url: z.string().optional(),
 			picture: z.string().optional()
 		})

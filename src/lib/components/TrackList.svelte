@@ -5,7 +5,7 @@
 	import { playerStore } from '$lib/stores/player';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
-	import { formatArtists } from '$lib/utils';
+	import { formatArtists } from '$lib/utils/formatters';
 	import ShareButton from '$lib/components/ShareButton.svelte';
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
 	import AlbumLink from '$lib/components/AlbumLink.svelte';

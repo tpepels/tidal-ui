@@ -1,8 +1,18 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { losslessAPI } from './api';
 import { TidalError } from './errors';
 
 describe('API Integration Tests', () => {
+	let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+	beforeEach(() => {
+		consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+	});
+
+	afterEach(() => {
+		consoleErrorSpy.mockRestore();
+	});
+
 	describe('LosslessAPI error handling', () => {
 		it('throws error for invalid URLs', async () => {
 			await expect(losslessAPI.importFromUrl('test-url')).rejects.toThrow();

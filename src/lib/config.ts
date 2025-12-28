@@ -18,6 +18,18 @@ type WeightedTarget = ApiClusterTarget & { cumulativeWeight: number };
 
 let v1WeightedTargets: WeightedTarget[] | null = null;
 let v2WeightedTargets: WeightedTarget[] | null = null;
+const targetFailureTimestamps = new Map<string, number>();
+const TARGET_FAILURE_TTL_MS = 60_000;
+
+function markTargetUnhealthy(targetName: string): void {
+	targetFailureTimestamps.set(targetName, Date.now());
+}
+
+function isTargetHealthy(targetName: string): boolean {
+	const failureAt = targetFailureTimestamps.get(targetName);
+	if (!failureAt) return true;
+	return Date.now() - failureAt > TARGET_FAILURE_TTL_MS;
+}
 
 function buildWeightedTargets(targets: ApiClusterTarget[]): WeightedTarget[] {
 	const validTargets = targets.filter((target) => {
@@ -304,6 +316,9 @@ async function isUnexpectedProxyResponse(response: Response): Promise<boolean> {
 		return false;
 	}
 
+	if (!response.headers || typeof response.headers.get !== 'function') {
+		return false;
+	}
 	const contentType = response.headers.get('content-type');
 	if (!contentType || !contentType.toLowerCase().includes('application/json')) {
 		return false;
@@ -364,6 +379,11 @@ export async function fetchWithCORS(
 	let uniqueTargets = attemptOrder.filter(
 		(target, index, array) => array.findIndex((entry) => entry.name === target.name) === index
 	);
+
+	const healthyTargets = uniqueTargets.filter((target) => isTargetHealthy(target.name));
+	if (healthyTargets.length > 0) {
+		uniqueTargets = healthyTargets;
+	}
 
 	if (uniqueTargets.length === 0) {
 		uniqueTargets = [getPrimaryTarget(apiVersion)];
@@ -434,6 +454,7 @@ export async function fetchWithCORS(
 			lastResponse = response;
 		} catch (error) {
 			lastError = error;
+			markTargetUnhealthy(target.name);
 			if (error instanceof TypeError && error.message.includes('CORS')) {
 				continue;
 			}

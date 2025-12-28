@@ -3,7 +3,7 @@
 	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
 	import { hasRegionTargets } from '$lib/config';
 	import { downloadAlbum, getExtensionForQuality } from '$lib/downloads';
-	import { formatArtists } from '$lib/utils';
+	import { formatArtists } from '$lib/utils/formatters';
 	import { playerStore } from '$lib/stores/player';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
@@ -29,8 +29,6 @@
 import { isSonglinkTrack } from '$lib/types';
 import { toasts } from '$lib/stores/toasts';
 import {
-	Search,
-	ChevronDown,
 	Music,
 	User,
 	Disc,
@@ -40,21 +38,18 @@ import {
 	ListVideo,
 	LoaderCircle,
 	X,
-	Earth,
-
 	Link2,
 	MoreVertical,
 	List,
 	Play,
 	Shuffle,
 	Copy,
-		Code
-	} from 'lucide-svelte';
+	Code
+} from 'lucide-svelte';
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
 
 
 	import { searchStore, searchStoreActions, type SearchTab } from '$lib/stores/searchStoreAdapter';
-	import { uiStore } from '$lib/stores/uiStore';
 
 	function getLongLink(type: 'track' | 'album' | 'artist' | 'playlist', id: string | number) {
 		return `https://music.binimum.org/${type}/${id}`;
@@ -108,10 +103,6 @@ import {
 	let cancelledIds = $state(new Set<number | string>());
 	let activeMenuId = $state<number | string | null>(null);
 
-	// Instrumentation for retry loops
-	let retryCallCount = $state(0);
-	let retryStartTime = $state(Date.now());
-
 	const albumDownloadQuality = $derived($userPreferencesStore.playbackQuality as AudioQuality);
 	const albumDownloadMode = $derived($downloadPreferencesStore.mode);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
@@ -119,7 +110,6 @@ import {
 		$userPreferencesStore.downloadCoversSeperately
 	);
 	let selectedRegion = $state<RegionOption>('us');
-	let isRegionSelectorOpen = $state(false);
 
 
 
@@ -146,7 +136,6 @@ import {
 		selectedRegion = nextRegion;
 	});
 
-	onDestroy(unsubscribeRegion);
 
 	// Computed property to check if current query is a Tidal URL
 	const isQueryATidalUrl = $derived(
@@ -249,17 +238,6 @@ import {
 		attempts = 3,
 		delayMs = 250
 	): Promise<T> {
-		retryCallCount++;
-		const elapsed = Date.now() - retryStartTime;
-		const rate = retryCallCount / (elapsed / 1000);
-
-		if (retryCallCount % 20 === 0) {
-			console.warn(`[Instrumentation] fetchWithRetry called ${retryCallCount} times in ${elapsed}ms (~${rate.toFixed(2)}/s)`);
-			if (retryCallCount > 100) {
-				console.error(`[Instrumentation] High frequency retries - sample stack:`, new Error().stack?.split('\n').slice(1, 5).join('\n'));
-			}
-		}
-
 		let lastError: unknown = null;
 		for (let attempt = 1; attempt <= attempts; attempt += 1) {
 			try {
@@ -519,25 +497,19 @@ import {
 
 
 
-	// Debounced search to prevent excessive API calls
-	let searchTimeout: ReturnType<typeof setTimeout>;
-	function triggerSearch() {
-		clearTimeout(searchTimeout);
-		searchTimeout = setTimeout(() => {
-			handleSearch();
-		}, 300); // 300ms debounce
-	}
+	const inFlightSearches = new Map<string, Promise<{
+		tracks: (Track | SonglinkTrack)[];
+		albums: Album[];
+		artists: Artist[];
+		playlists: Playlist[];
+	}>>();
 
 	async function handleSearch() {
 		console.log('handleSearch called with query:', $searchStore.query);
-		if (!$searchStore.query.trim()) return;
+		const trimmedQuery = $searchStore.query.trim();
+		if (!trimmedQuery) return;
 
 		// Auto-detect: if query is a Tidal URL, import it directly
-		// TODO: Implement URL import functionality
-		// if (isQueryATidalUrl) {
-		// 	await handleUrlImport();
-		// 	return;
-		// }
 
 		// Auto-detect: if query is a Spotify playlist, convert it
 		if (isQueryASpotifyPlaylist) {
@@ -552,61 +524,59 @@ import {
 		}
 
 		// Trigger search state update
-		searchStoreActions.search($searchStore.query.trim(), $searchStore.activeTab);
+		searchStoreActions.search(trimmedQuery, $searchStore.activeTab);
 
 		try {
-			// Search all tabs in parallel
-			const [tracksResponse, albumsResponse, artistsResponse, playlistsResponse] = await Promise.allSettled([
-				fetchWithRetry(() => losslessAPI.searchTracks($searchStore.query, selectedRegion)),
-				losslessAPI.searchAlbums($searchStore.query),
-				losslessAPI.searchArtists($searchStore.query),
-				losslessAPI.searchPlaylists($searchStore.query)
-			]);
+			const emptyResults = { tracks: [], albums: [], artists: [], playlists: [] };
+			const searchKey = `${$searchStore.activeTab}:${trimmedQuery.toLowerCase()}`;
+			let pending = inFlightSearches.get(searchKey);
+			if (!pending) {
+				pending = (async () => {
+					switch ($searchStore.activeTab) {
+						case 'tracks': {
+							const response = await fetchWithRetry(() =>
+								losslessAPI.searchTracks(trimmedQuery, selectedRegion)
+							);
+							const items = Array.isArray(response?.items) ? response.items : [];
+							return { ...emptyResults, tracks: items };
+						}
+						case 'albums': {
+							const response = await losslessAPI.searchAlbums(trimmedQuery);
+							const items = Array.isArray(response?.items) ? response.items : [];
+							return { ...emptyResults, albums: items };
+						}
+						case 'artists': {
+							const response = await losslessAPI.searchArtists(trimmedQuery);
+							const items = Array.isArray(response?.items) ? response.items : [];
+							return { ...emptyResults, artists: items };
+						}
+						case 'playlists': {
+							const response = await losslessAPI.searchPlaylists(trimmedQuery);
+							const items = Array.isArray(response?.items) ? response.items : [];
+							return { ...emptyResults, playlists: items };
+						}
+						default:
+							return emptyResults;
+					}
+				})();
+				inFlightSearches.set(searchKey, pending);
+			}
 
-			const tracks =
-				tracksResponse.status === 'fulfilled'
-					? Array.isArray(tracksResponse.value?.items)
-						? tracksResponse.value.items
-						: []
-					: [];
-			const albums =
-				albumsResponse.status === 'fulfilled'
-					? Array.isArray(albumsResponse.value?.items)
-						? albumsResponse.value.items
-						: []
-					: [];
-			const artists =
-				artistsResponse.status === 'fulfilled'
-					? Array.isArray(artistsResponse.value?.items)
-						? artistsResponse.value.items
-						: []
-					: [];
-			const playlists =
-				playlistsResponse.status === 'fulfilled'
-					? Array.isArray(playlistsResponse.value?.items)
-						? playlistsResponse.value.items
-						: []
-					: [];
-
-			if (tracksResponse.status === 'rejected') {
-				console.error('Tracks search failed:', tracksResponse.reason);
-			}
-			if (albumsResponse.status === 'rejected') {
-				console.error('Albums search failed:', albumsResponse.reason);
-			}
-			if (artistsResponse.status === 'rejected') {
-				console.error('Artists search failed:', artistsResponse.reason);
-			}
-			if (playlistsResponse.status === 'rejected') {
-				console.error('Playlists search failed:', playlistsResponse.reason);
+			let results = emptyResults;
+			try {
+				results = await pending;
+			} finally {
+				if (inFlightSearches.get(searchKey) === pending) {
+					inFlightSearches.delete(searchKey);
+				}
 			}
 
 			searchStoreActions.commit({
-				results: { tracks, albums, artists, playlists },
-				tracks,
-				albums,
-				artists,
-				playlists,
+				results,
+				tracks: results.tracks,
+				albums: results.albums,
+				artists: results.artists,
+				playlists: results.playlists,
 				isLoading: false,
 				error: null,
 				tabLoading: {
@@ -616,27 +586,6 @@ import {
 					playlists: false
 				}
 			});
-
-			// If all searches failed, show error
-			if (tracksResponse.status === 'rejected' && albumsResponse.status === 'rejected' &&
-				artistsResponse.status === 'rejected' && playlistsResponse.status === 'rejected') {
-				searchStoreActions.commit({
-					error: 'All searches failed. Please try again.',
-					isLoading: false,
-					tabLoading: {
-						tracks: false,
-						albums: false,
-						artists: false,
-						playlists: false
-					}
-				});
-				toasts.error('Search failed for all categories', {
-					action: {
-						label: 'Retry',
-						handler: () => handleSearch()
-					}
-				});
-			}
 		} catch (err) {
 			const message = err instanceof Error ? err.message : 'Search failed';
 			searchStoreActions.commit({
@@ -1030,28 +979,6 @@ import {
 		}
 	}
 
-	function handleRegionChange(event: Event) {
-		const target = event.currentTarget as HTMLSelectElement | null;
-		if (!target) return;
-		const value = ensureSupportedRegion(target.value as RegionOption);
-		if (value !== selectedRegion) {
-			regionStore.setRegion(value);
-			// Only trigger search if we have a query and it's not a URL
-			if ($searchStore.query.trim() && !isQueryAUrl) {
-				handleSearch();
-			}
-		}
-		// Close the selector after selection
-		isRegionSelectorOpen = false;
-	}
-
-	function handleRegionClick(event: MouseEvent) {
-		const target = event.currentTarget as HTMLSelectElement | null;
-		if (!target) return;
-		// Toggle the open state when clicking
-		isRegionSelectorOpen = !isRegionSelectorOpen;
-	}
-
 	function displayTrackTotal(total?: number | null): number {
 		if (!Number.isFinite(total)) return 0;
 		return total && total > 0 ? total : (total ?? 0);
@@ -1073,16 +1000,8 @@ import {
 		return track as Track;
 	}
 
-	// Subscribe to search store changes
-	const unsubscribeSearch = searchStore.subscribe(() => {
-		// Handle search store changes if needed
-	});
-
 	// Cleanup subscriptions on component destroy
-	onDestroy(() => {
-		unsubscribeSearch();
-		unsubscribeRegion();
-	});
+	onDestroy(unsubscribeRegion);
 </script>
 
 <div class="w-full">
@@ -1095,7 +1014,13 @@ import {
 				<div class="flex min-w-0 flex-1 items-center gap-2">
 					<input
 						type="text"
-						bind:value={$searchStore.query}
+						value={$searchStore.query}
+						oninput={(event) => {
+							const target = event.currentTarget as HTMLInputElement | null;
+							if (target) {
+								searchStoreActions.setQuery(target.value);
+							}
+						}}
 						onkeypress={handleKeyPress}
 						placeholder={isQueryATidalUrl
 							? 'Tidal URL detected - press Enter to import'
@@ -1106,50 +1031,6 @@ import {
 									: 'Search for tracks, albums, artists... or paste a URL'}
 						class="w-full min-w-0 flex-1 border-none bg-transparent p-0 pl-1 text-white ring-0 placeholder:text-gray-400 focus:outline-none"
 					/>
-				</div>
-				<div class="flex w-auto flex-row items-center gap-2">
-					{#if false}
-						<!-- hide the region selector that doesn't even work lol -->
-						<div class="relative w-auto">
-							<label class="sr-only" for="region-select">Region</label>
-							<Earth
-								size={18}
-								color="#ffffff"
-								class="text0white pointer-events-none absolute top-1/2 left-3 -translate-y-1/2"
-								style="color: #ffffff; z-index: 99;"
-							/>
-							<select
-								id="region-select"
-								class="region-selector w-[52px] cursor-pointer appearance-none rounded-md border py-2 pr-9 pl-9 text-sm font-medium text-white ring-0 transition-colors focus:outline-none sm:w-auto"
-								value={selectedRegion}
-								onchange={handleRegionChange}
-								onmousedown={handleRegionClick}
-								onblur={() => (isRegionSelectorOpen = false)}
-								title="Change search region"
-							>
-								<option value="auto">Auto</option>
-								<option
-									value="us"
-									disabled={!regionAvailability.us}
-									class:opacity-50={!regionAvailability.us}
-								>
-									US
-								</option>
-								<option
-									value="eu"
-									disabled={!regionAvailability.eu}
-									class:opacity-50={!regionAvailability.eu}
-								>
-									EU
-								</option>
-							</select>
-							<span
-								class={`region-chevron pointer-events-none absolute top-1/2 right-3 text-gray-400 ${isRegionSelectorOpen ? 'rotate-180' : ''}`}
-							>
-								<ChevronDown size={16} />
-							</span>
-			</div>
-		{/if}
 				</div>
 			</div>
 		</div>
@@ -1202,51 +1083,47 @@ import {
 	{/if}
 
 	<!-- Loading State -->
-	{#if $searchStore.activeTab === 'tracks'}
-			<div class="space-y-2">
-				<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
-				<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
-				{#each trackSkeletons as item, i (i)}
-					<div class="flex w-full items-center gap-3 rounded-lg bg-gray-800/70 p-3">
-						<div class="h-12 w-12 flex-shrink-0 animate-pulse rounded bg-gray-700/80"></div>
-						<div class="flex-1 space-y-2">
-							<div class="h-4 w-2/3 animate-pulse rounded bg-gray-700/80"></div>
-							<div class="h-3 w-1/3 animate-pulse rounded bg-gray-700/60"></div>
-							<div class="h-3 w-1/4 animate-pulse rounded bg-gray-700/40"></div>
+	{#if $searchStore.isLoading || $searchStore.tabLoading[$searchStore.activeTab]}
+		{#if $searchStore.activeTab === 'tracks'}
+				<div class="space-y-2">
+					{#each trackSkeletons as _, i (i)}
+						<div class="flex w-full items-center gap-3 rounded-lg bg-gray-800/70 p-3">
+							<div class="h-12 w-12 flex-shrink-0 animate-pulse rounded bg-gray-700/80"></div>
+							<div class="flex-1 space-y-2">
+								<div class="h-4 w-2/3 animate-pulse rounded bg-gray-700/80"></div>
+								<div class="h-3 w-1/3 animate-pulse rounded bg-gray-700/60"></div>
+								<div class="h-3 w-1/4 animate-pulse rounded bg-gray-700/40"></div>
+							</div>
+							<div class="h-6 w-12 animate-pulse rounded-full bg-gray-700/80"></div>
 						</div>
-						<div class="h-6 w-12 animate-pulse rounded-full bg-gray-700/80"></div>
-					</div>
-				{/each}
-			</div>
-		{:else if $searchStore.activeTab === 'albums' || $searchStore.activeTab === 'playlists'}
-			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-				<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
-				<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
-				{#each gridSkeletons as item, i (i)}
-					<div class="space-y-3">
-						<div class="aspect-square w-full animate-pulse rounded-lg bg-gray-800/70"></div>
-						<div class="h-4 w-3/4 animate-pulse rounded bg-gray-700/80"></div>
-						<div class="h-3 w-1/2 animate-pulse rounded bg-gray-700/60"></div>
-					</div>
-				{/each}
-			</div>
-		{:else if $searchStore.activeTab === 'artists'}
-			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-				<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
-				<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
-				{#each gridSkeletons as item, i (i)}
-					<div class="flex flex-col items-center gap-3">
-						<div class="aspect-square w-full animate-pulse rounded-full bg-gray-800/70"></div>
-						<div class="h-4 w-3/4 animate-pulse rounded bg-gray-700/80"></div>
-						<div class="h-3 w-1/2 animate-pulse rounded bg-gray-700/60"></div>
-					</div>
-				{/each}
-			</div>
-		{:else}
-			<div class="flex items-center justify-center py-12">
-				<div class="h-10 w-10 animate-spin rounded-full border-b-2 border-blue-500"></div>
-			</div>
-		{/if}
+					{/each}
+				</div>
+			{:else if $searchStore.activeTab === 'albums' || $searchStore.activeTab === 'playlists'}
+				<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+					{#each gridSkeletons as _, i (i)}
+						<div class="space-y-3">
+							<div class="aspect-square w-full animate-pulse rounded-lg bg-gray-800/70"></div>
+							<div class="h-4 w-3/4 animate-pulse rounded bg-gray-700/80"></div>
+							<div class="h-3 w-1/2 animate-pulse rounded bg-gray-700/60"></div>
+						</div>
+					{/each}
+				</div>
+			{:else if $searchStore.activeTab === 'artists'}
+				<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+					{#each gridSkeletons as _, i (i)}
+						<div class="flex flex-col items-center gap-3">
+							<div class="aspect-square w-full animate-pulse rounded-full bg-gray-800/70"></div>
+							<div class="h-4 w-3/4 animate-pulse rounded bg-gray-700/80"></div>
+							<div class="h-3 w-1/2 animate-pulse rounded bg-gray-700/60"></div>
+						</div>
+					{/each}
+				</div>
+			{:else}
+				<div class="flex items-center justify-center py-12">
+					<div class="h-10 w-10 animate-spin rounded-full border-b-2 border-blue-500"></div>
+				</div>
+			{/if}
+	{/if}
 
 	<!-- Error State -->
 	{#if $searchStore.error}
@@ -1784,45 +1661,6 @@ import {
 			filter 0.2s ease;
 	}
 
-	.region-selector {
-		background: transparent;
-		border-color: rgba(148, 163, 184, 0.2);
-		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
-		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
-		transition:
-			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
-			box-shadow 0.3s ease;
-	}
-
-	.region-selector:hover {
-		border-color: var(--bloom-accent, rgba(148, 163, 184, 0.3));
-		box-shadow:
-			0 6px 20px rgba(2, 6, 23, 0.4),
-			0 2px 8px rgba(15, 23, 42, 0.3),
-			inset 0 1px 0 rgba(255, 255, 255, 0.08);
-	}
-
-	.region-selector:focus {
-		border-color: var(--bloom-accent, #3b82f6);
-		box-shadow:
-			0 6px 20px rgba(2, 6, 23, 0.4),
-			0 2px 8px rgba(15, 23, 42, 0.3),
-			0 0 0 3px color-mix(in srgb, var(--bloom-accent, #3b82f6) 15%, transparent),
-			inset 0 1px 0 rgba(255, 255, 255, 0.08);
-	}
-
-	.region-chevron {
-		transition: transform 200ms ease;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		transform: translateY(-50%);
-	}
-
-	.region-chevron.rotate-180 {
-		transform: translateY(-50%) rotate(180deg);
-	}
-
 	/* Tab buttons dynamic styling */
 	button.border-blue-500 {
 		border-color: rgb(96, 165, 250) !important;
@@ -1830,29 +1668,6 @@ import {
 		transition:
 			border-color 0.2s ease,
 			color 0.2s ease;
-	}
-
-	/* Search button acrylic styling */
-	.search-button {
-		background: rgba(59, 130, 246, 0.85);
-		border: 1px solid rgba(59, 130, 246, 0.4);
-		backdrop-filter: blur(16px) saturate(140%);
-		-webkit-backdrop-filter: blur(16px) saturate(140%);
-		box-shadow:
-			0 4px 12px rgba(59, 130, 246, 0.35),
-			inset 0 1px 0 rgba(255, 255, 255, 0.1);
-		transition:
-			background 0.3s ease,
-			border-color 0.3s ease,
-			box-shadow 0.3s ease,
-			opacity 0.2s ease;
-	}
-
-	.search-button:hover:not(:disabled) {
-		background: rgba(59, 130, 246, 0.95);
-		box-shadow:
-			0 6px 18px rgba(59, 130, 246, 0.45),
-			inset 0 1px 0 rgba(255, 255, 255, 0.15);
 	}
 
 	/* News container acrylic styling */

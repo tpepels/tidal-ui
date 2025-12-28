@@ -52,6 +52,16 @@ Pass any optional configuration (for example `TITLE`, `REDIS_URL`, or the Redis 
     - `REDIS_CACHE_TTL_TRACK_SECONDS` (default 120)
     - `REDIS_CACHE_MAX_BODY_BYTES` (default 200000)
 - Cached responses are stored only for safe GET requests without `Authorization`, `Cookie`, or `Range` headers. Responses larger than `REDIS_CACHE_MAX_BODY_BYTES`, non-text/JSON payloads, 4xx/5xx statuses, and responses with `Cache-Control: no-store|private` are never cached.
+- User preferences persistence migrated from `localStorage` key `tidal-ui.userPreferences` to `tidal-ui:user-preferences` and will auto-migrate on next load.
 - Install dependencies with `npm install` after updating `package.json`.
 
 ## Todo
+- Unify playback ownership by removing `uiStore` playback subscriptions from `AudioPlayer` and relying on `playerStore` only.
+- Use `searchStoreActions.setQuery()` in Search input binding to avoid implicit store `set`.
+- Relax artist schema validation to accept object `artistRoles` payloads without warning spam.
+- Disable service worker registration in dev to reduce console noise.
+- Add request de-duplication for search (per query + tab).
+- Short-circuit proxy cache reads/writes after Redis failure for clarity.
+- Make download log visibility follow player show/hide state.
+- Render "Downloading n tracks" in a horizontal layout.
+- Regroup settings menu to reduce vertical height and improve scanability.

@@ -30,23 +30,77 @@ export interface SearchStateMachine {
 	currentState: SearchState;
 	subscribe(listener: (state: SearchState, previousState: SearchState) => void): () => void;
 	transition(event: SearchEvent): boolean;
+	canSearch(): boolean;
+	isSearching(): boolean;
+	getCurrentQuery(): string | null;
+	getCurrentTab(): SearchTab | null;
+	getResults(): SearchResults | null;
+	getError(): Error | null;
+	cancelCurrentSearch(): void;
 }
 
-export function createSearchStateMachine(): SearchStateMachine {
-	let state: SearchState = { status: 'idle' };
-	const listeners = new Set<(state: SearchState, previousState: SearchState) => void>();
+export class SearchStateMachine {
+	public state: SearchState = { status: 'idle' };
+	private listeners = new Set<(state: SearchState, previousState: SearchState) => void>();
 
-	const setState = (newState: SearchState): void => {
-		const previousState = state;
-		state = newState;
-		listeners.forEach((listener) => listener(newState, previousState));
-	};
+	get currentState() {
+		return { ...this.state };
+	}
 
-	const handleIdleState = (event: SearchEvent): boolean => {
+	subscribe(listener: (state: SearchState, previousState: SearchState) => void): () => void {
+		this.listeners.add(listener);
+		return () => this.listeners.delete(listener);
+	}
+
+	canSearch(): boolean {
+		return this.state.status !== 'searching';
+	}
+
+	isSearching(): boolean {
+		return this.state.status === 'searching';
+	}
+
+	getCurrentQuery(): string | null {
+		if (this.state.status === 'idle') {
+			return null;
+		}
+		return this.state.query;
+	}
+
+	getCurrentTab(): SearchTab | null {
+		if (this.state.status === 'idle') {
+			return null;
+		}
+		return this.state.tab;
+	}
+
+	getResults(): SearchResults | null {
+		return this.state.status === 'results' ? this.state.results : null;
+	}
+
+	getError(): Error | null {
+		return this.state.status === 'error' ? this.state.error : null;
+	}
+
+	cancelCurrentSearch(): void {
+		if (this.state.status !== 'searching') {
+			return;
+		}
+		this.state.abortController.abort();
+		this.setState({ status: 'idle' });
+	}
+
+	private setState(newState: SearchState): void {
+		const previousState = this.state;
+		this.state = newState;
+		this.listeners.forEach((listener) => listener(newState, previousState));
+	}
+
+	private handleIdleState(event: SearchEvent): boolean {
 		switch (event.type) {
 			case 'SEARCH': {
 				const abortController = new AbortController();
-				setState({
+				this.setState({
 					status: 'searching',
 					query: event.query,
 					tab: event.tab,
@@ -55,15 +109,14 @@ export function createSearchStateMachine(): SearchStateMachine {
 				return true;
 			}
 			case 'RESET':
-				// Already idle
 				return true;
 			default:
 				return false;
 		}
-	};
+	}
 
-	const handleSearchingState = (event: SearchEvent): boolean => {
-		const currentState = state as {
+	private handleSearchingState(event: SearchEvent): boolean {
+		const currentState = this.state as {
 			status: 'searching';
 			query: string;
 			tab: SearchTab;
@@ -72,10 +125,9 @@ export function createSearchStateMachine(): SearchStateMachine {
 
 		switch (event.type) {
 			case 'SEARCH': {
-				// Cancel current search and start new one
 				currentState.abortController.abort();
 				const abortController = new AbortController();
-				setState({
+				this.setState({
 					status: 'searching',
 					query: event.query,
 					tab: event.tab,
@@ -84,14 +136,13 @@ export function createSearchStateMachine(): SearchStateMachine {
 				return true;
 			}
 			case 'CHANGE_TAB':
-				// Keep searching but change active tab
-				setState({
+				this.setState({
 					...currentState,
 					tab: event.tab
 				});
 				return true;
 			case 'RESULTS':
-				setState({
+				this.setState({
 					status: 'results',
 					query: currentState.query,
 					results: event.results,
@@ -99,7 +150,7 @@ export function createSearchStateMachine(): SearchStateMachine {
 				});
 				return true;
 			case 'ERROR':
-				setState({
+				this.setState({
 					status: 'error',
 					query: currentState.query,
 					error: event.error,
@@ -109,15 +160,15 @@ export function createSearchStateMachine(): SearchStateMachine {
 				return true;
 			case 'CANCEL':
 				currentState.abortController.abort();
-				setState({ status: 'idle' });
+				this.setState({ status: 'idle' });
 				return true;
 			default:
 				return false;
 		}
-	};
+	}
 
-	const handleResultsState = (event: SearchEvent): boolean => {
-		const currentState = state as {
+	private handleResultsState(event: SearchEvent): boolean {
+		const currentState = this.state as {
 			status: 'results';
 			query: string;
 			results: SearchResults;
@@ -127,7 +178,7 @@ export function createSearchStateMachine(): SearchStateMachine {
 		switch (event.type) {
 			case 'SEARCH': {
 				const abortController = new AbortController();
-				setState({
+				this.setState({
 					status: 'searching',
 					query: event.query,
 					tab: event.tab,
@@ -136,21 +187,21 @@ export function createSearchStateMachine(): SearchStateMachine {
 				return true;
 			}
 			case 'CHANGE_TAB':
-				setState({
+				this.setState({
 					...currentState,
 					tab: event.tab
 				});
 				return true;
 			case 'RESET':
-				setState({ status: 'idle' });
+				this.setState({ status: 'idle' });
 				return true;
 			default:
 				return false;
 		}
-	};
+	}
 
-	const handleErrorState = (event: SearchEvent): boolean => {
-		const currentState = state as {
+	private handleErrorState(event: SearchEvent): boolean {
+		const currentState = this.state as {
 			status: 'error';
 			query: string;
 			error: Error;
@@ -161,7 +212,7 @@ export function createSearchStateMachine(): SearchStateMachine {
 		switch (event.type) {
 			case 'SEARCH': {
 				const abortController = new AbortController();
-				setState({
+				this.setState({
 					status: 'searching',
 					query: event.query,
 					tab: event.tab,
@@ -170,15 +221,15 @@ export function createSearchStateMachine(): SearchStateMachine {
 				return true;
 			}
 			case 'RESET':
-				setState({ status: 'idle' });
+				this.setState({ status: 'idle' });
 				return true;
 			default:
 				return false;
 		}
-	};
+	}
 
-	const transition = (event: SearchEvent): boolean => {
-		const currentState = state;
+	transition(event: SearchEvent): boolean {
+		const currentState = this.state;
 		const eventType = event.type;
 
 		logger.logStateTransition(currentState.status, 'transitioning', eventType, {
@@ -193,48 +244,33 @@ export function createSearchStateMachine(): SearchStateMachine {
 
 		switch (currentState.status) {
 			case 'idle':
-				result = handleIdleState(event);
+				result = this.handleIdleState(event);
 				break;
-
 			case 'searching':
-				result = handleSearchingState(event);
+				result = this.handleSearchingState(event);
 				break;
-
 			case 'results':
-				result = handleResultsState(event);
+				result = this.handleResultsState(event);
 				break;
-
 			case 'error':
-				result = handleErrorState(event);
+				result = this.handleErrorState(event);
 				break;
-
 			default:
-				logger.error('Unknown search state encountered', {
-					component: 'SearchStateMachine',
-					unknownState: currentState,
-					event: eventType
-				});
+				console.warn('[SearchStateMachine] Unknown state:', currentState);
 				result = false;
 		}
 
-		logger.logStateTransition(currentState.status, state.status, eventType, {
+		logger.logStateTransition(currentState.status, this.state.status, eventType, {
 			component: 'SearchStateMachine',
 			success: result,
-			query: state.status !== 'idle' ? state.query : undefined,
-			tab: state.status !== 'idle' ? state.tab : undefined
+			query: this.state.status !== 'idle' ? this.state.query : undefined,
+			tab: this.state.status !== 'idle' ? this.state.tab : undefined
 		});
 
 		return result;
-	};
+	}
+}
 
-	return {
-		get currentState() {
-			return { ...state };
-		},
-		subscribe(listener) {
-			listeners.add(listener);
-			return () => listeners.delete(listener);
-		},
-		transition
-	};
+export function createSearchStateMachine(): SearchStateMachine {
+	return new SearchStateMachine();
 }

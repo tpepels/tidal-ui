@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { PlayableTrack } from '$lib/types';
+import type { PlayableTrack } from '../types';
 import { get } from 'svelte/store';
-import { playerStore } from '$lib/stores/player';
+import { playerStore } from '../stores/player';
 import { createPlaybackTransitions } from './playbackTransitions';
 
 describe('playbackTransitions', () => {

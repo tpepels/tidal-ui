@@ -5,7 +5,7 @@
 	import { onMount } from 'svelte';
 	import { playerStore } from '$lib/stores/player';
 	import { LoaderCircle, Play, Pause, ExternalLink } from 'lucide-svelte';
-	import { formatArtists } from '$lib/utils';
+	import { formatArtists } from '$lib/utils/formatters';
 
 
 	let track = $state<Track | null>(null);

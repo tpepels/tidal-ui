@@ -6,7 +6,7 @@ import { downloadLogStore } from './stores/downloadLog';
 import { downloadUiStore } from './stores/downloadUi';
 import { retryFetch } from './errors';
 import { toasts } from './stores/toasts';
-import { formatArtists } from './utils';
+import { formatArtists } from './utils/formatters';
 import JSZip from 'jszip';
 
 const BASE_DELAY_MS = 1000;

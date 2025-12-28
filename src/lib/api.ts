@@ -1,9 +1,9 @@
 // API service for HIFI API
-import { API_CONFIG, fetchWithCORS, selectApiTargetForRegion } from './config';
-import type { RegionOption } from './stores/region';
+import { API_CONFIG, fetchWithCORS, selectApiTargetForRegion } from '$lib/config';
+import type { RegionOption } from '$lib/stores/region';
 import { deriveTrackQuality } from './utils/audioQuality';
 import { parseTidalUrl } from './utils/urlParser';
-import { formatArtistsForMetadata } from './utils';
+import { formatArtistsForMetadata } from './utils/formatters';
 import { z } from 'zod';
 import { logger } from './core/logger';
 import { performanceMonitor } from './core/performance';
@@ -111,6 +111,9 @@ class LosslessAPI {
 		data: unknown,
 		key: 'tracks' | 'albums' | 'artists' | 'playlists'
 	): SearchResponse<T> {
+		if (data === null || typeof data === 'undefined') {
+			throw new Error('Malformed search response');
+		}
 		const section = this.findSearchSection<T>(data, key, new Set());
 		return this.buildSearchResponse<T>(section);
 	}
@@ -482,6 +485,9 @@ class LosslessAPI {
 	): Promise<TrackLookup> {
 		const container = (payload?.data ?? payload) as Record<string, unknown>;
 		const trackInfo = this.buildTrackInfoFromV2(container, trackId);
+		if (!trackInfo.manifest) {
+			throw new Error('Malformed track response');
+		}
 		let track = this.extractTrackFromPayload(container) ?? null;
 		if (!track) {
 			track = await this.fetchTrackMetadata(trackId, apiVersion);
@@ -2103,7 +2109,6 @@ class LosslessAPI {
 
 		const coverWritten = false;
 		const coverExtension = 'jpg';
-		let coverDownloadSuccess = false;
 		const finalCoverName = `cover-${uniqueSuffix}.${coverExtension}`;
 
 		try {
@@ -2226,8 +2231,6 @@ class LosslessAPI {
 							document.body.removeChild(coverLink);
 							URL.revokeObjectURL(coverObjectUrl);
 
-							// eslint-disable-next-line @typescript-eslint/no-unused-vars
-							coverDownloadSuccess = true;
 							console.log(
 								`[Cover Download] Successfully downloaded (${size}x${size}, format: ${imageFormat.extension}, strategy: ${strategy.name})`
 							);
@@ -2609,7 +2612,6 @@ class LosslessAPI {
 		options?: DownloadTrackOptions
 	): Promise<void> {
 		try {
-			let coverDownloadSuccess = false;
 			const { blob } = await this.fetchTrackBlob(trackId, quality, filename, options);
 			const url = URL.createObjectURL(blob);
 
@@ -2736,8 +2738,6 @@ class LosslessAPI {
 									document.body.removeChild(coverLink);
 									URL.revokeObjectURL(coverObjectUrl);
 
-									// eslint-disable-next-line @typescript-eslint/no-unused-vars
-									coverDownloadSuccess = true;
 									console.log(
 										`[Cover Download] Successfully downloaded (${size}x${size}, format: ${imageFormat.extension}, strategy: ${strategy.name})`
 									);

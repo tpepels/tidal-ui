@@ -2,11 +2,29 @@ import Redis, { type RedisOptions } from 'ioredis';
 import { env } from '$env/dynamic/private';
 
 let client: Redis | null | undefined;
+let redisUnavailable = false;
 let hasLoggedError = false;
 
 function isRedisDisabled(): boolean {
 	const flag = (env.REDIS_DISABLED || '').toLowerCase();
 	return flag === 'true' || flag === '1';
+}
+
+function markRedisUnavailable(error: unknown): void {
+	logRedisError(error);
+	redisUnavailable = true;
+	if (client) {
+		try {
+			client.disconnect();
+		} catch {
+			// ignore disconnect errors
+		}
+		client = null;
+	}
+}
+
+export function disableRedisClient(error?: unknown): void {
+	markRedisUnavailable(error);
 }
 
 function logRedisError(error: unknown): void {
@@ -50,6 +68,11 @@ export function getRedisClient(): Redis | null {
 		return client;
 	}
 
+	if (redisUnavailable) {
+		client = null;
+		return client;
+	}
+
 	const options = buildOptions();
 	if (!options) {
 		client = null;
@@ -58,18 +81,34 @@ export function getRedisClient(): Redis | null {
 
 	try {
 		client =
-			typeof options === 'string' ? new Redis(options, { lazyConnect: true }) : new Redis(options);
-		client.on('error', logRedisError);
+			typeof options === 'string'
+				? new Redis(options, {
+						lazyConnect: true,
+						maxRetriesPerRequest: 0,
+						enableOfflineQueue: false,
+						connectTimeout: 1000
+					})
+				: new Redis({
+						...options,
+						lazyConnect: true,
+						maxRetriesPerRequest: 0,
+						enableOfflineQueue: false,
+						connectTimeout: 1000
+					});
+		client.on('error', markRedisUnavailable);
 		return client;
 	} catch (error) {
-		logRedisError(error);
-		client = null;
+		markRedisUnavailable(error);
 		return client;
 	}
 }
 
 export function isRedisEnabled(): boolean {
 	if (isRedisDisabled()) {
+		return false;
+	}
+
+	if (redisUnavailable) {
 		return false;
 	}
 

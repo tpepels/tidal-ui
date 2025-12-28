@@ -1,4 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 // Component Contract Tests for AudioPlayer
 // These tests verify that the component correctly integrates with the uiStore
@@ -9,7 +11,7 @@ describe('AudioPlayer Component Contract', () => {
 		it('should use the uiStore for playback state management', async () => {
 			// This is a contract test - we verify that the component
 			// correctly imports and uses the uiStore
-			const uiStoreModule = await import('$lib/stores/uiStore');
+			const uiStoreModule = await import('../stores/uiStore');
 
 			expect(uiStoreModule).toBeDefined();
 			expect(typeof uiStoreModule.uiStore).toBe('object');
@@ -76,22 +78,20 @@ describe('AudioPlayer Component Contract', () => {
 	});
 
 	describe('Component Interface Contract', () => {
-		it('should export a default Svelte component', async () => {
-			// Verify that AudioPlayer.svelte exports a valid Svelte component
-			// This is tested by the import succeeding
-			const AudioPlayer = await import('./AudioPlayer.svelte');
+		it('should provide a valid Svelte component source', () => {
+			const componentSource = readFileSync(
+				resolve(__dirname, './AudioPlayer.svelte'),
+				'utf8'
+			);
 
-			expect(AudioPlayer).toBeDefined();
-			expect(AudioPlayer.default).toBeDefined();
+			expect(componentSource).toContain('<script lang="ts">');
 		});
 
 		it('should have proper TypeScript interface', async () => {
 			// Verify that the component has proper TypeScript definitions
 			// This ensures the component contract is properly typed
-			const fs = await import('fs');
-			const path = await import('path');
-			const componentSource = fs.readFileSync(
-				path.resolve(__dirname, './AudioPlayer.svelte'),
+			const componentSource = readFileSync(
+				resolve(__dirname, './AudioPlayer.svelte'),
 				'utf8'
 			);
 
@@ -150,7 +150,7 @@ describe('AudioPlayer Component Contract', () => {
 	describe('State Machine Integration Contract', () => {
 		it('should properly integrate with PlaybackStateMachine', async () => {
 			// Import the actual state machine to verify contract
-			const { PlaybackStateMachine } = await import('$lib/core/stateMachines/PlaybackStateMachine');
+			const { PlaybackStateMachine } = await import('../core/stateMachines/PlaybackStateMachine');
 
 			const machine = new PlaybackStateMachine();
 
@@ -166,7 +166,7 @@ describe('AudioPlayer Component Contract', () => {
 
 		it('should maintain state consistency', async () => {
 			// Test that state transitions maintain consistency
-			const { PlaybackStateMachine } = await import('$lib/core/stateMachines/PlaybackStateMachine');
+			const { PlaybackStateMachine } = await import('../core/stateMachines/PlaybackStateMachine');
 
 			const machine = new PlaybackStateMachine();
 

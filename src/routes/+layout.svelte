@@ -1,8 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	import { fade } from 'svelte/transition';
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import AudioPlayer from '$lib/components/AudioPlayer.svelte';
@@ -26,9 +24,10 @@
 	import { effectivePerformanceLevel } from '$lib/stores/performance';
 	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
 	import { sanitizeForFilename, getExtensionForQuality, buildTrackLinksCsv } from '$lib/downloads';
-	import { formatArtists } from '$lib/utils';
+	import { formatArtists } from '$lib/utils/formatters';
 	import { navigating, page } from '$app/stores';
 	import { goto } from '$app/navigation';
+	import { dev } from '$app/environment';
 	import JSZip from 'jszip';
 	import {
 		Archive,
@@ -39,15 +38,14 @@
 		Check,
 		Settings
 	} from 'lucide-svelte';
-	import type { Navigation } from '@sveltejs/kit';
 	import { type Track, type AudioQuality, type PlayableTrack, isSonglinkTrack } from '$lib/types';
 
 	let { children, data } = $props();
 	const pageTitle = $derived(data?.title ?? 'BiniLossless');
 	let headerHeight = $state(0);
 	let playerHeight = $state(0);
+	let isPlayerVisible = $state(false);
 	let viewportHeight = $state(0);
-	let navigationState = $state<Navigation | null>(null);
 	let showSettingsMenu = $state(false);
 
 	let isZipDownloading = $state(false);
@@ -82,11 +80,6 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 
 	const mainMarginBottom = $derived(() => Math.max(playerHeight, 128));
 	const settingsMenuOffset = $derived(() => Math.max(0, headerHeight + 12));
-	const FRIENDLY_ROUTE_MESSAGES: Record<string, string> = {
-		album: 'Opening album',
-		artist: 'Visiting artist',
-		playlist: 'Loading playlist'
-	};
 
 	const QUALITY_OPTIONS: Array<{
 		value: AudioQuality;
@@ -173,19 +166,6 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 		userPreferencesStore.setPerformanceMode(mode);
 	}
 
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	const navigationMessage = $derived(() => {
-		if (!navigationState) return '';
-		const pathname = navigationState.to?.url?.pathname ?? '';
-		const [primarySegment] = pathname.split('/').filter(Boolean);
-		if (!primarySegment) return 'Loading';
-		const key = primarySegment.toLowerCase();
-		if (key in FRIENDLY_ROUTE_MESSAGES) {
-			return FRIENDLY_ROUTE_MESSAGES[key]!;
-		}
-		const normalized = key.replace(/[-_]+/g, ' ');
-		return `Loading ${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`;
-	});
 
 	// Update page title with currently playing song
 	$effect(() => {
@@ -449,11 +429,8 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 			}
 		};
 		document.addEventListener('click', handleDocumentClick);
-		const unsubscribe = navigating.subscribe((value) => {
-			navigationState = value;
-		});
 
-		if ('serviceWorker' in navigator) {
+		if ('serviceWorker' in navigator && !dev) {
 			const registerServiceWorker = async () => {
 				try {
 					const registration = await navigator.serviceWorker.register('/service-worker.js');
@@ -494,7 +471,6 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 		return () => {
 			window.removeEventListener('resize', updateViewportHeight);
 			document.removeEventListener('click', handleDocumentClick);
-			unsubscribe();
 			unsubPerf();
 			if (controllerChangeHandler) {
 				navigator.serviceWorker.removeEventListener('controllerchange', controllerChangeHandler);
@@ -785,7 +761,9 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 
 	<LyricsPopup />
 	<ToastContainer />
-	<DownloadLog />
+	{#if isPlayerVisible || $downloadLogStore.isVisible}
+		<DownloadLog />
+	{/if}
 {/if}
 			</div>
 
@@ -800,7 +778,12 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 			</main>
 
 			{#if $playerStore.currentTrack}
-				<AudioPlayer onHeightChange={handlePlayerHeight} />
+				<AudioPlayer
+					onHeightChange={handlePlayerHeight}
+					onVisibilityChange={(visible) => {
+						isPlayerVisible = visible;
+					}}
+				/>
 			{/if}
 		</div>
 	</div>
@@ -810,25 +793,6 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 	<DownloadProgress />
 {/if}
 
-<!--
-{#if navigationState}
-	<div
-		transition:fade={{ duration: 200 }}
-		class="navigation-overlay"
-	>
-		<div class="navigation-overlay__progress">
-			<div class="navigation-progress"></div>
-		</div>
-		<div class="navigation-overlay__content">
-			<span class="navigation-overlay__label">{navigationMessage()}</span>
-		</div>
-	</div>
-
-	<LyricsPopup />
-	<ToastContainer />
-	<DownloadLog />
-{/if}
--->
 
 <style>
 	:global(:root) {
@@ -1135,6 +1099,16 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 	.settings-section--bordered {
 		padding-top: 0.65rem;
 		border-top: 1px solid rgba(148, 163, 184, 0.12);
+	}
+
+	@media (min-width: 960px) {
+		.settings-grid {
+			grid-template-columns: repeat(2, minmax(260px, 1fr));
+		}
+
+		.settings-section--bordered {
+			grid-column: span 2;
+		}
 	}
 
 	.actions-column {

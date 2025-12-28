@@ -116,6 +116,10 @@ export async function retryFetch(
 				});
 				clearTimeout(timeoutId);
 
+				if (!response) {
+					throw TidalError.networkError(new Error('Empty response'));
+				}
+
 				// Handle rate limiting
 				if (response?.status === 429) {
 					throw TidalError.fromApiResponse({ status: 429, statusText: 'Too Many Requests' });

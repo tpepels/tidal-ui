@@ -3,6 +3,14 @@ import { expect, afterEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/svelte';
 import * as matchers from '@testing-library/jest-dom/matchers';
 
+const localStorageArgIndex = process.argv.indexOf('--localstorage-file');
+if (localStorageArgIndex !== -1) {
+	const nextArg = process.argv[localStorageArgIndex + 1];
+	if (!nextArg || nextArg.startsWith('-')) {
+		process.argv.splice(localStorageArgIndex, 1);
+	}
+}
+
 // Extend expect with jest-dom matchers
 expect.extend(matchers);
 
@@ -71,19 +79,6 @@ if (!redisAvailable) {
 }
 
 // Mock SvelteKit $lib and $app imports
-vi.mock('$lib/utils/audioQuality', () => ({
-	deriveTrackQuality: vi.fn(() => 'LOSSLESS')
-}));
-
-vi.mock('$lib/utils/urlParser', () => ({
-	parseTidalUrl: vi.fn(() => ({ type: 'track', id: '123' }))
-}));
-
-vi.mock('$lib/utils', () => ({
-	formatArtistsForMetadata: vi.fn(() => 'Artist'),
-	formatArtists: vi.fn(() => 'Artist')
-}));
-
 vi.mock('$lib/stores/region', () => ({
 	type: 'RegionOption',
 	defaultRegion: { code: 'US', name: 'United States' }
@@ -96,7 +91,7 @@ vi.mock('$lib/config', () => ({
 		useProxy: false,
 		proxyUrl: ''
 	},
-	fetchWithCORS: vi.fn(),
+	fetchWithCORS: vi.fn((url: string, options?: RequestInit) => fetch(url, options)),
 	selectApiTargetForRegion: vi.fn(() => ({
 		name: 'local',
 		baseUrl: 'http://localhost:3000',
@@ -110,10 +105,30 @@ vi.mock('$lib/version', () => ({
 
 vi.mock('$app/environment', () => ({
 	dev: false,
-	browser: false,
+	browser: typeof window !== 'undefined',
 	building: false,
 	version: '3.3'
 }));
+
+if (typeof globalThis.localStorage?.getItem !== 'function') {
+	const storage = new Map<string, string>();
+	const localStorageMock = {
+		getItem: (key: string) => storage.get(key) ?? null,
+		setItem: (key: string, value: string) => {
+			storage.set(key, value);
+		},
+		removeItem: (key: string) => {
+			storage.delete(key);
+		},
+		clear: () => {
+			storage.clear();
+		}
+	};
+	Object.defineProperty(globalThis, 'localStorage', {
+		value: localStorageMock,
+		writable: true
+	});
+}
 
 // Cleanup after each test
 afterEach(() => {

@@ -3,7 +3,7 @@
 	import { onDestroy } from 'svelte';
 	import { currentTime, playerStore } from '$lib/stores/player';
 	import { lyricsStore } from '$lib/stores/lyrics';
-	import { formatArtists } from '$lib/utils';
+	import { formatArtists } from '$lib/utils/formatters';
 	import { isSonglinkTrack } from '$lib/types';
 	import { Maximize2, Minimize2, RefreshCw, X } from 'lucide-svelte';
 

@@ -1,7 +1,7 @@
 import type { TrackLookup } from '../types';
 // @ts-expect-error - ffmetadata has no TypeScript definitions
 import ffmetadata from 'ffmetadata';
-import { formatArtistsForMetadata } from '../utils';
+import { formatArtistsForMetadata } from '../utils/formatters';
 
 export interface ServerMetadataOptions {
 	downloadCoverSeperately?: boolean;

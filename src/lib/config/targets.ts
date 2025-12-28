@@ -37,13 +37,6 @@ const V2_API_TARGETS = [
 		category: 'auto-only'
 	},
 	{
-		name: 'binimum-2',
-		baseUrl: 'https://tidal-api-2.binimum.org',
-		weight: 15,
-		requiresProxy: true,
-		category: 'auto-only'
-	},
-	{
 		name: 'hund',
 		baseUrl: 'https://hund.qqdl.site',
 		weight: 15,

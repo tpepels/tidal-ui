@@ -1,7 +1,17 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { parseTidalUrl, isTidalUrl } from './urlParser';
 
 describe('URL Parser', () => {
+	let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+	beforeEach(() => {
+		consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+	});
+
+	afterEach(() => {
+		consoleErrorSpy.mockRestore();
+	});
+
 	describe('isTidalUrl', () => {
 		it('recognizes valid Tidal URLs', () => {
 			expect(isTidalUrl('https://tidal.com/album/123')).toBe(true);

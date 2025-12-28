@@ -3,6 +3,14 @@ import { losslessAPI } from './api';
 
 // Mock fetch globally for chaos testing
 const originalFetch = global.fetch;
+const minimalTrackInfo = {
+	trackId: 123,
+	audioQuality: 'LOSSLESS',
+	audioMode: 'STEREO',
+	manifest: 'dGVzdA==',
+	manifestMimeType: 'application/vnd.tidal.bts',
+	assetPresentation: 'FULL'
+};
 
 describe('Chaos Testing - Network Failures and API Unavailability', () => {
 	let fetchMock: any;
@@ -234,13 +242,17 @@ describe('Chaos Testing - Network Failures and API Unavailability', () => {
 			const largeResponse = {
 				ok: true,
 				status: 200,
-				json: vi.fn().mockResolvedValue({
-					id: 123,
-					title: 'Large Response Track',
-					artists: Array(1000).fill({ name: 'Test Artist' }), // Very large array
-					album: { title: 'Test Album' },
-					duration: 180
-				})
+				json: vi.fn().mockResolvedValue([
+					{
+						id: 123,
+						title: 'Large Response Track',
+						artist: { name: 'Test Artist' },
+						artists: Array(1000).fill({ name: 'Test Artist' }), // Very large array
+						album: { title: 'Test Album' },
+						duration: 180
+					},
+					minimalTrackInfo
+				])
 			};
 
 			fetchMock.mockResolvedValue(largeResponse);
@@ -254,13 +266,17 @@ describe('Chaos Testing - Network Failures and API Unavailability', () => {
 			fetchMock.mockResolvedValue({
 				ok: true,
 				status: 200,
-				json: vi.fn().mockResolvedValue({
-					id: 123,
-					title: 'Concurrent Track',
-					artists: [{ name: 'Test Artist' }],
-					album: { title: 'Test Album' },
-					duration: 180
-				})
+				json: vi.fn().mockResolvedValue([
+					{
+						id: 123,
+						title: 'Concurrent Track',
+						artist: { name: 'Test Artist' },
+						artists: [{ name: 'Test Artist' }],
+						album: { title: 'Test Album' },
+						duration: 180
+					},
+					minimalTrackInfo
+				])
 			});
 
 			// Make many concurrent requests
@@ -366,8 +382,13 @@ describe('Chaos Testing - Network Failures and API Unavailability', () => {
 			// Track requests fail
 			await expect(losslessAPI.getTrack(123)).rejects.toThrow('Track endpoint down');
 
-			// Search requests succeed
-			await expect(losslessAPI.searchTracks('test')).rejects.toThrow(); // Schema validation
+			// Search requests succeed with empty results
+			await expect(losslessAPI.searchTracks('test')).resolves.toMatchObject({
+				items: [],
+				limit: 0,
+				offset: 0,
+				totalNumberOfItems: 0
+			});
 		});
 	});
 });

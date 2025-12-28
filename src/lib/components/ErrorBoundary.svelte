@@ -78,7 +78,6 @@
 			});
 		}
 
-		// TODO: Send telemetry data in production
 	}
 
 	function resetError() {

@@ -11,14 +11,14 @@
 	console.log('[AudioPlayer] Component loading');
 	import { onMount, onDestroy } from 'svelte';
 	import { get } from 'svelte/store';
-	import { playerStoreAdapter as playerStore } from '$lib/stores/playerStoreAdapter';
+	import { playerStore } from '$lib/stores/player';
 	import { uiStore } from '$lib/stores/uiStore';
 	import { lyricsStore } from '$lib/stores/lyrics';
 	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
 	import { downloadUiStore, ffmpegBanner, activeTrackDownloads, erroredTrackDownloads } from '$lib/stores/downloadUi';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { buildTrackFilename } from '$lib/downloads';
-	import { formatArtists } from '$lib/utils';
+	import { formatArtists } from '$lib/utils/formatters';
 	import type { Track, AudioQuality, SonglinkTrack, PlayableTrack } from '$lib/types';
 	import { isSonglinkTrack } from '$lib/types';
 	import { convertToTidal, extractTidalInfo } from '$lib/utils/songlink';
@@ -63,8 +63,9 @@ let previousVolume = 0.8;
 	let isDownloadingCurrentTrack = $state(false);
 
 
-	const { onHeightChange = () => {}, headless = false } = $props<{
+	const { onHeightChange = () => {}, onVisibilityChange = () => {}, headless = false } = $props<{
 		onHeightChange?: (height: number) => void;
+		onVisibilityChange?: (visible: boolean) => void;
 		headless?: boolean;
 	}>();
 
@@ -92,7 +93,7 @@ let pendingPlayAfterSource = false;
 				// Stop trying to play if we keep failing
 				if (reason === 'state machine play request') {
 					console.warn('[AudioPlayer] Playback failed, pausing to prevent loops');
-					uiStore.pausePlayback();
+					playerStore.pause();
 				}
 				if (typeof DOMException !== 'undefined' && error instanceof DOMException) {
 					if (error.name === 'AbortError') {
@@ -239,6 +240,8 @@ let pendingPlayAfterSource = false;
 	function dismissPlayer() {
 		playerDismissed = true;
 		showQueuePanel = false;
+		onVisibilityChange(false);
+		onHeightChange(0);
 
 		// Optional: if you want dismiss to stop playback, uncomment:
 		// playerStore.pause();
@@ -247,12 +250,22 @@ let pendingPlayAfterSource = false;
 
 	function restorePlayer() {
 		playerDismissed = false;
+		onVisibilityChange(true);
 	}
 
 	// Auto-unhide when a track appears again
 	$effect(() => {
 		if (hasTrack) {
 			playerDismissed = false;
+		}
+	});
+
+	$effect(() => {
+		if (!headless) {
+			onVisibilityChange(shouldShowPlayer);
+			if (!shouldShowPlayer) {
+				onHeightChange(0);
+			}
 		}
 	});
 	// -----------------------------
@@ -351,7 +364,7 @@ let pendingPlayAfterSource = false;
 						isSonglinkTrack(state.currentTrack) &&
 						state.currentTrack.id === current.id
 					) {
-						playerStore.loadTrack(tidalTrack);
+						playerStore.setTrack(tidalTrack);
 						// Conversion completed
 					}
 				})
@@ -391,33 +404,7 @@ let pendingPlayAfterSource = false;
 		}
 	});
 
-	// Integrate with state machine for deterministic playback control
-	let playbackAttemptCount = 0;
-
-	// Subscribe to state machine changes and handle playback
-	const unsubscribePlayback = uiStore.subscribeToPlayback((state, previousState) => {
-		if (state.status === 'playing' && previousState.status !== 'playing' && audioElement) {
-			// State machine transitioned to playing - start playback
-			playbackAttemptCount++;
-			console.info(`[AudioPlayer] State machine requested play (attempt ${playbackAttemptCount})`);
-			requestAudioPlayback('state machine play request');
-
-			// Reset counter after too many attempts
-			if (playbackAttemptCount > 5) {
-				console.warn('[AudioPlayer] Too many playback attempts, resetting counter');
-				playbackAttemptCount = 0;
-			}
-		} else if (state.status === 'paused' && audioElement) {
-			// State machine transitioned to paused - pause audio
-			audioElement.pause();
-			playbackAttemptCount = 0; // Reset on pause
-		}
-	});
-
-	// Cleanup subscription on destroy
-	onDestroy(() => {
-		unsubscribePlayback();
-	});
+	// Playback is controlled directly via playerStore.
 
 	$effect(() => {
 		const track = $playerStore.currentTrack;
@@ -853,6 +840,8 @@ let pendingPlayAfterSource = false;
 	function asTrack(track: PlayableTrack): Track {
 		return track as Track;
 	}
+
+	void uiStore;
 </script>
 
 <audio

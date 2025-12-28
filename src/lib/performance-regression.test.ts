@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { losslessAPI } from './api';
 
 // Performance regression detection utilities
@@ -39,10 +39,16 @@ class PerformanceMonitor {
 
 describe('Performance Regression Detection', () => {
 	let monitor: PerformanceMonitor;
+	let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
 	beforeEach(() => {
 		monitor = new PerformanceMonitor();
+		consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 		vi.clearAllMocks();
+	});
+
+	afterEach(() => {
+		consoleWarnSpy.mockRestore();
 	});
 
 	describe('API Operation Performance Baselines', () => {
@@ -294,8 +300,8 @@ describe('Performance Regression Detection', () => {
 	});
 
 	describe('State Machine Performance', () => {
-		it('should maintain fast state transitions', () => {
-			const { PlaybackStateMachine } = require('./core/stateMachines/PlaybackStateMachine');
+		it('should maintain fast state transitions', async () => {
+			const { PlaybackStateMachine } = await import('./core/stateMachines/PlaybackStateMachine');
 			const machine = new PlaybackStateMachine();
 
 			const mockTrack = {
@@ -322,8 +328,8 @@ describe('Performance Regression Detection', () => {
 			expect(duration).toBeLessThan(500); // Should be very fast
 		});
 
-		it('should handle rapid event sequences efficiently', () => {
-			const { SearchStateMachine } = require('./core/stateMachines/SearchStateMachine');
+		it('should handle rapid event sequences efficiently', async () => {
+			const { SearchStateMachine } = await import('./core/stateMachines/SearchStateMachine');
 			const machine = new SearchStateMachine();
 
 			monitor.start('search-state-transitions');

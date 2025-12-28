@@ -123,7 +123,10 @@ const updateSearchStore = (updater: (state: SearchStoreState) => SearchStoreStat
 };
 
 export const searchStore = {
-	subscribe: searchStoreBase.subscribe
+	subscribe: searchStoreBase.subscribe,
+	set(nextState: SearchStoreState) {
+		updateSearchStore(() => nextState);
+	}
 };
 
 const resetLoading = () => ({

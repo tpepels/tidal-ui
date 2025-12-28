@@ -288,13 +288,6 @@
 							{losslessAPI.formatDuration(totalDuration)} total
 						</div>
 					{/if}
-					<!--
-					{#if album.audioQuality}
-						<div class="rounded bg-blue-900/30 px-2 py-1 text-xs font-semibold text-blue-400">
-							{album.audioQuality}
-						</div>
-					{/if}
-					-->
 					{#if album.mediaMetadata?.tags}
 						{#each album.mediaMetadata.tags as tag (tag)}
 							<div class="rounded bg-blue-900/30 px-2 py-1 text-xs font-semibold text-blue-400">

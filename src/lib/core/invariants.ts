@@ -32,7 +32,6 @@ export function assertInvariant(
 export function validateInvariant(condition: boolean, message: string, context?: unknown): boolean {
 	if (!condition) {
 		console.warn(`Invariant warning: ${message}`, context);
-		// TODO: Send to telemetry service
 		return false;
 	}
 	return true;

@@ -51,11 +51,6 @@ const assertPlayable = (state: PlaybackState) => {
 		{ isPlaying: state.isPlaying, currentTrack: state.currentTrack }
 	);
 	assertInvariant(
-		!(state.isPlaying && state.isLoading),
-		'Playback cannot be both playing and loading',
-		{ isPlaying: state.isPlaying, isLoading: state.isLoading }
-	);
-	assertInvariant(
 		!state.isLoading || state.currentTrack !== null,
 		'Playback cannot be loading without a current track',
 		{ isLoading: state.isLoading, currentTrack: state.currentTrack }

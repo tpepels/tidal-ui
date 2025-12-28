@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import type Redis from 'ioredis';
 import type { RequestHandler } from './$types';
 
-import { getRedisClient } from '$lib/server/redis';
+import { disableRedisClient, getRedisClient } from '$lib/server/redis';
 
 const allowOrigin = (origin?: string | null): boolean => {
 	void origin;
@@ -354,6 +354,7 @@ async function readCachedResponse(redis: Redis, key: string): Promise<CachedProx
 		return isCachedProxyEntry(parsed) ? (parsed as CachedProxyEntry) : null;
 	} catch (error) {
 		console.error('Failed to read proxy cache entry:', error);
+		disableRedisClient(error);
 		return null;
 	}
 }
@@ -369,6 +370,7 @@ async function writeCachedResponse(
 		await redis.set(key, JSON.stringify(entry), 'EX', ttlSeconds);
 	} catch (error) {
 		console.error('Failed to store proxy cache entry:', error);
+		disableRedisClient(error);
 	}
 }
 
@@ -548,9 +550,10 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 
 	const shouldUseCache = !hasRangeRequest && !hasAuthorizationHeader && !hasCookieHeader;
 	const redis = shouldUseCache ? getRedisClient() : null;
-	const cacheKey = redis ? createCacheKey(parsedTarget, upstreamHeaders) : null;
+	const redisReady = Boolean(redis && redis.status === 'ready');
+	const cacheKey = redisReady ? createCacheKey(parsedTarget, upstreamHeaders) : null;
 
-	if (redis && cacheKey) {
+	if (redisReady && cacheKey && redis) {
 		const cached = await readCachedResponse(redis, cacheKey);
 		if (cached) {
 			const headers = applyProxyHeaders(cached.headers, origin);
@@ -563,18 +566,31 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 		}
 	}
 
-	try {
-		console.log('Proxy fetching upstream URL:', parsedTarget.toString());
-		const upstream = await fetchWithRetry(
-			parsedTarget,
-			{
-				headers: upstreamHeaders,
-				redirect: 'follow'
-			},
-			fetch
-		);
-		console.log('Proxy upstream response status:', upstream.status, upstream.statusText);
-		console.log('Proxy upstream content-type:', upstream.headers.get('content-type'));
+		try {
+			console.log('Proxy fetching upstream URL:', parsedTarget.toString());
+			let upstream = await fetchWithRetry(
+				parsedTarget,
+				{
+					headers: upstreamHeaders,
+					redirect: 'follow'
+				},
+				fetch
+			);
+			if (upstream.status === 416 && hasRangeRequest) {
+				const retryHeaders = new Headers(upstreamHeaders);
+				retryHeaders.delete('range');
+				console.warn('Proxy received 416, retrying without Range header');
+				upstream = await fetchWithRetry(
+					parsedTarget,
+					{
+						headers: retryHeaders,
+						redirect: 'follow'
+					},
+					fetch
+				);
+			}
+			console.log('Proxy upstream response status:', upstream.status, upstream.statusText);
+			console.log('Proxy upstream content-type:', upstream.headers.get('content-type'));
 		const upstreamHeaderEntries = Array.from(upstream.headers.entries());
 		const sanitizedHeaderEntries = sanitizeHeaderEntries(upstreamHeaderEntries);
 		const headers = applyProxyHeaders(sanitizedHeaderEntries, origin);
@@ -582,7 +598,7 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 		console.log('Proxy response body size:', bodyArrayBuffer.byteLength);
 		const bodyBytes = new Uint8Array(bodyArrayBuffer);
 
-		if (redis && cacheKey) {
+		if (redisReady && cacheKey && redis) {
 			const ttlSeconds = getCacheTtlSeconds(parsedTarget);
 			const contentType = upstream.headers.get('content-type');
 			const cacheControl = upstream.headers.get('cache-control');

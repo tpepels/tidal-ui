@@ -3,7 +3,7 @@ import type { Readable } from 'svelte/store';
 import { losslessAPI } from '$lib/api';
 import type { PlayableTrack } from '$lib/types';
 import { isSonglinkTrack } from '$lib/types';
-import { formatArtists } from '$lib/utils';
+import { formatArtists } from '$lib/utils/formatters';
 
 type PlayerState = {
 	currentTrack: PlayableTrack | null;

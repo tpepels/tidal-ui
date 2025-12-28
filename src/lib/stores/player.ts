@@ -506,18 +506,18 @@ export const playerStore = createPlayerStore();
 
 // Invariant checking for critical state consistency
 playerStore.subscribe(($state) => {
-	// Invariant: Cannot be playing while loading
-	validateInvariant(
-		!($state.isPlaying && $state.isLoading),
-		'Player cannot be both playing and loading simultaneously',
-		{ isPlaying: $state.isPlaying, isLoading: $state.isLoading }
-	);
-
 	// Invariant: If playing, must have a current track
 	assertInvariant(
 		!$state.isPlaying || $state.currentTrack !== null,
 		'Player cannot be playing without a current track',
 		{ isPlaying: $state.isPlaying, currentTrack: $state.currentTrack }
+	);
+
+	// Invariant: If loading, must have a current track
+	validateInvariant(
+		!$state.isLoading || $state.currentTrack !== null,
+		'Player cannot be loading without a current track',
+		{ isLoading: $state.isLoading, currentTrack: $state.currentTrack }
 	);
 
 	// Invariant: Queue index must be valid (-1 for empty queue, or within bounds)

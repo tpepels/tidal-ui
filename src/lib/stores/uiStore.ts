@@ -1,7 +1,7 @@
 // Unified UI state management for component coordination
 // This replaces multiple scattered stores with a single source of truth
 
-import { writable, derived } from 'svelte/store';
+import { derived, writable } from 'svelte/store';
 import type { Track } from '../types';
 import {
 	createPlaybackStateMachine,
