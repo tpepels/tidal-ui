@@ -9,25 +9,27 @@
 -->
 <script lang="ts">
 	console.log('[AudioPlayer] Component loading');
-	import { onMount, onDestroy, tick } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { get } from 'svelte/store';
-	import { playerStore } from '$lib/stores/player';
+	import { playerStoreAdapter as playerStore } from '$lib/stores/playerStoreAdapter';
 	import { uiStore } from '$lib/stores/uiStore';
 	import { lyricsStore } from '$lib/stores/lyrics';
-	import { losslessAPI, DASH_MANIFEST_UNAVAILABLE_CODE, type TrackDownloadProgress } from '$lib/api';
-	import type { DashManifestResult, DashManifestWithMetadata } from '$lib/api';
-	import { API_CONFIG } from '$lib/config';
+	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
 	import { downloadUiStore, ffmpegBanner, activeTrackDownloads, erroredTrackDownloads } from '$lib/stores/downloadUi';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { buildTrackFilename } from '$lib/downloads';
 	import { formatArtists } from '$lib/utils';
-	import { deriveTrackQuality } from '$lib/utils/audioQuality';
 	import type { Track, AudioQuality, SonglinkTrack, PlayableTrack } from '$lib/types';
 	import { isSonglinkTrack } from '$lib/types';
 	import { convertToTidal, extractTidalInfo } from '$lib/utils/songlink';
 	import LazyImage from '$lib/components/LazyImage.svelte';
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
+	import { createMediaSessionController } from '$lib/controllers/mediaSessionController';
+	import { createAudioElementController } from '$lib/controllers/audioElementController';
+	import { createPlaybackFallbackController } from '$lib/controllers/playbackFallbackController';
+	import { createTrackLoadController } from '$lib/controllers/trackLoadController';
+	import { createPlaybackTransitions } from '$lib/controllers/playbackTransitions';
 	import {
 		Play,
 		Pause,
@@ -45,27 +47,8 @@
 		Music
 	} from 'lucide-svelte';
 
-type ShakaPlayerInstance = {
-	load: (uri: string) => Promise<void>;
-	unload: () => Promise<void>;
-	destroy: () => Promise<void>;
-	attach?: (mediaElement: HTMLMediaElement) => Promise<void>;
-	detach?: () => Promise<void>;
-	getNetworkingEngine?: () => {
-		registerRequestFilter: (
-			callback: (type: unknown, request: { method: string; uris: string[] }) => void
-		) => void;
-	};
-};
 
-type ShakaNamespace = {
-	Player: new () => ShakaPlayerInstance;
-	polyfill?: {
-		installAll?: () => void;
-	};
-};
 
-	type ShakaModule = { default: ShakaNamespace };
 
 	let audioElement: HTMLAudioElement;
 	let streamUrl = $state('');
@@ -89,29 +72,14 @@ let previousVolume = 0.8;
 	let resizeObserver: ResizeObserver | null = null;
 	let showQueuePanel = $state(false);
 
-	const streamCache = new Map<
-		string,
-		{ url: string; replayGain: number | null; sampleRate: number | null; bitDepth: number | null }
-	>();
-	let preloadingCacheKey: string | null = null;
 	const PRELOAD_THRESHOLD_SECONDS = 12;
 	const hiResQualities = new Set<AudioQuality>(['HI_RES_LOSSLESS']);
-	const dashManifestCache = new Map<string, DashManifestWithMetadata>();
-let shakaNamespace: ShakaNamespace | null = null;
-let shakaPlayer: ShakaPlayerInstance | null = null;
-let shakaAttachedElement: HTMLMediaElement | null = null;
-	let hiResObjectUrl: string | null = null;
-	let shakaNetworkingConfigured = false;
 	const sampleRateLabel = $derived(formatSampleRate($playerStore.sampleRate));
 	const bitDepthLabel = $derived(formatBitDepth($playerStore.bitDepth));
 	const isFirefox = typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent);
 	let dashPlaybackActive = false;
-	let dashFallbackAttemptedTrackId: number | string | null = null;
-	let dashFallbackInFlight = false;
 	let supportsLosslessPlayback = true;
-	let losslessFallbackAttemptedTrackId: number | string | null = null;
-	let losslessFallbackInFlight = false;
-let resumeAfterFallback = false;
+	let resumeAfterFallback = false;
 let pendingPlayAfterSource = false;
 
 	function requestAudioPlayback(reason: string) {
@@ -135,10 +103,120 @@ let pendingPlayAfterSource = false;
 		}
 	}
 
-	const canUseMediaSession = typeof navigator !== 'undefined' && 'mediaSession' in navigator;
-	let mediaSessionTrackId: number | string | null = null;
-	let cleanupMediaSessionHandlers: (() => void) | null = null;
-	let lastKnownPlaybackState: 'none' | 'paused' | 'playing' = 'none';
+	const mediaSessionController = createMediaSessionController(
+		playerStore,
+		() => audioElement,
+		{
+			onPlay: () => {
+				playbackTransitions.play();
+			},
+			onPause: () => {
+				playbackTransitions.pause();
+				audioElement?.pause();
+			},
+			onPrevious: () => {
+				handlePrevious();
+			},
+			onNext: () => {
+				playbackTransitions.next();
+			},
+			onSeekTo: (time: number) => {
+				if (!audioElement) return;
+				const nextTime = Math.max(0, time);
+				audioElement.currentTime = nextTime;
+				playbackTransitions.seekTo(nextTime);
+			},
+			onSeekBy: (delta: number) => {
+				if (!audioElement) return;
+				const tentative = audioElement.currentTime + delta;
+				const duration = audioElement.duration;
+				const bounded = Number.isFinite(duration)
+					? Math.min(Math.max(0, tentative), Math.max(duration, 0))
+					: Math.max(0, tentative);
+				audioElement.currentTime = bounded;
+				playbackTransitions.seekTo(bounded);
+			},
+			onStop: () => {
+				playbackTransitions.pause();
+				if (audioElement) {
+					audioElement.pause();
+					audioElement.currentTime = 0;
+				}
+				playbackTransitions.seekTo(0);
+			},
+			onPlayRequest: (reason: string) => {
+				requestAudioPlayback(reason);
+			}
+		}
+	);
+
+	const trackLoadController = createTrackLoadController({
+		playerStore,
+		getAudioElement: () => audioElement,
+		getCurrentTrackId: () => currentTrackId,
+		getSupportsLosslessPlayback: () => supportsLosslessPlayback,
+		setStreamUrl: (value) => {
+			streamUrl = value;
+		},
+		setBufferedPercent: (value) => {
+			bufferedPercent = value;
+		},
+		setCurrentPlaybackQuality: (value) => {
+			currentPlaybackQuality = value;
+		},
+		setDashPlaybackActive: (value) => {
+			dashPlaybackActive = value;
+		},
+		setLoading: (value) => {
+			playerStore.setLoading(value);
+		},
+		setSampleRate: (value) => playerStore.setSampleRate(value),
+		setBitDepth: (value) => playerStore.setBitDepth(value),
+		setReplayGain: (value) => playerStore.setReplayGain(value),
+		createSequence: () => ++loadSequence,
+		getSequence: () => loadSequence,
+		isHiResQuality: (quality) => (quality ? hiResQualities.has(quality) : false),
+		preloadThresholdSeconds: PRELOAD_THRESHOLD_SECONDS
+	});
+
+	const audioElementController = createAudioElementController({
+		playerStore,
+		getAudioElement: () => audioElement,
+		onSetCurrentTime: (time) => playbackTransitions.seekTo(time),
+		onSetDuration: (duration) => playerStore.setDuration(duration),
+		onNextTrack: () => playbackTransitions.next(),
+		onBufferedPercentChange: (value) => {
+			bufferedPercent = value;
+		},
+		onMaybePreloadNextTrack: (remaining) => {
+			trackLoadController.maybePreloadNextTrack(remaining);
+		},
+		mediaSessionController
+	});
+
+	const playbackFallbackController = createPlaybackFallbackController({
+		getCurrentTrack: () => $playerStore.currentTrack,
+		getPlayerQuality: () => $playerStore.quality,
+		getCurrentPlaybackQuality: () => currentPlaybackQuality,
+		getIsPlaying: () => $playerStore.isPlaying,
+		isFirefox: () => isFirefox,
+		getDashPlaybackActive: () => dashPlaybackActive,
+		setDashPlaybackActive: (value) => {
+			dashPlaybackActive = value;
+		},
+		setLoading: (value) => {
+			playerStore.setLoading(value);
+		},
+		loadStandardTrack: (track, quality, sequence) =>
+			trackLoadController.loadStandardTrack(track, quality, sequence),
+		createSequence: () => ++loadSequence,
+		setResumeAfterFallback: (value) => {
+			resumeAfterFallback = value;
+		}
+	});
+
+	const playbackTransitions = createPlaybackTransitions(playerStore);
+
 	let isSeeking = false;
 
 	let seekBarElement = $state<HTMLButtonElement | null>(null);
@@ -148,11 +226,10 @@ let pendingPlayAfterSource = false;
 	// -----------------------------
 	let playerDismissed = $state(false);
 
- 	const hasTrack = $derived(Boolean($playerStore.currentTrack));
-  	const hasOverlays = $derived($ffmpegBanner.phase !== 'idle');
-
-	const currentTrackDownloadTask = $derived($activeTrackDownloads.find(task => task.trackId === $playerStore.currentTrack?.id));
-	const currentTrackErrorTask = $derived($erroredTrackDownloads.find(task => task.trackId === $playerStore.currentTrack?.id));
+  const hasTrack = $derived(Boolean($playerStore.currentTrack));
+  const currentTrackDownloadTask = $derived($activeTrackDownloads.find(task => task.trackId === $playerStore.currentTrack?.id));
+  const currentTrackErrorTask = $derived($erroredTrackDownloads.find(task => task.trackId === $playerStore.currentTrack?.id));
+  const hasOverlays = $derived($activeTrackDownloads.length > 0 || $ffmpegBanner);
 
 	// Show player when:
 	// - not dismissed
@@ -179,232 +256,6 @@ let pendingPlayAfterSource = false;
 		}
 	});
 	// -----------------------------
-
-	function getCacheKey(trackId: number, quality: AudioQuality) {
-		return `${trackId}:${quality}`;
-	}
-
-	function isHiResQuality(quality: AudioQuality | undefined): boolean {
-		return quality ? hiResQualities.has(quality) : false;
-	}
-
-	function revokeHiResObjectUrl() {
-		if (hiResObjectUrl) {
-			URL.revokeObjectURL(hiResObjectUrl);
-			hiResObjectUrl = null;
-		}
-	}
-
-	async function destroyShakaPlayer() {
-		revokeHiResObjectUrl();
-		if (shakaPlayer) {
-			try {
-				if (shakaPlayer.detach) {
-					await shakaPlayer.detach();
-				}
-				await shakaPlayer.destroy();
-			} catch (error) {
-				console.debug('Failed to destroy Shaka player', error);
-			}
-			shakaPlayer = null;
-			shakaAttachedElement = null;
-		}
-		shakaNetworkingConfigured = false;
-		dashPlaybackActive = false;
-	}
-
-	async function ensureShakaPlayer(): Promise<ShakaPlayerInstance> {
-		if (!audioElement) {
-			throw new Error('Audio element not ready for Shaka initialization');
-		}
-		if (!shakaNamespace) {
-			const module = await import('shaka-player/dist/shaka-player.compiled.js');
-			const resolved =
-				(module as ShakaModule | { default: ShakaNamespace }).default ??
-				(module as unknown as ShakaNamespace);
-			shakaNamespace = resolved;
-			if (shakaNamespace?.polyfill?.installAll) {
-				try {
-					shakaNamespace.polyfill.installAll();
-				} catch (error) {
-					console.debug('Shaka polyfill installation failed', error);
-				}
-			}
-		}
-		if (!shakaNamespace) {
-			throw new Error('Shaka namespace unavailable');
-		}
-		if (!shakaPlayer) {
-			shakaPlayer = new shakaNamespace.Player();
-			const networking = shakaPlayer.getNetworkingEngine?.();
-			if (networking && !shakaNetworkingConfigured) {
-				networking.registerRequestFilter((type, request) => {
-					if (request.method === 'HEAD') {
-						request.method = 'GET';
-					}
-					if (Array.isArray(request.uris)) {
-						request.uris = request.uris.map((uri) => {
-							// For DASH, also try to fetch and create blob URLs
-							console.log('[AudioPlayer] DASH requesting URI:', uri);
-							// For now, keep proxying but add logging
-							if (uri.startsWith('blob:') || uri.startsWith('data:') || uri.includes('/api/proxy')) {
-								return uri;
-							}
-							return API_CONFIG.useProxy && API_CONFIG.proxyUrl
-								? `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(uri)}`
-								: uri;
-						});
-					}
-				});
-				shakaNetworkingConfigured = true;
-			}
-		}
-		audioElement.crossOrigin = 'anonymous';
-		if (shakaPlayer.attach && shakaAttachedElement !== audioElement) {
-			await shakaPlayer.attach(audioElement);
-			shakaAttachedElement = audioElement;
-		}
-		return shakaPlayer!;
-	}
-
-	function pruneDashManifestCache() {
-		const keepKeys = new Set<string>();
-		const dashQuality: AudioQuality = 'HI_RES_LOSSLESS';
-		const current = $playerStore.currentTrack;
-		if (current && !isSonglinkTrack(current)) {
-			keepKeys.add(getCacheKey(current.id, dashQuality));
-		}
-		const { queue, queueIndex } = $playerStore;
-		const nextTrack = queue[queueIndex + 1];
-		if (nextTrack && !isSonglinkTrack(nextTrack)) {
-			keepKeys.add(getCacheKey(nextTrack.id, dashQuality));
-		}
-		for (const key of dashManifestCache.keys()) {
-			if (!keepKeys.has(key)) {
-				dashManifestCache.delete(key);
-			}
-		}
-	}
-
-	function cacheFlacFallback(trackId: number, result: DashManifestResult | DashManifestWithMetadata) {
-		const manifestResult = 'result' in result ? result.result : result;
-		const trackInfo = 'trackInfo' in result ? result.trackInfo : null;
-
-		if (manifestResult.kind !== 'flac') {
-			return;
-		}
-		const fallbackUrl = manifestResult.urls.find(
-			(candidate) => typeof candidate === 'string' && candidate.length > 0
-		);
-		if (!fallbackUrl) {
-			return;
-		}
-		const proxied = API_CONFIG.useProxy && API_CONFIG.proxyUrl
-			? `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(fallbackUrl)}`
-			: fallbackUrl;
-		streamCache.set(getCacheKey(trackId, 'LOSSLESS'), {
-			url: proxied,
-			replayGain: trackInfo?.replayGain ?? null,
-			sampleRate: trackInfo?.sampleRate ?? null,
-			bitDepth: trackInfo?.bitDepth ?? null
-		});
-	}
-
-	async function resolveStream(
-		track: Track,
-		overrideQuality?: AudioQuality
-	): Promise<{
-		url: string;
-		replayGain: number | null;
-		sampleRate: number | null;
-		bitDepth: number | null;
-	}> {
-		const quality = overrideQuality ?? $playerStore.quality;
-		if (isHiResQuality(quality)) {
-			throw new Error('Attempted to resolve hi-res stream via standard resolver');
-		}
-		const cacheKey = getCacheKey(track.id, quality);
-		const cached = streamCache.get(cacheKey);
-		if (cached) {
-			return cached;
-		}
-
-		const data = await losslessAPI.getStreamData(track.id, quality);
-		console.log('[AudioPlayer] Stream data received:', data);
-
-		// Use proxy for audio streams to handle CORS
-		const url = API_CONFIG.useProxy && API_CONFIG.proxyUrl
-			? `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(data.url)}`
-			: data.url;
-		console.log('[AudioPlayer] Using proxy URL:', url);
-
-		const entry = {
-			url,
-			replayGain: data.replayGain,
-			sampleRate: data.sampleRate,
-			bitDepth: data.bitDepth
-		};
-		streamCache.set(cacheKey, entry);
-		return entry;
-	}
-
-	function pruneStreamCache() {
-		const quality = $playerStore.quality;
-		const keepKeys = new Set<string>();
-		const baseQualities: AudioQuality[] = isHiResQuality(quality) ? ['LOSSLESS'] : [quality];
-		const current = $playerStore.currentTrack;
-		if (current && !isSonglinkTrack(current)) {
-			for (const base of baseQualities) {
-				keepKeys.add(getCacheKey(current.id, base));
-			}
-		}
-		const { queue, queueIndex } = $playerStore;
-		const nextTrack = queue[queueIndex + 1];
-		if (nextTrack && !isSonglinkTrack(nextTrack)) {
-			for (const base of baseQualities) {
-				keepKeys.add(getCacheKey(nextTrack.id, base));
-			}
-		}
-
-		for (const key of streamCache.keys()) {
-			if (!keepKeys.has(key)) {
-				streamCache.delete(key);
-			}
-		}
-	}
-
-	async function preloadDashManifest(track: Track) {
-		const cacheKey = getCacheKey(track.id, 'HI_RES_LOSSLESS');
-		if (dashManifestCache.has(cacheKey) || preloadingCacheKey === cacheKey) {
-			const cached = dashManifestCache.get(cacheKey);
-			if (cached) {
-				cacheFlacFallback(track.id, cached.result);
-			}
-			return;
-		}
-
-		preloadingCacheKey = cacheKey;
-		try {
-			const result = await losslessAPI.getDashManifestWithMetadata(track.id, 'HI_RES_LOSSLESS');
-			dashManifestCache.set(cacheKey, result);
-			cacheFlacFallback(track.id, result.result);
-			pruneDashManifestCache();
-		} catch (error) {
-			console.warn('Failed to preload dash manifest:', error);
-		} finally {
-			if (preloadingCacheKey === cacheKey) {
-				preloadingCacheKey = null;
-			}
-		}
-	}
-
-	async function preloadNextTrack(track: Track) {
-		const cacheKey = getCacheKey(track.id, 'HI_RES_LOSSLESS');
-		if (dashManifestCache.has(cacheKey) || preloadingCacheKey === cacheKey) {
-			return;
-		}
-		await preloadDashManifest(track);
-	}
 
 	async function convertSonglinkTrackToTidal(songlinkTrack: SonglinkTrack): Promise<Track> {
 
@@ -480,22 +331,6 @@ let pendingPlayAfterSource = false;
 		return trackLookup.track;
 	}
 
-	function maybePreloadNextTrack(remainingSeconds: number) {
-		if (remainingSeconds > PRELOAD_THRESHOLD_SECONDS) {
-			return;
-		}
-		const { queue, queueIndex } = $playerStore;
-		const nextTrack = queue[queueIndex + 1];
-		if (!nextTrack || isSonglinkTrack(nextTrack)) {
-			return;
-		}
-		const dashKey = getCacheKey(nextTrack.id, 'HI_RES_LOSSLESS');
-		if (dashManifestCache.has(dashKey) || preloadingCacheKey === dashKey) {
-			return;
-		}
-		preloadNextTrack(nextTrack);
-	}
-
 	const convertingTracks = new Set<string>();
 
 	$effect(() => {
@@ -516,7 +351,7 @@ let pendingPlayAfterSource = false;
 						isSonglinkTrack(state.currentTrack) &&
 						state.currentTrack.id === current.id
 					) {
-						playerStore.setTrack(tidalTrack);
+						playerStore.loadTrack(tidalTrack);
 						// Conversion completed
 					}
 				})
@@ -538,8 +373,6 @@ let pendingPlayAfterSource = false;
 				streamUrl = '';
 				bufferedPercent = 0;
 				dashPlaybackActive = false;
-				dashFallbackAttemptedTrackId = null;
-				dashFallbackInFlight = false;
 				lastQualityTrackId = null;
 				lastQualityForTrack = null;
 				currentPlaybackQuality = null;
@@ -550,8 +383,6 @@ let pendingPlayAfterSource = false;
 				streamUrl = '';
 				bufferedPercent = 0;
 				dashPlaybackActive = false;
-				dashFallbackAttemptedTrackId = null;
-				dashFallbackInFlight = false;
 				lastQualityTrackId = current.id;
 				lastQualityForTrack = $playerStore.quality;
 				currentPlaybackQuality = null;
@@ -609,16 +440,14 @@ let pendingPlayAfterSource = false;
 	});
 
 	$effect(() => {
-		if (canUseMediaSession) {
-			updateMediaSessionMetadata($playerStore.currentTrack);
-		}
+		mediaSessionController.updateMetadata($playerStore.currentTrack);
 	});
 
 	$effect(() => {
-		if (canUseMediaSession) {
-			const hasTrack = Boolean($playerStore.currentTrack);
-			updateMediaSessionPlaybackState(hasTrack ? ($playerStore.isPlaying ? 'playing' : 'paused') : 'none');
-		}
+		const hasTrack = Boolean($playerStore.currentTrack);
+		mediaSessionController.updatePlaybackState(
+			hasTrack ? ($playerStore.isPlaying ? 'playing' : 'paused') : 'none'
+		);
 	});
 
 	function toggleQueuePanel() {
@@ -631,7 +460,7 @@ let pendingPlayAfterSource = false;
 
 	function playFromQueue(index: number) {
 		console.info('[AudioPlayer] playFromQueue called for index', index);
-		playerStore.playAtIndex(index);
+		playbackTransitions.playFromQueueIndex(index);
 		if (audioElement && audioElement.paused) {
 			requestAudioPlayback('queue play');
 		}
@@ -645,7 +474,7 @@ let pendingPlayAfterSource = false;
 	}
 
 	function clearQueue() {
-		playerStore.clearQueue();
+		playbackTransitions.clearQueue();
 	}
 
 	function handleShuffleQueue() {
@@ -676,361 +505,32 @@ let pendingPlayAfterSource = false;
 		}
 	});
 
-	async function loadStandardTrack(track: Track, quality: AudioQuality, sequence: number) {
-		console.log('[AudioPlayer] loadStandardTrack called for track:', track.id, 'quality:', quality);
-		try {
-			await destroyShakaPlayer();
-			dashPlaybackActive = false;
-			console.log('[AudioPlayer] Resolving stream for track:', track.id, 'quality:', quality);
-			const { url, replayGain, sampleRate, bitDepth } = await resolveStream(track, quality);
-			console.log('[AudioPlayer] Stream resolved, setting audio src to:', url);
-			if (sequence !== loadSequence) {
-				return;
-			}
-			streamUrl = url;
-			console.log('[AudioPlayer] Setting streamUrl to:', url);
-			currentPlaybackQuality = quality;
-			playerStore.setReplayGain(replayGain);
-			playerStore.setSampleRate(sampleRate);
-			playerStore.setBitDepth(bitDepth);
-			pruneStreamCache();
-			if (audioElement) {
-				await tick();
-				audioElement.crossOrigin = 'anonymous';
-				audioElement.load();
-			}
-			playerStore.setLoading(false);
-		} catch (error) {
-			console.error('[AudioPlayer] Failed to load standard track:', error);
-			playerStore.setLoading(false);
-		}
-	}
-
-	async function loadDashTrack(track: Track, quality: AudioQuality, sequence: number): Promise<DashManifestWithMetadata> {
-		const cacheKey = getCacheKey(track.id, quality);
-		let cached = dashManifestCache.get(cacheKey);
-		if (!cached) {
-			cached = await losslessAPI.getDashManifestWithMetadata(track.id, quality);
-			dashManifestCache.set(cacheKey, cached);
-		}
-		const { result: manifestResult, trackInfo } = cached;
-		cacheFlacFallback(track.id, manifestResult);
-		if (manifestResult.kind === 'flac') {
-			dashPlaybackActive = false;
-			return cached;
-		}
-		revokeHiResObjectUrl();
-		const blob = new Blob([manifestResult.manifest], {
-			type: manifestResult.contentType ?? 'application/dash+xml'
-		});
-		hiResObjectUrl = URL.createObjectURL(blob);
-		const player = await ensureShakaPlayer();
-		if (sequence !== loadSequence) {
-			return cached;
-		}
-		if (audioElement) {
-			audioElement.pause();
-			audioElement.removeAttribute('src');
-			audioElement.load();
-		}
-		await player.unload();
-		await player.load(hiResObjectUrl);
-		dashPlaybackActive = true;
-		streamUrl = '';
-		currentPlaybackQuality = 'HI_RES_LOSSLESS';
-
-		if (sequence === loadSequence && currentTrackId === track.id) {
-			playerStore.setSampleRate(trackInfo.sampleRate);
-			playerStore.setBitDepth(trackInfo.bitDepth);
-			if (trackInfo.replayGain !== null) {
-				playerStore.setReplayGain(trackInfo.replayGain);
-			}
-		}
-
-		pruneDashManifestCache();
-		return cached;
-	}
-
 	async function loadTrack(track: PlayableTrack) {
-		// Input validation
-		if (!track) {
-			console.error('loadTrack called with null/undefined track');
-			return;
+		const trackId = typeof track?.id === 'number' || typeof track?.id === 'string' ? track.id : null;
+		if (trackId !== null) {
+			playbackFallbackController.resetForTrack(trackId);
 		}
-
-		if (isSonglinkTrack(track)) {
-			console.error('Attempted to load SonglinkTrack directly - this should not happen!', track);
-			return;
-		}
-
-		const tidalTrack = track as Track;
-
-		// Validate track structure
-		if (!tidalTrack || typeof tidalTrack !== 'object') {
-			console.error('Invalid track object:', tidalTrack);
-			return;
-		}
-
-		if (!tidalTrack.id) {
-			console.error('Track missing ID:', tidalTrack);
-			return;
-		}
-
-		const trackId = Number(tidalTrack.id);
-		if (!Number.isFinite(trackId) || trackId <= 0) {
-			console.error('Invalid track ID - must be numeric:', tidalTrack.id);
-			return;
-		}
-		losslessFallbackAttemptedTrackId = null;
-		losslessFallbackInFlight = false;
-		resumeAfterFallback = false;
-
-		const sequence = ++loadSequence;
-		playerStore.setLoading(true);
-		bufferedPercent = 0;
-		currentPlaybackQuality = null;
-		let requestedQuality = $playerStore.quality;
-
-		// Adjust quality based on FLAC support
-		if (isHiResQuality(requestedQuality) && !supportsLosslessPlayback) {
-			console.info(
-				'[AudioPlayer] Adjusting quality from',
-				requestedQuality,
-				'to LOSSLESS due to lack of FLAC support'
-			);
-			requestedQuality = 'LOSSLESS';
-			// Keep the store quality as user's selection; only adjust for playback
-		}
-
-		console.info(
-			'[AudioPlayer] Loading track',
-			tidalTrack.id,
-			'with requested quality',
-			requestedQuality,
-			'(supports lossless:',
-			supportsLosslessPlayback,
-			')'
-		);
-
-		const trackBestQuality = deriveTrackQuality(tidalTrack);
-		if (isHiResQuality(requestedQuality) && trackBestQuality && !isHiResQuality(trackBestQuality)) {
-			requestedQuality = trackBestQuality;
-		}
-
-		if (dashFallbackAttemptedTrackId && dashFallbackAttemptedTrackId !== tidalTrack.id) {
-			dashFallbackAttemptedTrackId = null;
-		}
-
-		try {
-			// For LOSSLESS quality, always attempt to load first and let error handling do the fallback
-			// The supportsLosslessPlayback check is too aggressive and prevents valid attempts
-
-			if (isHiResQuality(requestedQuality)) {
-				try {
-					const hiResQuality: AudioQuality = 'HI_RES_LOSSLESS';
-					const dashResult = await loadDashTrack(tidalTrack, hiResQuality, sequence);
-					if (dashResult.result.kind === 'dash') {
-						return;
-					}
-					console.info('Dash endpoint returned FLAC fallback. Using lossless stream.');
-				} catch (dashError) {
-					const coded = dashError as { code?: string };
-					if (coded?.code === DASH_MANIFEST_UNAVAILABLE_CODE) {
-						dashManifestCache.delete(getCacheKey(tidalTrack.id, 'HI_RES_LOSSLESS'));
-					}
-					console.warn('DASH playback failed, falling back to lossless stream.', dashError);
-				}
-				await loadStandardTrack(tidalTrack, 'LOSSLESS', sequence);
-				return;
-			}
-
-			await loadStandardTrack(tidalTrack, requestedQuality, sequence);
-		} catch (error) {
-			console.error('Failed to load track:', error);
-			if (
-				sequence === loadSequence &&
-				requestedQuality !== 'LOSSLESS' &&
-				!isHiResQuality(requestedQuality)
-			) {
-				try {
-					await loadStandardTrack(tidalTrack, 'LOSSLESS', sequence);
-				} catch (fallbackError) {
-					console.error('Secondary lossless fallback failed:', fallbackError);
-				}
-			} else if (sequence === loadSequence && requestedQuality === 'LOSSLESS') {
-				console.warn(
-					'[AudioPlayer] Lossless load failed; attempting streaming fallback for track',
-					tidalTrack.id
-				);
-				try {
-					await loadStandardTrack(tidalTrack, 'HIGH', sequence);
-					console.info(
-						'[AudioPlayer] Streaming fallback loaded successfully after lossless failure for track',
-						tidalTrack.id
-					);
-				} catch (fallbackError) {
-					console.error(
-						'[AudioPlayer] Streaming fallback after lossless load failure also failed',
-						fallbackError
-					);
-				}
-			}
-		} finally {
-			if (sequence === loadSequence) {
-				playerStore.setLoading(false);
-			}
-		}
+		await trackLoadController.loadTrack(track);
 	}
 
 	function handleTimeUpdate() {
-		if (audioElement) {
-			playerStore.setCurrentTime(audioElement.currentTime);
-			updateBufferedPercent();
-			const remaining = ($playerStore.duration ?? 0) - audioElement.currentTime;
-			maybePreloadNextTrack(remaining);
-			updateMediaSessionPositionState();
-		}
-	}
-
-	async function fallbackToLosslessAfterDashError(reason: string) {
-		if (dashFallbackInFlight) {
-			return;
-		}
-		const track = $playerStore.currentTrack;
-		if (!track) {
-			return;
-		}
-		if (dashFallbackAttemptedTrackId === track.id) {
-			return;
-		}
-		dashFallbackInFlight = true;
-		dashFallbackAttemptedTrackId = track.id;
-		const sequence = ++loadSequence;
-		console.warn(`Attempting lossless fallback after DASH playback error (${reason}).`);
-		try {
-			dashPlaybackActive = false;
-			playerStore.setLoading(true);
-			bufferedPercent = 0;
-			await loadStandardTrack(track as Track, 'LOSSLESS', sequence);
-		} catch (fallbackError) {
-			console.error('Lossless fallback after DASH playback error failed', fallbackError);
-			if (sequence === loadSequence) {
-				playerStore.setLoading(false);
-			}
-		} finally {
-			dashFallbackInFlight = false;
-		}
+		audioElementController.handleTimeUpdate();
 	}
 
 	function handleAudioError(event: Event) {
-		console.warn('[AudioPlayer] Audio element reported an error state:', event);
-		const element = event.currentTarget as HTMLAudioElement | null;
-		const mediaError = element?.error ?? null;
-		const code = mediaError?.code;
-		// Safely check for decode error constant (may not exist on all browsers/platforms)
-		const decodeConstant = mediaError && 'MEDIA_ERR_DECODE' in mediaError ? mediaError.MEDIA_ERR_DECODE : undefined;
-		const isDecodeError =
-			typeof code === 'number' && typeof decodeConstant === 'number' ? code === decodeConstant : false;
-		if (dashPlaybackActive) {
-			if (!isDecodeError && !code) {
-				return;
-			}
-			const reason = isDecodeError ? 'decode error' : code ? `code ${code}` : 'unknown error';
-			console.warn('[AudioPlayer] DASH playback error detected; attempting lossless fallback:', reason);
-			void fallbackToLosslessAfterDashError(reason);
-			return;
-		}
-		const codeNumber = typeof code === 'number' ? code : null;
-		const abortedCode =
-			typeof mediaError?.MEDIA_ERR_ABORTED === 'number' ? mediaError.MEDIA_ERR_ABORTED : null;
-		const srcUnsupported = mediaError?.MEDIA_ERR_SRC_NOT_SUPPORTED;
-		const losslessActive =
-			currentPlaybackQuality === 'LOSSLESS' || $playerStore.quality === 'LOSSLESS';
-		const shouldFallbackToStreaming =
-			losslessActive &&
-			codeNumber !== null &&
-			codeNumber !== abortedCode &&
-			((typeof decodeConstant === 'number' && codeNumber === decodeConstant) ||
-				(typeof srcUnsupported === 'number' && codeNumber === srcUnsupported));
-		if (shouldFallbackToStreaming) {
-			const reason =
-				codeNumber === srcUnsupported ? 'source not supported' : isDecodeError ? 'decode error' : 'unknown';
-			console.warn(
-				`[AudioPlayer] Lossless playback error (${reason}). Falling back to streaming quality for current track.`
-			);
-			void fallbackToStreamingAfterLosslessError();
-		}
+		playbackFallbackController.handleAudioError(event);
 	}
-
-	async function fallbackToStreamingAfterLosslessError() {
-		if (losslessFallbackInFlight) {
-			return;
-		}
-		const track = $playerStore.currentTrack;
-		if (!track) {
-			return;
-		}
-		if (losslessFallbackAttemptedTrackId === track.id) {
-			return;
-		}
-		losslessFallbackAttemptedTrackId = track.id;
-		losslessFallbackInFlight = true;
-		resumeAfterFallback = $playerStore.isPlaying;
-		const sequence = ++loadSequence;
-		try {
-			playerStore.setLoading(true);
-			// For Firefox, use LOW quality since HIGH may not be supported and FLAC is returned for HIGH sometimes
-			const fallbackQuality = isFirefox ? 'LOW' : 'HIGH';
-			await loadStandardTrack(track as Track, fallbackQuality, sequence);
-			console.info('[AudioPlayer] Streaming fallback loaded for track', track.id);
-		} catch (fallbackError) {
-			console.error('Streaming fallback after lossless playback error failed', fallbackError);
-			resumeAfterFallback = false;
-		} finally {
-			if (sequence === loadSequence) {
-				playerStore.setLoading(false);
-			}
-			losslessFallbackInFlight = false;
-		}
-	}
-
 
 	function handleDurationChange() {
-		if (audioElement) {
-			playerStore.setDuration(audioElement.duration);
-			updateBufferedPercent();
-			updateMediaSessionPositionState();
-		}
+		audioElementController.handleDurationChange();
 	}
 
 	function updateBufferedPercent() {
-		if (!audioElement) {
-			bufferedPercent = 0;
-			return;
-		}
-
-		const { duration, buffered, currentTime } = audioElement;
-		if (!Number.isFinite(duration) || duration <= 0 || buffered.length === 0) {
-			bufferedPercent = 0;
-			return;
-		}
-
-		let bufferedEnd = 0;
-		for (let i = 0; i < buffered.length; i += 1) {
-			const start = buffered.start(i);
-			const end = buffered.end(i);
-			if (start <= currentTime && end >= currentTime) {
-				bufferedEnd = end;
-				break;
-			}
-			bufferedEnd = Math.max(bufferedEnd, end);
-		}
-
-		bufferedPercent = Math.max(0, Math.min(100, (bufferedEnd / duration) * 100));
+		audioElementController.updateBufferedPercent();
 	}
 
 	function handleProgress() {
-		updateBufferedPercent();
+		audioElementController.handleProgress();
 	}
 
 	function handleLoadedData() {
@@ -1042,7 +542,7 @@ let pendingPlayAfterSource = false;
 			audioElement.currentTime = state.currentTime;
 		}
 
-		updateMediaSessionPositionState();
+		mediaSessionController.updatePositionState();
 		if (audioElement && $playerStore.isPlaying && audioElement.paused) {
 			const shouldResume = resumeAfterFallback || pendingPlayAfterSource || $playerStore.isPlaying;
 			resumeAfterFallback = false;
@@ -1063,16 +563,15 @@ let pendingPlayAfterSource = false;
 	function handlePrevious() {
 		if (audioElement && (audioElement.currentTime > 5 || $playerStore.queueIndex <= 0)) {
 			audioElement.currentTime = 0;
-			playerStore.setCurrentTime(0);
-			updateMediaSessionPositionState();
+			playbackTransitions.seekTo(0);
+			mediaSessionController.updatePositionState();
 		} else {
-			playerStore.previous();
+			playbackTransitions.previous();
 		}
 	}
 
 	function handleEnded() {
-		playerStore.next();
-		updateMediaSessionPositionState();
+		audioElementController.handleEnded();
 	}
 
 	function handleSeek(event: MouseEvent | TouchEvent) {
@@ -1085,8 +584,8 @@ let pendingPlayAfterSource = false;
 
 		if (audioElement) {
 			audioElement.currentTime = newTime;
-			playerStore.setCurrentTime(newTime);
-			updateMediaSessionPositionState();
+			playbackTransitions.seekTo(newTime);
+			mediaSessionController.updatePositionState();
 		}
 	}
 
@@ -1133,13 +632,13 @@ let pendingPlayAfterSource = false;
 
 		const seekSeconds = Math.max(0, targetSeconds);
 		audioElement.currentTime = seekSeconds;
-		playerStore.setCurrentTime(seekSeconds);
-		updateMediaSessionPositionState();
+		playbackTransitions.seekTo(seekSeconds);
+		mediaSessionController.updatePositionState();
 
 		const state = get(playerStore);
 		if (!state.isPlaying) {
 			console.info('[AudioPlayer] Lyrics seek requested playback; resuming audio');
-			playerStore.play();
+			playbackTransitions.play();
 		}
 
 		requestAudioPlayback('lyrics seek');
@@ -1270,197 +769,6 @@ let pendingPlayAfterSource = false;
 		}
 	});
 
-	function getMediaSessionArtwork(track: PlayableTrack): MediaImage[] {
-		if (isSonglinkTrack(track)) {
-			if (track.thumbnailUrl) {
-				return [
-					{
-						src: track.thumbnailUrl,
-						sizes: '640x640',
-						type: 'image/jpeg'
-					}
-				];
-			}
-			return [];
-		}
-
-		if (!track.album?.cover) {
-			return [];
-		}
-
-		const sizes = ['80', '160', '320', '640', '1280'] as const;
-		const artwork: MediaImage[] = [];
-
-		for (const size of sizes) {
-			const src = losslessAPI.getCoverUrl(track.album.cover, size);
-			if (src) {
-				artwork.push({
-					src,
-					sizes: `${size}x${size}`,
-					type: 'image/jpeg'
-				});
-			}
-		}
-
-		return artwork;
-	}
-
-	function updateMediaSessionMetadata(track: PlayableTrack | null) {
-		if (!canUseMediaSession) {
-			return;
-		}
-
-		if (!track) {
-			mediaSessionTrackId = null;
-			lastKnownPlaybackState = 'none';
-			try {
-				navigator.mediaSession.metadata = null;
-				navigator.mediaSession.playbackState = 'none';
-			} catch (error) {
-				console.debug('Media Session reset failed', error);
-			}
-			return;
-		}
-
-		if (mediaSessionTrackId === track.id) {
-			return;
-		}
-
-		mediaSessionTrackId = track.id;
-
-		try {
-			navigator.mediaSession.metadata = new MediaMetadata({
-				title: track.title,
-				artist: isSonglinkTrack(track) ? track.artistName : formatArtists(track.artists),
-				album: isSonglinkTrack(track) ? '' : track.album?.title ?? '',
-				artwork: getMediaSessionArtwork(track)
-			});
-		} catch (error) {
-			console.debug('Unable to set Media Session metadata', error);
-		}
-
-		updateMediaSessionPositionState();
-	}
-
-	function updateMediaSessionPlaybackState(state: 'playing' | 'paused' | 'none') {
-		if (!canUseMediaSession) {
-			return;
-		}
-
-		if (lastKnownPlaybackState === state) {
-			return;
-		}
-		lastKnownPlaybackState = state;
-
-		try {
-			navigator.mediaSession.playbackState = state;
-		} catch (error) {
-			console.debug('Unable to set Media Session playback state', error);
-		}
-	}
-
-	function updateMediaSessionPositionState() {
-		if (!canUseMediaSession || !audioElement || typeof navigator.mediaSession.setPositionState !== 'function') {
-			return;
-		}
-
-		const durationFromAudio = audioElement.duration;
-		const storeState = get(playerStore);
-		const duration = Number.isFinite(durationFromAudio) ? durationFromAudio : storeState.duration;
-
-		try {
-			navigator.mediaSession.setPositionState({
-				duration: Number.isFinite(duration) ? duration : 0,
-				playbackRate: audioElement.playbackRate ?? 1,
-				position: audioElement.currentTime
-			});
-		} catch (error) {
-			console.debug('Unable to set Media Session position state', error);
-		}
-	}
-
-	function registerMediaSessionHandlers() {
-		if (!canUseMediaSession) {
-			return;
-		}
-
-		const safeSetActionHandler = (action: MediaSessionAction, handler: MediaSessionActionHandler | null) => {
-			try {
-				navigator.mediaSession.setActionHandler(action, handler);
-			} catch (error) {
-				console.debug(`Media Session action ${action} unsupported`, error);
-			}
-		};
-
-		safeSetActionHandler('play', async () => {
-			playerStore.play();
-			requestAudioPlayback('media session play');
-			updateMediaSessionPlaybackState('playing');
-			updateMediaSessionPositionState();
-		});
-
-		safeSetActionHandler('pause', () => {
-			playerStore.pause();
-			audioElement?.pause();
-			updateMediaSessionPlaybackState('paused');
-			updateMediaSessionPositionState();
-		});
-
-		safeSetActionHandler('previoustrack', () => {
-			handlePrevious();
-		});
-
-		safeSetActionHandler('nexttrack', () => {
-			playerStore.next();
-		});
-
-		const handleSeekDelta =
-			(direction: 'forward' | 'backward') => (details: MediaSessionActionDetails) => {
-				if (!audioElement) return;
-				const offset = details.seekOffset ?? 10;
-				const delta = direction === 'forward' ? offset : -offset;
-				const tentative = audioElement.currentTime + delta;
-				const duration = audioElement.duration;
-				const bounded = Number.isFinite(duration)
-					? Math.min(Math.max(0, tentative), Math.max(duration, 0))
-					: Math.max(0, tentative);
-				audioElement.currentTime = bounded;
-				playerStore.setCurrentTime(bounded);
-				updateMediaSessionPositionState();
-			};
-
-		safeSetActionHandler('seekforward', handleSeekDelta('forward'));
-		safeSetActionHandler('seekbackward', handleSeekDelta('backward'));
-
-		safeSetActionHandler('seekto', (details) => {
-			if (!audioElement || details.seekTime === undefined) return;
-			const nextTime = Math.max(0, details.seekTime);
-			audioElement.currentTime = nextTime;
-			playerStore.setCurrentTime(nextTime);
-			updateMediaSessionPositionState();
-		});
-
-		safeSetActionHandler('stop', () => {
-			playerStore.pause();
-			if (audioElement) {
-				audioElement.pause();
-				audioElement.currentTime = 0;
-			}
-			playerStore.setCurrentTime(0);
-			updateMediaSessionPlaybackState('paused');
-			updateMediaSessionPositionState();
-		});
-
-		cleanupMediaSessionHandlers = () => {
-			const actions: MediaSessionAction[] = ['play', 'pause', 'previoustrack', 'nexttrack', 'seekforward', 'seekbackward', 'seekto', 'stop'];
-			for (const action of actions) {
-				safeSetActionHandler(action, null);
-			}
-			mediaSessionTrackId = null;
-			lastKnownPlaybackState = 'none';
-		};
-	}
-
 	onMount(() => {
 		let detachLyricsSeek: (() => void) | null = null;
 
@@ -1504,12 +812,14 @@ let pendingPlayAfterSource = false;
 			resizeObserver.observe(containerElement);
 		}
 
-		if (canUseMediaSession) {
-			registerMediaSessionHandlers();
+		mediaSessionController.registerHandlers();
+		{
 			const state = get(playerStore);
-			updateMediaSessionMetadata(state.currentTrack);
-			updateMediaSessionPlaybackState(state.currentTrack ? (state.isPlaying ? 'playing' : 'paused') : 'none');
-			updateMediaSessionPositionState();
+			mediaSessionController.updateMetadata(state.currentTrack);
+			mediaSessionController.updatePlaybackState(
+				state.currentTrack ? (state.isPlaying ? 'playing' : 'paused') : 'none'
+			);
+			mediaSessionController.updatePositionState();
 		}
 
 		if (typeof window !== 'undefined') {
@@ -1522,20 +832,11 @@ let pendingPlayAfterSource = false;
 
 		return () => {
 			resizeObserver?.disconnect();
-			cleanupMediaSessionHandlers?.();
-			cleanupMediaSessionHandlers = null;
+			mediaSessionController.cleanup();
 			detachLyricsSeek?.();
-			destroyShakaPlayer().catch((error) => {
+			trackLoadController.destroy().catch((error) => {
 				console.debug('Shaka cleanup failed', error);
 			});
-			if (canUseMediaSession) {
-				try {
-					navigator.mediaSession.metadata = null;
-					navigator.mediaSession.playbackState = 'none';
-				} catch (error) {
-					console.debug('Failed to clean up Media Session', error);
-				}
-			}
 		};
 	});
 
@@ -1692,7 +993,7 @@ let pendingPlayAfterSource = false;
 									</button>
 
 									<button
-										onclick={() => playerStore.togglePlay()}
+										onclick={() => playbackTransitions.togglePlay()}
 										class="rounded-full bg-white p-3 sm:p-2.5 md:p-3 text-gray-900 transition-transform hover:scale-105"
 										aria-label={$playerStore.isPlaying ? 'Pause' : 'Play'}
 									>
@@ -1704,7 +1005,7 @@ let pendingPlayAfterSource = false;
 									</button>
 
 									<button
-										onclick={() => playerStore.next()}
+										onclick={() => playbackTransitions.next()}
 										class="p-2 sm:p-1.5 md:p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
 										disabled={$playerStore.queueIndex >= $playerStore.queue.length - 1}
 										aria-label="Next track"

@@ -17,13 +17,16 @@ export const GET: RequestHandler = async () => {
 
 		// Check Redis status
 		let redisConnected = false;
-		try {
-			const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
-			await redis.ping();
-			redisConnected = true;
-			redis.disconnect();
-		} catch {
-			redisConnected = false;
+		const redisDisabled = ['true', '1'].includes((process.env.REDIS_DISABLED || '').toLowerCase());
+		if (!redisDisabled) {
+			try {
+				const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+				await redis.ping();
+				redisConnected = true;
+				redis.disconnect();
+			} catch {
+				redisConnected = false;
+			}
 		}
 
 		return json({

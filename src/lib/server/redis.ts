@@ -4,6 +4,11 @@ import { env } from '$env/dynamic/private';
 let client: Redis | null | undefined;
 let hasLoggedError = false;
 
+function isRedisDisabled(): boolean {
+	const flag = (env.REDIS_DISABLED || '').toLowerCase();
+	return flag === 'true' || flag === '1';
+}
+
 function logRedisError(error: unknown): void {
 	if (hasLoggedError) return;
 	hasLoggedError = true;
@@ -40,6 +45,11 @@ export function getRedisClient(): Redis | null {
 		return client;
 	}
 
+	if (isRedisDisabled()) {
+		client = null;
+		return client;
+	}
+
 	const options = buildOptions();
 	if (!options) {
 		client = null;
@@ -59,5 +69,9 @@ export function getRedisClient(): Redis | null {
 }
 
 export function isRedisEnabled(): boolean {
+	if (isRedisDisabled()) {
+		return false;
+	}
+
 	return getRedisClient() !== null;
 }

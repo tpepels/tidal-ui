@@ -21,7 +21,6 @@ This is a high-fidelity music streaming UI built with SvelteKit, TypeScript, and
 
 - **Lint**: `npm run lint` - Runs ESLint with TypeScript and Svelte rules
 - **Format**: `npm run format` - Formats code with Prettier (tabs, single quotes, 100 width, no trailing comma)
-- **Prepare**: `npm run prepare` - Sets up Husky git hooks for pre-commit checks
 
 ### Testing
 
@@ -163,7 +162,7 @@ describe('Formatters', () => {
 
 ### Git Workflow
 
-- **Pre-commit hooks**: Husky enforces linting and formatting
+- **Pre-commit hooks**: Run linting/formatting via local scripts or CI (Husky deprecated)
 - **Branch naming**: feature/, bugfix/, hotfix/ prefixes
 - **Commit messages**: Descriptive, imperative mood (e.g., "Add user authentication")
 - **Pull requests**: Include description, screenshots for UI changes

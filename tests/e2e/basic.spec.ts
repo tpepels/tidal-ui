@@ -2,24 +2,13 @@ import { test, expect } from '@playwright/test';
 
 test('homepage loads', async ({ page }) => {
 	await page.goto('/');
-	await expect(page).toHaveTitle(/Tidal UI/);
+	await expect(page).toHaveTitle(/BiniLossless/);
 });
 
 test('search interface is visible', async ({ page }) => {
 	await page.goto('/');
-	await expect(page.locator('input[placeholder*="search"]')).toBeVisible();
+	await expect(page.locator('input[placeholder*="Search"]')).toBeVisible();
 });
-
-// TODO: Fix E2E test - page.fill type issue
-// test('can perform search', async ({ page }) => {
-// 	await page.goto('/');
-// 	await page.fill('input[placeholder*="search"]', 'test track');
-// 	await page.press('Enter');
-
-// 	// Wait for results or error
-// 	await page.waitForTimeout(2000);
-// 	expect(page.url()).toContain('/?q=test+track');
-// });
 
 test('navigation to album page', async ({ page }) => {
 	// Assuming we can navigate to an album page
@@ -43,22 +32,28 @@ test('navigation to track page', async ({ page }) => {
 });
 
 test('audio player controls are present', async ({ page }) => {
-	await page.goto('/');
-	// Look for play/pause buttons
-	const playButton = page.locator('button').filter({ hasText: /play|▶️/ });
-	await expect(playButton).toBeVisible();
+	await page.goto('/track/789', { waitUntil: 'domcontentloaded' });
+	await expect(page.locator('h1')).toBeVisible({ timeout: 15000 });
+	await expect(
+		page.locator('button[aria-label="Play"], button[aria-label="Pause"]')
+	).toBeVisible({ timeout: 15000 });
 });
 
 test('can navigate between pages', async ({ page }) => {
-	await page.goto('/');
-	await page.click('a[href*="/album"]');
-	await expect(page.url()).toContain('/album');
+	await page.goto('/album/123');
+	const artistLink = page.locator('a[href^="/artist/"]').first();
+	await expect(artistLink).toBeVisible();
+	await artistLink.click();
+	await page.waitForURL(/\/artist\//);
+	await expect(page.url()).toContain('/artist/');
 });
 
 test('search results show tracks', async ({ page }) => {
-	await page.goto('/?q=test');
-	// Check if track results are displayed
-	const trackResults = page.locator('[data-testid="track-result"]').first();
+	await page.goto('/');
+	const searchInput = page.locator('input[placeholder*="Search"]');
+	await searchInput.fill('test');
+	await searchInput.press('Enter');
+	const trackResults = page.locator('.track-glass').first();
 	await expect(trackResults).toBeVisible();
 });
 

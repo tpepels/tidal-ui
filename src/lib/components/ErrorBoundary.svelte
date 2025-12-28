@@ -2,6 +2,8 @@
 	import { onMount, type Snippet } from 'svelte';
 	import { toasts } from '$lib/stores/toasts';
 	import { InvariantViolationError } from '$lib/core/invariants';
+	import { logger } from '$lib/core/logger';
+	import { errorTracker } from '$lib/core/errorTracker';
 
 	interface Props {
 		children: Snippet;
@@ -20,11 +22,37 @@
 		const processedError = err instanceof Error ? err : new Error(String(err));
 		errorId = generateErrorId();
 
-		console.error(`[ErrorBoundary:${errorId}]`, processedError, context);
+		// Track error with error tracker
+		const trackedErrorId = errorTracker.trackError(processedError, {
+			component: 'ErrorBoundary',
+			source: 'error-boundary',
+			context,
+			userAgent: navigator.userAgent,
+			url: window.location.href,
+			boundaryId: errorId
+		});
+
+		// Structured logging
+		logger.error('Error boundary caught error', {
+			component: 'ErrorBoundary',
+			errorId: trackedErrorId,
+			boundaryId: errorId,
+			error: processedError,
+			context,
+			userAgent: navigator.userAgent,
+			url: window.location.href
+		});
 
 		// Handle invariant violations specially
 		if (processedError instanceof InvariantViolationError) {
-			console.error('[Invariant Violation]', processedError.context);
+			logger.error('Invariant violation detected', {
+				component: 'ErrorBoundary',
+				errorId: trackedErrorId,
+				boundaryId: errorId,
+				error: processedError,
+				invariantContext: processedError.context
+			});
+
 			toasts.error('Application state inconsistency detected', {
 				action: {
 					label: 'Reload',
@@ -33,6 +61,15 @@
 			});
 		} else {
 			error = processedError;
+
+			logger.error('Application error occurred', {
+				component: 'ErrorBoundary',
+				errorId: trackedErrorId,
+				boundaryId: errorId,
+				error: processedError,
+				context
+			});
+
 			toasts.error(`Application error: ${processedError.message}`, {
 				action: {
 					label: 'Reload',

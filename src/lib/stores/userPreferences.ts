@@ -2,6 +2,7 @@ import { browser } from '$app/environment';
 import { writable } from 'svelte/store';
 import type { AudioQuality } from '../types';
 import { type PerformanceLevel } from '../utils/performance';
+import { debouncedSave, loadFromStorage, saveToStorage } from '../utils/persistence';
 
 export type PerformanceMode = 'medium' | 'low';
 
@@ -12,7 +13,8 @@ export interface UserPreferencesState {
 	performanceMode: PerformanceMode;
 }
 
-const STORAGE_KEY = 'tidal-ui.userPreferences';
+const STORAGE_KEY = 'user-preferences';
+const LEGACY_STORAGE_KEY = 'tidal-ui.userPreferences';
 
 const DEFAULT_STATE: UserPreferencesState = {
 	playbackQuality: 'HI_RES_LOSSLESS',
@@ -60,7 +62,19 @@ const readInitialPreferences = (): UserPreferencesState => {
 		return DEFAULT_STATE;
 	}
 	try {
-		return parseStoredPreferences(localStorage.getItem(STORAGE_KEY));
+		const stored = loadFromStorage(STORAGE_KEY, null) as UserPreferencesState | null;
+		if (stored && typeof stored === 'object') {
+			return stored;
+		}
+
+		const legacyRaw = localStorage.getItem(LEGACY_STORAGE_KEY);
+		if (legacyRaw) {
+			const migrated = parseStoredPreferences(legacyRaw);
+			saveToStorage(STORAGE_KEY, migrated);
+			return migrated;
+		}
+
+		return DEFAULT_STATE;
 	} catch (error) {
 		console.warn('Unable to read user preferences from storage', error);
 		return DEFAULT_STATE;
@@ -73,15 +87,21 @@ const createUserPreferencesStore = () => {
 	if (browser) {
 		subscribe((state) => {
 			try {
-				localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+				debouncedSave(STORAGE_KEY, state);
 			} catch (error) {
 				console.warn('Failed to persist user preferences', error);
 			}
 		});
 
 		window.addEventListener('storage', (event) => {
-			if (event.key !== STORAGE_KEY) return;
-			set(parseStoredPreferences(event.newValue));
+			if (event.key === `${'tidal-ui:'}${STORAGE_KEY}`) {
+				const stored = loadFromStorage(STORAGE_KEY, DEFAULT_STATE) as UserPreferencesState;
+				set(stored);
+				return;
+			}
+			if (event.key === LEGACY_STORAGE_KEY) {
+				set(parseStoredPreferences(event.newValue));
+			}
 		});
 	}
 

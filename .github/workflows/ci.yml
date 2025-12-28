@@ -37,6 +37,9 @@ jobs:
             exit 0
           }
 
+      - name: Run SSR/hydration smoke tests
+        run: npm run test:run src/lib/components/ssr.test.ts
+
       - name: Run API contract tests
         run: npm run test:run src/lib/utils/api-contracts.test.ts src/lib/services/api-integration.test.ts
         continue-on-error: true # API contract tests may have import issues

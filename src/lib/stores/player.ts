@@ -1,5 +1,5 @@
 // Audio player store for managing playback state
-import { writable, derived } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
 import { browser } from '$app/environment';
 import type { Track, AudioQuality, PlayableTrack } from '../types';
 import { deriveTrackQuality } from '../utils/audioQuality';
@@ -40,16 +40,32 @@ const initialState: PlayerState = {
 };
 
 function createPlayerStore() {
-	let startState = initialState;
+	const preferences = get(userPreferencesStore);
+	let startState: PlayerState = {
+		...initialState,
+		quality: preferences.playbackQuality,
+		qualitySource: 'manual'
+	};
 	if (browser) {
 		// Load persisted state
 		const persisted = loadFromStorage('player', {}) as Partial<PlayerState>;
 		startState = {
 			...initialState,
 			...persisted,
+			quality: preferences.playbackQuality,
+			qualitySource: 'manual',
 			isPlaying: false, // Don't persist playing state
 			isLoading: false
 		};
+
+		// Validate and fix persisted state
+		if (
+			startState.queueIndex !== -1 &&
+			(startState.queueIndex < 0 || startState.queueIndex >= startState.queue.length)
+		) {
+			// Invalid queueIndex, reset to valid value
+			startState.queueIndex = startState.queue.length > 0 ? 0 : -1;
+		}
 
 		// Invariants
 		console.assert(Array.isArray(startState.queue), 'Player queue must be an array');
@@ -57,7 +73,11 @@ function createPlayerStore() {
 			typeof startState.volume === 'number' && startState.volume >= 0 && startState.volume <= 1,
 			'Volume must be between 0 and 1'
 		);
-		console.assert(startState.queueIndex >= -1, 'Queue index must be valid');
+		console.assert(
+			startState.queueIndex === -1 ||
+				(startState.queueIndex >= 0 && startState.queueIndex < startState.queue.length),
+			'Queue index must be -1 for empty queue or within valid range'
+		);
 	}
 
 	const { subscribe, set, update } = writable<PlayerState>(startState);
@@ -70,8 +90,6 @@ function createPlayerStore() {
 					queue: state.queue,
 					queueIndex: state.queueIndex,
 					volume: state.volume,
-					quality: state.quality,
-					qualitySource: state.qualitySource,
 					currentTime: state.currentTime,
 					duration: state.duration,
 					sampleRate: state.sampleRate,
@@ -82,6 +100,15 @@ function createPlayerStore() {
 			} catch (e) {
 				console.warn('Failed to save player state', e);
 			}
+		});
+
+		userPreferencesStore.subscribe((prefs) => {
+			update((state) => {
+				if (state.quality === prefs.playbackQuality && state.qualitySource === 'manual') {
+					return state;
+				}
+				return { ...state, quality: prefs.playbackQuality, qualitySource: 'manual' };
+			});
 		});
 	}
 
@@ -493,10 +520,10 @@ playerStore.subscribe(($state) => {
 		{ isPlaying: $state.isPlaying, currentTrack: $state.currentTrack }
 	);
 
-	// Invariant: Queue index must be valid
+	// Invariant: Queue index must be valid (-1 for empty queue, or within bounds)
 	assertInvariant(
-		$state.queueIndex >= 0 && $state.queueIndex < $state.queue.length,
-		'Queue index must be within valid range',
+		$state.queueIndex === -1 || ($state.queueIndex >= 0 && $state.queueIndex < $state.queue.length),
+		'Queue index must be -1 for empty queue or within valid range',
 		{ queueIndex: $state.queueIndex, queueLength: $state.queue.length }
 	);
 

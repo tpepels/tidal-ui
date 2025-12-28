@@ -53,7 +53,7 @@ import {
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
 
 
-	import { searchStore, type SearchTab } from '$lib/stores/searchStore.svelte';
+	import { searchStore, searchStoreActions, type SearchTab } from '$lib/stores/searchStoreAdapter';
 	import { uiStore } from '$lib/stores/uiStore';
 
 	function getLongLink(type: 'track' | 'album' | 'artist' | 'playlist', id: string | number) {
@@ -120,6 +120,9 @@ import {
 	);
 	let selectedRegion = $state<RegionOption>('us');
 	let isRegionSelectorOpen = $state(false);
+
+
+
 	// Playlist state moved to searchStore
 
 	const regionAvailability: Record<RegionOption, boolean> = {
@@ -147,17 +150,17 @@ import {
 
 	// Computed property to check if current query is a Tidal URL
 	const isQueryATidalUrl = $derived(
-		searchStore.query.trim().length > 0 && isTidalUrl(searchStore.query.trim())
+		$searchStore.query.trim().length > 0 && isTidalUrl($searchStore.query.trim())
 	);
 
 	// Computed property to check if current query is a supported streaming platform URL
 	const isQueryAStreamingUrl = $derived(
-		searchStore.query.trim().length > 0 && isSupportedStreamingUrl(searchStore.query.trim())
+		$searchStore.query.trim().length > 0 && isSupportedStreamingUrl($searchStore.query.trim())
 	);
 
 	// Computed property to check if current query is a Spotify playlist URL
 	const isQueryASpotifyPlaylist = $derived(
-		searchStore.query.trim().length > 0 && isSpotifyPlaylistUrl(searchStore.query.trim())
+		$searchStore.query.trim().length > 0 && isSpotifyPlaylistUrl($searchStore.query.trim())
 	);
 
 	// Combined URL check
@@ -172,23 +175,7 @@ import {
 
 	let albumDownloadStates = $state<Record<number, AlbumDownloadState>>({});
 
-	// Subscribe to search state machine changes
-	const unsubscribeSearch = uiStore.subscribeToSearch((state, previousState) => {
-		// Update component state based on state machine transitions
-		if (state.status === 'searching' && previousState.status !== 'searching') {
-			// Search started
-			searchStore.isLoading = true;
-			searchStore.error = null;
-		} else if (state.status === 'results' && previousState.status === 'searching') {
-			// Search completed with results
-			searchStore.isLoading = false;
-			// Results will be set by the actual search logic
-		} else if (state.status === 'error' && previousState.status === 'searching') {
-			// Search failed
-			searchStore.isLoading = false;
-			searchStore.error = state.error.message;
-		}
-	});
+
 
 	const newsItems = [
 		{
@@ -514,7 +501,7 @@ import {
 	}
 
 	$effect(() => {
-		const activeIds = new Set(searchStore.albums.map((album) => album.id));
+		const activeIds = new Set($searchStore.albums.map((album) => album.id));
 		let mutated = false;
 		const nextState: Record<number, AlbumDownloadState> = {};
 		for (const [albumId, state] of Object.entries(albumDownloadStates)) {
@@ -532,19 +519,18 @@ import {
 
 
 
+	// Debounced search to prevent excessive API calls
+	let searchTimeout: ReturnType<typeof setTimeout>;
+	function triggerSearch() {
+		clearTimeout(searchTimeout);
+		searchTimeout = setTimeout(() => {
+			handleSearch();
+		}, 300); // 300ms debounce
+	}
+
 	async function handleSearch() {
-		console.log('handleSearch called with query:', searchStore.query);
-		if (!searchStore.query.trim()) return;
-
-		// Use state machine for search coordination
-		if (uiStore.searchState.status === 'searching' &&
-		    uiStore.searchState.query === searchStore.query) {
-			console.log('Search already in progress for this query, skipping');
-			return;
-		}
-
-		// Trigger search via state machine
-		uiStore.performSearch(searchStore.query.trim(), searchStore.activeTab);
+		console.log('handleSearch called with query:', $searchStore.query);
+		if (!$searchStore.query.trim()) return;
 
 		// Auto-detect: if query is a Tidal URL, import it directly
 		// TODO: Implement URL import functionality
@@ -565,68 +551,85 @@ import {
 			return;
 		}
 
-		searchStore.isLoading = true;
-		searchStore.error = null;
-		searchStore.tabLoading = {
-			tracks: true,
-			albums: true,
-			artists: true,
-			playlists: true
-		};
+		// Trigger search state update
+		searchStoreActions.search($searchStore.query.trim(), $searchStore.activeTab);
 
 		try {
 			// Search all tabs in parallel
 			const [tracksResponse, albumsResponse, artistsResponse, playlistsResponse] = await Promise.allSettled([
-				fetchWithRetry(() => losslessAPI.searchTracks(searchStore.query, selectedRegion)),
-				losslessAPI.searchAlbums(searchStore.query),
-				losslessAPI.searchArtists(searchStore.query),
-				losslessAPI.searchPlaylists(searchStore.query)
+				fetchWithRetry(() => losslessAPI.searchTracks($searchStore.query, selectedRegion)),
+				losslessAPI.searchAlbums($searchStore.query),
+				losslessAPI.searchArtists($searchStore.query),
+				losslessAPI.searchPlaylists($searchStore.query)
 			]);
 
-			// Handle tracks
-			if (tracksResponse.status === 'fulfilled') {
-				const response = tracksResponse.value;
-				console.log('Search response:', response);
-				console.log('Response items:', response?.items);
-				searchStore.tracks = Array.isArray(response?.items) ? response.items : [];
-				console.log('Setting tracks:', searchStore.tracks.length, 'results');
-				if (searchStore.tracks.length === 0) {
-					console.log('No tracks found, checking for errors...');
-					console.log('Response structure:', JSON.stringify(response, null, 2));
-				}
-			} else {
+			const tracks =
+				tracksResponse.status === 'fulfilled'
+					? Array.isArray(tracksResponse.value?.items)
+						? tracksResponse.value.items
+						: []
+					: [];
+			const albums =
+				albumsResponse.status === 'fulfilled'
+					? Array.isArray(albumsResponse.value?.items)
+						? albumsResponse.value.items
+						: []
+					: [];
+			const artists =
+				artistsResponse.status === 'fulfilled'
+					? Array.isArray(artistsResponse.value?.items)
+						? artistsResponse.value.items
+						: []
+					: [];
+			const playlists =
+				playlistsResponse.status === 'fulfilled'
+					? Array.isArray(playlistsResponse.value?.items)
+						? playlistsResponse.value.items
+						: []
+					: [];
+
+			if (tracksResponse.status === 'rejected') {
 				console.error('Tracks search failed:', tracksResponse.reason);
 			}
-			searchStore.tabLoading.tracks = false;
-
-			// Handle albums
-			if (albumsResponse.status === 'fulfilled') {
-				searchStore.albums = Array.isArray(albumsResponse.value?.items) ? albumsResponse.value.items : [];
-			} else {
+			if (albumsResponse.status === 'rejected') {
 				console.error('Albums search failed:', albumsResponse.reason);
 			}
-			searchStore.tabLoading.albums = false;
-
-			// Handle artists
-			if (artistsResponse.status === 'fulfilled') {
-				searchStore.artists = Array.isArray(artistsResponse.value?.items) ? artistsResponse.value.items : [];
-			} else {
+			if (artistsResponse.status === 'rejected') {
 				console.error('Artists search failed:', artistsResponse.reason);
 			}
-			searchStore.tabLoading.artists = false;
-
-			// Handle playlists
-			if (playlistsResponse.status === 'fulfilled') {
-				searchStore.playlists = Array.isArray(playlistsResponse.value?.items) ? playlistsResponse.value.items : [];
-			} else {
+			if (playlistsResponse.status === 'rejected') {
 				console.error('Playlists search failed:', playlistsResponse.reason);
 			}
-			searchStore.tabLoading.playlists = false;
+
+			searchStoreActions.commit({
+				results: { tracks, albums, artists, playlists },
+				tracks,
+				albums,
+				artists,
+				playlists,
+				isLoading: false,
+				error: null,
+				tabLoading: {
+					tracks: false,
+					albums: false,
+					artists: false,
+					playlists: false
+				}
+			});
 
 			// If all searches failed, show error
 			if (tracksResponse.status === 'rejected' && albumsResponse.status === 'rejected' &&
 				artistsResponse.status === 'rejected' && playlistsResponse.status === 'rejected') {
-				searchStore.error = 'All searches failed. Please try again.';
+				searchStoreActions.commit({
+					error: 'All searches failed. Please try again.',
+					isLoading: false,
+					tabLoading: {
+						tracks: false,
+						albums: false,
+						artists: false,
+						playlists: false
+					}
+				});
 				toasts.error('Search failed for all categories', {
 					action: {
 						label: 'Retry',
@@ -636,7 +639,16 @@ import {
 			}
 		} catch (err) {
 			const message = err instanceof Error ? err.message : 'Search failed';
-			searchStore.error = message;
+			searchStoreActions.commit({
+				error: message,
+				isLoading: false,
+				tabLoading: {
+					tracks: false,
+					albums: false,
+					artists: false,
+					playlists: false
+				}
+			});
 			console.error('Search error:', err);
 			toasts.error(`Search failed: ${message}`, {
 				action: {
@@ -644,37 +656,44 @@ import {
 					handler: () => handleSearch()
 				}
 			});
-			// Reset loading states on error
-			searchStore.tabLoading = {
-				tracks: false,
-				albums: false,
-				artists: false,
-				playlists: false
-			};
-		} finally {
-			searchStore.isLoading = false;
 		}
 	}
 
 	async function handleStreamingUrlConversion() {
-		if (!searchStore.query.trim()) {
+		if (!$searchStore.query.trim()) {
 			return;
 		}
 
-		searchStore.isLoading = true;
-		searchStore.error = null;
+		searchStoreActions.commit({
+			isLoading: true,
+			error: null,
+			tabLoading: {
+				tracks: false,
+				albums: false,
+				artists: false,
+				playlists: false
+			}
+		});
 
 		try {
-			const platformName = getPlatformName(searchStore.query.trim());
+			const platformName = getPlatformName($searchStore.query.trim());
 
-			const tidalInfo = await convertToTidal(searchStore.query.trim(), {
+			const tidalInfo = await convertToTidal($searchStore.query.trim(), {
 				userCountry: 'US',
 				songIfSingle: true
 			});
 
 			if (!tidalInfo) {
-				searchStore.error = `Could not find TIDAL equivalent for this ${platformName || 'streaming platform'} link. The content might not be available on TIDAL.`;
-				searchStore.isLoading = false;
+				searchStoreActions.commit({
+					error: `Could not find TIDAL equivalent for this ${platformName || 'streaming platform'} link. The content might not be available on TIDAL.`,
+					isLoading: false,
+					tabLoading: {
+						tracks: false,
+						albums: false,
+						artists: false,
+						playlists: false
+					}
+				});
 				return;
 			}
 
@@ -694,70 +713,114 @@ import {
 
 						playerStore.setTrack(trackLookup.track);
 						playerStore.play();
-						searchStore.query = '';
+						searchStoreActions.setQuery('');
 					}
 					break;
 				}
 				case 'album': {
 					const albumData = await losslessAPI.getAlbum(Number(tidalInfo.id));
 					if (albumData?.album) {
-						searchStore.activeTab = 'albums';
-						searchStore.albums = [albumData.album];
-						searchStore.query = '';
+						searchStoreActions.commit({
+							activeTab: 'albums',
+							albums: [albumData.album],
+							results: {
+								tracks: [],
+								albums: [albumData.album],
+								artists: [],
+								playlists: []
+							}
+						});
+						searchStoreActions.setQuery('');
 					}
 					break;
 				}
 				case 'playlist': {
 					const playlistData = await losslessAPI.getPlaylist(tidalInfo.id);
 					if (playlistData?.playlist) {
-						searchStore.activeTab = 'playlists';
-						searchStore.playlists = [playlistData.playlist];
-						searchStore.query = '';
+						searchStoreActions.commit({
+							activeTab: 'playlists',
+							playlists: [playlistData.playlist],
+							results: {
+								tracks: [],
+								albums: [],
+								artists: [],
+								playlists: [playlistData.playlist]
+							}
+						});
+						searchStoreActions.setQuery('');
 					}
 					break;
 				}
 			}
 		} catch (err) {
-			searchStore.error = err instanceof Error ? err.message : 'Failed to convert URL';
+			searchStoreActions.commit({
+				error: err instanceof Error ? err.message : 'Failed to convert URL',
+				isLoading: false,
+				tabLoading: {
+					tracks: false,
+					albums: false,
+					artists: false,
+					playlists: false
+				}
+			});
 			console.error('Streaming URL conversion error:', err);
 		} finally {
-			searchStore.isLoading = false;
+		searchStoreActions.setIsLoading(false);
 		}
 	}
 
 	async function handleSpotifyPlaylistConversion() {
-		if (!searchStore.query.trim()) {
+		if (!$searchStore.query.trim()) {
 			return;
 		}
 
-		searchStore.error = null;
-		searchStore.playlistLoadingMessage = 'Loading playlist...';
-		searchStore.isPlaylistConversionMode = true;
-		searchStore.isLoading = true;
+		searchStoreActions.commit({
+			error: null,
+			isLoading: true,
+			tabLoading: {
+				tracks: false,
+				albums: false,
+				artists: false,
+				playlists: false
+			}
+		});
+		searchStoreActions.setPlaylistLoadingMessage('Loading playlist...');
+		searchStoreActions.setIsPlaylistConversionMode(true);
 
 		try {
 
 			// Step 1: Get all Spotify track URLs from the playlist
-			const spotifyTrackUrls = await convertSpotifyPlaylist(searchStore.query.trim());
+			const spotifyTrackUrls = await convertSpotifyPlaylist($searchStore.query.trim());
 
 			if (!spotifyTrackUrls || spotifyTrackUrls.length === 0) {
-				searchStore.error =
-					'Could not fetch tracks from Spotify playlist. The playlist might be empty or private.';
-				searchStore.playlistLoadingMessage = null;
-				searchStore.isLoading = false;
-				searchStore.isPlaylistConversionMode = false;
+				searchStoreActions.commit({
+					error:
+						'Could not fetch tracks from Spotify playlist. The playlist might be empty or private.',
+					isLoading: false,
+					tabLoading: {
+						tracks: false,
+						albums: false,
+						artists: false,
+						playlists: false
+					}
+				});
+				searchStoreActions.setPlaylistLoadingMessage(null);
+				searchStoreActions.setIsPlaylistConversionMode(false);
 				return;
 			}
 
-			searchStore.playlistConversionTotal = spotifyTrackUrls.length;
-			searchStore.playlistLoadingMessage = `Loading ${spotifyTrackUrls.length} tracks...`;
+			searchStoreActions.setPlaylistConversionTotal(spotifyTrackUrls.length);
+			searchStoreActions.setPlaylistLoadingMessage(`Loading ${spotifyTrackUrls.length} tracks...`);
 
-			// Clear previous results and switch to tracks tab
-			searchStore.activeTab = 'tracks';
-			searchStore.tracks = [];
+			// Clear previous results and switch to tracks $searchStore.activeTab
+			searchStoreActions.commit({
+				activeTab: 'tracks',
+				tracks: [],
+				results: { tracks: [], albums: [], artists: [], playlists: [] }
+			});
 
 			// Set loading to false so tracks can be displayed as they're added
-			searchStore.isLoading = false;
+		searchStoreActions.setIsLoading(false);
 
 			// Step 2: Fetch Songlink data for all tracks (no TIDAL conversion yet!)
 			const conversionPromises = spotifyTrackUrls.map(async (trackUrl, index) => {
@@ -810,66 +873,87 @@ import {
 				}
 
 				// Update progress message
-				searchStore.playlistLoadingMessage = `Loaded ${index + 1}/${spotifyTrackUrls.length} tracks...`;
+				searchStoreActions.setPlaylistLoadingMessage(`Loaded ${index + 1}/${spotifyTrackUrls.length} tracks...`);
 			});
 
 			// Update tracks all at once for better performance
-			searchStore.tracks = successfulTracks;
+			searchStoreActions.commit({
+				tracks: successfulTracks,
+				results: { tracks: successfulTracks, albums: [], artists: [], playlists: [] }
+			});
 
 
 
-			if (searchStore.tracks.length === 0) {
-				searchStore.error = 'Could not find TIDAL equivalents for any tracks in this playlist.';
-				searchStore.playlistLoadingMessage = null;
-				searchStore.isPlaylistConversionMode = false;
+			if ($searchStore.tracks.length === 0) {
+				searchStoreActions.commit({
+					error: 'Could not find TIDAL equivalents for any tracks in this playlist.',
+					isLoading: false,
+					tabLoading: {
+						tracks: false,
+						albums: false,
+						artists: false,
+						playlists: false
+					}
+				});
+				searchStoreActions.setPlaylistLoadingMessage(null);
+				searchStoreActions.setIsPlaylistConversionMode(false);
 				return;
 			}
 
 			// Show a message if some tracks failed
 			if (failedTracks.length > 0) {
 				console.warn(`${failedTracks.length} tracks could not be loaded`);
-				searchStore.playlistLoadingMessage = `Loaded ${searchStore.tracks.length} tracks (${failedTracks.length} failed)`;
+				searchStoreActions.setPlaylistLoadingMessage(`Loaded ${$searchStore.tracks.length} tracks (${failedTracks.length} failed)`);
 			} else {
-				searchStore.playlistLoadingMessage = `Successfully loaded ${searchStore.tracks.length} tracks!`;
+				searchStoreActions.setPlaylistLoadingMessage(`Successfully loaded ${$searchStore.tracks.length} tracks!`);
 			}
 
 			// Clear the query and hide loading message after a brief delay
-			searchStore.query = '';
+			searchStoreActions.setQuery('');
 			setTimeout(() => {
-				searchStore.playlistLoadingMessage = null;
+				searchStoreActions.setPlaylistLoadingMessage(null);
 			}, 3000);
 		} catch (err) {
-			searchStore.error = err instanceof Error ? err.message : 'Failed to load Spotify playlist';
+			searchStoreActions.commit({
+				error: err instanceof Error ? err.message : 'Failed to load Spotify playlist',
+				isLoading: false,
+				tabLoading: {
+					tracks: false,
+					albums: false,
+					artists: false,
+					playlists: false
+				}
+			});
 			console.error('Spotify playlist loading error:', err);
-			searchStore.playlistLoadingMessage = null;
-			searchStore.isPlaylistConversionMode = false;
+			searchStoreActions.setPlaylistLoadingMessage(null);
+			searchStoreActions.setIsPlaylistConversionMode(false);
 		}
 	}
 
 	function handlePlayAll() {
-		if (searchStore.tracks.length > 0) {
-			playerStore.setQueue(searchStore.tracks, 0);
+		if ($searchStore.tracks.length > 0) {
+			playerStore.setQueue($searchStore.tracks, 0);
 			playerStore.play();
 		}
 	}
 
 	function handleShuffleAll() {
-		if (searchStore.tracks.length > 0) {
+		if ($searchStore.tracks.length > 0) {
 			// Shuffle the tracks
-			const shuffled = [...searchStore.tracks].sort(() => Math.random() - 0.5);
+			const shuffled = [...$searchStore.tracks].sort(() => Math.random() - 0.5);
 			playerStore.setQueue(shuffled, 0);
 			playerStore.play();
 		}
 	}
 
 	async function handleDownloadAll() {
-		if (searchStore.tracks.length === 0) return;
+		if ($searchStore.tracks.length === 0) return;
 
 		const quality = $playerStore.quality;
 		const convertAacToMp3Preference = $userPreferencesStore.convertAacToMp3;
 		const downloadCoverSeperatelyPreference = $userPreferencesStore.downloadCoversSeperately;
 
-		for (const track of searchStore.tracks) {
+		for (const track of $searchStore.tracks) {
 			try {
 				// Use tidalId if available (for Songlink tracks), otherwise use id
 				const trackId = 'tidalId' in track && track.tidalId ? track.tidalId : track.id;
@@ -931,7 +1015,7 @@ import {
 	}
 
 	function handleKeyPress(event: KeyboardEvent) {
-		console.log('Key pressed:', event.key, 'query:', searchStore.query);
+		console.log('Key pressed:', event.key, 'query:', $searchStore.query);
 		if (event.key === 'Enter') {
 			console.log('Enter pressed, calling handleSearch');
 			handleSearch();
@@ -939,9 +1023,9 @@ import {
 	}
 
 	function handleTabChange(tab: SearchTab) {
-		searchStore.activeTab = tab;
+		searchStoreActions.setActiveTab(tab);
 		// Only trigger search if we have a query and it's not a URL
-		if (searchStore.query.trim() && !isQueryAUrl) {
+		if ($searchStore.query.trim() && !isQueryAUrl) {
 			handleSearch();
 		}
 	}
@@ -953,7 +1037,7 @@ import {
 		if (value !== selectedRegion) {
 			regionStore.setRegion(value);
 			// Only trigger search if we have a query and it's not a URL
-			if (searchStore.query.trim() && !isQueryAUrl) {
+			if ($searchStore.query.trim() && !isQueryAUrl) {
 				handleSearch();
 			}
 		}
@@ -989,9 +1073,15 @@ import {
 		return track as Track;
 	}
 
+	// Subscribe to search store changes
+	const unsubscribeSearch = searchStore.subscribe(() => {
+		// Handle search store changes if needed
+	});
+
 	// Cleanup subscriptions on component destroy
 	onDestroy(() => {
 		unsubscribeSearch();
+		unsubscribeRegion();
 	});
 </script>
 
@@ -1005,14 +1095,14 @@ import {
 				<div class="flex min-w-0 flex-1 items-center gap-2">
 					<input
 						type="text"
-						bind:value={searchStore.query}
+						bind:value={$searchStore.query}
 						onkeypress={handleKeyPress}
 						placeholder={isQueryATidalUrl
 							? 'Tidal URL detected - press Enter to import'
 							: isQueryASpotifyPlaylist
 								? 'Spotify playlist detected - press Enter to convert'
 								: isQueryAStreamingUrl
-									? `${getPlatformName(searchStore.query)} URL detected - press Enter to convert`
+									? `${getPlatformName($searchStore.query)} URL detected - press Enter to convert`
 									: 'Search for tracks, albums, artists... or paste a URL'}
 						class="w-full min-w-0 flex-1 border-none bg-transparent p-0 pl-1 text-white ring-0 placeholder:text-gray-400 focus:outline-none"
 					/>
@@ -1058,33 +1148,8 @@ import {
 							>
 								<ChevronDown size={16} />
 							</span>
-						</div>
-					{/if}
-					<button
-						onclick={handleSearch}
-						disabled={searchStore.isLoading || !searchStore.query.trim()}
-						class="search-button flex h-full items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-					>
-						{#if isQueryASpotifyPlaylist}
-							<Link2 size={16} class="text-white" />
-							<span class="hidden sm:inline"
-								>{searchStore.isLoading ? 'Converting…' : 'Convert Playlist'}</span
-							>
-						{:else if isQueryAStreamingUrl}
-							<Link2 size={16} class="text-white" />
-							<span class="hidden sm:inline"
-								>{searchStore.isLoading ? 'Converting…' : 'Convert & Play'}</span
-							>
-						{:else if isQueryATidalUrl}
-							<Link2 size={16} class="text-white" />
-							<span class="hidden sm:inline">{searchStore.isLoading ? 'Importing…' : 'Import'}</span
-							>
-						{:else}
-							<Search size={16} class="text-white" />
-							<span class="hidden sm:inline">{searchStore.isLoading ? 'Searching…' : 'Search'}</span
-							>
-						{/if}
-					</button>
+			</div>
+		{/if}
 				</div>
 			</div>
 		</div>
@@ -1095,7 +1160,7 @@ import {
 		<div class="scrollbar-hide mb-6 flex gap-2 overflow-x-auto border-b border-gray-700">
 			<button
 				onclick={() => handleTabChange('tracks')}
-				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {searchStore.activeTab ===
+				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {$searchStore.activeTab ===
 				'tracks'
 					? 'border-blue-500 text-blue-500'
 					: 'border-transparent text-gray-300 hover:text-white'}"
@@ -1105,7 +1170,7 @@ import {
 			</button>
 			<button
 				onclick={() => handleTabChange('albums')}
-				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {searchStore.activeTab ===
+				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {$searchStore.activeTab ===
 				'albums'
 					? 'border-blue-500 text-blue-500'
 					: 'border-transparent text-gray-300 hover:text-white'}"
@@ -1115,7 +1180,7 @@ import {
 			</button>
 			<button
 				onclick={() => handleTabChange('artists')}
-				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {searchStore.activeTab ===
+				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {$searchStore.activeTab ===
 				'artists'
 					? 'border-blue-500 text-blue-500'
 					: 'border-transparent text-gray-300 hover:text-white'}"
@@ -1125,7 +1190,7 @@ import {
 			</button>
 			<button
 				onclick={() => handleTabChange('playlists')}
-				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {searchStore.activeTab ===
+				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {$searchStore.activeTab ===
 				'playlists'
 					? 'border-blue-500 text-blue-500'
 					: 'border-transparent text-gray-300 hover:text-white'}"
@@ -1137,9 +1202,7 @@ import {
 	{/if}
 
 	<!-- Loading State -->
-	{#if searchStore.tabLoading[searchStore.activeTab]}
-		{@const tab = searchStore.activeTab}
-		{#if tab === 'tracks'}
+	{#if $searchStore.activeTab === 'tracks'}
 			<div class="space-y-2">
 				<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
 				<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
@@ -1155,7 +1218,7 @@ import {
 					</div>
 				{/each}
 			</div>
-		{:else if tab === 'albums' || tab === 'playlists'}
+		{:else if $searchStore.activeTab === 'albums' || $searchStore.activeTab === 'playlists'}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
 				<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
 				<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
@@ -1167,7 +1230,7 @@ import {
 					</div>
 				{/each}
 			</div>
-		{:else if tab === 'artists'}
+		{:else if $searchStore.activeTab === 'artists'}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
 				<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
 				<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
@@ -1184,30 +1247,30 @@ import {
 				<div class="h-10 w-10 animate-spin rounded-full border-b-2 border-blue-500"></div>
 			</div>
 		{/if}
-	{/if}
 
 	<!-- Error State -->
-	{#if searchStore.error}
+	{#if $searchStore.error}
 		<div class="rounded-lg border border-red-900 bg-red-900/20 p-4 text-red-400">
-			{searchStore.error}
+			{$searchStore.error}
 		</div>
 	{/if}
 
 	<!-- Playlist Loading Progress -->
-	{#if searchStore.playlistLoadingMessage}
+	{#if $searchStore.playlistLoadingMessage}
 		<div
 			class="mb-4 flex items-center gap-3 rounded-lg border border-blue-900 bg-blue-900/20 p-4 text-blue-400"
 		>
 			<LoaderCircle class="animate-spin" size={20} />
-			<span>{searchStore.playlistLoadingMessage}</span>
+			<span>{$searchStore.playlistLoadingMessage}</span>
 		</div>
 	{/if}
 
 	<!-- Results -->
-	{#if (!searchStore.isLoading && !searchStore.error) || (searchStore.isPlaylistConversionMode && searchStore.tracks.length > 0)}
-		{#if searchStore.activeTab === 'tracks' && searchStore.tracks.length > 0}
+	{#if !$searchStore.tabLoading[$searchStore.activeTab]}
+		{#if (!$searchStore.isLoading && !$searchStore.error) || ($searchStore.isPlaylistConversionMode && $searchStore.tracks.length > 0)}
+		{#if $searchStore.activeTab === 'tracks' && $searchStore.tracks.length > 0}
 			<!-- Playlist Controls (shown when in playlist conversion mode) -->
-			{#if searchStore.isPlaylistConversionMode}
+			{#if $searchStore.isPlaylistConversionMode}
 				<div class="mb-6 flex flex-wrap items-center gap-3">
 					<button
 						onclick={handlePlayAll}
@@ -1231,13 +1294,13 @@ import {
 						Download All
 					</button>
 					<div class="ml-auto text-sm text-gray-400">
-						{searchStore.tracks.length} of {searchStore.playlistConversionTotal} tracks
+						{$searchStore.tracks.length} of {$searchStore.playlistConversionTotal} tracks
 					</div>
 				</div>
 			{/if}
 
 			<div class="space-y-2">
-				{#each searchStore.tracks as track (track.id)}
+				{#each $searchStore.tracks as track (track.id)}
 					<div
 						role="button"
 						tabindex="0"
@@ -1507,9 +1570,9 @@ import {
 					</div>
 				{/each}
 			</div>
-		{:else if searchStore.activeTab === 'albums' && searchStore.albums.length > 0}
+		{:else if $searchStore.activeTab === 'albums' && $searchStore.albums.length > 0}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-				{#each searchStore.albums as album (album.id)}
+				{#each $searchStore.albums as album (album.id)}
 					<div class="group relative text-left">
 						<button
 							onclick={(event) => handleAlbumDownloadClick(album, event)}
@@ -1603,9 +1666,9 @@ import {
 					</div>
 				{/each}
 			</div>
-		{:else if searchStore.activeTab === 'artists' && searchStore.artists.length > 0}
+		{:else if $searchStore.activeTab === 'artists' && $searchStore.artists.length > 0}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-				{#each searchStore.artists as artist (artist.id)}
+				{#each $searchStore.artists as artist (artist.id)}
 					<a href={`/artist/${artist.id}`} class="group text-center" data-sveltekit-preload-data>
 						<div class="relative mb-2 aspect-square overflow-hidden rounded-full">
 							{#if artist.picture}
@@ -1627,9 +1690,9 @@ import {
 					</a>
 				{/each}
 			</div>
-		{:else if searchStore.activeTab === 'playlists' && searchStore.playlists.length > 0}
+		{:else if $searchStore.activeTab === 'playlists' && $searchStore.playlists.length > 0}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-				{#each searchStore.playlists as playlist (playlist.uuid)}
+				{#each $searchStore.playlists as playlist (playlist.uuid)}
 					<a
 						href={`/playlist/${playlist.uuid}`}
 						class="group text-left"
@@ -1653,7 +1716,7 @@ import {
 				{/each}
 			</div>
 			<!-- News Section -->
-		{:else if !searchStore.query.trim()}
+		{:else if !$searchStore.query.trim()}
 			<div class="news-container rounded-lg border p-4">
 				<h2 class="mb-4 text-3xl font-bold">News</h2>
 				<section class="grid gap-4 text-left shadow-lg sm:grid-cols-2">
@@ -1674,7 +1737,7 @@ import {
 					{/each}
 				</section>
 			</div>
-		{:else if isQueryATidalUrl && !searchStore.isLoading}
+		{:else if isQueryATidalUrl && !$searchStore.isLoading}
 			<div class="py-12 text-center text-gray-400">
 				<div class="flex flex-col items-center gap-4">
 					<Link2 size={48} class="text-blue-400" />
@@ -1682,11 +1745,12 @@ import {
 					<p class="text-sm">Press Enter or click Import to load this content</p>
 				</div>
 			</div>
-		{:else if searchStore.query.trim() && !searchStore.isLoading && !isQueryATidalUrl}
+		{:else if $searchStore.query.trim() && !$searchStore.isLoading && !isQueryATidalUrl}
 			<div class="py-12 text-center text-gray-400">
 				<p>No results found...</p>
 			</div>
 		{/if}
+	{/if}
 	{/if}
 </div>
 

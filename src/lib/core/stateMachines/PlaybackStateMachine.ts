@@ -1,7 +1,8 @@
-// State machines for deterministic state management
 // These replace fragile reactive effects with explicit state transitions
 
 import type { PlayableTrack } from '../../types';
+import { logger } from '../logger';
+import { performanceMonitor } from '../performance';
 
 export type PlaybackState =
 	| { status: 'idle' }
@@ -19,173 +20,190 @@ export type PlaybackEvent =
 	| { type: 'ERROR'; error: Error }
 	| { type: 'RESET' };
 
-export class PlaybackStateMachine {
-	private state: PlaybackState = { status: 'idle' };
-	private listeners = new Set<(state: PlaybackState, previousState: PlaybackState) => void>();
+export interface PlaybackStateMachine {
+	currentState: PlaybackState;
+	subscribe(listener: (state: PlaybackState, previousState: PlaybackState) => void): () => void;
+	transition(event: PlaybackEvent): boolean;
+}
 
-	public get currentState(): PlaybackState {
-		return { ...this.state };
-	}
+export function createPlaybackStateMachine(): PlaybackStateMachine {
+	let state: PlaybackState = { status: 'idle' };
+	const listeners = new Set<(state: PlaybackState, previousState: PlaybackState) => void>();
 
-	public subscribe(
-		listener: (state: PlaybackState, previousState: PlaybackState) => void
-	): () => void {
-		this.listeners.add(listener);
-		return () => this.listeners.delete(listener);
-	}
+	const setState = (newState: PlaybackState): void => {
+		const previousState = state;
+		state = newState;
+		listeners.forEach((listener) => listener(newState, previousState));
+	};
 
-	private setState(newState: PlaybackState): void {
-		const previousState = this.state;
-		this.state = newState;
-		this.listeners.forEach((listener) => listener(newState, previousState));
-	}
+	const transition = (event: PlaybackEvent): boolean => {
+		const startTime = performance.now();
+		const currentState = state;
 
-	public transition(event: PlaybackEvent): boolean {
-		const currentState = this.state;
+		// logger.logStateTransition(currentState.status, 'transitioning', event.type, {
+		// 	component: 'PlaybackStateMachine',
+		// 	fromState: currentState.status,
+		// 	event: event.type,
+		// 	trackId: currentState.status !== 'idle' && currentState.status !== 'error' ? currentState.track.id : undefined,
+		// 	position: currentState.status === 'playing' || currentState.status === 'paused' ? currentState.position : undefined
+		// });
+
+		let result: boolean;
 
 		switch (currentState.status) {
 			case 'idle':
-				return this.handleIdleState(event);
+				result = handleIdleState(event);
+				break;
 
 			case 'loading':
-				return this.handleLoadingState(event);
+				result = handleLoadingState(event);
+				break;
 
 			case 'playing':
-				return this.handlePlayingState(event);
+				result = handlePlayingState(event);
+				break;
 
 			case 'paused':
-				return this.handlePausedState(event);
+				result = handlePausedState(event);
+				break;
 
 			case 'error':
-				return this.handleErrorState(event);
+				result = handleErrorState(event);
+				break;
 
 			default:
-				console.warn('[PlaybackStateMachine] Unknown state:', currentState);
-				return false;
+				logger.error('Unknown playback state encountered', {
+					component: 'PlaybackStateMachine',
+					unknownState: currentState,
+					event: event.type
+				});
+				result = false;
 		}
-	}
 
-	private handleIdleState(event: PlaybackEvent): boolean {
+		const duration = performance.now() - startTime;
+		logger.logStateTransition(currentState.status, state.status, event.type, {
+			component: 'PlaybackStateMachine',
+			duration,
+			trackId: state.status !== 'idle' && state.status !== 'error' ? state.track.id : undefined,
+			position: state.status === 'playing' || state.status === 'paused' ? state.position : undefined
+		});
+
+		// performanceMonitor.recordMetric('state-transition', duration, {
+		// 	fromState: currentState.status,
+		// 	toState: state.status,
+		// 	eventType: event.type,
+		// 	success: result
+		// });
+
+		return result;
+	};
+
+	const handleIdleState = (event: PlaybackEvent): boolean => {
 		switch (event.type) {
 			case 'LOAD_TRACK':
-				this.setState({ status: 'loading', track: event.track });
+				setState({ status: 'loading', track: event.track });
 				return true;
 			case 'RESET':
 				// Already idle
 				return true;
 			default:
-				return false; // Invalid transition
+				return false;
 		}
-	}
+	};
 
-	private handleLoadingState(event: PlaybackEvent): boolean {
+	const handleLoadingState = (event: PlaybackEvent): boolean => {
+		const currentState = state as { status: 'loading'; track: PlayableTrack };
+
 		switch (event.type) {
 			case 'PLAY':
-				// Stay in loading state, but mark as playing once loaded
-				return true; // Transition will happen when loading completes
-			case 'ERROR':
-				this.setState({ status: 'error', error: event.error, canRetry: true });
+				setState({ status: 'playing', track: currentState.track, position: 0 });
 				return true;
 			case 'STOP':
-				this.setState({ status: 'idle' });
+				setState({ status: 'idle' });
+				return true;
+			case 'ERROR':
+				setState({ status: 'error', error: event.error, canRetry: true });
+				return true;
+			case 'LOAD_TRACK':
+				// Replace current loading track
+				setState({ status: 'loading', track: event.track });
 				return true;
 			default:
 				return false;
 		}
-	}
+	};
 
-	private handlePlayingState(event: PlaybackEvent): boolean {
-		const currentState = this.state as {
-			status: 'playing';
-			track: PlayableTrack;
-			position: number;
-		};
+	const handlePlayingState = (event: PlaybackEvent): boolean => {
+		const currentState = state as { status: 'playing'; track: PlayableTrack; position: number };
+
 		switch (event.type) {
 			case 'PAUSE':
-				this.setState({
-					status: 'paused',
-					track: currentState.track,
-					position: currentState.position
-				});
-				return true;
-			case 'SEEK':
-				this.setState({
-					...currentState,
-					position: event.position
-				});
+				setState({ status: 'paused', track: currentState.track, position: currentState.position });
 				return true;
 			case 'STOP':
-				this.setState({ status: 'idle' });
+				setState({ status: 'idle' });
+				return true;
+			case 'SEEK':
+				setState({ ...currentState, position: event.position });
 				return true;
 			case 'ERROR':
-				this.setState({ status: 'error', error: event.error, canRetry: true });
+				setState({ status: 'error', error: event.error, canRetry: true });
+				return true;
+			case 'LOAD_TRACK':
+				setState({ status: 'loading', track: event.track });
 				return true;
 			default:
 				return false;
 		}
-	}
+	};
 
-	private handlePausedState(event: PlaybackEvent): boolean {
-		const currentState = this.state as { status: 'paused'; track: PlayableTrack; position: number };
+	const handlePausedState = (event: PlaybackEvent): boolean => {
+		const currentState = state as { status: 'paused'; track: PlayableTrack; position: number };
+
 		switch (event.type) {
 			case 'PLAY':
-				this.setState({
-					status: 'playing',
-					track: currentState.track,
-					position: currentState.position
-				});
-				return true;
-			case 'SEEK':
-				this.setState({
-					...currentState,
-					position: event.position
-				});
+				setState({ status: 'playing', track: currentState.track, position: currentState.position });
 				return true;
 			case 'STOP':
-				this.setState({ status: 'idle' });
+				setState({ status: 'idle' });
+				return true;
+			case 'SEEK':
+				setState({ ...currentState, position: event.position });
+				return true;
+			case 'ERROR':
+				setState({ status: 'error', error: event.error, canRetry: true });
 				return true;
 			case 'LOAD_TRACK':
-				this.setState({ status: 'loading', track: event.track });
+				setState({ status: 'loading', track: event.track });
 				return true;
 			default:
 				return false;
 		}
-	}
+	};
 
-	private handleErrorState(event: PlaybackEvent): boolean {
+	const handleErrorState = (event: PlaybackEvent): boolean => {
+		const currentState = state as { status: 'error'; error: Error; canRetry: boolean };
+
 		switch (event.type) {
 			case 'LOAD_TRACK':
-				this.setState({ status: 'loading', track: event.track });
+				setState({ status: 'loading', track: event.track });
 				return true;
 			case 'RESET':
-				this.setState({ status: 'idle' });
+				setState({ status: 'idle' });
 				return true;
 			default:
 				return false;
 		}
-	}
+	};
 
-	// Convenience methods
-	public canPlay(): boolean {
-		return this.state.status === 'paused' || this.state.status === 'idle';
-	}
-
-	public canPause(): boolean {
-		return this.state.status === 'playing';
-	}
-
-	public isPlaying(): boolean {
-		return this.state.status === 'playing';
-	}
-
-	public getCurrentTrack(): PlayableTrack | null {
-		switch (this.state.status) {
-			case 'loading':
-			case 'playing':
-			case 'paused':
-				return this.state.track;
-			default:
-				return null;
-		}
-	}
+	return {
+		get currentState() {
+			return { ...state };
+		},
+		subscribe(listener) {
+			listeners.add(listener);
+			return () => listeners.delete(listener);
+		},
+		transition
+	};
 }

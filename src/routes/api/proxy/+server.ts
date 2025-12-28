@@ -29,6 +29,222 @@ const SEARCH_CACHE_TTL_SECONDS = getEnvNumber('REDIS_CACHE_TTL_SEARCH_SECONDS', 
 const TRACK_CACHE_TTL_SECONDS = getEnvNumber('REDIS_CACHE_TTL_TRACK_SECONDS', 120);
 const MAX_CACHE_BODY_BYTES = getEnvNumber('REDIS_CACHE_MAX_BODY_BYTES', 200_000);
 
+const MOCK_PROXY_FLAGS = ['E2E_OFFLINE', 'MOCK_PROXY', 'MOCK_API'];
+
+function isMockProxyEnabled(): boolean {
+	return MOCK_PROXY_FLAGS.some((flag) => {
+		const value = env[flag];
+		return value ? ['true', '1'].includes(value.toLowerCase()) : false;
+	});
+}
+
+function jsonResponse(payload: unknown, status = 200): Response {
+	return new Response(JSON.stringify(payload), {
+		status,
+		headers: { 'Content-Type': 'application/json' }
+	});
+}
+
+function buildMockArtist(id: number) {
+	return {
+		id,
+		name: `Mock Artist ${id}`,
+		type: 'artist',
+		picture: '',
+		url: `https://example.com/artist/${id}`,
+		popularity: 1
+	};
+}
+
+function buildMockAlbum(id: number, artist: ReturnType<typeof buildMockArtist>) {
+	return {
+		id,
+		title: `Mock Album ${id}`,
+		cover: 'mock-cover',
+		videoCover: null,
+		releaseDate: '2024-01-01',
+		duration: 2400,
+		numberOfTracks: 1,
+		numberOfVideos: 0,
+		numberOfVolumes: 1,
+		explicit: false,
+		popularity: 1,
+		type: 'album',
+		upc: '000000000000',
+		copyright: 'Mock Label',
+		artist,
+		artists: [artist]
+	};
+}
+
+function buildMockTrack(
+	id: number,
+	artist: ReturnType<typeof buildMockArtist>,
+	album: ReturnType<typeof buildMockAlbum>
+) {
+	return {
+		id,
+		title: `Mock Track ${id}`,
+		duration: 240,
+		replayGain: 0,
+		peak: 0,
+		allowStreaming: true,
+		streamReady: true,
+		streamStartDate: '2024-01-01',
+		premiumStreamingOnly: false,
+		trackNumber: 1,
+		volumeNumber: 1,
+		version: null,
+		popularity: 1,
+		url: `https://example.com/track/${id}`,
+		isrc: 'MOCK12345678',
+		editable: false,
+		explicit: false,
+		audioQuality: 'LOSSLESS',
+		audioModes: ['STEREO'],
+		artist,
+		artists: [artist],
+		album,
+		mixes: {},
+		mediaMetadata: { tags: [] }
+	};
+}
+
+function buildMockPlaylist(uuid: string) {
+	const now = new Date().toISOString();
+	return {
+		uuid,
+		title: `Mock Playlist ${uuid}`,
+		description: 'Mock playlist for offline tests.',
+		image: 'mock-playlist',
+		squareImage: 'mock-playlist',
+		duration: 240,
+		numberOfTracks: 1,
+		numberOfVideos: 0,
+		creator: {
+			id: 1,
+			name: 'Mock Creator',
+			picture: null
+		},
+		created: now,
+		lastUpdated: now,
+		type: 'playlist',
+		publicPlaylist: true,
+		url: `https://example.com/playlist/${uuid}`,
+		popularity: 1
+	};
+}
+
+function buildMockSearchResponse(type: 'tracks' | 'albums' | 'artists' | 'playlists') {
+	const artist = buildMockArtist(456);
+	const album = buildMockAlbum(123, artist);
+	const track = buildMockTrack(789, artist, album);
+	const playlist = buildMockPlaylist('test-uuid');
+
+	const itemsByType = {
+		tracks: [track],
+		albums: [album],
+		artists: [artist],
+		playlists: [playlist]
+	};
+
+	return {
+		items: itemsByType[type],
+		limit: 1,
+		offset: 0,
+		totalNumberOfItems: 1
+	};
+}
+
+function buildMockTrackLookup(id: number) {
+	const artist = buildMockArtist(456);
+	const album = buildMockAlbum(123, artist);
+	const track = buildMockTrack(id, artist, album);
+	const manifestPayload = Buffer.from(
+		JSON.stringify({ urls: ['https://example.com/audio.mp3'] })
+	).toString('base64');
+
+	return [
+		track,
+		{
+			trackId: id,
+			audioQuality: 'LOSSLESS',
+			audioMode: 'STEREO',
+			manifest: manifestPayload,
+			manifestMimeType: 'application/json',
+			assetPresentation: 'FULL'
+		}
+	];
+}
+
+function buildMockProxyResponse(parsedTarget: URL): Response | null {
+	const path = parsedTarget.pathname.toLowerCase();
+
+	if (path.includes('/search/')) {
+		const params = parsedTarget.searchParams;
+		if (params.has('s')) {
+			return jsonResponse(buildMockSearchResponse('tracks'));
+		}
+		if (params.has('a')) {
+			return jsonResponse(buildMockSearchResponse('artists'));
+		}
+		if (params.has('al')) {
+			return jsonResponse(buildMockSearchResponse('albums'));
+		}
+		if (params.has('p')) {
+			return jsonResponse(buildMockSearchResponse('playlists'));
+		}
+		return jsonResponse(buildMockSearchResponse('tracks'));
+	}
+
+	if (path.includes('/album/')) {
+		const id = Number.parseInt(parsedTarget.searchParams.get('id') || '123', 10);
+		const artist = buildMockArtist(456);
+		const album = buildMockAlbum(Number.isFinite(id) ? id : 123, artist);
+		const track = buildMockTrack(789, artist, album);
+		return jsonResponse({
+			data: {
+				items: [{ item: track }]
+			}
+		});
+	}
+
+	if (path.includes('/artist/')) {
+		const id = Number.parseInt(parsedTarget.searchParams.get('f') || '456', 10);
+		const artist = buildMockArtist(Number.isFinite(id) ? id : 456);
+		const album = buildMockAlbum(123, artist);
+		const track = buildMockTrack(789, artist, album);
+		return jsonResponse({
+			...artist,
+			albums: [album],
+			tracks: [track]
+		});
+	}
+
+	if (path.includes('/playlist/')) {
+		const uuid = parsedTarget.searchParams.get('id') || 'test-uuid';
+		const playlist = buildMockPlaylist(uuid);
+		const artist = buildMockArtist(456);
+		const album = buildMockAlbum(123, artist);
+		const track = buildMockTrack(789, artist, album);
+		return jsonResponse({
+			playlist,
+			items: [{ item: track }]
+		});
+	}
+
+	if (path.includes('/track/')) {
+		const id = Number.parseInt(parsedTarget.searchParams.get('id') || '789', 10);
+		return jsonResponse(buildMockTrackLookup(Number.isFinite(id) ? id : 789));
+	}
+
+	if (path.includes('/url/')) {
+		return jsonResponse({ url: 'https://example.com/audio.mp3' });
+	}
+
+	return null;
+}
+
 interface CachedProxyEntry {
 	status: number;
 	statusText: string;
@@ -286,6 +502,13 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 			status: 400,
 			headers: { 'Content-Type': 'application/json' }
 		});
+	}
+
+	if (isMockProxyEnabled()) {
+		const mockResponse = buildMockProxyResponse(parsedTarget);
+		if (mockResponse) {
+			return mockResponse;
+		}
 	}
 
 	const upstreamHeaders = new Headers();

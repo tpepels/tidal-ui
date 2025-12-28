@@ -4,11 +4,13 @@
 import { writable, derived } from 'svelte/store';
 import type { Track } from '../types';
 import {
-	PlaybackStateMachine,
+	createPlaybackStateMachine,
+	type PlaybackStateMachine,
 	type PlaybackState
 } from '../core/stateMachines/PlaybackStateMachine';
 import {
-	SearchStateMachine,
+	createSearchStateMachine,
+	type SearchStateMachine,
 	type SearchState,
 	type SearchResults
 } from '../core/stateMachines/SearchStateMachine';
@@ -59,10 +61,12 @@ const initialState: UIState = {
 
 class UnifiedUIStore {
 	private store = writable<UIState>(initialState);
-	private playbackMachine = new PlaybackStateMachine();
-	private searchMachine = new SearchStateMachine();
+	private playbackMachine: PlaybackStateMachine;
+	private searchMachine: SearchStateMachine;
 
 	constructor() {
+		this.playbackMachine = createPlaybackStateMachine();
+		this.searchMachine = createSearchStateMachine();
 		// Connect state machines to the store
 		this.playbackMachine.subscribe((state) => {
 			this.store.update((s) => ({ ...s, playback: state }));
@@ -77,8 +81,12 @@ class UnifiedUIStore {
 	subscribe = this.store.subscribe;
 
 	// Direct access to state machine subscriptions for components
-	subscribeToPlayback = this.playbackMachine.subscribe;
-	subscribeToSearch = this.searchMachine.subscribe;
+	get subscribeToPlayback() {
+		return this.playbackMachine.subscribe;
+	}
+	get subscribeToSearch() {
+		return this.searchMachine.subscribe;
+	}
 
 	// State machine state access for components
 	get searchState() {

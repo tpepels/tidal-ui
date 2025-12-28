@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => {
 	const isTest = mode === 'test';
 
 	return {
-		plugins: [tailwindcss(), ...(isTest ? [] : [sveltekit(), devtoolsJson()])],
+		plugins: [tailwindcss(), sveltekit(), ...(isTest ? [] : [devtoolsJson()])],
 		resolve: {
 			alias: {
 				$lib: 'src/lib',

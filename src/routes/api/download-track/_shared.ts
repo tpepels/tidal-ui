@@ -11,6 +11,11 @@ let redis: Redis | null = null;
 let redisConnected = false;
 
 function getRedisClient(): Redis | null {
+	const redisDisabled = ['true', '1'].includes((process.env.REDIS_DISABLED || '').toLowerCase());
+	if (redisDisabled) {
+		return null;
+	}
+
 	if (redisConnected) return redis;
 	if (redis) return redis; // Already initialized
 

@@ -4,7 +4,23 @@ import type { RegionOption } from './stores/region';
 import { deriveTrackQuality } from './utils/audioQuality';
 import { parseTidalUrl } from './utils/urlParser';
 import { formatArtistsForMetadata } from './utils';
-import { TrackInfoSchema } from './utils/schemas';
+import { z } from 'zod';
+import { logger } from './core/logger';
+import { performanceMonitor } from './core/performance';
+import {
+	TrackInfoSchema,
+	TrackSearchResponseSchema,
+	AlbumSearchResponseSchema,
+	ArtistSearchResponseSchema,
+	PlaylistSearchResponseSchema,
+	AlbumWithTracksSchema,
+	PlaylistWithTracksSchema,
+	CoverImageSchema,
+	LyricsSchema,
+	StreamDataSchema,
+	ApiV2ContainerSchema,
+	safeValidateApiResponse
+} from './utils/schemas';
 import type {
 	Track,
 	Artist,
@@ -821,17 +837,67 @@ class LosslessAPI {
 	 * Search for tracks
 	 */
 	async searchTracks(query: string, region: RegionOption = 'auto'): Promise<SearchResponse<Track>> {
-		const response = await this.fetch(
-			this.buildRegionalUrl(`/search/?s=${encodeURIComponent(query)}`, region)
-		);
-		this.ensureNotRateLimited(response);
-		if (!response.ok) throw new Error('Failed to search tracks');
-		const data = await response.json();
-		const normalized = this.normalizeSearchResponse<Track>(data, 'tracks');
-		return {
-			...normalized,
-			items: normalized.items.map((track) => this.prepareTrack(track))
-		};
+		const operation = logger.startOperation('searchTracks', {
+			component: 'api',
+			query,
+			region
+		});
+
+		try {
+			const url = this.buildRegionalUrl(`/search/?s=${encodeURIComponent(query)}`, region);
+
+			logger.logAPIRequest('GET', url, { component: 'api', operation: 'searchTracks' });
+
+			const response = await performanceMonitor.measureAsyncOperation(
+				'api_response_time',
+				() => this.fetch(url),
+				{ operation: 'searchTracks', method: 'GET', endpoint: 'search' }
+			);
+
+			// Record response time separately for API monitoring
+			const responseTime = performance.now(); // This would be better with a more precise timing
+			performanceMonitor.recordMetric('api_response_time', responseTime, {
+				operation: 'searchTracks',
+				status: response.status.toString(),
+				region: region || 'auto'
+			});
+
+			logger.logAPIResponse('GET', url, response.status, responseTime, {
+				component: 'api',
+				operation: 'searchTracks'
+			});
+
+			this.ensureNotRateLimited(response);
+			if (!response.ok) {
+				operation.fail(new Error(`HTTP ${response.status}: Failed to search tracks`));
+				throw new Error('Failed to search tracks');
+			}
+
+			const data = await response.json();
+			const normalized = this.normalizeSearchResponse<Track>(data, 'tracks');
+
+			// Validate the search response
+			const validationResult = safeValidateApiResponse(normalized, TrackSearchResponseSchema);
+			if (!validationResult.success) {
+				logger.warn('Track search response validation failed, proceeding with unvalidated data', {
+					component: 'api',
+					operation: 'searchTracks',
+					validationError: validationResult.error,
+					query
+				});
+			}
+
+			const result = {
+				...normalized,
+				items: normalized.items.map((track) => this.prepareTrack(track))
+			};
+
+			operation.complete(result);
+			return result;
+		} catch (error) {
+			operation.fail(error instanceof Error ? error : new Error(String(error)));
+			throw error;
+		}
 	}
 
 	/**
@@ -848,6 +914,16 @@ class LosslessAPI {
 		if (!response.ok) throw new Error('Failed to search artists');
 		const data = await response.json();
 		const normalized = this.normalizeSearchResponse<Artist>(data, 'artists');
+
+		// Validate the search response
+		const validationResult = safeValidateApiResponse(normalized, ArtistSearchResponseSchema);
+		if (!validationResult.success) {
+			console.warn(
+				'Artist search response validation failed, proceeding with unvalidated data:',
+				validationResult.error
+			);
+		}
+
 		return {
 			...normalized,
 			items: normalized.items.map((artist) => this.prepareArtist(artist))
@@ -865,6 +941,16 @@ class LosslessAPI {
 		if (!response.ok) throw new Error('Failed to search albums');
 		const data = await response.json();
 		const normalized = this.normalizeSearchResponse<Album>(data, 'albums');
+
+		// Validate the search response
+		const validationResult = safeValidateApiResponse(normalized, AlbumSearchResponseSchema);
+		if (!validationResult.success) {
+			console.warn(
+				'Album search response validation failed, proceeding with unvalidated data:',
+				validationResult.error
+			);
+		}
+
 		return {
 			...normalized,
 			items: normalized.items.map((album) => this.prepareAlbum(album))
@@ -884,7 +970,18 @@ class LosslessAPI {
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search playlists');
 		const data = await response.json();
-		return this.normalizeSearchResponse<Playlist>(data, 'playlists');
+		const normalized = this.normalizeSearchResponse<Playlist>(data, 'playlists');
+
+		// Validate the search response
+		const validationResult = safeValidateApiResponse(normalized, PlaylistSearchResponseSchema);
+		if (!validationResult.success) {
+			console.warn(
+				'Playlist search response validation failed, proceeding with unvalidated data:',
+				validationResult.error
+			);
+		}
+
+		return normalized;
 	}
 
 	/**
@@ -1060,7 +1157,18 @@ class LosslessAPI {
 		);
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to get song');
-		return response.json();
+		const data = await response.json();
+
+		// Validate the stream data
+		const validationResult = safeValidateApiResponse(data, StreamDataSchema);
+		if (!validationResult.success) {
+			console.warn(
+				'Song stream data validation failed, proceeding with unvalidated data:',
+				validationResult.error
+			);
+		}
+
+		return data;
 	}
 
 	/**
@@ -1071,6 +1179,15 @@ class LosslessAPI {
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to get album');
 		const data = await response.json();
+
+		// Validate the raw response structure
+		const validationResult = safeValidateApiResponse({ data }, ApiV2ContainerSchema);
+		if (!validationResult.success) {
+			console.warn(
+				'Album API response validation failed, proceeding with unvalidated data:',
+				validationResult.error
+			);
+		}
 
 		// Handle v2/new API structure where response is { version, data: { items: [...] } }
 		if (data && typeof data === 'object' && 'data' in data && 'items' in data.data) {
@@ -1099,7 +1216,15 @@ class LosslessAPI {
 						})
 						.filter((t): t is Track => t !== null);
 
-					return { album: albumEntry, tracks };
+					const result = { album: albumEntry, tracks };
+
+					// Validate the final result
+					const finalValidation = safeValidateApiResponse(result, AlbumWithTracksSchema);
+					if (!finalValidation.success) {
+						console.warn('Album with tracks validation failed:', finalValidation.error);
+					}
+
+					return result;
 				}
 			}
 		}
@@ -1151,7 +1276,15 @@ class LosslessAPI {
 			}
 		}
 
-		return { album: albumEntry, tracks };
+		const result = { album: albumEntry, tracks };
+
+		// Validate the final result
+		const finalValidation = safeValidateApiResponse(result, AlbumWithTracksSchema);
+		if (!finalValidation.success) {
+			console.warn('Album with tracks validation failed:', finalValidation.error);
+		}
+
+		return result;
 	}
 
 	/**
@@ -1163,18 +1296,28 @@ class LosslessAPI {
 		if (!response.ok) throw new Error('Failed to get playlist');
 		const data = await response.json();
 
+		let result: { playlist: Playlist; items: Array<{ item: Track }> };
+
 		// Handle v2 structure (object with playlist and items keys)
 		if (data && typeof data === 'object' && 'playlist' in data && 'items' in data) {
-			return {
-				playlist: data.playlist,
-				items: data.items
+			result = {
+				playlist: data.playlist as Playlist,
+				items: data.items as Array<{ item: Track }>
+			};
+		} else {
+			result = {
+				playlist: Array.isArray(data) ? (data[0] as Playlist) : (data as Playlist),
+				items: Array.isArray(data) && data[1] ? (data[1].items as Array<{ item: Track }>) : []
 			};
 		}
 
-		return {
-			playlist: Array.isArray(data) ? data[0] : data,
-			items: Array.isArray(data) && data[1] ? data[1].items : []
-		};
+		// Validate the result
+		const validationResult = safeValidateApiResponse(result, PlaylistWithTracksSchema);
+		if (!validationResult.success) {
+			console.warn('Playlist with tracks validation failed:', validationResult.error);
+		}
+
+		return result;
 	}
 
 	/**
@@ -1449,7 +1592,18 @@ class LosslessAPI {
 		const response = await this.fetch(url);
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to get cover');
-		return response.json();
+		const data = await response.json();
+
+		// Validate the cover images
+		const validationResult = safeValidateApiResponse(data, z.array(CoverImageSchema));
+		if (!validationResult.success) {
+			console.warn(
+				'Cover images validation failed, proceeding with unvalidated data:',
+				validationResult.error
+			);
+		}
+
+		return data;
 	}
 
 	/**
@@ -1460,7 +1614,18 @@ class LosslessAPI {
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to get lyrics');
 		const data = await response.json();
-		return Array.isArray(data) ? data[0] : data;
+		const lyrics = Array.isArray(data) ? data[0] : data;
+
+		// Validate the lyrics
+		const validationResult = safeValidateApiResponse(lyrics, LyricsSchema);
+		if (!validationResult.success) {
+			console.warn(
+				'Lyrics validation failed, proceeding with unvalidated data:',
+				validationResult.error
+			);
+		}
+
+		return lyrics;
 	}
 
 	/**
@@ -1492,7 +1657,23 @@ class LosslessAPI {
 				}
 
 				const url = await this.resolveHiResStreamFromDash(trackId);
-				return { url, replayGain, sampleRate, bitDepth };
+
+				const result = { url, replayGain, sampleRate, bitDepth };
+
+				// Validate the result
+				const StreamDataResultSchema = z.object({
+					url: z.string(),
+					replayGain: z.number().nullable(),
+					sampleRate: z.number().nullable(),
+					bitDepth: z.number().nullable()
+				});
+
+				const validationResult = safeValidateApiResponse(result, StreamDataResultSchema);
+				if (!validationResult.success) {
+					console.warn('Hi-res stream data validation failed:', validationResult.error);
+				}
+
+				return result;
 			} catch (error) {
 				console.warn('Failed to resolve hi-res stream via DASH manifest', error);
 				quality = 'LOSSLESS';
@@ -1509,12 +1690,42 @@ class LosslessAPI {
 				bitDepth = lookup.info.bitDepth ?? null;
 
 				if (lookup.originalTrackUrl) {
-					return { url: lookup.originalTrackUrl, replayGain, sampleRate, bitDepth };
+					const result = { url: lookup.originalTrackUrl, replayGain, sampleRate, bitDepth };
+
+					// Validate the result
+					const StreamDataResultSchema = z.object({
+						url: z.string(),
+						replayGain: z.number().nullable(),
+						sampleRate: z.number().nullable(),
+						bitDepth: z.number().nullable()
+					});
+
+					const validationResult = safeValidateApiResponse(result, StreamDataResultSchema);
+					if (!validationResult.success) {
+						console.warn('Stream data validation failed:', validationResult.error);
+					}
+
+					return result;
 				}
 
 				const manifestUrl = this.extractStreamUrlFromManifest(lookup.info.manifest);
 				if (manifestUrl) {
-					return { url: manifestUrl, replayGain, sampleRate, bitDepth };
+					const result = { url: manifestUrl, replayGain, sampleRate, bitDepth };
+
+					// Validate the result
+					const StreamDataResultSchema = z.object({
+						url: z.string(),
+						replayGain: z.number().nullable(),
+						sampleRate: z.number().nullable(),
+						bitDepth: z.number().nullable()
+					});
+
+					const validationResult = safeValidateApiResponse(result, StreamDataResultSchema);
+					if (!validationResult.success) {
+						console.warn('Stream data validation failed:', validationResult.error);
+					}
+
+					return result;
 				}
 
 				lastError = new Error('Unable to resolve stream URL for track');
