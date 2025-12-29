@@ -3,26 +3,10 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 // Component Contract Tests for AudioPlayer
-// These tests verify that the component correctly integrates with the uiStore
-// and handles different playback states appropriately
+// These tests verify that the component handles different playback states appropriately
 
 describe('AudioPlayer Component Contract', () => {
 	describe('State Machine Integration Contract', () => {
-		it('should use the uiStore for playback state management', async () => {
-			// This is a contract test - we verify that the component
-			// correctly imports and uses the uiStore
-			const uiStoreModule = await import('../stores/uiStore');
-
-			expect(uiStoreModule).toBeDefined();
-			expect(typeof uiStoreModule.uiStore).toBe('object');
-			expect(typeof uiStoreModule.uiStore.subscribeToPlayback).toBe('function');
-			expect(typeof uiStoreModule.uiStore.playTrack).toBe('function');
-			expect(typeof uiStoreModule.uiStore.pausePlayback).toBe('function');
-			expect(typeof uiStoreModule.uiStore.resumePlayback).toBe('function');
-			expect(typeof uiStoreModule.uiStore.stopPlayback).toBe('function');
-			expect(typeof uiStoreModule.uiStore.seekTo).toBe('function');
-		});
-
 		it('should handle all playback state types', () => {
 			// Test that the component can handle all PlaybackState variants
 			const idleState = { status: 'idle' as const };
@@ -97,7 +81,6 @@ describe('AudioPlayer Component Contract', () => {
 
 			// Check that the component has script lang="ts"
 			expect(componentSource).toContain('<script lang="ts">');
-			expect(componentSource).toContain('import { uiStore }');
 		});
 	});
 

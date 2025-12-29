@@ -30,6 +30,58 @@ const TRACK_CACHE_TTL_SECONDS = getEnvNumber('REDIS_CACHE_TTL_TRACK_SECONDS', 12
 const MAX_CACHE_BODY_BYTES = getEnvNumber('REDIS_CACHE_MAX_BODY_BYTES', 200_000);
 
 const MOCK_PROXY_FLAGS = ['E2E_OFFLINE', 'MOCK_PROXY', 'MOCK_API'];
+const UPSTREAM_BASE_BACKOFF_MS = 5_000;
+const UPSTREAM_MAX_BACKOFF_MS = 300_000;
+const UPSTREAM_BACKOFF_MULTIPLIER = 3;
+const UPSTREAM_FAILURE_LOG_TTL_MS = 10_000;
+
+type UpstreamFailureState = {
+	failures: number;
+	nextRetryAt: number;
+};
+
+const upstreamFailureStates = new Map<string, UpstreamFailureState>();
+const upstreamFailureLogTimestamps = new Map<string, number>();
+
+function calculateBackoffMs(failures: number): number {
+	const exponent = Math.max(0, failures - 1);
+	const backoff = UPSTREAM_BASE_BACKOFF_MS * UPSTREAM_BACKOFF_MULTIPLIER ** exponent;
+	return Math.min(backoff, UPSTREAM_MAX_BACKOFF_MS);
+}
+
+function markUpstreamUnhealthy(origin: string): void {
+	const existing = upstreamFailureStates.get(origin);
+	const failures = (existing?.failures ?? 0) + 1;
+	const backoffMs = calculateBackoffMs(failures);
+	upstreamFailureStates.set(origin, {
+		failures,
+		nextRetryAt: Date.now() + backoffMs
+	});
+}
+
+function isUpstreamHealthy(origin: string): boolean {
+	const state = upstreamFailureStates.get(origin);
+	if (!state) return true;
+	if (Date.now() >= state.nextRetryAt) {
+		upstreamFailureStates.delete(origin);
+		return true;
+	}
+	return false;
+}
+
+function logUpstreamSuppressed(origin: string): void {
+	const lastLog = upstreamFailureLogTimestamps.get(origin) ?? 0;
+	const now = Date.now();
+	if (now - lastLog < UPSTREAM_FAILURE_LOG_TTL_MS) {
+		return;
+	}
+	const state = upstreamFailureStates.get(origin);
+	const retryInMs = state ? Math.max(0, state.nextRetryAt - now) : 0;
+	upstreamFailureLogTimestamps.set(origin, now);
+	console.warn(
+		`Proxy skipping unhealthy upstream: ${origin} (retry in ${Math.ceil(retryInMs / 1000)}s)`
+	);
+}
 
 function isMockProxyEnabled(): boolean {
 	return MOCK_PROXY_FLAGS.some((flag) => {
@@ -506,6 +558,20 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 		});
 	}
 
+	if (!isUpstreamHealthy(parsedTarget.origin)) {
+		logUpstreamSuppressed(parsedTarget.origin);
+		return new Response(
+			JSON.stringify({
+				error: 'Upstream temporarily unavailable',
+				target: parsedTarget.origin
+			}),
+			{
+				status: 503,
+				headers: { 'Content-Type': 'application/json' }
+			}
+		);
+	}
+
 	if (isMockProxyEnabled()) {
 		const mockResponse = buildMockProxyResponse(parsedTarget);
 		if (mockResponse) {
@@ -642,6 +708,7 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 		console.error('Proxy error:', error);
 		console.error('Proxy error stack:', error instanceof Error ? error.stack : 'No stack');
 		console.error('Proxy target URL:', parsedTarget.toString());
+		markUpstreamUnhealthy(parsedTarget.origin);
 		return new Response(
 			JSON.stringify({
 				error: 'Proxy request failed',

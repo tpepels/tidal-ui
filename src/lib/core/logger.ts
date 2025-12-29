@@ -18,9 +18,9 @@ export interface LogContext {
 	operation?: string;
 	duration?: number;
 	error?: Error;
-	metadata?: Record<string, any>;
+	metadata?: Record<string, unknown>;
 	// Allow additional properties for flexibility
-	[key: string]: any;
+	[key: string]: unknown;
 }
 
 export interface LogEntry {
@@ -114,7 +114,6 @@ export class Logger {
 	}
 
 	private consoleLog(entry: LogEntry): void {
-		const levelName = LogLevel[entry.level];
 		const correlation = entry.context.correlationId ? `[${entry.context.correlationId}]` : '';
 		const component = entry.context.component ? `[${entry.context.component}]` : '';
 		const prefix = `${correlation}${component}`.trim();
@@ -290,7 +289,7 @@ export class OperationLogger {
 		});
 	}
 
-	public complete(result?: any, additionalContext: LogContext = {}): void {
+	public complete(result?: unknown, additionalContext: LogContext = {}): void {
 		const duration = performance.now() - this.startTime;
 
 		this.logger.info(`Completed operation: ${this.operation}`, {

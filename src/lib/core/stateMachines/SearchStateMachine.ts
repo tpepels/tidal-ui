@@ -26,19 +26,6 @@ export type SearchEvent =
 	| { type: 'CANCEL' }
 	| { type: 'RESET' };
 
-export interface SearchStateMachine {
-	currentState: SearchState;
-	subscribe(listener: (state: SearchState, previousState: SearchState) => void): () => void;
-	transition(event: SearchEvent): boolean;
-	canSearch(): boolean;
-	isSearching(): boolean;
-	getCurrentQuery(): string | null;
-	getCurrentTab(): SearchTab | null;
-	getResults(): SearchResults | null;
-	getError(): Error | null;
-	cancelCurrentSearch(): void;
-}
-
 export class SearchStateMachine {
 	public state: SearchState = { status: 'idle' };
 	private listeners = new Set<(state: SearchState, previousState: SearchState) => void>();
@@ -201,14 +188,6 @@ export class SearchStateMachine {
 	}
 
 	private handleErrorState(event: SearchEvent): boolean {
-		const currentState = this.state as {
-			status: 'error';
-			query: string;
-			error: Error;
-			tab: SearchTab;
-			canRetry: boolean;
-		};
-
 		switch (event.type) {
 			case 'SEARCH': {
 				const abortController = new AbortController();
@@ -269,8 +248,4 @@ export class SearchStateMachine {
 
 		return result;
 	}
-}
-
-export function createSearchStateMachine(): SearchStateMachine {
-	return new SearchStateMachine();
 }

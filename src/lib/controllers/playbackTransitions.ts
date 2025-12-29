@@ -2,6 +2,7 @@ import { get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 import type { PlayableTrack } from '$lib/types';
 import { assertInvariant } from '$lib/core/invariants';
+import { assertPlayableState } from '$lib/core/playbackInvariants';
 
 type PlaybackState = {
 	currentTrack: PlayableTrack | null;
@@ -44,30 +45,6 @@ type PlaybackTransitions = {
 	clearQueue: () => void;
 };
 
-const assertPlayable = (state: PlaybackState) => {
-	assertInvariant(
-		!state.isPlaying || state.currentTrack !== null,
-		'Playback cannot be playing without a current track',
-		{ isPlaying: state.isPlaying, currentTrack: state.currentTrack }
-	);
-	assertInvariant(
-		!state.isLoading || state.currentTrack !== null,
-		'Playback cannot be loading without a current track',
-		{ isLoading: state.isLoading, currentTrack: state.currentTrack }
-	);
-	assertInvariant(
-		state.queue.length === 0 ? state.queueIndex === -1 : true,
-		'Queue index must be -1 when queue is empty',
-		{ queueIndex: state.queueIndex, queueLength: state.queue.length }
-	);
-	assertInvariant(
-		state.queueIndex === -1 ||
-			(state.queueIndex >= 0 && state.queueIndex < state.queue.length),
-		'Queue index must be -1 or within queue bounds',
-		{ queueIndex: state.queueIndex, queueLength: state.queue.length }
-	);
-};
-
 export const createPlaybackTransitions = (playerStore: PlaybackStore): PlaybackTransitions => {
 	const getState = () => get(playerStore);
 
@@ -76,11 +53,11 @@ export const createPlaybackTransitions = (playerStore: PlaybackStore): PlaybackT
 			const state = getState();
 			assertInvariant(state.currentTrack !== null, 'Cannot play without a current track');
 			playerStore.play();
-			assertPlayable(getState());
+			assertPlayableState(getState());
 		},
 		pause() {
 			playerStore.pause();
-			assertPlayable(getState());
+			assertPlayableState(getState());
 		},
 		togglePlay() {
 			const state = getState();
@@ -88,7 +65,7 @@ export const createPlaybackTransitions = (playerStore: PlaybackStore): PlaybackT
 				return;
 			}
 			playerStore.togglePlay();
-			assertPlayable(getState());
+			assertPlayableState(getState());
 		},
 		playFromQueueIndex(index: number) {
 			const state = getState();
@@ -98,7 +75,7 @@ export const createPlaybackTransitions = (playerStore: PlaybackStore): PlaybackT
 				{ index, queueLength: state.queue.length }
 			);
 			playerStore.playAtIndex(index);
-			assertPlayable(getState());
+			assertPlayableState(getState());
 		},
 		seekTo(time: number) {
 			const state = getState();
@@ -110,31 +87,31 @@ export const createPlaybackTransitions = (playerStore: PlaybackStore): PlaybackT
 		},
 		next() {
 			playerStore.next();
-			assertPlayable(getState());
+			assertPlayableState(getState());
 		},
 		previous() {
 			playerStore.previous();
-			assertPlayable(getState());
+			assertPlayableState(getState());
 		},
 		setTrack(track: PlayableTrack) {
 			playerStore.setTrack(track);
-			assertPlayable(getState());
+			assertPlayableState(getState());
 		},
 		setQueue(queue: PlayableTrack[], startIndex = 0) {
 			playerStore.setQueue(queue, startIndex);
-			assertPlayable(getState());
+			assertPlayableState(getState());
 		},
 		enqueue(track: PlayableTrack) {
 			playerStore.enqueue(track);
-			assertPlayable(getState());
+			assertPlayableState(getState());
 		},
 		enqueueNext(track: PlayableTrack) {
 			playerStore.enqueueNext(track);
-			assertPlayable(getState());
+			assertPlayableState(getState());
 		},
 		clearQueue() {
 			playerStore.clearQueue();
-			assertPlayable(getState());
+			assertPlayableState(getState());
 		}
 	};
 };

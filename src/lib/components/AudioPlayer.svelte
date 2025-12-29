@@ -9,10 +9,9 @@
 -->
 <script lang="ts">
 	console.log('[AudioPlayer] Component loading');
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
 	import { playerStore } from '$lib/stores/player';
-	import { uiStore } from '$lib/stores/uiStore';
 	import { lyricsStore } from '$lib/stores/lyrics';
 	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
 	import { downloadUiStore, ffmpegBanner, activeTrackDownloads, erroredTrackDownloads } from '$lib/stores/downloadUi';
@@ -841,7 +840,6 @@ let pendingPlayAfterSource = false;
 		return track as Track;
 	}
 
-	void uiStore;
 </script>
 
 <audio

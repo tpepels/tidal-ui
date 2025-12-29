@@ -1086,7 +1086,7 @@ import {
 	{#if $searchStore.isLoading || $searchStore.tabLoading[$searchStore.activeTab]}
 		{#if $searchStore.activeTab === 'tracks'}
 				<div class="space-y-2">
-					{#each trackSkeletons as _, i (i)}
+					{#each trackSkeletons as i (i)}
 						<div class="flex w-full items-center gap-3 rounded-lg bg-gray-800/70 p-3">
 							<div class="h-12 w-12 flex-shrink-0 animate-pulse rounded bg-gray-700/80"></div>
 							<div class="flex-1 space-y-2">
@@ -1100,7 +1100,7 @@ import {
 				</div>
 			{:else if $searchStore.activeTab === 'albums' || $searchStore.activeTab === 'playlists'}
 				<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-					{#each gridSkeletons as _, i (i)}
+					{#each gridSkeletons as i (i)}
 						<div class="space-y-3">
 							<div class="aspect-square w-full animate-pulse rounded-lg bg-gray-800/70"></div>
 							<div class="h-4 w-3/4 animate-pulse rounded bg-gray-700/80"></div>
@@ -1110,7 +1110,7 @@ import {
 				</div>
 			{:else if $searchStore.activeTab === 'artists'}
 				<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-					{#each gridSkeletons as _, i (i)}
+					{#each gridSkeletons as i (i)}
 						<div class="flex flex-col items-center gap-3">
 							<div class="aspect-square w-full animate-pulse rounded-full bg-gray-800/70"></div>
 							<div class="h-4 w-3/4 animate-pulse rounded bg-gray-700/80"></div>

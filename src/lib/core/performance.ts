@@ -181,26 +181,27 @@ export class PerformanceMonitor {
 	}
 
 	private collectSystemMetrics(): void {
+		type PerformanceWithMemory = Performance & {
+			memory?: {
+				usedJSHeapSize: number;
+			};
+			timing?: PerformanceTiming;
+		};
+
 		// Memory usage (if available)
-		if (typeof performance !== 'undefined' && (performance as any).memory) {
-			const memoryMB = (performance as any).memory.usedJSHeapSize / (1024 * 1024);
-			this.recordMetric('memory_usage_mb', memoryMB, { source: 'performance_api' });
-		}
-
-		// Navigation timing (if available)
-		if (typeof performance !== 'undefined' && (performance as any).timing) {
-			const timing = (performance as any).timing;
-			const loadTime = timing.loadEventEnd - timing.navigationStart;
-			if (loadTime > 0) {
-				this.recordMetric('page_load_time', loadTime, { type: 'navigation' });
+		if (typeof performance !== 'undefined') {
+			const perf = performance as PerformanceWithMemory;
+			if (perf.memory) {
+				const memoryMB = perf.memory.usedJSHeapSize / (1024 * 1024);
+				this.recordMetric('memory_usage_mb', memoryMB, { source: 'performance_api' });
 			}
-		}
 
-		// Navigation timing (if available)
-		if (performance.timing) {
-			const loadTime = performance.timing.loadEventEnd - performance.timing.navigationStart;
-			if (loadTime > 0) {
-				this.recordMetric('page_load_time', loadTime, { type: 'navigation' });
+			// Navigation timing (if available)
+			if (perf.timing) {
+				const loadTime = perf.timing.loadEventEnd - perf.timing.navigationStart;
+				if (loadTime > 0) {
+					this.recordMetric('page_load_time', loadTime, { type: 'navigation' });
+				}
 			}
 		}
 

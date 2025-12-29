@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { logger } from '$lib/core/logger';
-import { errorTracker } from '$lib/core/errorTracker';
+import { errorTracker, type ErrorSummary } from '$lib/core/errorTracker';
 
 export const GET: RequestHandler = async ({ url }) => {
 	const operation = logger.startOperation('errors_endpoint', {
@@ -16,7 +16,24 @@ export const GET: RequestHandler = async ({ url }) => {
 		const errors = errorTracker.getErrors(timeRange);
 		const recentErrors = errors.slice(-limit);
 
-		let response: any = {
+		const response: {
+			timestamp: number;
+			timeRange: number;
+			totalErrors: number;
+			returnedErrors: number;
+			errors: Array<{
+				id: string;
+				timestamp: number;
+				message: string;
+				stack?: string;
+				severity: string;
+				frequency: number;
+				context: Record<string, unknown>;
+				firstSeen: number;
+				lastSeen: number;
+			}>;
+			summary?: ErrorSummary;
+		} = {
 			timestamp: Date.now(),
 			timeRange,
 			totalErrors: errors.length,

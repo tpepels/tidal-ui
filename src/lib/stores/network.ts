@@ -1,8 +1,11 @@
 import { writable } from 'svelte/store';
 
+const isBrowser = typeof navigator !== 'undefined';
+const initialOnline = isBrowser ? navigator.onLine : true;
+
 export const networkStatus = writable<{ online: boolean; lastOnline?: Date }>({
-	online: navigator.onLine,
-	lastOnline: navigator.onLine ? new Date() : undefined
+	online: initialOnline,
+	lastOnline: initialOnline ? new Date() : undefined
 });
 
 // Update on events

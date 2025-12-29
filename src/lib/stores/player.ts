@@ -5,7 +5,7 @@ import type { Track, AudioQuality, PlayableTrack } from '../types';
 import { deriveTrackQuality } from '../utils/audioQuality';
 import { userPreferencesStore } from './userPreferences';
 import { loadFromStorage, debouncedSave } from '../utils/persistence';
-import { assertInvariant, validateInvariant } from '../core/invariants';
+import { assertPlaybackState, validatePlaybackState } from '../core/playbackInvariants';
 
 interface PlayerState {
 	currentTrack: PlayableTrack | null;
@@ -506,39 +506,8 @@ export const playerStore = createPlayerStore();
 
 // Invariant checking for critical state consistency
 playerStore.subscribe(($state) => {
-	// Invariant: If playing, must have a current track
-	assertInvariant(
-		!$state.isPlaying || $state.currentTrack !== null,
-		'Player cannot be playing without a current track',
-		{ isPlaying: $state.isPlaying, currentTrack: $state.currentTrack }
-	);
-
-	// Invariant: If loading, must have a current track
-	validateInvariant(
-		!$state.isLoading || $state.currentTrack !== null,
-		'Player cannot be loading without a current track',
-		{ isLoading: $state.isLoading, currentTrack: $state.currentTrack }
-	);
-
-	// Invariant: Queue index must be valid (-1 for empty queue, or within bounds)
-	assertInvariant(
-		$state.queueIndex === -1 || ($state.queueIndex >= 0 && $state.queueIndex < $state.queue.length),
-		'Queue index must be -1 for empty queue or within valid range',
-		{ queueIndex: $state.queueIndex, queueLength: $state.queue.length }
-	);
-
-	// Invariant: Current track should match queue item
-	if ($state.currentTrack && $state.queue.length > 0) {
-		validateInvariant(
-			$state.currentTrack.id === $state.queue[$state.queueIndex]?.id,
-			'Current track should match queue item at current index',
-			{
-				currentTrackId: $state.currentTrack.id,
-				queueTrackId: $state.queue[$state.queueIndex]?.id,
-				queueIndex: $state.queueIndex
-			}
-		);
-	}
+	assertPlaybackState($state);
+	validatePlaybackState($state);
 });
 
 // Derived stores for convenience

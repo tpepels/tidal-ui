@@ -1,12 +1,17 @@
 // API service for HIFI API
 import { API_CONFIG, fetchWithCORS, selectApiTargetForRegion } from '$lib/config';
 import type { RegionOption } from '$lib/stores/region';
-import { deriveTrackQuality } from './utils/audioQuality';
 import { parseTidalUrl } from './utils/urlParser';
 import { formatArtistsForMetadata } from './utils/formatters';
 import { z } from 'zod';
 import { logger } from './core/logger';
 import { performanceMonitor } from './core/performance';
+import {
+	normalizeSearchResponse,
+	prepareAlbum,
+	prepareArtist,
+	prepareTrack
+} from './api/normalizers';
 import {
 	TrackInfoSchema,
 	TrackSearchResponseSchema,
@@ -107,113 +112,6 @@ class LosslessAPI {
 		return `${base}${normalizedPath}`;
 	}
 
-	private normalizeSearchResponse<T>(
-		data: unknown,
-		key: 'tracks' | 'albums' | 'artists' | 'playlists'
-	): SearchResponse<T> {
-		if (data === null || typeof data === 'undefined') {
-			throw new Error('Malformed search response');
-		}
-		const section = this.findSearchSection<T>(data, key, new Set());
-		return this.buildSearchResponse<T>(section);
-	}
-
-	private buildSearchResponse<T>(
-		section: Partial<SearchResponse<T>> | undefined
-	): SearchResponse<T> {
-		const items = section?.items;
-		const list = Array.isArray(items) ? (items as T[]) : [];
-		const limit = typeof section?.limit === 'number' ? section.limit : list.length;
-		const offset = typeof section?.offset === 'number' ? section.offset : 0;
-		const total =
-			typeof section?.totalNumberOfItems === 'number' ? section.totalNumberOfItems : list.length;
-
-		return {
-			items: list,
-			limit,
-			offset,
-			totalNumberOfItems: total
-		};
-	}
-
-	private findSearchSection<T>(
-		source: unknown,
-		key: 'tracks' | 'albums' | 'artists' | 'playlists',
-		visited: Set<object>
-	): Partial<SearchResponse<T>> | undefined {
-		if (!source) {
-			return undefined;
-		}
-
-		if (Array.isArray(source)) {
-			for (const entry of source) {
-				const found = this.findSearchSection<T>(entry, key, visited);
-				if (found) {
-					return found;
-				}
-			}
-			return undefined;
-		}
-
-		if (typeof source !== 'object') {
-			return undefined;
-		}
-
-		const objectRef = source as Record<string, unknown>;
-		if (visited.has(objectRef)) {
-			return undefined;
-		}
-		visited.add(objectRef);
-
-		if (!Array.isArray(source) && 'items' in objectRef && Array.isArray(objectRef.items)) {
-			return objectRef as Partial<SearchResponse<T>>;
-		}
-
-		if (key in objectRef) {
-			const nested = objectRef[key];
-			const fromKey = this.findSearchSection<T>(nested, key, visited);
-			if (fromKey) {
-				return fromKey;
-			}
-		}
-
-		for (const value of Object.values(objectRef)) {
-			const found = this.findSearchSection<T>(value, key, visited);
-			if (found) {
-				return found;
-			}
-		}
-
-		return undefined;
-	}
-
-	private prepareTrack(track: Track): Track {
-		let normalized = track;
-		if (!track.artist && Array.isArray(track.artists) && track.artists.length > 0) {
-			normalized = { ...track, artist: track.artists[0]! };
-		}
-
-		const derivedQuality = deriveTrackQuality(normalized);
-		if (derivedQuality && normalized.audioQuality !== derivedQuality) {
-			normalized = { ...normalized, audioQuality: derivedQuality };
-		}
-
-		return normalized;
-	}
-
-	private prepareAlbum(album: Album): Album {
-		if (!album.artist && Array.isArray(album.artists) && album.artists.length > 0) {
-			return { ...album, artist: album.artists[0]! };
-		}
-		return album;
-	}
-
-	private prepareArtist(artist: Artist): Artist {
-		if (!artist.type && Array.isArray(artist.artistTypes) && artist.artistTypes.length > 0) {
-			return { ...artist, type: artist.artistTypes[0]! } as Artist;
-		}
-		return artist;
-	}
 
 	private ensureNotRateLimited(response: Response): void {
 		if (response.status === 429) {
@@ -439,7 +337,7 @@ class LosslessAPI {
 		if (!track) {
 			throw new Error('Track metadata not found');
 		}
-		return this.prepareTrack(track);
+		return prepareTrack(track);
 	}
 
 	private buildTrackInfoFromV2(data: Record<string, unknown>, fallbackTrackId: number): TrackInfo {
@@ -494,7 +392,7 @@ class LosslessAPI {
 		}
 
 		return {
-			track: this.prepareTrack(track),
+			track: prepareTrack(track),
 			info: trackInfo,
 			originalTrackUrl: this.extractOriginalTrackUrl(container)
 		};
@@ -880,7 +778,7 @@ class LosslessAPI {
 			}
 
 			const data = await response.json();
-			const normalized = this.normalizeSearchResponse<Track>(data, 'tracks');
+			const normalized = normalizeSearchResponse<Track>(data, 'tracks');
 
 			// Validate the search response
 			const validationResult = safeValidateApiResponse(normalized, TrackSearchResponseSchema);
@@ -895,7 +793,7 @@ class LosslessAPI {
 
 			const result = {
 				...normalized,
-				items: normalized.items.map((track) => this.prepareTrack(track))
+				items: normalized.items.map((track) => prepareTrack(track))
 			};
 
 			operation.complete(result);
@@ -919,7 +817,7 @@ class LosslessAPI {
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search artists');
 		const data = await response.json();
-		const normalized = this.normalizeSearchResponse<Artist>(data, 'artists');
+		const normalized = normalizeSearchResponse<Artist>(data, 'artists');
 
 		// Validate the search response
 		const validationResult = safeValidateApiResponse(normalized, ArtistSearchResponseSchema);
@@ -932,7 +830,7 @@ class LosslessAPI {
 
 		return {
 			...normalized,
-			items: normalized.items.map((artist) => this.prepareArtist(artist))
+			items: normalized.items.map((artist) => prepareArtist(artist))
 		};
 	}
 
@@ -946,7 +844,7 @@ class LosslessAPI {
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search albums');
 		const data = await response.json();
-		const normalized = this.normalizeSearchResponse<Album>(data, 'albums');
+		const normalized = normalizeSearchResponse<Album>(data, 'albums');
 
 		// Validate the search response
 		const validationResult = safeValidateApiResponse(normalized, AlbumSearchResponseSchema);
@@ -959,7 +857,7 @@ class LosslessAPI {
 
 		return {
 			...normalized,
-			items: normalized.items.map((album) => this.prepareAlbum(album))
+			items: normalized.items.map((album) => prepareAlbum(album))
 		};
 	}
 
@@ -976,7 +874,7 @@ class LosslessAPI {
 		this.ensureNotRateLimited(response);
 		if (!response.ok) throw new Error('Failed to search playlists');
 		const data = await response.json();
-		const normalized = this.normalizeSearchResponse<Playlist>(data, 'playlists');
+		const normalized = normalizeSearchResponse<Playlist>(data, 'playlists');
 
 		// Validate the search response
 		const validationResult = safeValidateApiResponse(normalized, PlaylistSearchResponseSchema);
@@ -1014,7 +912,7 @@ class LosslessAPI {
 				const lookup = await this.getTrack(parsed.trackId);
 				return {
 					type: 'track',
-					data: this.prepareTrack(lookup.track)
+					data: prepareTrack(lookup.track)
 				};
 			}
 
@@ -1025,7 +923,7 @@ class LosslessAPI {
 				const { album } = await this.getAlbum(parsed.albumId);
 				return {
 					type: 'album',
-					data: this.prepareAlbum(album)
+					data: prepareAlbum(album)
 				};
 			}
 
@@ -1036,7 +934,7 @@ class LosslessAPI {
 				const artist = await this.getArtist(parsed.artistId);
 				return {
 					type: 'artist',
-					data: this.prepareArtist(artist)
+					data: prepareArtist(artist)
 				};
 			}
 
@@ -1045,7 +943,7 @@ class LosslessAPI {
 					throw new Error('Could not extract playlist ID from URL');
 				}
 				const { playlist, items } = await this.getPlaylist(parsed.playlistId);
-				const tracks = items.map((item) => this.prepareTrack(item.item));
+				const tracks = items.map((item) => prepareTrack(item.item));
 				return {
 					type: 'playlist',
 					data: { playlist, tracks }
@@ -1203,7 +1101,7 @@ class LosslessAPI {
 				const firstTrack = firstItem.item || firstItem;
 
 				if (firstTrack && firstTrack.album) {
-					let albumEntry = this.prepareAlbum(firstTrack.album);
+					let albumEntry = prepareAlbum(firstTrack.album);
 
 					// If album doesn't have artist info, try to get it from the track
 					if (!albumEntry.artist && firstTrack.artist) {
@@ -1218,7 +1116,7 @@ class LosslessAPI {
 
 							if (!t) return null;
 							// Ensure track has album reference
-							return this.prepareTrack({ ...t, album: albumEntry });
+							return prepareTrack({ ...t, album: albumEntry });
 						})
 						.filter((t): t is Track => t !== null);
 
@@ -1244,7 +1142,7 @@ class LosslessAPI {
 			if (!entry || typeof entry !== 'object') continue;
 
 			if (!albumEntry && 'title' in entry && 'id' in entry && 'cover' in entry) {
-				albumEntry = this.prepareAlbum(entry as Album);
+				albumEntry = prepareAlbum(entry as Album);
 				continue;
 			}
 
@@ -1278,7 +1176,7 @@ class LosslessAPI {
 				const candidateWithAlbum = trackCandidate.album
 					? trackCandidate
 					: ({ ...trackCandidate, album: albumEntry } as Track);
-				tracks.push(this.prepareTrack(candidateWithAlbum));
+				tracks.push(prepareTrack(candidateWithAlbum));
 			}
 		}
 
@@ -1379,7 +1277,7 @@ class LosslessAPI {
 
 		const recordArtist = (candidate: Artist | undefined, requestedArtistId: number) => {
 			if (!candidate) return;
-			const normalized = this.prepareArtist(candidate);
+			const normalized = prepareArtist(candidate);
 
 			// Priority order:
 			// 1. Artist with requested ID (highest priority)
@@ -1399,14 +1297,14 @@ class LosslessAPI {
 
 		const addAlbum = (candidate: Album | undefined) => {
 			if (!candidate || typeof candidate.id !== 'number') return;
-			const normalized = this.prepareAlbum({ ...candidate });
+			const normalized = prepareAlbum({ ...candidate });
 			albumMap.set(normalized.id, normalized);
 			recordArtist(normalized.artist ?? normalized.artists?.[0], id);
 		};
 
 		const addTrack = (candidate: Track | undefined) => {
 			if (!candidate || typeof candidate.id !== 'number') return;
-			const normalized = this.prepareTrack({ ...candidate });
+			const normalized = prepareTrack({ ...candidate });
 			if (!normalized.album) {
 				return;
 			}

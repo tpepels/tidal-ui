@@ -7,7 +7,7 @@ export interface ErrorReport {
 	id: string;
 	timestamp: number;
 	error: Error;
-	context: Record<string, any>;
+	context: ErrorContext;
 	stack?: string;
 	userAgent?: string;
 	url?: string;
@@ -32,6 +32,17 @@ export interface ErrorSummary {
 	}>;
 	errorRate: number; // Errors per minute
 }
+
+export type ErrorContext = Record<string, unknown> & {
+	source?: string;
+	filename?: string;
+	lineno?: number;
+	colno?: number;
+	userAgent?: string;
+	url?: string;
+	userId?: string;
+	sessionId?: string;
+};
 
 export class ErrorTracker {
 	private static instance: ErrorTracker;
@@ -78,7 +89,7 @@ export class ErrorTracker {
 		}
 	}
 
-	public trackError(error: Error, context: Record<string, any> = {}): string {
+	public trackError(error: Error, context: ErrorContext = {}): string {
 		const errorId = this.generateErrorId();
 		const now = Date.now();
 
@@ -157,7 +168,7 @@ export class ErrorTracker {
 		return `err-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 	}
 
-	private determineSeverity(error: Error, context: Record<string, any>): ErrorReport['severity'] {
+	private determineSeverity(error: Error, context: ErrorContext): ErrorReport['severity'] {
 		// Critical errors
 		if (error.name === 'InvariantViolationError') {
 			return 'critical';
@@ -190,7 +201,7 @@ export class ErrorTracker {
 		return 'low';
 	}
 
-	private getErrorGroupKey(error: Error, context: Record<string, any>): string {
+	private getErrorGroupKey(error: Error, context: ErrorContext): string {
 		// Group errors by message and stack location
 		const message = error.message;
 		const stack = error.stack?.split('\n')[1] || ''; // First stack frame
@@ -227,7 +238,7 @@ export class ErrorTracker {
 
 		// Get top errors by frequency
 		const topErrors = Array.from(uniqueErrors.entries())
-			.map(([key, errors]) => {
+			.map(([, errors]) => {
 				const latestError = errors[errors.length - 1];
 				return {
 					error: latestError.error.message,
@@ -293,7 +304,7 @@ export class ErrorTracker {
 export const errorTracker = ErrorTracker.getInstance();
 
 // Convenience functions
-export function trackError(error: Error, context: Record<string, any> = {}): string {
+export function trackError(error: Error, context: ErrorContext = {}): string {
 	return errorTracker.trackError(error, context);
 }
 

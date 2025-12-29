@@ -2,7 +2,6 @@
 
 import type { PlayableTrack } from '../../types';
 import { logger } from '../logger';
-import { performanceMonitor } from '../performance';
 
 export type PlaybackState =
 	| { status: 'idle' }
@@ -19,16 +18,6 @@ export type PlaybackEvent =
 	| { type: 'SEEK'; position: number }
 	| { type: 'ERROR'; error: Error }
 	| { type: 'RESET' };
-
-export interface PlaybackStateMachine {
-	currentState: PlaybackState;
-	subscribe(listener: (state: PlaybackState, previousState: PlaybackState) => void): () => void;
-	transition(event: PlaybackEvent): boolean;
-	canPlay(): boolean;
-	canPause(): boolean;
-	isPlaying(): boolean;
-	getCurrentTrack(): PlayableTrack | null;
-}
 
 export class PlaybackStateMachine {
 	public state: PlaybackState = { status: 'idle' };
@@ -210,8 +199,4 @@ export class PlaybackStateMachine {
 
 		return result;
 	}
-}
-
-export function createPlaybackStateMachine(): PlaybackStateMachine {
-	return new PlaybackStateMachine();
 }

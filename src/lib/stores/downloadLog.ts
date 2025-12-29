@@ -15,10 +15,11 @@ interface DownloadLogState {
 
 const STORAGE_KEY = 'tidal-ui.downloadLog';
 
-function parseStoredEntries(raw: string | null): DownloadLogEntry[] {
-	if (!raw) return [];
-
+function readInitialEntries(): DownloadLogEntry[] {
+	if (!browser) return [];
 	try {
+		const raw = localStorage.getItem(STORAGE_KEY);
+		if (!raw) return [];
 		const parsed = JSON.parse(raw);
 		if (Array.isArray(parsed)) {
 			return parsed
@@ -34,19 +35,9 @@ function parseStoredEntries(raw: string | null): DownloadLogEntry[] {
 				);
 		}
 	} catch (error) {
-		console.warn('Failed to parse stored download log entries', error);
+		console.warn('Unable to read download log from storage', error);
 	}
 	return [];
-}
-
-function readInitialEntries(): DownloadLogEntry[] {
-	if (!browser) return [];
-	try {
-		return parseStoredEntries(localStorage.getItem(STORAGE_KEY));
-	} catch (error) {
-		console.warn('Unable to read download log from storage', error);
-		return [];
-	}
 }
 
 export function createDownloadLogStore() {
@@ -103,8 +94,7 @@ export function createDownloadLogStore() {
 		},
 		toggle: () => {
 			update((state) => {
-				const newState = { ...state, isVisible: !state.isVisible };
-				return newState;
+				return { ...state, isVisible: !state.isVisible };
 			});
 		},
 		clear: () => {
