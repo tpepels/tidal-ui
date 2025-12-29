@@ -7,7 +7,7 @@
 {#if $activeTrackDownloads.length > 0}
 	<div class="download-progress-standalone">
 		<div class="download-progress-standalone-header">
-			<Loader size={16} class="download-progress-icon" />
+			<Loader size={16} />
 			<span class="download-progress-title">
 				Downloading {$activeTrackDownloads.length} track{$activeTrackDownloads.length > 1 ? 's' : ''}
 			</span>

@@ -57,6 +57,8 @@ try {
 
 if (!redisAvailable) {
 	console.log('🔄 Using Redis mocks for tests (Redis not available)');
+	process.env.REDIS_DISABLED = 'true';
+	(globalThis as { __REDIS_AVAILABLE?: boolean }).__REDIS_AVAILABLE = false;
 
 	// Mock ioredis when Redis is not available
 	vi.mock('ioredis', () => ({
@@ -73,6 +75,7 @@ if (!redisAvailable) {
 	}));
 } else {
 	console.log('✅ Using real Redis for tests');
+	(globalThis as { __REDIS_AVAILABLE?: boolean }).__REDIS_AVAILABLE = true;
 
 	// Don't mock ioredis when Redis is available
 	vi.unmock('ioredis');

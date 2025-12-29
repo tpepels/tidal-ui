@@ -43,6 +43,9 @@ type SearchCommitPayload = {
 	albums?: Album[];
 	artists?: Artist[];
 	playlists?: Playlist[];
+	isPlaylistConversionMode?: boolean;
+	playlistConversionTotal?: number;
+	playlistLoadingMessage?: string | null;
 };
 
 const emptyResults = {
@@ -123,10 +126,7 @@ const updateSearchStore = (updater: (state: SearchStoreState) => SearchStoreStat
 };
 
 export const searchStore = {
-	subscribe: searchStoreBase.subscribe,
-	set(nextState: SearchStoreState) {
-		updateSearchStore(() => nextState);
-	}
+	subscribe: searchStoreBase.subscribe
 };
 
 const resetLoading = () => ({
@@ -168,7 +168,12 @@ export const searchStoreActions = {
 				albums,
 				artists,
 				playlists,
-				tabLoading: nextTabLoading
+				tabLoading: nextTabLoading,
+				isPlaylistConversionMode:
+					payload.isPlaylistConversionMode ?? store.isPlaylistConversionMode,
+				playlistConversionTotal:
+					payload.playlistConversionTotal ?? store.playlistConversionTotal,
+				playlistLoadingMessage: payload.playlistLoadingMessage ?? store.playlistLoadingMessage
 			};
 		});
 	},
@@ -181,28 +186,6 @@ export const searchStoreActions = {
 			isLoading: true,
 			error: null,
 			tabLoading: markTabLoading(searchTab, true)
-		});
-	},
-
-	setSearchResults(results: {
-		tracks: (Track | SonglinkTrack)[];
-		albums: Album[];
-		artists: Artist[];
-		playlists: Playlist[];
-	}) {
-		this.commit({
-			results,
-			isLoading: false,
-			error: null,
-			tabLoading: resetLoading()
-		});
-	},
-
-	setSearchError(error: Error) {
-		this.commit({
-			isLoading: false,
-			error: error.message,
-			tabLoading: resetLoading()
 		});
 	},
 
@@ -244,24 +227,16 @@ export const searchStoreActions = {
 		});
 	},
 
-	setError(value: string | null) {
-		this.commit({ error: value });
-	},
-
-	setResults(value: SearchStoreState['results']) {
-		this.commit({ results: value });
-	},
-
 	setIsPlaylistConversionMode(value: boolean) {
-		updateSearchStore((store) => ({ ...store, isPlaylistConversionMode: value }));
+		this.commit({ isPlaylistConversionMode: value });
 	},
 
 	setPlaylistConversionTotal(value: number) {
-		updateSearchStore((store) => ({ ...store, playlistConversionTotal: value }));
+		this.commit({ playlistConversionTotal: value });
 	},
 
 	setPlaylistLoadingMessage(value: string | null) {
-		updateSearchStore((store) => ({ ...store, playlistLoadingMessage: value }));
+		this.commit({ playlistLoadingMessage: value });
 	},
 
 	setQuery(value: string) {
@@ -270,33 +245,5 @@ export const searchStoreActions = {
 
 	setActiveTab(value: SearchTab) {
 		this.commit({ activeTab: value });
-	},
-
-	setTracks(value: (Track | SonglinkTrack)[]) {
-		this.commit({
-			tracks: value,
-			results: { ...emptyResults, tracks: value }
-		});
-	},
-
-	setAlbums(value: Album[]) {
-		this.commit({
-			albums: value,
-			results: { ...emptyResults, albums: value }
-		});
-	},
-
-	setArtists(value: Artist[]) {
-		this.commit({
-			artists: value,
-			results: { ...emptyResults, artists: value }
-		});
-	},
-
-	setPlaylists(value: Playlist[]) {
-		this.commit({
-			playlists: value,
-			results: { ...emptyResults, playlists: value }
-		});
 	}
 };

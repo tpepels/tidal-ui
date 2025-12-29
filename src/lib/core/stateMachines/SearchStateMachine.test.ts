@@ -4,7 +4,7 @@ import {
 	type SearchState,
 	type SearchEvent,
 	type SearchResults
-} from './SearchStateMachine';
+} from '../../../test-utils/stateMachines/SearchStateMachine';
 
 // Mock data for testing
 const mockTrack = {

@@ -1,7 +1,7 @@
 // These replace fragile reactive effects with explicit state transitions
 
-import type { PlayableTrack } from '../../types';
-import { logger } from '../logger';
+import type { PlayableTrack } from '../../lib/types';
+import { logger } from '../../lib/core/logger';
 
 export type PlaybackState =
 	| { status: 'idle' }

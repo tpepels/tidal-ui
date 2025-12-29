@@ -133,7 +133,7 @@ describe('AudioPlayer Component Contract', () => {
 	describe('State Machine Integration Contract', () => {
 		it('should properly integrate with PlaybackStateMachine', async () => {
 			// Import the actual state machine to verify contract
-			const { PlaybackStateMachine } = await import('../core/stateMachines/PlaybackStateMachine');
+			const { PlaybackStateMachine } = await import('../../test-utils/stateMachines/PlaybackStateMachine');
 
 			const machine = new PlaybackStateMachine();
 
@@ -149,7 +149,7 @@ describe('AudioPlayer Component Contract', () => {
 
 		it('should maintain state consistency', async () => {
 			// Test that state transitions maintain consistency
-			const { PlaybackStateMachine } = await import('../core/stateMachines/PlaybackStateMachine');
+			const { PlaybackStateMachine } = await import('../../test-utils/stateMachines/PlaybackStateMachine');
 
 			const machine = new PlaybackStateMachine();
 

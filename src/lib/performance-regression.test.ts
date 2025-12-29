@@ -301,7 +301,7 @@ describe('Performance Regression Detection', () => {
 
 	describe('State Machine Performance', () => {
 		it('should maintain fast state transitions', async () => {
-			const { PlaybackStateMachine } = await import('./core/stateMachines/PlaybackStateMachine');
+			const { PlaybackStateMachine } = await import('../test-utils/stateMachines/PlaybackStateMachine');
 			const machine = new PlaybackStateMachine();
 
 			const mockTrack = {
@@ -329,7 +329,7 @@ describe('Performance Regression Detection', () => {
 		});
 
 		it('should handle rapid event sequences efficiently', async () => {
-			const { SearchStateMachine } = await import('./core/stateMachines/SearchStateMachine');
+			const { SearchStateMachine } = await import('../test-utils/stateMachines/SearchStateMachine');
 			const machine = new SearchStateMachine();
 
 			monitor.start('search-state-transitions');

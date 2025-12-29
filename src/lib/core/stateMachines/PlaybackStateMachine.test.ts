@@ -3,7 +3,7 @@ import {
 	PlaybackStateMachine,
 	type PlaybackState,
 	type PlaybackEvent
-} from './PlaybackStateMachine';
+} from '../../../test-utils/stateMachines/PlaybackStateMachine';
 
 // Mock track data for testing
 const mockTrack = {

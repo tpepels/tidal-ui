@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 
+const redisAvailable = (globalThis as { __REDIS_AVAILABLE?: boolean }).__REDIS_AVAILABLE !== false;
+const describeRedis = redisAvailable ? describe : describe.skip;
+
 // Redis integration tests - Redis is now assumed available as infrastructure
-describe('Redis Integration Tests', () => {
+describeRedis('Redis Integration Tests', () => {
 	let Redis: any;
 	let redis: any;
 

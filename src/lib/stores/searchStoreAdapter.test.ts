@@ -28,11 +28,21 @@ describe('searchStoreAdapter', () => {
 
 	it('sets results and clears loading', () => {
 		searchStoreActions.search('test', 'tracks');
-		searchStoreActions.setSearchResults({
-			tracks: [{ id: 1 } as any],
-			albums: [],
-			artists: [],
-			playlists: []
+		searchStoreActions.commit({
+			results: {
+				tracks: [{ id: 1 } as any],
+				albums: [],
+				artists: [],
+				playlists: []
+			},
+			isLoading: false,
+			error: null,
+			tabLoading: {
+				tracks: false,
+				albums: false,
+				artists: false,
+				playlists: false
+			}
 		});
 		const state = get(searchStore);
 		expect(state.isLoading).toBe(false);

@@ -8,7 +8,7 @@ import {
 	combineValidations,
 	isValidTidalUrl,
 	isValidSearchQuery
-} from './validation';
+} from '../../test-utils/validation';
 
 describe('Validation Utils', () => {
 	describe('isValidEmail', () => {

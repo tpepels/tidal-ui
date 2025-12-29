@@ -6,24 +6,25 @@ import { formatArtistsForMetadata } from './utils/formatters';
 import { z } from 'zod';
 import { logger } from './core/logger';
 import { performanceMonitor } from './core/performance';
+import { prepareAlbum, prepareArtist, prepareTrack } from './api/normalizers';
+import { getAlbum, getArtist, getCover, getLyrics, getPlaylist } from './api/catalog';
 import {
-	normalizeSearchResponse,
-	prepareAlbum,
-	prepareArtist,
-	prepareTrack
-} from './api/normalizers';
+	searchAlbums,
+	searchArtists,
+	searchPlaylists,
+	searchTracks
+} from './api/search';
+import {
+	extractUrlsFromDashJsonPayload,
+	isDashManifestPayload,
+	isJsonContentType,
+	isSegmentedDashManifest,
+	isXmlContentType,
+	parseJsonSafely
+} from './api/manifest';
 import {
 	TrackInfoSchema,
-	TrackSearchResponseSchema,
-	AlbumSearchResponseSchema,
-	ArtistSearchResponseSchema,
-	PlaylistSearchResponseSchema,
-	AlbumWithTracksSchema,
-	PlaylistWithTracksSchema,
-	CoverImageSchema,
-	LyricsSchema,
 	StreamDataSchema,
-	ApiV2ContainerSchema,
 	safeValidateApiResponse
 } from './utils/schemas';
 import type {
@@ -112,6 +113,21 @@ class LosslessAPI {
 		return `${base}${normalizedPath}`;
 	}
 
+	private getSearchContext() {
+		return {
+			buildRegionalUrl: this.buildRegionalUrl.bind(this),
+			fetch: (url: string) => this.fetch(url),
+			ensureNotRateLimited: this.ensureNotRateLimited.bind(this)
+		};
+	}
+
+	private getCatalogContext() {
+		return {
+			baseUrl: this.baseUrl,
+			fetch: (url: string) => this.fetch(url),
+			ensureNotRateLimited: this.ensureNotRateLimited.bind(this)
+		};
+	}
 
 	private ensureNotRateLimited(response: Response): void {
 		if (response.status === 429) {
@@ -171,7 +187,7 @@ class LosslessAPI {
 			}
 
 			// If this is a segmented DASH manifest, don't extract a URL - let it fall through to segment download
-			if (this.isSegmentedDashManifest(decoded)) {
+			if (isSegmentedDashManifest(decoded)) {
 				return null;
 			}
 
@@ -199,62 +215,10 @@ class LosslessAPI {
 		}
 	}
 
-	private isSegmentedDashManifest(decoded: string): boolean {
-		// Check if manifest contains SegmentTemplate which indicates segmented content
-		return /<SegmentTemplate/i.test(decoded);
-	}
-
-	private isDashManifestPayload(payload: string, contentType: string | null): boolean {
-		const trimmed = payload.trim();
-		if (!trimmed) {
-			return false;
-		}
-		if (contentType && contentType.toLowerCase().includes('xml')) {
-			return trimmed.startsWith('<');
-		}
-		return /^<\?xml/i.test(trimmed) || /^<MPD[\s>]/i.test(trimmed) || /^<\w+/i.test(trimmed);
-	}
-
-	private parseJsonSafely<T>(payload: string): T | null {
-		try {
-			return JSON.parse(payload) as T;
-		} catch (error) {
-			console.debug('Failed to parse JSON payload from DASH response', error);
-			return null;
-		}
-	}
-
 	private createDashUnavailableError(message: string): CodedError {
 		const error = new Error(message) as CodedError;
 		error.code = DASH_MANIFEST_UNAVAILABLE_CODE;
 		return error;
-	}
-
-	private isXmlContentType(contentType: string | null): boolean {
-		if (!contentType) return false;
-		return (
-			/(application|text)\/(?:.+\+)?xml/i.test(contentType) || /dash\+xml|mpd/i.test(contentType)
-		);
-	}
-
-	private isJsonContentType(contentType: string | null): boolean {
-		if (!contentType) return false;
-		return /json/i.test(contentType) || /application\/vnd\.tidal\.bts/i.test(contentType);
-	}
-
-	private extractUrlsFromDashJsonPayload(payload: unknown): string[] {
-		if (!payload || typeof payload !== 'object') {
-			return [];
-		}
-
-		const candidate = (payload as { urls?: unknown }).urls;
-		if (!Array.isArray(candidate)) {
-			return [];
-		}
-
-		return candidate
-			.map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
-			.filter((entry) => entry.length > 0);
 	}
 
 	private isHiResQuality(quality: AudioQuality | string): boolean {
@@ -401,16 +365,13 @@ class LosslessAPI {
 	private buildDashManifestResult(payload: string, contentType: string | null): DashManifestResult {
 		const manifestText = this.decodeBase64Manifest(payload);
 
-		if (
-			this.isXmlContentType(contentType) ||
-			this.isDashManifestPayload(manifestText, contentType)
-		) {
+		if (isXmlContentType(contentType) || isDashManifestPayload(manifestText, contentType)) {
 			return { kind: 'dash', manifest: manifestText, contentType };
 		}
 
 		const trimmed = manifestText.trim();
-		if (this.isJsonContentType(contentType) || trimmed.startsWith('{') || trimmed.startsWith('[')) {
-			const parsed = this.parseJsonSafely<{ detail?: unknown; urls?: unknown }>(manifestText);
+		if (isJsonContentType(contentType) || trimmed.startsWith('{') || trimmed.startsWith('[')) {
+			const parsed = parseJsonSafely<{ detail?: unknown; urls?: unknown }>(manifestText);
 			if (
 				parsed &&
 				typeof parsed === 'object' &&
@@ -420,18 +381,18 @@ class LosslessAPI {
 			) {
 				throw this.createDashUnavailableError('Dash manifest not found for track');
 			}
-			const urls = this.extractUrlsFromDashJsonPayload(parsed);
+			const urls = extractUrlsFromDashJsonPayload(parsed);
 			if (urls.length > 0) {
 				return { kind: 'flac', manifestText, urls, contentType };
 			}
 		}
 
-		if (this.isDashManifestPayload(manifestText, contentType)) {
+		if (isDashManifestPayload(manifestText, contentType)) {
 			return { kind: 'dash', manifest: manifestText, contentType };
 		}
 
-		const parsed = this.parseJsonSafely(manifestText);
-		const urls = this.extractUrlsFromDashJsonPayload(parsed);
+		const parsed = parseJsonSafely(manifestText);
+		const urls = extractUrlsFromDashJsonPayload(parsed);
 		if (urls.length > 0) {
 			return { kind: 'flac', manifestText, urls, contentType };
 		}
@@ -741,67 +702,7 @@ class LosslessAPI {
 	 * Search for tracks
 	 */
 	async searchTracks(query: string, region: RegionOption = 'auto'): Promise<SearchResponse<Track>> {
-		const operation = logger.startOperation('searchTracks', {
-			component: 'api',
-			query,
-			region
-		});
-
-		try {
-			const url = this.buildRegionalUrl(`/search/?s=${encodeURIComponent(query)}`, region);
-
-			logger.logAPIRequest('GET', url, { component: 'api', operation: 'searchTracks' });
-
-			const response = await performanceMonitor.measureAsyncOperation(
-				'api_response_time',
-				() => this.fetch(url),
-				{ operation: 'searchTracks', method: 'GET', endpoint: 'search' }
-			);
-
-			// Record response time separately for API monitoring
-			const responseTime = performance.now(); // This would be better with a more precise timing
-			performanceMonitor.recordMetric('api_response_time', responseTime, {
-				operation: 'searchTracks',
-				status: response.status.toString(),
-				region: region || 'auto'
-			});
-
-			logger.logAPIResponse('GET', url, response.status, responseTime, {
-				component: 'api',
-				operation: 'searchTracks'
-			});
-
-			this.ensureNotRateLimited(response);
-			if (!response.ok) {
-				operation.fail(new Error(`HTTP ${response.status}: Failed to search tracks`));
-				throw new Error('Failed to search tracks');
-			}
-
-			const data = await response.json();
-			const normalized = normalizeSearchResponse<Track>(data, 'tracks');
-
-			// Validate the search response
-			const validationResult = safeValidateApiResponse(normalized, TrackSearchResponseSchema);
-			if (!validationResult.success) {
-				logger.warn('Track search response validation failed, proceeding with unvalidated data', {
-					component: 'api',
-					operation: 'searchTracks',
-					validationError: validationResult.error,
-					query
-				});
-			}
-
-			const result = {
-				...normalized,
-				items: normalized.items.map((track) => prepareTrack(track))
-			};
-
-			operation.complete(result);
-			return result;
-		} catch (error) {
-			operation.fail(error instanceof Error ? error : new Error(String(error)));
-			throw error;
-		}
+		return searchTracks(this.getSearchContext(), query, region);
 	}
 
 	/**
@@ -811,54 +712,14 @@ class LosslessAPI {
 		query: string,
 		region: RegionOption = 'auto'
 	): Promise<SearchResponse<Artist>> {
-		const response = await this.fetch(
-			this.buildRegionalUrl(`/search/?a=${encodeURIComponent(query)}`, region)
-		);
-		this.ensureNotRateLimited(response);
-		if (!response.ok) throw new Error('Failed to search artists');
-		const data = await response.json();
-		const normalized = normalizeSearchResponse<Artist>(data, 'artists');
-
-		// Validate the search response
-		const validationResult = safeValidateApiResponse(normalized, ArtistSearchResponseSchema);
-		if (!validationResult.success) {
-			console.warn(
-				'Artist search response validation failed, proceeding with unvalidated data:',
-				validationResult.error
-			);
-		}
-
-		return {
-			...normalized,
-			items: normalized.items.map((artist) => prepareArtist(artist))
-		};
+		return searchArtists(this.getSearchContext(), query, region);
 	}
 
 	/**
 	 * Search for albums
 	 */
 	async searchAlbums(query: string, region: RegionOption = 'auto'): Promise<SearchResponse<Album>> {
-		const response = await this.fetch(
-			this.buildRegionalUrl(`/search/?al=${encodeURIComponent(query)}`, region)
-		);
-		this.ensureNotRateLimited(response);
-		if (!response.ok) throw new Error('Failed to search albums');
-		const data = await response.json();
-		const normalized = normalizeSearchResponse<Album>(data, 'albums');
-
-		// Validate the search response
-		const validationResult = safeValidateApiResponse(normalized, AlbumSearchResponseSchema);
-		if (!validationResult.success) {
-			console.warn(
-				'Album search response validation failed, proceeding with unvalidated data:',
-				validationResult.error
-			);
-		}
-
-		return {
-			...normalized,
-			items: normalized.items.map((album) => prepareAlbum(album))
-		};
+		return searchAlbums(this.getSearchContext(), query, region);
 	}
 
 	/**
@@ -868,24 +729,7 @@ class LosslessAPI {
 		query: string,
 		region: RegionOption = 'auto'
 	): Promise<SearchResponse<Playlist>> {
-		const response = await this.fetch(
-			this.buildRegionalUrl(`/search/?p=${encodeURIComponent(query)}`, region)
-		);
-		this.ensureNotRateLimited(response);
-		if (!response.ok) throw new Error('Failed to search playlists');
-		const data = await response.json();
-		const normalized = normalizeSearchResponse<Playlist>(data, 'playlists');
-
-		// Validate the search response
-		const validationResult = safeValidateApiResponse(normalized, PlaylistSearchResponseSchema);
-		if (!validationResult.success) {
-			console.warn(
-				'Playlist search response validation failed, proceeding with unvalidated data:',
-				validationResult.error
-			);
-		}
-
-		return normalized;
+		return searchPlaylists(this.getSearchContext(), query, region);
 	}
 
 	/**
@@ -1079,457 +923,35 @@ class LosslessAPI {
 	 * Get album details with track listing
 	 */
 	async getAlbum(id: number): Promise<{ album: Album; tracks: Track[] }> {
-		const response = await this.fetch(`${this.baseUrl}/album/?id=${id}`);
-		this.ensureNotRateLimited(response);
-		if (!response.ok) throw new Error('Failed to get album');
-		const data = await response.json();
-
-		// Validate the raw response structure
-		const validationResult = safeValidateApiResponse({ data }, ApiV2ContainerSchema);
-		if (!validationResult.success) {
-			console.warn(
-				'Album API response validation failed, proceeding with unvalidated data:',
-				validationResult.error
-			);
-		}
-
-		// Handle v2/new API structure where response is { version, data: { items: [...] } }
-		if (data && typeof data === 'object' && 'data' in data && 'items' in data.data) {
-			const items = data.data.items;
-			if (Array.isArray(items) && items.length > 0) {
-				const firstItem = items[0];
-				const firstTrack = firstItem.item || firstItem;
-
-				if (firstTrack && firstTrack.album) {
-					let albumEntry = prepareAlbum(firstTrack.album);
-
-					// If album doesn't have artist info, try to get it from the track
-					if (!albumEntry.artist && firstTrack.artist) {
-						albumEntry = { ...albumEntry, artist: firstTrack.artist };
-					}
-
-					const tracks = items
-						.map((i: unknown) => {
-							if (!i || typeof i !== 'object') return null;
-							const itemObj = i as { item?: unknown };
-							const t = (itemObj.item || itemObj) as Track;
-
-							if (!t) return null;
-							// Ensure track has album reference
-							return prepareTrack({ ...t, album: albumEntry });
-						})
-						.filter((t): t is Track => t !== null);
-
-					const result = { album: albumEntry, tracks };
-
-					// Validate the final result
-					const finalValidation = safeValidateApiResponse(result, AlbumWithTracksSchema);
-					if (!finalValidation.success) {
-						console.warn('Album with tracks validation failed:', finalValidation.error);
-					}
-
-					return result;
-				}
-			}
-		}
-
-		const entries = Array.isArray(data) ? data : [data];
-
-		let albumEntry: Album | undefined;
-		let trackCollection: { items?: unknown[] } | undefined;
-
-		for (const entry of entries) {
-			if (!entry || typeof entry !== 'object') continue;
-
-			if (!albumEntry && 'title' in entry && 'id' in entry && 'cover' in entry) {
-				albumEntry = prepareAlbum(entry as Album);
-				continue;
-			}
-
-			if (
-				!trackCollection &&
-				'items' in entry &&
-				Array.isArray((entry as { items?: unknown[] }).items)
-			) {
-				trackCollection = entry as { items?: unknown[] };
-			}
-		}
-
-		if (!albumEntry) {
-			throw new Error('Album not found');
-		}
-
-		const tracks: Track[] = [];
-		if (trackCollection?.items) {
-			for (const rawItem of trackCollection.items) {
-				if (!rawItem || typeof rawItem !== 'object') continue;
-
-				let trackCandidate: Track | undefined;
-				if ('item' in rawItem && rawItem.item && typeof rawItem.item === 'object') {
-					trackCandidate = rawItem.item as Track;
-				} else {
-					trackCandidate = rawItem as Track;
-				}
-
-				if (!trackCandidate) continue;
-
-				const candidateWithAlbum = trackCandidate.album
-					? trackCandidate
-					: ({ ...trackCandidate, album: albumEntry } as Track);
-				tracks.push(prepareTrack(candidateWithAlbum));
-			}
-		}
-
-		const result = { album: albumEntry, tracks };
-
-		// Validate the final result
-		const finalValidation = safeValidateApiResponse(result, AlbumWithTracksSchema);
-		if (!finalValidation.success) {
-			console.warn('Album with tracks validation failed:', finalValidation.error);
-		}
-
-		return result;
+		return getAlbum(this.getCatalogContext(), id);
 	}
 
 	/**
 	 * Get playlist details
 	 */
 	async getPlaylist(uuid: string): Promise<{ playlist: Playlist; items: Array<{ item: Track }> }> {
-		const response = await this.fetch(`${this.baseUrl}/playlist/?id=${uuid}`);
-		this.ensureNotRateLimited(response);
-		if (!response.ok) throw new Error('Failed to get playlist');
-		const data = await response.json();
-
-		let result: { playlist: Playlist; items: Array<{ item: Track }> };
-
-		// Handle v2 structure (object with playlist and items keys)
-		if (data && typeof data === 'object' && 'playlist' in data && 'items' in data) {
-			result = {
-				playlist: data.playlist as Playlist,
-				items: data.items as Array<{ item: Track }>
-			};
-		} else {
-			result = {
-				playlist: Array.isArray(data) ? (data[0] as Playlist) : (data as Playlist),
-				items: Array.isArray(data) && data[1] ? (data[1].items as Array<{ item: Track }>) : []
-			};
-		}
-
-		// Validate the result
-		const validationResult = safeValidateApiResponse(result, PlaylistWithTracksSchema);
-		if (!validationResult.success) {
-			console.warn('Playlist with tracks validation failed:', validationResult.error);
-		}
-
-		return result;
+		return getPlaylist(this.getCatalogContext(), uuid);
 	}
 
 	/**
 	 * Get artist overview, including discography modules and top tracks
 	 */
 	async getArtist(id: number): Promise<ArtistDetails> {
-		const response = await this.fetch(`${this.baseUrl}/artist/?f=${id}`);
-		this.ensureNotRateLimited(response);
-		if (!response.ok) throw new Error('Failed to get artist');
-		const data = await response.json();
-		const entries = Array.isArray(data) ? data : [data];
-
-		const visited = new Set<object>();
-		const albumMap = new Map<number, Album>();
-		const trackMap = new Map<number, Track>();
-		let artist: Artist | undefined;
-
-		const isTrackLike = (value: unknown): value is Track => {
-			if (!value || typeof value !== 'object') return false;
-			const candidate = value as Record<string, unknown>;
-			const albumCandidate = candidate.album as unknown;
-			return (
-				typeof candidate.id === 'number' &&
-				typeof candidate.title === 'string' &&
-				typeof candidate.duration === 'number' &&
-				'trackNumber' in candidate &&
-				albumCandidate !== undefined &&
-				albumCandidate !== null &&
-				typeof albumCandidate === 'object'
-			);
-		};
-
-		const isAlbumLike = (value: unknown): value is Album => {
-			if (!value || typeof value !== 'object') return false;
-			const candidate = value as Record<string, unknown>;
-			return (
-				typeof candidate.id === 'number' &&
-				typeof candidate.title === 'string' &&
-				'cover' in candidate
-			);
-		};
-
-		const isArtistLike = (value: unknown): value is Artist => {
-			if (!value || typeof value !== 'object') return false;
-			const candidate = value as Record<string, unknown>;
-			return (
-				typeof candidate.id === 'number' &&
-				typeof candidate.name === 'string' &&
-				typeof candidate.type === 'string' &&
-				('artistRoles' in candidate || 'artistTypes' in candidate || 'url' in candidate)
-			);
-		};
-
-		const recordArtist = (candidate: Artist | undefined, requestedArtistId: number) => {
-			if (!candidate) return;
-			const normalized = prepareArtist(candidate);
-
-			// Priority order:
-			// 1. Artist with requested ID (highest priority)
-			// 2. First artist found (for stability when neither has requested ID)
-			if (!artist) {
-				// No artist yet, use this one
-				artist = normalized;
-			} else if (normalized.id === requestedArtistId) {
-				// This artist has the requested ID, always prefer it
-				artist = normalized;
-			} else if (artist.id !== requestedArtistId) {
-				// Neither artist has the requested ID, keep the first one found for stability
-				// Don't change artist to maintain consistent behavior
-			}
-			// If current artist already has requested ID, keep it (no change needed)
-		};
-
-		const addAlbum = (candidate: Album | undefined) => {
-			if (!candidate || typeof candidate.id !== 'number') return;
-			const normalized = prepareAlbum({ ...candidate });
-			albumMap.set(normalized.id, normalized);
-			recordArtist(normalized.artist ?? normalized.artists?.[0], id);
-		};
-
-		const addTrack = (candidate: Track | undefined) => {
-			if (!candidate || typeof candidate.id !== 'number') return;
-			const normalized = prepareTrack({ ...candidate });
-			if (!normalized.album) {
-				return;
-			}
-			addAlbum(normalized.album);
-			const knownAlbum = albumMap.get(normalized.album.id);
-			if (knownAlbum) {
-				normalized.album = knownAlbum;
-			}
-			trackMap.set(normalized.id, normalized);
-			recordArtist(normalized.artist, id);
-		};
-
-		const parseModuleItems = (items: unknown) => {
-			if (!Array.isArray(items)) return;
-			for (const entry of items) {
-				if (!entry || typeof entry !== 'object') {
-					continue;
-				}
-
-				const candidate = 'item' in entry ? (entry as { item?: unknown }).item : entry;
-				if (isAlbumLike(candidate)) {
-					addAlbum(candidate as Album);
-					const normalizedAlbum = albumMap.get((candidate as Album).id);
-					recordArtist(normalizedAlbum?.artist ?? normalizedAlbum?.artists?.[0], id);
-					continue;
-				}
-				if (isTrackLike(candidate)) {
-					addTrack(candidate as Track);
-					continue;
-				}
-
-				scanValue(candidate);
-			}
-		};
-
-		const scanValue = (value: unknown) => {
-			if (!value) return;
-			if (Array.isArray(value)) {
-				const trackCandidates = value.filter(isTrackLike);
-				if (trackCandidates.length > 0) {
-					for (const track of trackCandidates) {
-						addTrack(track);
-					}
-					return;
-				}
-				for (const entry of value) {
-					scanValue(entry);
-				}
-				return;
-			}
-
-			if (typeof value !== 'object') {
-				return;
-			}
-
-			const objectRef = value as Record<string, unknown>;
-			if (visited.has(objectRef)) {
-				return;
-			}
-			visited.add(objectRef);
-
-			if (isArtistLike(objectRef)) {
-				recordArtist(objectRef as Artist, id);
-			}
-
-			if ('modules' in objectRef && Array.isArray(objectRef.modules)) {
-				for (const moduleEntry of objectRef.modules) {
-					scanValue(moduleEntry);
-				}
-			}
-
-			if (
-				'pagedList' in objectRef &&
-				objectRef.pagedList &&
-				typeof objectRef.pagedList === 'object'
-			) {
-				const pagedList = objectRef.pagedList as { items?: unknown };
-				parseModuleItems(pagedList.items);
-			}
-
-			if ('items' in objectRef && Array.isArray(objectRef.items)) {
-				parseModuleItems(objectRef.items);
-			}
-
-			if ('rows' in objectRef && Array.isArray(objectRef.rows)) {
-				parseModuleItems(objectRef.rows);
-			}
-
-			if ('listItems' in objectRef && Array.isArray(objectRef.listItems)) {
-				parseModuleItems(objectRef.listItems);
-			}
-
-			for (const nested of Object.values(objectRef)) {
-				scanValue(nested);
-			}
-		};
-
-		for (const entry of entries) {
-			scanValue(entry);
-		}
-
-		if (!artist) {
-			const trackPrimaryArtist = Array.from(trackMap.values())
-				.map((track) => track.artist ?? track.artists?.[0])
-				.find(Boolean);
-			const albumPrimaryArtist = Array.from(albumMap.values())
-				.map((album) => album.artist ?? album.artists?.[0])
-				.find(Boolean);
-			recordArtist(trackPrimaryArtist ?? albumPrimaryArtist, id);
-		}
-
-		if (!artist) {
-			try {
-				const fallbackResponse = await this.fetch(`${this.baseUrl}/artist/?id=${id}`);
-				this.ensureNotRateLimited(fallbackResponse);
-				if (fallbackResponse.ok) {
-					const fallbackData = await fallbackResponse.json();
-					const baseArtist = Array.isArray(fallbackData) ? fallbackData[0] : fallbackData;
-					if (baseArtist && typeof baseArtist === 'object') {
-						recordArtist(baseArtist as Artist, id);
-					}
-				}
-			} catch (fallbackError) {
-				console.warn('Failed to fetch base artist details:', fallbackError);
-			}
-		}
-
-		if (!artist) {
-			throw new Error('Artist not found');
-		}
-
-		const albums = Array.from(albumMap.values()).map((album) => {
-			if (!album.artist && artist) {
-				return { ...album, artist };
-			}
-			return album;
-		});
-
-		const albumById = new Map(albums.map((album) => [album.id, album] as const));
-
-		const tracks = Array.from(trackMap.values()).map((track) => {
-			const enrichedArtist = track.artist ?? artist;
-			const album = track.album;
-			const enrichedAlbum = album
-				? (albumById.get(album.id) ?? (artist && !album.artist ? { ...album, artist } : album))
-				: undefined;
-			return {
-				...track,
-				artist: enrichedArtist ?? track.artist,
-				album: enrichedAlbum ?? album
-			};
-		});
-
-		const parseDate = (value?: string): number => {
-			if (!value) return Number.NaN;
-			const timestamp = Date.parse(value);
-			return Number.isFinite(timestamp) ? timestamp : Number.NaN;
-		};
-
-		const sortedAlbums = albums.sort((a, b) => {
-			const timeA = parseDate(a.releaseDate);
-			const timeB = parseDate(b.releaseDate);
-			if (Number.isNaN(timeA) && Number.isNaN(timeB)) {
-				return (b.popularity ?? 0) - (a.popularity ?? 0);
-			}
-			if (Number.isNaN(timeA)) return 1;
-			if (Number.isNaN(timeB)) return -1;
-			return timeB - timeA;
-		});
-
-		const sortedTracks = tracks
-			.sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))
-			.slice(0, 100);
-
-		return {
-			...artist,
-			albums: sortedAlbums,
-			tracks: sortedTracks
-		};
+		return getArtist(this.getCatalogContext(), id);
 	}
 
 	/**
 	 * Get cover image
 	 */
 	async getCover(id?: number, query?: string): Promise<CoverImage[]> {
-		let url = `${this.baseUrl}/cover/?`;
-		if (id) url += `id=${id}`;
-		if (query) url += `q=${encodeURIComponent(query)}`;
-		const response = await this.fetch(url);
-		this.ensureNotRateLimited(response);
-		if (!response.ok) throw new Error('Failed to get cover');
-		const data = await response.json();
-
-		// Validate the cover images
-		const validationResult = safeValidateApiResponse(data, z.array(CoverImageSchema));
-		if (!validationResult.success) {
-			console.warn(
-				'Cover images validation failed, proceeding with unvalidated data:',
-				validationResult.error
-			);
-		}
-
-		return data;
+		return getCover(this.getCatalogContext(), id, query);
 	}
 
 	/**
 	 * Get lyrics for a track
 	 */
 	async getLyrics(id: number): Promise<Lyrics> {
-		const response = await this.fetch(`${this.baseUrl}/lyrics/?id=${id}`);
-		this.ensureNotRateLimited(response);
-		if (!response.ok) throw new Error('Failed to get lyrics');
-		const data = await response.json();
-		const lyrics = Array.isArray(data) ? data[0] : data;
-
-		// Validate the lyrics
-		const validationResult = safeValidateApiResponse(lyrics, LyricsSchema);
-		if (!validationResult.success) {
-			console.warn(
-				'Lyrics validation failed, proceeding with unvalidated data:',
-				validationResult.error
-			);
-		}
-
-		return lyrics;
+		return getLyrics(this.getCatalogContext(), id);
 	}
 
 	/**
@@ -2354,7 +1776,7 @@ class LosslessAPI {
 				const decodedManifest = this.decodeBase64Manifest(manifestSource.info.manifest);
 
 				// For segmented DASH manifests, go directly to segment download
-				if (this.isSegmentedDashManifest(decodedManifest)) {
+				if (isSegmentedDashManifest(decodedManifest)) {
 					try {
 						const mpdResult = await this.downloadFlacFromMpd(decodedManifest, options);
 						if (mpdResult) {

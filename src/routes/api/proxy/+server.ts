@@ -1,10 +1,21 @@
 import { env } from '$env/dynamic/private';
 import { Buffer } from 'node:buffer';
-import { createHash } from 'node:crypto';
 import type Redis from 'ioredis';
 import type { RequestHandler } from './$types';
 
 import { disableRedisClient, getRedisClient } from '$lib/server/redis';
+import {
+	isUpstreamHealthy,
+	logUpstreamSuppressed,
+	markUpstreamUnhealthy
+} from '$lib/server/proxyUpstreamHealth';
+import {
+	createCacheKey,
+	getCacheTtlSeconds,
+	hasDisqualifyingCacheControl,
+	isCacheableContentType,
+	sanitizeHeaderEntries
+} from '$lib/server/proxyCache';
 
 const allowOrigin = (origin?: string | null): boolean => {
 	void origin;
@@ -30,59 +41,6 @@ const TRACK_CACHE_TTL_SECONDS = getEnvNumber('REDIS_CACHE_TTL_TRACK_SECONDS', 12
 const MAX_CACHE_BODY_BYTES = getEnvNumber('REDIS_CACHE_MAX_BODY_BYTES', 200_000);
 
 const MOCK_PROXY_FLAGS = ['E2E_OFFLINE', 'MOCK_PROXY', 'MOCK_API'];
-const UPSTREAM_BASE_BACKOFF_MS = 5_000;
-const UPSTREAM_MAX_BACKOFF_MS = 300_000;
-const UPSTREAM_BACKOFF_MULTIPLIER = 3;
-const UPSTREAM_FAILURE_LOG_TTL_MS = 10_000;
-
-type UpstreamFailureState = {
-	failures: number;
-	nextRetryAt: number;
-};
-
-const upstreamFailureStates = new Map<string, UpstreamFailureState>();
-const upstreamFailureLogTimestamps = new Map<string, number>();
-
-function calculateBackoffMs(failures: number): number {
-	const exponent = Math.max(0, failures - 1);
-	const backoff = UPSTREAM_BASE_BACKOFF_MS * UPSTREAM_BACKOFF_MULTIPLIER ** exponent;
-	return Math.min(backoff, UPSTREAM_MAX_BACKOFF_MS);
-}
-
-function markUpstreamUnhealthy(origin: string): void {
-	const existing = upstreamFailureStates.get(origin);
-	const failures = (existing?.failures ?? 0) + 1;
-	const backoffMs = calculateBackoffMs(failures);
-	upstreamFailureStates.set(origin, {
-		failures,
-		nextRetryAt: Date.now() + backoffMs
-	});
-}
-
-function isUpstreamHealthy(origin: string): boolean {
-	const state = upstreamFailureStates.get(origin);
-	if (!state) return true;
-	if (Date.now() >= state.nextRetryAt) {
-		upstreamFailureStates.delete(origin);
-		return true;
-	}
-	return false;
-}
-
-function logUpstreamSuppressed(origin: string): void {
-	const lastLog = upstreamFailureLogTimestamps.get(origin) ?? 0;
-	const now = Date.now();
-	if (now - lastLog < UPSTREAM_FAILURE_LOG_TTL_MS) {
-		return;
-	}
-	const state = upstreamFailureStates.get(origin);
-	const retryInMs = state ? Math.max(0, state.nextRetryAt - now) : 0;
-	upstreamFailureLogTimestamps.set(origin, now);
-	console.warn(
-		`Proxy skipping unhealthy upstream: ${origin} (retry in ${Math.ceil(retryInMs / 1000)}s)`
-	);
-}
-
 function isMockProxyEnabled(): boolean {
 	return MOCK_PROXY_FLAGS.some((flag) => {
 		const value = env[flag];
@@ -311,44 +269,11 @@ function getEnvNumber(name: string, fallback: number): number {
 	return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function sanitizeHeaderEntries(entries: Array<[string, string]>): Array<[string, string]> {
-	const blocklist = new Set(['content-encoding', 'content-length', 'transfer-encoding']);
-	return entries.filter(([key]) => !blocklist.has(key.toLowerCase()));
-}
-
-function isCacheableContentType(contentType: string | null): boolean {
-	if (!contentType) return false;
-	const normalized = contentType.split(';')[0]?.trim().toLowerCase() ?? '';
-	return normalized.includes('json') || normalized.startsWith('text/');
-}
-
-function hasDisqualifyingCacheControl(cacheControl: string | null): boolean {
-	if (!cacheControl) return false;
-	const normalized = cacheControl.toLowerCase();
-	return normalized.includes('no-store') || normalized.includes('private');
-}
-
-function getCacheTtlSeconds(url: URL): number {
-	const path = url.pathname.toLowerCase();
-	if (path.includes('/track/') || path.includes('/song/')) {
-		return TRACK_CACHE_TTL_SECONDS;
-	}
-	if (path.includes('/search/')) {
-		return SEARCH_CACHE_TTL_SECONDS;
-	}
-	if (path.includes('/album/') || path.includes('/artist/') || path.includes('/playlist/')) {
-		return DEFAULT_CACHE_TTL_SECONDS;
-	}
-	return DEFAULT_CACHE_TTL_SECONDS;
-}
-
-function createCacheKey(url: URL, headers: Headers): string {
-	const accept = headers.get('accept') ?? '';
-	const range = headers.get('range') ?? '';
-	const keyMaterial = `${url.toString()}|accept=${accept}|range=${range}`;
-	const hash = createHash('sha256').update(keyMaterial).digest('hex');
-	return `${CACHE_NAMESPACE}${hash}`;
-}
+const cacheTtlConfig = {
+	defaultTtlSeconds: DEFAULT_CACHE_TTL_SECONDS,
+	searchTtlSeconds: SEARCH_CACHE_TTL_SECONDS,
+	trackTtlSeconds: TRACK_CACHE_TTL_SECONDS
+};
 
 function applyProxyHeaders(sourceHeaders: Array<[string, string]>, origin: string | null): Headers {
 	const headers = new Headers();
@@ -617,7 +542,7 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 	const shouldUseCache = !hasRangeRequest && !hasAuthorizationHeader && !hasCookieHeader;
 	const redis = shouldUseCache ? getRedisClient() : null;
 	const redisReady = Boolean(redis && redis.status === 'ready');
-	const cacheKey = redisReady ? createCacheKey(parsedTarget, upstreamHeaders) : null;
+	const cacheKey = redisReady ? createCacheKey(parsedTarget, upstreamHeaders, CACHE_NAMESPACE) : null;
 
 	if (redisReady && cacheKey && redis) {
 		const cached = await readCachedResponse(redis, cacheKey);
@@ -665,7 +590,7 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 		const bodyBytes = new Uint8Array(bodyArrayBuffer);
 
 		if (redisReady && cacheKey && redis) {
-			const ttlSeconds = getCacheTtlSeconds(parsedTarget);
+			const ttlSeconds = getCacheTtlSeconds(parsedTarget, cacheTtlConfig);
 			const contentType = upstream.headers.get('content-type');
 			const cacheControl = upstream.headers.get('cache-control');
 			const byteLength = bodyBytes.byteLength;

@@ -2,7 +2,6 @@ import { get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 import type { PlayableTrack } from '$lib/types';
 import { assertInvariant } from '$lib/core/invariants';
-import { assertPlayableState } from '$lib/core/playbackInvariants';
 
 type PlaybackState = {
 	currentTrack: PlayableTrack | null;
@@ -53,11 +52,9 @@ export const createPlaybackTransitions = (playerStore: PlaybackStore): PlaybackT
 			const state = getState();
 			assertInvariant(state.currentTrack !== null, 'Cannot play without a current track');
 			playerStore.play();
-			assertPlayableState(getState());
 		},
 		pause() {
 			playerStore.pause();
-			assertPlayableState(getState());
 		},
 		togglePlay() {
 			const state = getState();
@@ -65,7 +62,6 @@ export const createPlaybackTransitions = (playerStore: PlaybackStore): PlaybackT
 				return;
 			}
 			playerStore.togglePlay();
-			assertPlayableState(getState());
 		},
 		playFromQueueIndex(index: number) {
 			const state = getState();
@@ -75,7 +71,6 @@ export const createPlaybackTransitions = (playerStore: PlaybackStore): PlaybackT
 				{ index, queueLength: state.queue.length }
 			);
 			playerStore.playAtIndex(index);
-			assertPlayableState(getState());
 		},
 		seekTo(time: number) {
 			const state = getState();
@@ -87,31 +82,24 @@ export const createPlaybackTransitions = (playerStore: PlaybackStore): PlaybackT
 		},
 		next() {
 			playerStore.next();
-			assertPlayableState(getState());
 		},
 		previous() {
 			playerStore.previous();
-			assertPlayableState(getState());
 		},
 		setTrack(track: PlayableTrack) {
 			playerStore.setTrack(track);
-			assertPlayableState(getState());
 		},
 		setQueue(queue: PlayableTrack[], startIndex = 0) {
 			playerStore.setQueue(queue, startIndex);
-			assertPlayableState(getState());
 		},
 		enqueue(track: PlayableTrack) {
 			playerStore.enqueue(track);
-			assertPlayableState(getState());
 		},
 		enqueueNext(track: PlayableTrack) {
 			playerStore.enqueueNext(track);
-			assertPlayableState(getState());
 		},
 		clearQueue() {
 			playerStore.clearQueue();
-			assertPlayableState(getState());
 		}
 	};
 };

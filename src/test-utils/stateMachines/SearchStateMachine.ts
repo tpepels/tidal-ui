@@ -1,7 +1,7 @@
 // This replaces the fragile reactive search logic with explicit state transitions
 
-import type { Track, Album, Artist, Playlist, SonglinkTrack } from '../../types';
-import { logger } from '../logger';
+import type { Track, Album, Artist, Playlist, SonglinkTrack } from '../../lib/types';
+import { logger } from '../../lib/core/logger';
 
 export type SearchTab = 'tracks' | 'albums' | 'artists' | 'playlists';
 
