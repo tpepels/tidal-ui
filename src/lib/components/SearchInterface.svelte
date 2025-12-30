@@ -10,15 +10,16 @@
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { regionStore, type RegionOption } from '$lib/stores/region';
 	import { isTidalUrl } from '$lib/utils/urlParser';
+	import { isSupportedStreamingUrl, isSpotifyPlaylistUrl as isSpotifyPlaylistUrlUtil } from '$lib/utils/songlink';
+	// Search domain services
 	import {
-		isSupportedStreamingUrl,
-		convertToTidal,
-		getPlatformName,
+		executeTabSearch,
+		convertStreamingUrl,
+		precacheTrackStream,
+		convertSpotifyPlaylistToTracks,
 		isSpotifyPlaylistUrl,
-		convertSpotifyPlaylist,
-		fetchSonglinkData,
-		extractTidalSongEntity
-	} from '$lib/utils/songlink';
+		type SearchTab
+	} from '$lib/services/search';
 	import type {
 		Track,
 		Album,
@@ -26,8 +27,8 @@
 		SonglinkTrack,
 		PlayableTrack
 	} from '$lib/types';
-import { isSonglinkTrack } from '$lib/types';
-import { toasts } from '$lib/stores/toasts';
+	import { isSonglinkTrack } from '$lib/types';
+	import { toasts } from '$lib/stores/toasts';
 import {
 	Music,
 	User,
@@ -232,25 +233,6 @@ import {
 			document.removeEventListener('click', handleClickOutside);
 		};
 	});
-
-	async function fetchWithRetry<T>(
-		action: () => Promise<T>,
-		attempts = 3,
-		delayMs = 250
-	): Promise<T> {
-		let lastError: unknown = null;
-		for (let attempt = 1; attempt <= attempts; attempt += 1) {
-			try {
-				return await action();
-			} catch (err) {
-				lastError = err;
-				if (attempt < attempts) {
-					await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
-				}
-			}
-		}
-		throw lastError instanceof Error ? lastError : new Error('Request failed');
-	}
 
 	function markCancelled(trackId: number | string) {
 		const next = new Set(cancelledIds);
@@ -497,19 +479,10 @@ import {
 
 
 
-	const inFlightSearches = new Map<string, Promise<{
-		tracks: (Track | SonglinkTrack)[];
-		albums: Album[];
-		artists: Artist[];
-		playlists: Playlist[];
-	}>>();
-
 	async function handleSearch() {
 		console.log('handleSearch called with query:', $searchStore.query);
 		const trimmedQuery = $searchStore.query.trim();
 		if (!trimmedQuery) return;
-
-		// Auto-detect: if query is a Tidal URL, import it directly
 
 		// Auto-detect: if query is a Spotify playlist, convert it
 		if (isQueryASpotifyPlaylist) {
@@ -527,49 +500,12 @@ import {
 		searchStoreActions.search(trimmedQuery, $searchStore.activeTab);
 
 		try {
-			const emptyResults = { tracks: [], albums: [], artists: [], playlists: [] };
-			const searchKey = `${$searchStore.activeTab}:${trimmedQuery.toLowerCase()}`;
-			let pending = inFlightSearches.get(searchKey);
-			if (!pending) {
-				pending = (async () => {
-					switch ($searchStore.activeTab) {
-						case 'tracks': {
-							const response = await fetchWithRetry(() =>
-								losslessAPI.searchTracks(trimmedQuery, selectedRegion)
-							);
-							const items = Array.isArray(response?.items) ? response.items : [];
-							return { ...emptyResults, tracks: items };
-						}
-						case 'albums': {
-							const response = await losslessAPI.searchAlbums(trimmedQuery);
-							const items = Array.isArray(response?.items) ? response.items : [];
-							return { ...emptyResults, albums: items };
-						}
-						case 'artists': {
-							const response = await losslessAPI.searchArtists(trimmedQuery);
-							const items = Array.isArray(response?.items) ? response.items : [];
-							return { ...emptyResults, artists: items };
-						}
-						case 'playlists': {
-							const response = await losslessAPI.searchPlaylists(trimmedQuery);
-							const items = Array.isArray(response?.items) ? response.items : [];
-							return { ...emptyResults, playlists: items };
-						}
-						default:
-							return emptyResults;
-					}
-				})();
-				inFlightSearches.set(searchKey, pending);
-			}
-
-			let results = emptyResults;
-			try {
-				results = await pending;
-			} finally {
-				if (inFlightSearches.get(searchKey) === pending) {
-					inFlightSearches.delete(searchKey);
-				}
-			}
+			// Use search service for execution
+			const results = await executeTabSearch(
+				trimmedQuery,
+				$searchStore.activeTab as SearchTab,
+				selectedRegion
+			);
 
 			searchStoreActions.commit({
 				results,
@@ -621,55 +557,29 @@ import {
 		});
 
 		try {
-			const platformName = getPlatformName($searchStore.query.trim());
+			// Use streaming URL conversion service
+			const result = await convertStreamingUrl($searchStore.query.trim());
 
-			const tidalInfo = await convertToTidal($searchStore.query.trim(), {
-				userCountry: 'US',
-				songIfSingle: true
-			});
-
-			if (!tidalInfo) {
-				searchStoreActions.commit({
-					error: `Could not find TIDAL equivalent for this ${platformName || 'streaming platform'} link. The content might not be available on TIDAL.`,
-					isLoading: false,
-					tabLoading: {
-						tracks: false,
-						albums: false,
-						artists: false,
-						playlists: false
-					}
-				});
-				return;
-			}
-
-
-			// Load the TIDAL content based on type
-			switch (tidalInfo.type) {
+			// Handle based on content type
+			switch (result.type) {
 				case 'track': {
-					const trackLookup = await losslessAPI.getTrack(Number(tidalInfo.id));
-					if (trackLookup?.track) {
+					if (result.track) {
 						// Pre-cache the stream URL for this track
-						try {
-							const quality = $playerStore.quality;
-							await losslessAPI.getStreamUrl(trackLookup.track.id, quality);
-						} catch (cacheErr) {
-							console.warn(`Failed to cache stream for track ${trackLookup.track.id}:`, cacheErr);
-						}
+						await precacheTrackStream(result.track.id, $playerStore.quality);
 
-						playerStore.setTrack(trackLookup.track);
+						playerStore.setTrack(result.track);
 						playerStore.play();
 						searchStoreActions.commit({ query: '' });
 					}
 					break;
 				}
 				case 'album': {
-					const albumData = await losslessAPI.getAlbum(Number(tidalInfo.id));
-					if (albumData?.album) {
+					if (result.album) {
 						searchStoreActions.commit({
 							activeTab: 'albums',
 							results: {
 								tracks: [],
-								albums: [albumData.album],
+								albums: [result.album],
 								artists: [],
 								playlists: []
 							}
@@ -679,15 +589,14 @@ import {
 					break;
 				}
 				case 'playlist': {
-					const playlistData = await losslessAPI.getPlaylist(tidalInfo.id);
-					if (playlistData?.playlist) {
+					if (result.playlist) {
 						searchStoreActions.commit({
 							activeTab: 'playlists',
 							results: {
 								tracks: [],
 								albums: [],
 								artists: [],
-								playlists: [playlistData.playlist]
+								playlists: [result.playlist]
 							}
 						});
 						searchStoreActions.commit({ query: '' });
@@ -739,31 +648,7 @@ import {
 		searchStoreActions.commit({ isPlaylistConversionMode: true });
 
 		try {
-
-			// Step 1: Get all Spotify track URLs from the playlist
-			const spotifyTrackUrls = await convertSpotifyPlaylist($searchStore.query.trim());
-
-			if (!spotifyTrackUrls || spotifyTrackUrls.length === 0) {
-				searchStoreActions.commit({
-					error:
-						'Could not fetch tracks from Spotify playlist. The playlist might be empty or private.',
-					isLoading: false,
-					tabLoading: {
-						tracks: false,
-						albums: false,
-						artists: false,
-						playlists: false
-					}
-				});
-				searchStoreActions.commit({ playlistLoadingMessage: null });
-				searchStoreActions.commit({ isPlaylistConversionMode: false });
-				return;
-			}
-
-			searchStoreActions.commit({ playlistConversionTotal: spotifyTrackUrls.length });
-			searchStoreActions.commit({ playlistLoadingMessage: `Loading ${spotifyTrackUrls.length} tracks...` });
-
-			// Clear previous results and switch to tracks $searchStore.activeTab
+			// Clear previous results and switch to tracks tab
 			searchStoreActions.commit({
 				activeTab: 'tracks',
 				results: { tracks: [], albums: [], artists: [], playlists: [] }
@@ -780,69 +665,21 @@ import {
 				}
 			});
 
-			// Step 2: Fetch Songlink data for all tracks (no TIDAL conversion yet!)
-			const conversionPromises = spotifyTrackUrls.map(async (trackUrl, index) => {
-				try {
-					const songlinkData = await fetchSonglinkData(trackUrl, {
-						userCountry: 'US',
-						songIfSingle: true
+			// Use playlist conversion service with progress tracking
+			const result = await convertSpotifyPlaylistToTracks(
+				$searchStore.query.trim(),
+				(progress) => {
+					// Update progress during conversion
+					searchStoreActions.commit({
+						playlistConversionTotal: progress.total,
+						playlistLoadingMessage: `Loaded ${progress.loaded}/${progress.total} tracks...`,
+						results: { tracks: progress.successful, albums: [], artists: [], playlists: [] }
 					});
-
-					// Extract TIDAL entity for display
-					const tidalEntity = extractTidalSongEntity(songlinkData);
-
-					if (tidalEntity) {
-						// Create a SonglinkTrack object (no TIDAL API call!)
-						const songlinkTrack: SonglinkTrack = {
-							id: songlinkData.entityUniqueId,
-							title: tidalEntity.title || 'Unknown Track',
-							artistName: tidalEntity.artistName || 'Unknown Artist',
-							duration: 180, // Placeholder duration (3 minutes)
-							thumbnailUrl: tidalEntity.thumbnailUrl || '',
-							sourceUrl: trackUrl,
-							songlinkData,
-							isSonglinkTrack: true,
-							tidalId: tidalEntity.id ? Number(tidalEntity.id) : undefined,
-							audioQuality: 'LOSSLESS'
-						};
-
-						return { success: true, track: songlinkTrack, url: trackUrl };
-					}
-
-					return { success: false, url: trackUrl };
-				} catch (err) {
-					console.warn(`Failed to fetch Songlink data for track ${index + 1}:`, err);
-					return { success: false, url: trackUrl };
 				}
-			});
+			);
 
-			// Wait for all Songlink fetches to complete
-			const results = await Promise.allSettled(conversionPromises);
-
-			// Process results and update UI
-			const successfulTracks: SonglinkTrack[] = [];
-			const failedTracks: string[] = [];
-
-			results.forEach((result, index) => {
-				if (result.status === 'fulfilled' && result.value.success && result.value.track) {
-					successfulTracks.push(result.value.track);
-				} else {
-					failedTracks.push(spotifyTrackUrls[index]);
-				}
-
-				// Update progress message
-				searchStoreActions.commit({ playlistLoadingMessage: `Loaded ${index + 1}/${spotifyTrackUrls.length} tracks...` });
-			});
-
-			// Update tracks all at once for better performance
-			searchStoreActions.commit({
-				tracks: successfulTracks,
-				results: { tracks: successfulTracks, albums: [], artists: [], playlists: [] }
-			});
-
-
-
-			if (($searchStore.results?.tracks ?? []).length === 0) {
+			// Check if we got any tracks
+			if (result.successful.length === 0) {
 				searchStoreActions.commit({
 					error: 'Could not find TIDAL equivalents for any tracks in this playlist.',
 					isLoading: false,
@@ -858,12 +695,21 @@ import {
 				return;
 			}
 
-			// Show a message if some tracks failed
-			if (failedTracks.length > 0) {
-				console.warn(`${failedTracks.length} tracks could not be loaded`);
-				searchStoreActions.commit({ playlistLoadingMessage: `Loaded ${($searchStore.results?.tracks ?? []).length} tracks (${failedTracks.length} failed)` });
+			// Update final results
+			searchStoreActions.commit({
+				results: { tracks: result.successful, albums: [], artists: [], playlists: [] }
+			});
+
+			// Show completion message
+			if (result.failed.length > 0) {
+				console.warn(`${result.failed.length} tracks could not be loaded`);
+				searchStoreActions.commit({
+					playlistLoadingMessage: `Loaded ${result.successful.length} tracks (${result.failed.length} failed)`
+				});
 			} else {
-				searchStoreActions.commit({ playlistLoadingMessage: `Successfully loaded ${($searchStore.results?.tracks ?? []).length} tracks!` });
+				searchStoreActions.commit({
+					playlistLoadingMessage: `Successfully loaded ${result.successful.length} tracks!`
+				});
 			}
 
 			// Clear the query and hide loading message after a brief delay
