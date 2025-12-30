@@ -13,14 +13,24 @@
 	import { get } from 'svelte/store';
 	import { playerStore } from '$lib/stores/player';
 	import { lyricsStore } from '$lib/stores/lyrics';
-	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
-	import { downloadUiStore, ffmpegBanner, activeTrackDownloads, erroredTrackDownloads } from '$lib/stores/downloadUi';
-	import { userPreferencesStore } from '$lib/stores/userPreferences';
-	import { buildTrackFilename } from '$lib/downloads';
+	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { formatArtists } from '$lib/utils/formatters';
+	import { losslessAPI } from '$lib/api';
 	import type { Track, AudioQuality, SonglinkTrack, PlayableTrack } from '$lib/types';
 	import { isSonglinkTrack } from '$lib/types';
-	import { convertToTidal, extractTidalInfo } from '$lib/utils/songlink';
+	// Playback domain services
+	import {
+		convertSonglinkTrackToTidal,
+		needsConversion,
+		downloadTrack,
+		isTrackDownloading,
+		requestAudioPlayback as requestAudioPlaybackService,
+		seekToPosition,
+		handlePreviousTrack as handlePreviousTrackService,
+		setVolume as setVolumeService,
+		toggleMute as toggleMuteService,
+		handleExternalSeek
+	} from '$lib/services/playback';
 	import LazyImage from '$lib/components/LazyImage.svelte';
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
@@ -226,10 +236,15 @@ let pendingPlayAfterSource = false;
 	// -----------------------------
 	let playerDismissed = $state(false);
 
+	// Derived download task filters
+	const activeDownloads = $derived($downloadUiStore.tasks.filter((task) => task.status === 'running'));
+	const erroredDownloads = $derived($downloadUiStore.tasks.filter((task) => task.status === 'error'));
+	const ffmpegBannerState = $derived($downloadUiStore.ffmpeg);
+
   const hasTrack = $derived(Boolean($playerStore.currentTrack));
-  const currentTrackDownloadTask = $derived($activeTrackDownloads.find(task => task.trackId === $playerStore.currentTrack?.id));
-  const currentTrackErrorTask = $derived($erroredTrackDownloads.find(task => task.trackId === $playerStore.currentTrack?.id));
-  const hasOverlays = $derived($activeTrackDownloads.length > 0 || $ffmpegBanner);
+  const currentTrackDownloadTask = $derived(activeDownloads.find(task => task.trackId === $playerStore.currentTrack?.id));
+  const currentTrackErrorTask = $derived(erroredDownloads.find(task => task.trackId === $playerStore.currentTrack?.id));
+  const hasOverlays = $derived(activeDownloads.length > 0 || ffmpegBannerState);
 
 	// Show player when:
 	// - not dismissed
@@ -269,78 +284,15 @@ let pendingPlayAfterSource = false;
 	});
 	// -----------------------------
 
-	async function convertSonglinkTrackToTidal(songlinkTrack: SonglinkTrack): Promise<Track> {
+	// Wrapper for the track conversion service to handle component-specific needs
+	async function convertSonglinkTrackToTidalWrapper(songlinkTrack: SonglinkTrack): Promise<Track> {
+		const result = await convertSonglinkTrackToTidal(songlinkTrack);
 
-		if (songlinkTrack.tidalId) {
-			try {
-				const trackLookup = await losslessAPI.getTrack(songlinkTrack.tidalId);
-				if (trackLookup?.track) {
-					return trackLookup.track;
-				}
-			} catch (e) {
-				console.warn('Failed to fetch track using pre-calculated tidalId, falling back to extraction', e);
-			}
+		if (!result.success || !result.track) {
+			throw new Error(result.error || `Failed to convert: ${songlinkTrack.title}`);
 		}
 
-		const tidalInfo = extractTidalInfo(songlinkTrack.songlinkData);
-
-		if (!tidalInfo || tidalInfo.type !== 'track') {
-			console.warn('No TIDAL track in Songlink data, attempting conversion...');
-			const fallbackTidalInfo = await convertToTidal(songlinkTrack.sourceUrl, {
-				userCountry: 'US',
-				songIfSingle: true
-			});
-
-			if (!fallbackTidalInfo || fallbackTidalInfo.type !== 'track') {
-				throw new Error(`Could not find TIDAL equivalent for: ${songlinkTrack.title}`);
-			}
-
-			const trackId = Number(fallbackTidalInfo.id);
-			if (!Number.isFinite(trackId) || trackId <= 0) {
-				throw new Error(
-					`Invalid TIDAL track ID for: ${songlinkTrack.title} (got: ${fallbackTidalInfo.id})`
-				);
-			}
-
-			const trackLookup = await losslessAPI.getTrack(trackId);
-			if (!trackLookup?.track) {
-				throw new Error(`Failed to fetch TIDAL track for: ${songlinkTrack.title}`);
-			}
-
-			return trackLookup.track;
-		}
-
-		const trackId = Number(tidalInfo.id);
-		if (!Number.isFinite(trackId) || trackId <= 0) {
-			console.warn(`Non-numeric TIDAL ID (${tidalInfo.id}), attempting fallback conversion...`);
-			const fallbackTidalInfo = await convertToTidal(songlinkTrack.sourceUrl, {
-				userCountry: 'US',
-				songIfSingle: true
-			});
-
-			if (!fallbackTidalInfo || fallbackTidalInfo.type !== 'track') {
-				throw new Error(`Could not find TIDAL equivalent for: ${songlinkTrack.title}`);
-			}
-
-			const fallbackId = Number(fallbackTidalInfo.id);
-			if (!Number.isFinite(fallbackId) || fallbackId <= 0) {
-				throw new Error(`No valid TIDAL track found for: ${songlinkTrack.title}`);
-			}
-
-			const trackLookup = await losslessAPI.getTrack(fallbackId);
-			if (!trackLookup?.track) {
-				throw new Error(`Failed to fetch TIDAL track for: ${songlinkTrack.title}`);
-			}
-
-			return trackLookup.track;
-		}
-
-		const trackLookup = await losslessAPI.getTrack(trackId);
-		if (!trackLookup?.track) {
-			throw new Error(`Failed to fetch TIDAL track for: ${songlinkTrack.title}`);
-		}
-
-		return trackLookup.track;
+		return result.track;
 	}
 
 	const convertingTracks = new Set<string>();
@@ -355,7 +307,7 @@ let pendingPlayAfterSource = false;
 
 			convertingTracks.add(current.id);
 
-			convertSonglinkTrackToTidal(current)
+			convertSonglinkTrackToTidalWrapper(current)
 				.then((tidalTrack) => {
 					const state = get(playerStore);
 					if (
@@ -547,13 +499,9 @@ let pendingPlayAfterSource = false;
 	}
 
 	function handlePrevious() {
-		if (audioElement && (audioElement.currentTime > 5 || $playerStore.queueIndex <= 0)) {
-			audioElement.currentTime = 0;
-			playbackTransitions.seekTo(0);
-			mediaSessionController.updatePositionState();
-		} else {
-			playbackTransitions.previous();
-		}
+		if (!audioElement) return;
+		handlePreviousTrackService(audioElement);
+		mediaSessionController.updatePositionState();
 	}
 
 	function handleEnded() {
@@ -561,18 +509,15 @@ let pendingPlayAfterSource = false;
 	}
 
 	function handleSeek(event: MouseEvent | TouchEvent) {
-		if (!seekBarElement) return;
+		if (!seekBarElement || !audioElement) return;
 
 		const rect = seekBarElement.getBoundingClientRect();
 		const clientX = 'touches' in event ? event.touches[0].clientX : event.clientX;
 		const percent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
 		const newTime = percent * $playerStore.duration;
 
-		if (audioElement) {
-			audioElement.currentTime = newTime;
-			playbackTransitions.seekTo(newTime);
-			mediaSessionController.updatePositionState();
-		}
+		seekToPosition(audioElement, newTime);
+		mediaSessionController.updatePositionState();
 	}
 
 	function handleSeekStart(event: MouseEvent | TouchEvent) {
@@ -603,7 +548,7 @@ let pendingPlayAfterSource = false;
 	function handleVolumeChange(event: Event) {
 		const target = event.target as HTMLInputElement;
 		const newVolume = parseFloat(target.value);
-		playerStore.setVolume(newVolume);
+		setVolumeService(newVolume);
 		if (newVolume > 0 && isMuted) {
 			isMuted = false;
 		}
@@ -616,18 +561,9 @@ let pendingPlayAfterSource = false;
 			return;
 		}
 
-		const seekSeconds = Math.max(0, targetSeconds);
-		audioElement.currentTime = seekSeconds;
-		playbackTransitions.seekTo(seekSeconds);
+		const shouldResume = !$playerStore.isPlaying;
+		handleExternalSeek(audioElement, targetSeconds, shouldResume);
 		mediaSessionController.updatePositionState();
-
-		const state = get(playerStore);
-		if (!state.isPlaying) {
-			console.info('[AudioPlayer] Lyrics seek requested playback; resuming audio');
-			playbackTransitions.play();
-		}
-
-		requestAudioPlayback('lyrics seek');
 	}
 
 	async function handleDownloadCurrentTrack() {
@@ -636,58 +572,18 @@ let pendingPlayAfterSource = false;
 			return;
 		}
 
-		const quality = $playerStore.quality;
-		const convertAacToMp3 = $userPreferencesStore.convertAacToMp3;
-		const downloadCoverSeperately = $userPreferencesStore.downloadCoversSeperately;
-		const filename = buildTrackFilename(
-			track.album,
-			track,
-			quality,
-			formatArtists(track.artists),
-			convertAacToMp3
-		);
-
-		const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
-			subtitle: track.album?.title ?? track.artist?.name
-		});
-
 		isDownloadingCurrentTrack = true;
 		downloadUiStore.skipFfmpegCountdown();
 
 		try {
-			await losslessAPI.downloadTrack(track.id, quality, filename, {
-				signal: controller.signal,
-				onProgress: (progress: TrackDownloadProgress) => {
-					if (progress.stage === 'downloading') {
-						downloadUiStore.updateTrackProgress(taskId, progress.receivedBytes, progress.totalBytes);
-					} else {
-						downloadUiStore.updateTrackStage(taskId, progress.progress);
-					}
-				},
-				onFfmpegCountdown: ({ totalBytes }) => {
-					if (typeof totalBytes === 'number') {
-						downloadUiStore.startFfmpegCountdown(totalBytes, { autoTriggered: false });
-					} else {
-						downloadUiStore.startFfmpegCountdown(0, { autoTriggered: false });
-					}
-				},
-				onFfmpegStart: () => downloadUiStore.startFfmpegLoading(),
-				onFfmpegProgress: (value) => downloadUiStore.updateFfmpegProgress(value),
-				onFfmpegComplete: () => downloadUiStore.completeFfmpeg(),
-				onFfmpegError: (error) => downloadUiStore.errorFfmpeg(error),
-				ffmpegAutoTriggered: false,
-				convertAacToMp3,
-				downloadCoverSeperately
+			await downloadTrack(track, {
+				quality: $playerStore.quality
 			});
-			downloadUiStore.completeTrackDownload(taskId);
 		} catch (error) {
-			if (error instanceof DOMException && error.name === 'AbortError') {
-				downloadUiStore.completeTrackDownload(taskId);
-			} else {
-				console.error('Failed to download track:', error);
-				const fallbackMessage = 'Failed to download track. Please try again.';
-				const message = error instanceof Error && error.message ? error.message : fallbackMessage;
-				downloadUiStore.errorTrackDownload(taskId, message);
+			// Service already handles error logging and UI updates
+			// Only show alert to user
+			if (!(error instanceof Error && error.name === 'AbortError')) {
+				const message = error instanceof Error && error.message ? error.message : 'Failed to download track. Please try again.';
 				alert(message);
 			}
 		} finally {
@@ -695,14 +591,12 @@ let pendingPlayAfterSource = false;
 		}
 	}
 
-	function toggleMute() {
-		if (isMuted) {
-			playerStore.setVolume(previousVolume);
-			isMuted = false;
-		} else {
-			previousVolume = $playerStore.volume;
-			playerStore.setVolume(0);
-			isMuted = true;
+	function toggleMuteHandler() {
+		const result = toggleMuteService($playerStore.volume, isMuted);
+		playerStore.setVolume(result.volume);
+		isMuted = result.isMuted;
+		if (!result.isMuted) {
+			previousVolume = result.previousVolume;
 		}
 	}
 
@@ -747,7 +641,7 @@ let pendingPlayAfterSource = false;
 
 
 	$effect(() => {
-		if ($ffmpegBanner.phase === 'ready') {
+		if (ffmpegBannerState.phase === 'ready') {
 			const timeout = setTimeout(() => {
 				downloadUiStore.dismissFfmpeg();
 			}, 3200);
@@ -1003,7 +897,7 @@ let pendingPlayAfterSource = false;
 
 								<div class="flex items-center gap-0.5 sm:gap-2">
 									<button
-										onclick={toggleMute}
+										onclick={toggleMuteHandler}
 										class="player-toggle-button p-2 sm:hidden"
 										aria-label={isMuted ? 'Unmute' : 'Mute'}
 										type="button"
@@ -1052,7 +946,7 @@ let pendingPlayAfterSource = false;
 
 								<div class="hidden sm:flex items-center gap-2">
 									<button
-										onclick={toggleMute}
+										onclick={toggleMuteHandler}
 										class="p-2 sm:p-2 md:p-2 text-gray-400 transition-colors hover:text-white"
 										aria-label={isMuted ? 'Unmute' : 'Mute'}
 									>

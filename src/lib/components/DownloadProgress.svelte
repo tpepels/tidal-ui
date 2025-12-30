@@ -1,20 +1,22 @@
 <script lang="ts">
-	import { activeTrackDownloads } from '$lib/stores/downloadUi';
+	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { Loader } from 'lucide-svelte';
+
+	$: activeDownloads = $downloadUiStore.tasks.filter((task) => task.status === 'running');
 </script>
 
 <!-- Standalone Download Progress - Bottom of screen, independent of log -->
-{#if $activeTrackDownloads.length > 0}
+{#if activeDownloads.length > 0}
 	<div class="download-progress-standalone">
 		<div class="download-progress-standalone-header">
 			<Loader size={16} />
 			<span class="download-progress-title">
-				Downloading {$activeTrackDownloads.length} track{$activeTrackDownloads.length > 1 ? 's' : ''}
+				Downloading {activeDownloads.length} track{activeDownloads.length > 1 ? 's' : ''}
 			</span>
 		</div>
 
 		<div class="download-progress-standalone-list">
-			{#each $activeTrackDownloads.slice(0, 5) as task (task.id)}
+			{#each activeDownloads.slice(0, 5) as task (task.id)}
 				<div class="download-progress-item">
 					<div class="download-progress-item-info">
 						<span class="download-progress-item-title" title="{task.title}">{task.title}</span>
@@ -33,9 +35,9 @@
 					</div>
 				</div>
 			{/each}
-			{#if $activeTrackDownloads.length > 5}
+			{#if activeDownloads.length > 5}
 				<div class="download-progress-more">
-					+{$activeTrackDownloads.length - 5} more...
+					+{activeDownloads.length - 5} more...
 				</div>
 			{/if}
 		</div>

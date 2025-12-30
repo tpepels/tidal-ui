@@ -11,10 +11,7 @@ describe('searchStoreAdapter', () => {
 		const state = get(searchStore);
 		expect(state.query).toBe('');
 		expect(state.activeTab).toBe('tracks');
-		expect(state.tracks).toEqual([]);
-		expect(state.albums).toEqual([]);
-		expect(state.artists).toEqual([]);
-		expect(state.playlists).toEqual([]);
+		expect(state.results).toBeNull();
 		expect(state.tabLoading.tracks).toBe(false);
 	});
 
@@ -46,6 +43,6 @@ describe('searchStoreAdapter', () => {
 		});
 		const state = get(searchStore);
 		expect(state.isLoading).toBe(false);
-		expect(state.tracks.length).toBe(1);
+		expect(state.results?.tracks.length).toBe(1);
 	});
 });

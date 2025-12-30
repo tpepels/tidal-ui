@@ -16,10 +16,6 @@ type SearchStoreState = {
 		artists: Artist[];
 		playlists: Playlist[];
 	} | null;
-	tracks: (Track | SonglinkTrack)[];
-	albums: Album[];
-	artists: Artist[];
-	playlists: Playlist[];
 	tabLoading: Record<SearchTab, boolean>;
 	minDuration: number | null;
 	maxDuration: number | null;
@@ -39,20 +35,9 @@ type SearchCommitPayload = {
 	error?: string | null;
 	tabLoading?: Record<SearchTab, boolean>;
 	results?: SearchStoreState['results'];
-	tracks?: (Track | SonglinkTrack)[];
-	albums?: Album[];
-	artists?: Artist[];
-	playlists?: Playlist[];
 	isPlaylistConversionMode?: boolean;
 	playlistConversionTotal?: number;
 	playlistLoadingMessage?: string | null;
-};
-
-const emptyResults = {
-	tracks: [] as (Track | SonglinkTrack)[],
-	albums: [] as Album[],
-	artists: [] as Artist[],
-	playlists: [] as Playlist[]
 };
 
 const searchStoreBase = writable<SearchStoreState>({
@@ -61,7 +46,6 @@ const searchStoreBase = writable<SearchStoreState>({
 	isLoading: false,
 	error: null,
 	results: null,
-	...emptyResults,
 	tabLoading: {
 		tracks: false,
 		albums: false,
@@ -96,28 +80,6 @@ const enforceInvariants = (state: SearchStoreState) => {
 		'Search has error but is still marked as loading',
 		{ error: state.error, isLoading: state.isLoading }
 	);
-	if (state.results) {
-		validateInvariant(
-			state.tracks.length === state.results.tracks.length,
-			'Search tracks list should match results payload',
-			{ tracks: state.tracks.length, results: state.results.tracks.length }
-		);
-		validateInvariant(
-			state.albums.length === state.results.albums.length,
-			'Search albums list should match results payload',
-			{ albums: state.albums.length, results: state.results.albums.length }
-		);
-		validateInvariant(
-			state.artists.length === state.results.artists.length,
-			'Search artists list should match results payload',
-			{ artists: state.artists.length, results: state.results.artists.length }
-		);
-		validateInvariant(
-			state.playlists.length === state.results.playlists.length,
-			'Search playlists list should match results payload',
-			{ playlists: state.playlists.length, results: state.results.playlists.length }
-		);
-	}
 	return state;
 };
 
@@ -151,11 +113,6 @@ export const searchStoreActions = {
 			const nextTabLoading =
 				payload.tabLoading ??
 				(nextIsLoading ? markTabLoading(nextActiveTab, true) : resetLoading());
-			const nextResults = payload.results ?? store.results;
-			const tracks = payload.tracks ?? nextResults?.tracks ?? store.tracks;
-			const albums = payload.albums ?? nextResults?.albums ?? store.albums;
-			const artists = payload.artists ?? nextResults?.artists ?? store.artists;
-			const playlists = payload.playlists ?? nextResults?.playlists ?? store.playlists;
 
 			return {
 				...store,
@@ -164,10 +121,6 @@ export const searchStoreActions = {
 				isLoading: nextIsLoading,
 				error: payload.error ?? store.error,
 				results: payload.results ?? store.results,
-				tracks,
-				albums,
-				artists,
-				playlists,
 				tabLoading: nextTabLoading,
 				isPlaylistConversionMode:
 					payload.isPlaylistConversionMode ?? store.isPlaylistConversionMode,
@@ -195,10 +148,6 @@ export const searchStoreActions = {
 			isLoading: false,
 			error: null,
 			results: null,
-			tracks: [],
-			albums: [],
-			artists: [],
-			playlists: [],
 			tabLoading: resetLoading()
 		});
 	},
@@ -210,40 +159,7 @@ export const searchStoreActions = {
 			isLoading: false,
 			error: null,
 			results: null,
-			tracks: [],
-			albums: [],
-			artists: [],
-			playlists: [],
 			tabLoading: resetLoading()
 		});
-	},
-
-	// Additional compatibility methods
-	setIsLoading(value: boolean) {
-		const activeTab = get(searchStore).activeTab;
-		this.commit({
-			isLoading: value,
-			tabLoading: value ? markTabLoading(activeTab, true) : resetLoading()
-		});
-	},
-
-	setIsPlaylistConversionMode(value: boolean) {
-		this.commit({ isPlaylistConversionMode: value });
-	},
-
-	setPlaylistConversionTotal(value: number) {
-		this.commit({ playlistConversionTotal: value });
-	},
-
-	setPlaylistLoadingMessage(value: string | null) {
-		this.commit({ playlistLoadingMessage: value });
-	},
-
-	setQuery(value: string) {
-		this.commit({ query: value });
-	},
-
-	setActiveTab(value: SearchTab) {
-		this.commit({ activeTab: value });
 	}
 };

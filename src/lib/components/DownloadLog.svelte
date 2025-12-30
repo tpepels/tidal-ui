@@ -1,8 +1,12 @@
 <script lang="ts">
 	import { downloadLogStore } from '$lib/stores/downloadLog';
-	import { activeTrackDownloads, completedTrackDownloads, erroredTrackDownloads } from '$lib/stores/downloadUi';
+	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { X, Copy, Trash2, CheckCircle, XCircle, Loader, Heart } from 'lucide-svelte';
 	import { tick } from 'svelte';
+
+	$: activeDownloads = $downloadUiStore.tasks.filter((task) => task.status === 'running');
+	$: completedDownloads = $downloadUiStore.tasks.filter((task) => task.status === 'completed');
+	$: erroredDownloads = $downloadUiStore.tasks.filter((task) => task.status === 'error');
 
 	let scrollContainer: HTMLDivElement | null = null;
 	let healthData: {
@@ -78,11 +82,11 @@
 </script>
 
 <!-- Compact progress indicator (visible when downloading and log is closed) -->
-{#if $activeTrackDownloads.length > 0 && !$downloadLogStore.isVisible}
+{#if activeDownloads.length > 0 && !$downloadLogStore.isVisible}
 	<div class="download-progress-compact">
 		<div class="download-progress-compact-header">
 			<span class="download-progress-compact-title">
-				Downloading {$activeTrackDownloads.length} track{$activeTrackDownloads.length > 1 ? 's' : ''}
+				Downloading {activeDownloads.length} track{activeDownloads.length > 1 ? 's' : ''}
 			</span>
 			<button
 				type="button"
@@ -94,7 +98,7 @@
 			</button>
 		</div>
 		<div class="download-progress-compact-tasks">
-			{#each $activeTrackDownloads.slice(0, 3) as task (task.id)}
+			{#each activeDownloads.slice(0, 3) as task (task.id)}
 				<div class="download-progress-compact-task">
 					<span class="download-progress-compact-task-title" title="{task.title}">{task.title}</span>
 					<div class="download-progress-compact-bar">
@@ -103,9 +107,9 @@
 					<span class="download-progress-compact-percent">{Math.round(task.progress * 100)}%</span>
 				</div>
 			{/each}
-			{#if $activeTrackDownloads.length > 3}
+			{#if activeDownloads.length > 3}
 				<div class="download-progress-compact-more">
-					+{$activeTrackDownloads.length - 3} more...
+					+{activeDownloads.length - 3} more...
 				</div>
 			{/if}
 		</div>
@@ -144,19 +148,19 @@
 		</div>
 
 		<!-- Progress Summary Section -->
-		{#if $activeTrackDownloads.length > 0 || $completedTrackDownloads.length > 0 || $erroredTrackDownloads.length > 0}
+		{#if activeDownloads.length > 0 || completedDownloads.length > 0 || erroredDownloads.length > 0}
 			<div class="download-progress-summary">
 				<h4 class="download-progress-title">Download Progress</h4>
 				<div class="download-progress-scroll">
 					<!-- Active Downloads -->
-					{#if $activeTrackDownloads.length > 0}
+					{#if activeDownloads.length > 0}
 						<div class="download-progress-section">
 							<h5 class="download-progress-section-title">
 								<Loader size={16} class="download-progress-icon download-progress-icon--active" />
-								Active Downloads ({$activeTrackDownloads.length})
+								Active Downloads ({activeDownloads.length})
 							</h5>
 							<div class="download-progress-tasks">
-								{#each $activeTrackDownloads as task (task.id)}
+								{#each activeDownloads as task (task.id)}
 									<div class="download-progress-task">
 										<div class="download-progress-task-header">
 											<span class="download-progress-task-title" title="{task.title}">{task.title}</span>
@@ -182,24 +186,24 @@
 					{/if}
 
 					<!-- Completed Downloads -->
-					{#if $completedTrackDownloads.length > 0}
+					{#if completedDownloads.length > 0}
 						<div class="download-progress-section">
 							<h5 class="download-progress-section-title">
 								<CheckCircle size={16} class="download-progress-icon download-progress-icon--completed" />
-								Completed ({$completedTrackDownloads.length})
+								Completed ({completedDownloads.length})
 							</h5>
 						</div>
 					{/if}
 
 					<!-- Errored Downloads -->
-					{#if $erroredTrackDownloads.length > 0}
+					{#if erroredDownloads.length > 0}
 						<div class="download-progress-section">
 							<h5 class="download-progress-section-title">
 								<XCircle size={16} class="download-progress-icon download-progress-icon--error" />
-								Errors ({$erroredTrackDownloads.length})
+								Errors ({erroredDownloads.length})
 							</h5>
 							<div class="download-progress-tasks">
-								{#each $erroredTrackDownloads as task (task.id)}
+								{#each erroredDownloads as task (task.id)}
 									<div class="download-progress-task download-progress-task--error">
 										<div class="download-progress-task-header">
 											<span class="download-progress-task-title" title="{task.title}">{task.title}</span>

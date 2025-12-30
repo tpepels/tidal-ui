@@ -479,7 +479,7 @@ import {
 	}
 
 	$effect(() => {
-		const activeIds = new Set($searchStore.albums.map((album) => album.id));
+		const activeIds = new Set(($searchStore.results?.albums ?? []).map((album) => album.id));
 		let mutated = false;
 		const nextState: Record<number, AlbumDownloadState> = {};
 		for (const [albumId, state] of Object.entries(albumDownloadStates)) {
@@ -573,10 +573,6 @@ import {
 
 			searchStoreActions.commit({
 				results,
-				tracks: results.tracks,
-				albums: results.albums,
-				artists: results.artists,
-				playlists: results.playlists,
 				isLoading: false,
 				error: null,
 				tabLoading: {
@@ -662,7 +658,7 @@ import {
 
 						playerStore.setTrack(trackLookup.track);
 						playerStore.play();
-						searchStoreActions.setQuery('');
+						searchStoreActions.commit({ query: '' });
 					}
 					break;
 				}
@@ -671,7 +667,6 @@ import {
 					if (albumData?.album) {
 						searchStoreActions.commit({
 							activeTab: 'albums',
-							albums: [albumData.album],
 							results: {
 								tracks: [],
 								albums: [albumData.album],
@@ -679,7 +674,7 @@ import {
 								playlists: []
 							}
 						});
-						searchStoreActions.setQuery('');
+						searchStoreActions.commit({ query: '' });
 					}
 					break;
 				}
@@ -688,7 +683,6 @@ import {
 					if (playlistData?.playlist) {
 						searchStoreActions.commit({
 							activeTab: 'playlists',
-							playlists: [playlistData.playlist],
 							results: {
 								tracks: [],
 								albums: [],
@@ -696,7 +690,7 @@ import {
 								playlists: [playlistData.playlist]
 							}
 						});
-						searchStoreActions.setQuery('');
+						searchStoreActions.commit({ query: '' });
 					}
 					break;
 				}
@@ -714,7 +708,15 @@ import {
 			});
 			console.error('Streaming URL conversion error:', err);
 		} finally {
-		searchStoreActions.setIsLoading(false);
+			searchStoreActions.commit({
+				isLoading: false,
+				tabLoading: {
+					tracks: false,
+					albums: false,
+					artists: false,
+					playlists: false
+				}
+			});
 		}
 	}
 
@@ -733,8 +735,8 @@ import {
 				playlists: false
 			}
 		});
-		searchStoreActions.setPlaylistLoadingMessage('Loading playlist...');
-		searchStoreActions.setIsPlaylistConversionMode(true);
+		searchStoreActions.commit({ playlistLoadingMessage: 'Loading playlist...' });
+		searchStoreActions.commit({ isPlaylistConversionMode: true });
 
 		try {
 
@@ -753,23 +755,30 @@ import {
 						playlists: false
 					}
 				});
-				searchStoreActions.setPlaylistLoadingMessage(null);
-				searchStoreActions.setIsPlaylistConversionMode(false);
+				searchStoreActions.commit({ playlistLoadingMessage: null });
+				searchStoreActions.commit({ isPlaylistConversionMode: false });
 				return;
 			}
 
-			searchStoreActions.setPlaylistConversionTotal(spotifyTrackUrls.length);
-			searchStoreActions.setPlaylistLoadingMessage(`Loading ${spotifyTrackUrls.length} tracks...`);
+			searchStoreActions.commit({ playlistConversionTotal: spotifyTrackUrls.length });
+			searchStoreActions.commit({ playlistLoadingMessage: `Loading ${spotifyTrackUrls.length} tracks...` });
 
 			// Clear previous results and switch to tracks $searchStore.activeTab
 			searchStoreActions.commit({
 				activeTab: 'tracks',
-				tracks: [],
 				results: { tracks: [], albums: [], artists: [], playlists: [] }
 			});
 
 			// Set loading to false so tracks can be displayed as they're added
-		searchStoreActions.setIsLoading(false);
+			searchStoreActions.commit({
+				isLoading: false,
+				tabLoading: {
+					tracks: false,
+					albums: false,
+					artists: false,
+					playlists: false
+				}
+			});
 
 			// Step 2: Fetch Songlink data for all tracks (no TIDAL conversion yet!)
 			const conversionPromises = spotifyTrackUrls.map(async (trackUrl, index) => {
@@ -822,7 +831,7 @@ import {
 				}
 
 				// Update progress message
-				searchStoreActions.setPlaylistLoadingMessage(`Loaded ${index + 1}/${spotifyTrackUrls.length} tracks...`);
+				searchStoreActions.commit({ playlistLoadingMessage: `Loaded ${index + 1}/${spotifyTrackUrls.length} tracks...` });
 			});
 
 			// Update tracks all at once for better performance
@@ -833,7 +842,7 @@ import {
 
 
 
-			if ($searchStore.tracks.length === 0) {
+			if (($searchStore.results?.tracks ?? []).length === 0) {
 				searchStoreActions.commit({
 					error: 'Could not find TIDAL equivalents for any tracks in this playlist.',
 					isLoading: false,
@@ -844,23 +853,23 @@ import {
 						playlists: false
 					}
 				});
-				searchStoreActions.setPlaylistLoadingMessage(null);
-				searchStoreActions.setIsPlaylistConversionMode(false);
+				searchStoreActions.commit({ playlistLoadingMessage: null });
+				searchStoreActions.commit({ isPlaylistConversionMode: false });
 				return;
 			}
 
 			// Show a message if some tracks failed
 			if (failedTracks.length > 0) {
 				console.warn(`${failedTracks.length} tracks could not be loaded`);
-				searchStoreActions.setPlaylistLoadingMessage(`Loaded ${$searchStore.tracks.length} tracks (${failedTracks.length} failed)`);
+				searchStoreActions.commit({ playlistLoadingMessage: `Loaded ${($searchStore.results?.tracks ?? []).length} tracks (${failedTracks.length} failed)` });
 			} else {
-				searchStoreActions.setPlaylistLoadingMessage(`Successfully loaded ${$searchStore.tracks.length} tracks!`);
+				searchStoreActions.commit({ playlistLoadingMessage: `Successfully loaded ${($searchStore.results?.tracks ?? []).length} tracks!` });
 			}
 
 			// Clear the query and hide loading message after a brief delay
-			searchStoreActions.setQuery('');
+			searchStoreActions.commit({ query: '' });
 			setTimeout(() => {
-				searchStoreActions.setPlaylistLoadingMessage(null);
+				searchStoreActions.commit({ playlistLoadingMessage: null });
 			}, 3000);
 		} catch (err) {
 			searchStoreActions.commit({
@@ -874,35 +883,38 @@ import {
 				}
 			});
 			console.error('Spotify playlist loading error:', err);
-			searchStoreActions.setPlaylistLoadingMessage(null);
-			searchStoreActions.setIsPlaylistConversionMode(false);
+			searchStoreActions.commit({ playlistLoadingMessage: null });
+			searchStoreActions.commit({ isPlaylistConversionMode: false });
 		}
 	}
 
 	function handlePlayAll() {
-		if ($searchStore.tracks.length > 0) {
-			playerStore.setQueue($searchStore.tracks, 0);
+		const tracks = $searchStore.results?.tracks ?? [];
+		if (tracks.length > 0) {
+			playerStore.setQueue(tracks, 0);
 			playerStore.play();
 		}
 	}
 
 	function handleShuffleAll() {
-		if ($searchStore.tracks.length > 0) {
+		const tracks = $searchStore.results?.tracks ?? [];
+		if (tracks.length > 0) {
 			// Shuffle the tracks
-			const shuffled = [...$searchStore.tracks].sort(() => Math.random() - 0.5);
+			const shuffled = [...tracks].sort(() => Math.random() - 0.5);
 			playerStore.setQueue(shuffled, 0);
 			playerStore.play();
 		}
 	}
 
 	async function handleDownloadAll() {
-		if ($searchStore.tracks.length === 0) return;
+		const tracks = $searchStore.results?.tracks ?? [];
+		if (tracks.length === 0) return;
 
 		const quality = $playerStore.quality;
 		const convertAacToMp3Preference = $userPreferencesStore.convertAacToMp3;
 		const downloadCoverSeperatelyPreference = $userPreferencesStore.downloadCoversSeperately;
 
-		for (const track of $searchStore.tracks) {
+		for (const track of tracks) {
 			try {
 				// Use tidalId if available (for Songlink tracks), otherwise use id
 				const trackId = 'tidalId' in track && track.tidalId ? track.tidalId : track.id;
@@ -972,7 +984,7 @@ import {
 	}
 
 	function handleTabChange(tab: SearchTab) {
-		searchStoreActions.setActiveTab(tab);
+		searchStoreActions.commit({ activeTab: tab });
 		// Only trigger search if we have a query and it's not a URL
 		if ($searchStore.query.trim() && !isQueryAUrl) {
 			handleSearch();
@@ -1018,7 +1030,7 @@ import {
 						oninput={(event) => {
 							const target = event.currentTarget as HTMLInputElement | null;
 							if (target) {
-								searchStoreActions.setQuery(target.value);
+								searchStoreActions.commit({ query: target.value });
 							}
 						}}
 						onkeypress={handleKeyPress}
@@ -1144,8 +1156,8 @@ import {
 
 	<!-- Results -->
 	{#if !$searchStore.tabLoading[$searchStore.activeTab]}
-		{#if (!$searchStore.isLoading && !$searchStore.error) || ($searchStore.isPlaylistConversionMode && $searchStore.tracks.length > 0)}
-		{#if $searchStore.activeTab === 'tracks' && $searchStore.tracks.length > 0}
+		{#if (!$searchStore.isLoading && !$searchStore.error) || ($searchStore.isPlaylistConversionMode && ($searchStore.results?.tracks ?? []).length > 0)}
+		{#if $searchStore.activeTab === 'tracks' && ($searchStore.results?.tracks ?? []).length > 0}
 			<!-- Playlist Controls (shown when in playlist conversion mode) -->
 			{#if $searchStore.isPlaylistConversionMode}
 				<div class="mb-6 flex flex-wrap items-center gap-3">
@@ -1171,13 +1183,13 @@ import {
 						Download All
 					</button>
 					<div class="ml-auto text-sm text-gray-400">
-						{$searchStore.tracks.length} of {$searchStore.playlistConversionTotal} tracks
+						{($searchStore.results?.tracks ?? []).length} of {$searchStore.playlistConversionTotal} tracks
 					</div>
 				</div>
 			{/if}
 
 			<div class="space-y-2">
-				{#each $searchStore.tracks as track (track.id)}
+				{#each ($searchStore.results?.tracks ?? []) as track (track.id)}
 					<div
 						role="button"
 						tabindex="0"
@@ -1447,9 +1459,9 @@ import {
 					</div>
 				{/each}
 			</div>
-		{:else if $searchStore.activeTab === 'albums' && $searchStore.albums.length > 0}
+		{:else if $searchStore.activeTab === 'albums' && ($searchStore.results?.albums ?? []).length > 0}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-				{#each $searchStore.albums as album (album.id)}
+				{#each ($searchStore.results?.albums ?? []) as album (album.id)}
 					<div class="group relative text-left">
 						<button
 							onclick={(event) => handleAlbumDownloadClick(album, event)}
@@ -1543,9 +1555,9 @@ import {
 					</div>
 				{/each}
 			</div>
-		{:else if $searchStore.activeTab === 'artists' && $searchStore.artists.length > 0}
+		{:else if $searchStore.activeTab === 'artists' && ($searchStore.results?.artists ?? []).length > 0}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-				{#each $searchStore.artists as artist (artist.id)}
+				{#each ($searchStore.results?.artists ?? []) as artist (artist.id)}
 					<a href={`/artist/${artist.id}`} class="group text-center" data-sveltekit-preload-data>
 						<div class="relative mb-2 aspect-square overflow-hidden rounded-full">
 							{#if artist.picture}
@@ -1567,9 +1579,9 @@ import {
 					</a>
 				{/each}
 			</div>
-		{:else if $searchStore.activeTab === 'playlists' && $searchStore.playlists.length > 0}
+		{:else if $searchStore.activeTab === 'playlists' && ($searchStore.results?.playlists ?? []).length > 0}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-				{#each $searchStore.playlists as playlist (playlist.uuid)}
+				{#each ($searchStore.results?.playlists ?? []) as playlist (playlist.uuid)}
 					<a
 						href={`/playlist/${playlist.uuid}`}
 						class="group text-left"

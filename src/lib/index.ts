@@ -14,13 +14,7 @@ export {
 	volume,
 	progress
 } from './stores/player';
-export {
-	downloadUiStore,
-	ffmpegBanner,
-	activeTrackDownloads,
-	completedTrackDownloads,
-	erroredTrackDownloads
-} from './stores/downloadUi';
+export { downloadUiStore } from './stores/downloadUi';
 
 // Export components
 export { default as AudioPlayer } from './components/AudioPlayer.svelte';

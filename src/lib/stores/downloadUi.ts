@@ -1,4 +1,4 @@
-import { derived, get, writable } from 'svelte/store';
+import { get, writable } from 'svelte/store';
 import type { PlayableTrack } from '../types';
 import { isSonglinkTrack } from '../types';
 import { formatArtists } from '../utils/formatters';
@@ -365,17 +365,3 @@ export const downloadUiStore = {
 		}));
 	}
 };
-
-export const activeTrackDownloads = derived(store, ($state) =>
-	$state.tasks.filter((task) => task.status === 'running')
-);
-
-export const completedTrackDownloads = derived(store, ($state) =>
-	$state.tasks.filter((task) => task.status === 'completed')
-);
-
-export const erroredTrackDownloads = derived(store, ($state) =>
-	$state.tasks.filter((task) => task.status === 'error')
-);
-
-export const ffmpegBanner = derived(store, ($state) => $state.ffmpeg);
