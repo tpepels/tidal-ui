@@ -7,7 +7,6 @@
  */
 
 import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
-import { downloadUiStore } from '$lib/stores/downloadUi';
 import { userPreferencesStore } from '$lib/stores/userPreferences';
 import { buildTrackFilename } from '$lib/downloads';
 import { formatArtists } from '$lib/utils/formatters';
@@ -15,22 +14,109 @@ import { get } from 'svelte/store';
 import type { Track, PlayableTrack, AudioQuality } from '$lib/types';
 import { isSonglinkTrack } from '$lib/types';
 
+/**
+ * Progress event emitted during download
+ */
+export type DownloadProgressEvent =
+	| { stage: 'downloading'; receivedBytes: number; totalBytes?: number }
+	| { stage: 'embedding'; progress: number };
+
+/**
+ * Callbacks for download lifecycle events
+ */
+export interface DownloadCallbacks {
+	onProgress?: (event: DownloadProgressEvent) => void;
+	onComplete?: (filename: string) => void;
+	onError?: (error: DownloadError) => void;
+	onCancel?: () => void;
+}
+
 export interface DownloadOptions {
 	quality?: AudioQuality;
 	convertAacToMp3?: boolean;
 	downloadCoversSeperately?: boolean;
+	signal?: AbortSignal;
+	callbacks?: DownloadCallbacks;
+}
+
+/**
+ * Structured error types for download operations
+ */
+export type DownloadError =
+	| { code: 'SONGLINK_NOT_SUPPORTED'; retry: false; message: string }
+	| { code: 'DOWNLOAD_CANCELLED'; retry: false; message: string }
+	| { code: 'NETWORK_ERROR'; retry: true; message: string; originalError?: unknown }
+	| { code: 'STORAGE_ERROR'; retry: true; message: string; originalError?: unknown }
+	| { code: 'CONVERSION_ERROR'; retry: false; message: string; originalError?: unknown }
+	| { code: 'UNKNOWN_ERROR'; retry: false; message: string; originalError?: unknown };
+
+export type DownloadResult =
+	| { success: true; filename: string }
+	| { success: false; error: DownloadError };
+
+/**
+ * Classifies an error into a structured DownloadError type
+ */
+function classifyDownloadError(error: unknown): DownloadError {
+	// Handle abort errors (user cancellation)
+	if (error instanceof DOMException && error.name === 'AbortError') {
+		return { code: 'DOWNLOAD_CANCELLED', retry: false, message: 'Download was cancelled' };
+	}
+
+	if (error instanceof Error) {
+		const message = error.message.toLowerCase();
+
+		// Network-related errors
+		if (message.includes('network') || message.includes('fetch') || message.includes('connection')) {
+			return { code: 'NETWORK_ERROR', retry: true, message: error.message, originalError: error };
+		}
+
+		// Storage/filesystem errors
+		if (message.includes('storage') || message.includes('disk') || message.includes('quota')) {
+			return { code: 'STORAGE_ERROR', retry: true, message: error.message, originalError: error };
+		}
+
+		// Conversion errors (AAC to MP3, etc.)
+		if (message.includes('conversion') || message.includes('ffmpeg') || message.includes('codec')) {
+			return {
+				code: 'CONVERSION_ERROR',
+				retry: false,
+				message: error.message,
+				originalError: error
+			};
+		}
+
+		return { code: 'UNKNOWN_ERROR', retry: false, message: error.message, originalError: error };
+	}
+
+	return {
+		code: 'UNKNOWN_ERROR',
+		retry: false,
+		message: typeof error === 'string' ? error : 'Unknown download error',
+		originalError: error
+	};
 }
 
 /**
  * Initiates a track download with progress tracking and error handling
+ * Returns a structured result with type-safe error handling
+ *
+ * This service is now pure - it doesn't call stores directly.
+ * Instead, it invokes callbacks to notify the caller of state changes.
  */
 export async function downloadTrack(
 	track: PlayableTrack,
 	options?: DownloadOptions
-): Promise<void> {
+): Promise<DownloadResult> {
 	// Only support regular Track downloads, not Songlink tracks
 	if (isSonglinkTrack(track)) {
-		throw new Error('Cannot download Songlink tracks directly');
+		const error: DownloadError = {
+			code: 'SONGLINK_NOT_SUPPORTED',
+			retry: false,
+			message: 'Cannot download Songlink tracks directly. Please convert to TIDAL first.'
+		};
+		options?.callbacks?.onError?.(error);
+		return { success: false, error };
 	}
 
 	// Get user preferences
@@ -49,59 +135,65 @@ export async function downloadTrack(
 		convertAacToMp3
 	);
 
-	// Initialize download task
-	const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
-		subtitle: track.album?.title ?? track.artist?.name
-	});
-
 	try {
 		// Execute download with progress callbacks
 		await losslessAPI.downloadTrack(track.id, quality, filename, {
 			convertAacToMp3,
 			downloadCoverSeperately: downloadCoversSeperately,
-			signal: controller.signal,
+			signal: options?.signal,
 			onProgress: (progress: TrackDownloadProgress) => {
 				if (progress.stage === 'downloading') {
-					downloadUiStore.updateTrackProgress(taskId, progress.receivedBytes, progress.totalBytes);
+					options?.callbacks?.onProgress?.({
+						stage: 'downloading',
+						receivedBytes: progress.receivedBytes,
+						totalBytes: progress.totalBytes
+					});
 				} else if (progress.stage === 'embedding') {
-					downloadUiStore.updateTrackStage(taskId, progress.progress);
+					options?.callbacks?.onProgress?.({
+						stage: 'embedding',
+						progress: progress.progress
+					});
 				}
 			}
 		});
 
-		// Mark download as complete
-		downloadUiStore.completeTrackDownload(taskId);
-
 		console.log('[DownloadService] Download completed:', filename);
+		options?.callbacks?.onComplete?.(filename);
+		return { success: true, filename };
 	} catch (error) {
-		// Handle cancellation vs actual errors
-		if (error instanceof DOMException && error.name === 'AbortError') {
+		const classifiedError = classifyDownloadError(error);
+
+		// Handle cancellation specially (not an error state)
+		if (classifiedError.code === 'DOWNLOAD_CANCELLED') {
 			console.log('[DownloadService] Download cancelled:', filename);
-			downloadUiStore.completeTrackDownload(taskId);
+			options?.callbacks?.onCancel?.();
 		} else {
 			console.error('[DownloadService] Download failed:', error);
-			const fallbackMessage = 'Failed to download track. Please try again.';
-			const message = error instanceof Error && error.message ? error.message : fallbackMessage;
-			downloadUiStore.errorTrackDownload(taskId, message);
+			options?.callbacks?.onError?.(classifiedError);
 		}
 
-		throw error;
+		return { success: false, error: classifiedError };
 	}
 }
 
 /**
- * Checks if a track is currently being downloaded
+ * Helper to build a filename for a track download
+ * Useful for components that need to know the filename before initiating download
  */
-export function isTrackDownloading(trackId: number | string): boolean {
-	const tasks = get(downloadUiStore).tasks;
-	return tasks.some(
-		(task) => task.trackId === trackId && (task.status === 'running' || task.status === 'pending')
-	);
-}
+export function buildDownloadFilename(
+	track: Track,
+	quality?: AudioQuality,
+	convertAacToMp3?: boolean
+): string {
+	const prefs = get(userPreferencesStore);
+	const effectiveQuality = quality || 'LOSSLESS';
+	const effectiveConvert = convertAacToMp3 ?? prefs.convertAacToMp3;
 
-/**
- * Cancels an active download for a track
- */
-export function cancelDownload(taskId: string): void {
-	downloadUiStore.cancelTrackDownload(taskId);
+	return buildTrackFilename(
+		track.album,
+		track,
+		effectiveQuality,
+		formatArtists(track.artists),
+		effectiveConvert
+	);
 }

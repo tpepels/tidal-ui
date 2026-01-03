@@ -46,7 +46,60 @@ export default defineConfig(
 		files: ['**/*.test.ts', '**/*.spec.ts'],
 		rules: {
 			'@typescript-eslint/no-explicit-any': 'off',
-			'@typescript-eslint/no-unused-vars': 'off'
+			'@typescript-eslint/no-unused-vars': 'off',
+			'prefer-const': 'off'
+		}
+	},
+	// Architectural boundary enforcement
+	{
+		files: ['src/lib/services/**/*.ts'],
+		rules: {
+			'no-restricted-imports': [
+				'error',
+				{
+					patterns: [
+						{
+							group: ['**/stores/**', '$lib/stores/**'],
+							message:
+								'Services cannot import stores. Use callbacks instead to maintain unidirectional data flow.'
+						}
+					]
+				}
+			]
+		}
+	},
+	{
+		files: ['src/lib/stores/**/*.ts'],
+		rules: {
+			'no-restricted-imports': [
+				'error',
+				{
+					patterns: [
+						{
+							group: ['**/services/**', '$lib/services/**'],
+							message:
+								'Stores cannot import services directly. Services should be called from components or orchestrators.'
+						}
+					]
+				}
+			]
+		}
+	},
+	{
+		files: ['src/lib/orchestrators/**/*.ts'],
+		rules: {
+			'no-restricted-imports': [
+				'error',
+				{
+					patterns: [
+						{
+							group: ['**/orchestrators/*Orchestrator.ts', '!./playlistOrchestrator.ts'],
+							message:
+								'Orchestrators should not import other orchestrators (except delegation pattern like searchOrchestrator → playlistOrchestrator).'
+						}
+					]
+				}
+			]
 		}
 	},
 	{

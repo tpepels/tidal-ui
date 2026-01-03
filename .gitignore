@@ -18,12 +18,16 @@ Thumbs.db
 !.env.example
 !.env.test
 
-# SSL certificates
+# SSL certificates (local dev)
 cert.pem
 key.pem
+.certs/
 
 # Redis dump files
 dump.rdb
+
+# Runtime upload state
+data/
 
 # Vite
 vite.config.js.timestamp-*

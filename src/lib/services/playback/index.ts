@@ -11,7 +11,15 @@ export {
 	type ConversionResult
 } from './trackConversionService';
 
-export { downloadTrack, isTrackDownloading, cancelDownload } from './downloadService';
+export {
+	downloadTrack,
+	buildDownloadFilename,
+	type DownloadOptions,
+	type DownloadResult,
+	type DownloadError,
+	type DownloadProgressEvent,
+	type DownloadCallbacks
+} from './downloadService';
 
 export {
 	requestAudioPlayback,

@@ -22,8 +22,6 @@
 	import {
 		convertSonglinkTrackToTidal,
 		needsConversion,
-		downloadTrack,
-		isTrackDownloading,
 		requestAudioPlayback as requestAudioPlaybackService,
 		seekToPosition,
 		handlePreviousTrack as handlePreviousTrackService,
@@ -31,6 +29,8 @@
 		toggleMute as toggleMuteService,
 		handleExternalSeek
 	} from '$lib/services/playback';
+	// Orchestrators
+	import { downloadOrchestrator } from '$lib/orchestrators';
 	import LazyImage from '$lib/components/LazyImage.svelte';
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
@@ -289,7 +289,8 @@ let pendingPlayAfterSource = false;
 		const result = await convertSonglinkTrackToTidal(songlinkTrack);
 
 		if (!result.success || !result.track) {
-			throw new Error(result.error || `Failed to convert: ${songlinkTrack.title}`);
+			const errorMessage = result.error?.message || `Failed to convert: ${songlinkTrack.title}`;
+			throw new Error(errorMessage);
 		}
 
 		return result.track;
@@ -568,7 +569,7 @@ let pendingPlayAfterSource = false;
 
 	async function handleDownloadCurrentTrack() {
 		const track = $playerStore.currentTrack;
-		if (!track || isDownloadingCurrentTrack || isSonglinkTrack(track)) {
+		if (!track || isDownloadingCurrentTrack) {
 			return;
 		}
 
@@ -576,16 +577,17 @@ let pendingPlayAfterSource = false;
 		downloadUiStore.skipFfmpegCountdown();
 
 		try {
-			await downloadTrack(track, {
-				quality: $playerStore.quality
+			// Get subtitle from track (handle both Track and SonglinkTrack)
+			const subtitle = isSonglinkTrack(track)
+				? track.artistName
+				: track.album?.title ?? track.artist?.name;
+
+			await downloadOrchestrator.downloadTrack(track, {
+				quality: $playerStore.quality,
+				autoConvertSonglink: true,
+				notificationMode: 'alert',
+				subtitle
 			});
-		} catch (error) {
-			// Service already handles error logging and UI updates
-			// Only show alert to user
-			if (!(error instanceof Error && error.name === 'AbortError')) {
-				const message = error instanceof Error && error.message ? error.message : 'Failed to download track. Please try again.';
-				alert(message);
-			}
 		} finally {
 			isDownloadingCurrentTrack = false;
 		}

@@ -936,8 +936,11 @@ class LosslessAPI {
 	/**
 	 * Get artist overview, including discography modules and top tracks
 	 */
-	async getArtist(id: number): Promise<ArtistDetails> {
-		return getArtist(this.getCatalogContext(), id);
+	async getArtist(
+		id: number,
+		options?: { onProgress?: (progress: { receivedBytes: number; totalBytes?: number; percent?: number }) => void }
+	): Promise<ArtistDetails> {
+		return getArtist(this.getCatalogContext(), id, options);
 	}
 
 	/**

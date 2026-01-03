@@ -157,14 +157,67 @@ export async function getPlaylist(
 	return result;
 }
 
+export type ArtistFetchProgress = {
+	receivedBytes: number;
+	totalBytes?: number;
+	percent?: number;
+};
+
+async function readJsonWithProgress(
+	response: Response,
+	onProgress?: (progress: ArtistFetchProgress) => void
+): Promise<unknown> {
+	if (!onProgress) {
+		return response.json();
+	}
+	if (!response.body || typeof response.body.getReader !== 'function') {
+		return response.json();
+	}
+
+	const contentLength = response.headers.get('content-length');
+	const totalBytes = contentLength ? Number(contentLength) : undefined;
+	const reader = response.body.getReader();
+	const chunks: Uint8Array[] = [];
+	let receivedBytes = 0;
+
+	while (true) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		if (value) {
+			chunks.push(value);
+			receivedBytes += value.byteLength;
+			onProgress({
+				receivedBytes,
+				totalBytes,
+				percent: totalBytes ? Math.min(1, receivedBytes / totalBytes) : undefined
+			});
+		}
+	}
+
+	if (totalBytes) {
+		onProgress({ receivedBytes, totalBytes, percent: 1 });
+	}
+
+	const merged = new Uint8Array(receivedBytes);
+	let offset = 0;
+	for (const chunk of chunks) {
+		merged.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+
+	const text = new TextDecoder('utf-8').decode(merged);
+	return text ? JSON.parse(text) : null;
+}
+
 export async function getArtist(
 	context: CatalogApiContext,
-	id: number
+	id: number,
+	options?: { onProgress?: (progress: ArtistFetchProgress) => void }
 ): Promise<ArtistDetails> {
 	const response = await context.fetch(`${context.baseUrl}/artist/?f=${id}`);
 	context.ensureNotRateLimited(response);
 	if (!response.ok) throw new Error('Failed to get artist');
-	const data = await response.json();
+	const data = await readJsonWithProgress(response, options?.onProgress);
 	const entries = Array.isArray(data) ? data : [data];
 
 	const visited = new Set<object>();

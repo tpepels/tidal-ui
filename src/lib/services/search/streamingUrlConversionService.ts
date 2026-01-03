@@ -8,7 +8,7 @@
 
 import { losslessAPI } from '$lib/api';
 import { convertToTidal, getPlatformName } from '$lib/utils/songlink';
-import type { Track, Album, Playlist } from '$lib/types';
+import type { Track, Album, Playlist, AudioQuality } from '$lib/types';
 
 export type ConversionResultType = 'track' | 'album' | 'playlist';
 
@@ -20,77 +20,178 @@ export interface StreamingUrlConversionResult {
 	platformName?: string;
 }
 
-export interface ConversionError {
-	message: string;
-	platformName?: string;
+/**
+ * Structured error types for URL conversion operations
+ */
+export type ConversionError =
+	| { code: 'INVALID_URL'; retry: false; message: string }
+	| { code: 'PLATFORM_NOT_SUPPORTED'; retry: false; message: string; platformName?: string }
+	| { code: 'NOT_FOUND_ON_TIDAL'; retry: false; message: string; platformName?: string }
+	| { code: 'SONGLINK_API_ERROR'; retry: true; message: string; originalError?: unknown }
+	| { code: 'NETWORK_ERROR'; retry: true; message: string; originalError?: unknown }
+	| { code: 'UNKNOWN_ERROR'; retry: false; message: string; originalError?: unknown };
+
+export type ConversionResult =
+	| { success: true; data: StreamingUrlConversionResult }
+	| { success: false; error: ConversionError };
+
+/**
+ * Classifies an error into a structured ConversionError type
+ */
+function classifyConversionError(error: unknown, platformName?: string): ConversionError {
+	if (error instanceof Error) {
+		const message = error.message.toLowerCase();
+
+		// Network-related errors
+		if (message.includes('network') || message.includes('fetch') || message.includes('connection')) {
+			return { code: 'NETWORK_ERROR', retry: true, message: error.message, originalError: error };
+		}
+
+		// Songlink API errors
+		if (message.includes('songlink') || message.includes('song.link')) {
+			return { code: 'SONGLINK_API_ERROR', retry: true, message: error.message, originalError: error };
+		}
+
+		// Not found errors
+		if (message.includes('not found') || message.includes('could not find')) {
+			return {
+				code: 'NOT_FOUND_ON_TIDAL',
+				retry: false,
+				message: error.message,
+				platformName
+			};
+		}
+
+		return { code: 'UNKNOWN_ERROR', retry: false, message: error.message, originalError: error };
+	}
+
+	return {
+		code: 'UNKNOWN_ERROR',
+		retry: false,
+		message: typeof error === 'string' ? error : 'An unknown error occurred',
+		originalError: error
+	};
 }
 
 /**
  * Converts a streaming platform URL to TIDAL content
  * Handles tracks, albums, and playlists
+ * Returns a structured result with type-safe error handling
  */
-export async function convertStreamingUrl(url: string): Promise<StreamingUrlConversionResult> {
+export async function convertStreamingUrl(url: string): Promise<ConversionResult> {
 	const trimmedUrl = url.trim();
 	if (!trimmedUrl) {
-		throw new Error('URL cannot be empty');
-	}
-
-	const platformName = getPlatformName(trimmedUrl);
-
-	// Convert URL to TIDAL info via Songlink
-	const tidalInfo = await convertToTidal(trimmedUrl, {
-		userCountry: 'US',
-		songIfSingle: true
-	});
-
-	if (!tidalInfo) {
-		const error: ConversionError = {
-			message: `Could not find TIDAL equivalent for this ${platformName || 'streaming platform'} link. The content might not be available on TIDAL.`,
-			platformName: platformName || undefined
+		return {
+			success: false,
+			error: { code: 'INVALID_URL', retry: false, message: 'URL cannot be empty' }
 		};
-		throw error;
 	}
 
-	// Load the TIDAL content based on type
-	switch (tidalInfo.type) {
-		case 'track': {
-			const trackLookup = await losslessAPI.getTrack(Number(tidalInfo.id));
-			if (!trackLookup?.track) {
-				throw new Error('Track not found on TIDAL');
-			}
+	const platformName = getPlatformName(trimmedUrl) ?? undefined;
+
+	try {
+		// Convert URL to TIDAL info via Songlink
+		const tidalInfo = await convertToTidal(trimmedUrl, {
+			userCountry: 'US',
+			songIfSingle: true
+		});
+
+		if (!tidalInfo) {
 			return {
-				type: 'track',
-				track: trackLookup.track,
-				platformName
+				success: false,
+				error: {
+					code: 'NOT_FOUND_ON_TIDAL',
+					retry: false,
+					message: `Could not find TIDAL equivalent for this ${platformName || 'streaming platform'} link. The content might not be available on TIDAL.`,
+					platformName: platformName || undefined
+				}
 			};
 		}
 
-		case 'album': {
-			const albumData = await losslessAPI.getAlbum(Number(tidalInfo.id));
-			if (!albumData?.album) {
-				throw new Error('Album not found on TIDAL');
+		// Load the TIDAL content based on type
+		switch (tidalInfo.type) {
+			case 'track': {
+				const trackLookup = await losslessAPI.getTrack(Number(tidalInfo.id));
+				if (!trackLookup?.track) {
+					return {
+						success: false,
+						error: {
+							code: 'NOT_FOUND_ON_TIDAL',
+							retry: false,
+							message: 'Track not found on TIDAL',
+							platformName
+						}
+					};
+				}
+				return {
+					success: true,
+					data: {
+						type: 'track',
+						track: trackLookup.track,
+						platformName
+					}
+				};
 			}
-			return {
-				type: 'album',
-				album: albumData.album,
-				platformName
-			};
-		}
 
-		case 'playlist': {
-			const playlistData = await losslessAPI.getPlaylist(tidalInfo.id);
-			if (!playlistData?.playlist) {
-				throw new Error('Playlist not found on TIDAL');
+			case 'album': {
+				const albumData = await losslessAPI.getAlbum(Number(tidalInfo.id));
+				if (!albumData?.album) {
+					return {
+						success: false,
+						error: {
+							code: 'NOT_FOUND_ON_TIDAL',
+							retry: false,
+							message: 'Album not found on TIDAL',
+							platformName
+						}
+					};
+				}
+				return {
+					success: true,
+					data: {
+						type: 'album',
+						album: albumData.album,
+						platformName
+					}
+				};
 			}
-			return {
-				type: 'playlist',
-				playlist: playlistData.playlist,
-				platformName
-			};
-		}
 
-		default:
-			throw new Error(`Unsupported content type: ${tidalInfo.type}`);
+			case 'playlist': {
+				const playlistData = await losslessAPI.getPlaylist(tidalInfo.id);
+				if (!playlistData?.playlist) {
+					return {
+						success: false,
+						error: {
+							code: 'NOT_FOUND_ON_TIDAL',
+							retry: false,
+							message: 'Playlist not found on TIDAL',
+							platformName
+						}
+					};
+				}
+				return {
+					success: true,
+					data: {
+						type: 'playlist',
+						playlist: playlistData.playlist,
+						platformName
+					}
+				};
+			}
+
+			default:
+				return {
+					success: false,
+					error: {
+						code: 'PLATFORM_NOT_SUPPORTED',
+						retry: false,
+						message: `Unsupported content type: ${tidalInfo.type}`,
+						platformName
+					}
+				};
+		}
+	} catch (error) {
+		return { success: false, error: classifyConversionError(error, platformName) };
 	}
 }
 
@@ -100,7 +201,7 @@ export async function convertStreamingUrl(url: string): Promise<StreamingUrlConv
  */
 export async function precacheTrackStream(
 	trackId: number,
-	quality: string = 'LOSSLESS'
+	quality: AudioQuality = 'LOSSLESS'
 ): Promise<void> {
 	try {
 		await losslessAPI.getStreamUrl(trackId, quality);

@@ -21,9 +21,66 @@ export interface SearchResults {
 }
 
 /**
+ * Structured error types for search operations
+ */
+export type SearchError =
+	| { code: 'NETWORK_ERROR'; retry: true; message: string; originalError?: unknown }
+	| { code: 'INVALID_QUERY'; retry: false; message: string }
+	| { code: 'API_ERROR'; retry: true; message: string; statusCode?: number }
+	| { code: 'TIMEOUT'; retry: true; message: string }
+	| { code: 'UNKNOWN_ERROR'; retry: false; message: string; originalError?: unknown };
+
+export type SearchResult =
+	| { success: true; results: SearchResults }
+	| { success: false; error: SearchError };
+
+/**
  * In-flight search cache to prevent duplicate concurrent requests
  */
-const inFlightSearches = new Map<string, Promise<SearchResults>>();
+const inFlightSearches = new Map<string, Promise<SearchResult>>();
+
+/**
+ * Classifies an error into a structured SearchError type
+ */
+function classifySearchError(error: unknown): SearchError {
+	if (error instanceof Error) {
+		const message = error.message.toLowerCase();
+
+		// Network-related errors
+		if (message.includes('network') || message.includes('fetch') || message.includes('connection')) {
+			return { code: 'NETWORK_ERROR', retry: true, message: error.message, originalError: error };
+		}
+
+		// Timeout errors
+		if (message.includes('timeout') || message.includes('timed out')) {
+			return { code: 'TIMEOUT', retry: true, message: error.message };
+		}
+
+		// API errors with status codes (500+ are retryable, others are not)
+		if ('status' in error && typeof error.status === 'number') {
+			if (error.status >= 500) {
+				return {
+					code: 'API_ERROR',
+					retry: true,
+					message: error.message,
+					statusCode: error.status
+				};
+			}
+			// Client errors (4xx) are not retryable - treat as unknown
+			return { code: 'UNKNOWN_ERROR', retry: false, message: error.message, originalError: error };
+		}
+
+		// Unknown errors
+		return { code: 'UNKNOWN_ERROR', retry: false, message: error.message, originalError: error };
+	}
+
+	return {
+		code: 'UNKNOWN_ERROR',
+		retry: false,
+		message: typeof error === 'string' ? error : 'An unknown error occurred',
+		originalError: error
+	};
+}
 
 /**
  * Retry a function with exponential backoff
@@ -50,15 +107,19 @@ async function fetchWithRetry<T>(
 /**
  * Execute a search for a specific tab
  * Includes request deduplication and automatic retry
+ * Returns a structured result with type-safe error handling
  */
 export async function executeTabSearch(
 	query: string,
 	tab: SearchTab,
 	region?: RegionOption
-): Promise<SearchResults> {
+): Promise<SearchResult> {
 	const trimmedQuery = query.trim();
 	if (!trimmedQuery) {
-		throw new Error('Search query cannot be empty');
+		return {
+			success: false,
+			error: { code: 'INVALID_QUERY', retry: false, message: 'Search query cannot be empty' }
+		};
 	}
 
 	const emptyResults: SearchResults = { tracks: [], albums: [], artists: [], playlists: [] };
@@ -69,32 +130,42 @@ export async function executeTabSearch(
 
 	if (!pending) {
 		// Create new search promise
-		pending = (async () => {
-			switch (tab) {
-				case 'tracks': {
-					const response = await fetchWithRetry(() =>
-						losslessAPI.searchTracks(trimmedQuery, region)
-					);
-					const items = Array.isArray(response?.items) ? response.items : [];
-					return { ...emptyResults, tracks: items };
+		pending = (async (): Promise<SearchResult> => {
+			try {
+				let results: SearchResults;
+				switch (tab) {
+					case 'tracks': {
+						const response = await fetchWithRetry(() =>
+							losslessAPI.searchTracks(trimmedQuery, region)
+						);
+						const items = Array.isArray(response?.items) ? response.items : [];
+						results = { ...emptyResults, tracks: items };
+						break;
+					}
+					case 'albums': {
+						const response = await losslessAPI.searchAlbums(trimmedQuery);
+						const items = Array.isArray(response?.items) ? response.items : [];
+						results = { ...emptyResults, albums: items };
+						break;
+					}
+					case 'artists': {
+						const response = await losslessAPI.searchArtists(trimmedQuery);
+						const items = Array.isArray(response?.items) ? response.items : [];
+						results = { ...emptyResults, artists: items };
+						break;
+					}
+					case 'playlists': {
+						const response = await losslessAPI.searchPlaylists(trimmedQuery);
+						const items = Array.isArray(response?.items) ? response.items : [];
+						results = { ...emptyResults, playlists: items };
+						break;
+					}
+					default:
+						results = emptyResults;
 				}
-				case 'albums': {
-					const response = await losslessAPI.searchAlbums(trimmedQuery);
-					const items = Array.isArray(response?.items) ? response.items : [];
-					return { ...emptyResults, albums: items };
-				}
-				case 'artists': {
-					const response = await losslessAPI.searchArtists(trimmedQuery);
-					const items = Array.isArray(response?.items) ? response.items : [];
-					return { ...emptyResults, artists: items };
-				}
-				case 'playlists': {
-					const response = await losslessAPI.searchPlaylists(trimmedQuery);
-					const items = Array.isArray(response?.items) ? response.items : [];
-					return { ...emptyResults, playlists: items };
-				}
-				default:
-					return emptyResults;
+				return { success: true, results };
+			} catch (error) {
+				return { success: false, error: classifySearchError(error) };
 			}
 		})();
 

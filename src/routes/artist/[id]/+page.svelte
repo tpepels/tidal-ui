@@ -16,6 +16,8 @@ let artist = $state<ArtistDetails | null>(null);
 let artistImage = $state<string | null>(null);
 let isLoading = $state(true);
 let error = $state<string | null>(null);
+let loadReceivedBytes = $state(0);
+let loadTotalBytes = $state<number | null>(null);
 
 	const artistId = $derived($page.params.id);
 	const topTracks = $derived(artist?.tracks ?? []);
@@ -67,6 +69,14 @@ let activeRequestToken = 0;
 	function displayTrackTotal(total?: number | null): number {
 		if (!Number.isFinite(total)) return 0;
 		return total && total > 0 ? total + 1 : (total ?? 0);
+	}
+
+	function formatBytes(bytes: number): string {
+		if (bytes <= 0) return '0 B';
+		const k = 1024;
+		const sizes = ['B', 'KB', 'MB', 'GB'];
+		const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1);
+		return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 	}
 
 	function patchAlbumDownloadState(albumId: number, patch: Partial<AlbumDownloadState>) {
@@ -228,7 +238,15 @@ async function loadArtist(id: number) {
 			albumDownloadStates = {};
 			artist = null;
 			artistImage = null;
-			const data = await losslessAPI.getArtist(id);
+			loadReceivedBytes = 0;
+			loadTotalBytes = null;
+			const data = await losslessAPI.getArtist(id, {
+				onProgress: (progress) => {
+					if (requestToken !== activeRequestToken) return;
+					loadReceivedBytes = progress.receivedBytes;
+					loadTotalBytes = progress.totalBytes ?? null;
+				}
+			});
 			if (requestToken !== activeRequestToken) {
 				return;
 			}
@@ -289,8 +307,24 @@ async function loadArtist(id: number) {
 </svelte:head>
 
 {#if isLoading}
-	<div class="flex items-center justify-center py-24">
-		<LoaderCircle size={16} class="h-16 w-16 animate-spin text-blue-500" />
+	<div class="mx-auto flex w-full max-w-xl flex-col gap-4 py-16">
+		<div class="rounded-2xl border border-gray-800 bg-gray-900/40 p-6">
+			<div class="mb-3 text-sm font-semibold text-gray-300">Loading artist data</div>
+			<div class="h-2 w-full overflow-hidden rounded-full bg-gray-800">
+				<div
+					class="h-full rounded-full bg-blue-500 transition-all"
+					style="width: {loadTotalBytes ? Math.min(100, (loadReceivedBytes / loadTotalBytes) * 100) : 0}%"
+				></div>
+			</div>
+			<div class="mt-3 text-xs text-gray-400">
+				{#if loadTotalBytes}
+					{formatBytes(loadReceivedBytes)} / {formatBytes(loadTotalBytes)} (
+					{Math.min(100, Math.round((loadReceivedBytes / loadTotalBytes) * 100))}%)
+				{:else}
+					{formatBytes(loadReceivedBytes)} received
+				{/if}
+			</div>
+		</div>
 	</div>
 {:else if error}
 	<div class="mx-auto max-w-2xl py-12">

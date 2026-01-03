@@ -336,12 +336,38 @@ function isV2Target(target: ApiClusterTarget): boolean {
 	return API_CONFIG.targets.some((t) => t.name === target.name);
 }
 
+function getDefaultTimeoutForUrl(url: URL): number {
+	const path = url.pathname.toLowerCase();
+	if (path.includes('/artist/') || path.includes('/album/') || path.includes('/playlist/')) {
+		return 10000;
+	}
+	return 3000;
+}
+
+function getDefaultMaxRetriesForUrl(url: URL): number {
+	const path = url.pathname.toLowerCase();
+	if (path.includes('/artist/') || path.includes('/album/') || path.includes('/playlist/')) {
+		return 1;
+	}
+	return 3;
+}
+
+function shouldStickToSingleTarget(url: URL): boolean {
+	const path = url.pathname.toLowerCase();
+	return path.includes('/artist/') || path.includes('/album/') || path.includes('/playlist/');
+}
+
 /**
  * Fetch with CORS handling
  */
 export async function fetchWithCORS(
 	url: string,
-	options?: RequestInit & { apiVersion?: 'v1' | 'v2'; preferredQuality?: string }
+	options?: RequestInit & {
+		apiVersion?: 'v1' | 'v2';
+		preferredQuality?: string;
+		timeout?: number;
+		maxRetries?: number;
+	}
 ): Promise<Response> {
 	const resolvedUrl = resolveUrl(url);
 	if (!resolvedUrl) {
@@ -394,13 +420,21 @@ export async function fetchWithCORS(
 		throw new Error('Invalid origin target configuration.');
 	}
 
-	const totalAttempts = Math.max(3, uniqueTargets.length);
+	const stickyTarget = shouldStickToSingleTarget(resolvedUrl);
+	const totalAttempts = stickyTarget
+		? uniqueTargets.length
+		: Math.max(3, uniqueTargets.length);
 	let lastError: unknown = null;
 	let lastResponse: Response | null = null;
 	let lastUnexpectedResponse: Response | null = null;
+	const defaultTimeout = getDefaultTimeoutForUrl(resolvedUrl);
+	const timeout = options?.timeout ?? defaultTimeout;
+	const maxRetries = options?.maxRetries ?? getDefaultMaxRetriesForUrl(resolvedUrl);
 
 	for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
-		const target = uniqueTargets[attempt % uniqueTargets.length];
+		const target = stickyTarget
+			? uniqueTargets[attempt]
+			: uniqueTargets[attempt % uniqueTargets.length];
 		const targetBase = parseTargetBase(target);
 		if (!targetBase) {
 			continue;
@@ -440,7 +474,8 @@ export async function fetchWithCORS(
 			const response = await retryFetch(finalUrl, {
 				...options,
 				headers,
-				timeout: 3000 // 3 second timeout for API endpoint checks
+				timeout,
+				maxRetries
 			});
 			if (response.ok) {
 				const unexpected = await isUnexpectedProxyResponse(response);

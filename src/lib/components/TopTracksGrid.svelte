@@ -1,11 +1,9 @@
 <script lang="ts">
 	import type { Track } from '$lib/types';
-	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
-	import { buildTrackFilename } from '$lib/downloads';
+	import { losslessAPI } from '$lib/api';
 	import { playerStore } from '$lib/stores/player';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
-	import { userPreferencesStore } from '$lib/stores/userPreferences';
-	import { formatArtists } from '$lib/utils/formatters';
+	import { downloadOrchestrator } from '$lib/orchestrators';
 	import { Play, Pause, Download, ListPlus, Plus, Clock, X } from 'lucide-svelte';
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
 	import AlbumLink from '$lib/components/AlbumLink.svelte';
@@ -35,10 +33,6 @@
 	let downloadingIds = $state(new Set<number>());
 	let downloadTaskIds = $state(new Map<number, string>());
 	let cancelledIds = $state(new Set<number>());
-	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
-	const downloadCoverSeperatelyPreference = $derived(
-		$userPreferencesStore.downloadCoversSeperately
-	);
 
 	const IGNORED_TAGS = new Set(['HI_RES_LOSSLESS']);
 
@@ -110,62 +104,21 @@
 		next.add(track.id);
 		downloadingIds = next;
 
-		const quality = $playerStore.quality;
-		const filename = buildTrackFilename(
-			track.album,
-			track,
-			quality,
-			formatArtists(track.artists),
-			convertAacToMp3Preference
-		);
-		const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
-			subtitle: track.album?.title ?? track.artist?.name
-		});
-		const taskMap = new Map(downloadTaskIds);
-		taskMap.set(track.id, taskId);
-		downloadTaskIds = taskMap;
-		downloadUiStore.skipFfmpegCountdown();
-
 		try {
-			await losslessAPI.downloadTrack(track.id, quality, filename, {
-				signal: controller.signal,
-				onProgress: (progress: TrackDownloadProgress) => {
-					if (progress.stage === 'downloading') {
-						downloadUiStore.updateTrackProgress(
-							taskId,
-							progress.receivedBytes,
-							progress.totalBytes
-						);
-					} else {
-						downloadUiStore.updateTrackStage(taskId, progress.progress);
-					}
-				},
-				onFfmpegCountdown: ({ totalBytes }) => {
-					if (typeof totalBytes === 'number') {
-						downloadUiStore.startFfmpegCountdown(totalBytes, { autoTriggered: false });
-					} else {
-						downloadUiStore.startFfmpegCountdown(0, { autoTriggered: false });
-					}
-				},
-				onFfmpegStart: () => downloadUiStore.startFfmpegLoading(),
-				onFfmpegProgress: (value) => downloadUiStore.updateFfmpegProgress(value),
-				onFfmpegComplete: () => downloadUiStore.completeFfmpeg(),
-				onFfmpegError: (error) => downloadUiStore.errorFfmpeg(error),
+			const result = await downloadOrchestrator.downloadTrack(track, {
+				quality: $playerStore.quality,
+				subtitle: track.album?.title ?? track.artist?.name,
+				notificationMode: 'alert',
 				ffmpegAutoTriggered: false,
-				convertAacToMp3: convertAacToMp3Preference,
-				downloadCoverSeperately: downloadCoverSeperatelyPreference
+				skipFfmpegCountdown: true
 			});
-			downloadUiStore.completeTrackDownload(taskId);
-		} catch (error) {
-			if (error instanceof DOMException && error.name === 'AbortError') {
-				downloadUiStore.completeTrackDownload(taskId);
+
+			if (result.success && result.taskId) {
+				const taskMap = new Map(downloadTaskIds);
+				taskMap.set(track.id, result.taskId);
+				downloadTaskIds = taskMap;
+			} else if (!result.success && result.error?.code === 'DOWNLOAD_CANCELLED') {
 				markCancelled(track.id);
-			} else {
-				console.error('Failed to download track:', error);
-				const fallbackMessage = 'Failed to download track. Please try again.';
-				const message = error instanceof Error && error.message ? error.message : fallbackMessage;
-				downloadUiStore.errorTrackDownload(taskId, message);
-				alert(message);
 			}
 		} finally {
 			const updated = new Set(downloadingIds);

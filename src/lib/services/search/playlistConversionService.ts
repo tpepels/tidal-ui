@@ -16,6 +16,28 @@ export interface PlaylistConversionProgress {
 	failed: string[];
 }
 
+export interface PlaylistConversionOptions {
+	/**
+	 * Callback invoked periodically with conversion progress
+	 * To optimize performance, progress is batched and not called for every single track
+	 */
+	onProgress?: (progress: PlaylistConversionProgress) => void;
+
+	/**
+	 * Number of tracks to process before calling onProgress
+	 * Higher values = fewer UI updates but less responsive progress
+	 * Default: 5
+	 */
+	progressBatchSize?: number;
+
+	/**
+	 * Minimum time (ms) between progress callbacks
+	 * Prevents excessive UI updates for fast conversions
+	 * Default: 100ms
+	 */
+	progressThrottleMs?: number;
+}
+
 export interface PlaylistConversionResult {
 	successful: SonglinkTrack[];
 	failed: string[];
@@ -24,16 +46,20 @@ export interface PlaylistConversionResult {
 
 /**
  * Converts a Spotify playlist URL to an array of SonglinkTracks
- * Uses batch conversion with progress tracking
+ * Uses batch conversion with optimized progress tracking
  */
 export async function convertSpotifyPlaylistToTracks(
 	playlistUrl: string,
-	onProgress?: (progress: PlaylistConversionProgress) => void
+	options?: PlaylistConversionOptions
 ): Promise<PlaylistConversionResult> {
 	const trimmedUrl = playlistUrl.trim();
 	if (!trimmedUrl) {
 		throw new Error('Playlist URL cannot be empty');
 	}
+
+	const batchSize = options?.progressBatchSize ?? 5;
+	const throttleMs = options?.progressThrottleMs ?? 100;
+	const onProgress = options?.onProgress;
 
 	// Step 1: Extract all Spotify track URLs from the playlist
 	const spotifyTrackUrls = await convertSpotifyPlaylist(trimmedUrl);
@@ -46,10 +72,35 @@ export async function convertSpotifyPlaylistToTracks(
 	const successful: SonglinkTrack[] = [];
 	const failed: string[] = [];
 
+	// Progress throttling state
+	let lastProgressTime = 0;
+	let progressUpdatesPending = false;
+
+	const reportProgress = (loaded: number, force: boolean = false) => {
+		if (!onProgress) return;
+
+		const now = Date.now();
+		const shouldThrottle = now - lastProgressTime < throttleMs;
+		const shouldBatch = loaded % batchSize !== 0;
+
+		// Only report if: forced, or (not batched AND not throttled)
+		if (force || (!shouldBatch && !shouldThrottle)) {
+			onProgress({
+				loaded,
+				total,
+				// Only copy arrays when actually reporting (not on every track!)
+				successful: [...successful],
+				failed: [...failed]
+			});
+			lastProgressTime = now;
+			progressUpdatesPending = false;
+		} else {
+			progressUpdatesPending = true;
+		}
+	};
+
 	// Report initial progress
-	if (onProgress) {
-		onProgress({ loaded: 0, total, successful, failed });
-	}
+	reportProgress(0, true);
 
 	// Step 2: Fetch Songlink data for all tracks in parallel
 	const conversionPromises = spotifyTrackUrls.map(async (trackUrl, index) => {
@@ -90,7 +141,7 @@ export async function convertSpotifyPlaylistToTracks(
 	// Wait for all conversions to complete
 	const results = await Promise.allSettled(conversionPromises);
 
-	// Process results and update progress
+	// Process results with batched progress updates
 	results.forEach((result, index) => {
 		if (result.status === 'fulfilled' && result.value.success && result.value.track) {
 			successful.push(result.value.track);
@@ -98,16 +149,16 @@ export async function convertSpotifyPlaylistToTracks(
 			failed.push(spotifyTrackUrls[index]);
 		}
 
-		// Report progress after each track
-		if (onProgress) {
-			onProgress({
-				loaded: index + 1,
-				total,
-				successful: [...successful],
-				failed: [...failed]
-			});
-		}
+		// Report progress with batching and throttling
+		reportProgress(index + 1, false);
 	});
+
+	// Always report final progress (even if batched)
+	if (progressUpdatesPending) {
+		reportProgress(total, true);
+	}
+
+	console.log(`[PlaylistConversion] Completed: ${successful.length} successful, ${failed.length} failed`);
 
 	return {
 		successful,

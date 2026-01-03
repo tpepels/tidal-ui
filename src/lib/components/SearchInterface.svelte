@@ -10,16 +10,9 @@
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { regionStore, type RegionOption } from '$lib/stores/region';
 	import { isTidalUrl } from '$lib/utils/urlParser';
-	import { isSupportedStreamingUrl, isSpotifyPlaylistUrl as isSpotifyPlaylistUrlUtil } from '$lib/utils/songlink';
-	// Search domain services
-	import {
-		executeTabSearch,
-		convertStreamingUrl,
-		precacheTrackStream,
-		convertSpotifyPlaylistToTracks,
-		isSpotifyPlaylistUrl,
-		type SearchTab
-	} from '$lib/services/search';
+	import { isSupportedStreamingUrl, isSpotifyPlaylistUrl as isSpotifyPlaylistUrlUtil, getPlatformName } from '$lib/utils/songlink';
+	// Orchestrators
+	import { searchOrchestrator, downloadOrchestrator } from '$lib/orchestrators';
 	import type {
 		Track,
 		Album,
@@ -138,23 +131,20 @@ import {
 	});
 
 
-	// Computed property to check if current query is a Tidal URL
+	// URL detection for UI hints (orchestrator handles actual routing)
 	const isQueryATidalUrl = $derived(
 		$searchStore.query.trim().length > 0 && isTidalUrl($searchStore.query.trim())
 	);
 
-	// Computed property to check if current query is a supported streaming platform URL
+	const isQueryASpotifyPlaylist = $derived(
+		$searchStore.query.trim().length > 0 && isSpotifyPlaylistUrlUtil($searchStore.query.trim())
+	);
+
 	const isQueryAStreamingUrl = $derived(
 		$searchStore.query.trim().length > 0 && isSupportedStreamingUrl($searchStore.query.trim())
 	);
 
-	// Computed property to check if current query is a Spotify playlist URL
-	const isQueryASpotifyPlaylist = $derived(
-		$searchStore.query.trim().length > 0 && isSpotifyPlaylistUrl($searchStore.query.trim())
-	);
-
-	// Combined URL check
-	const isQueryAUrl = $derived(isQueryATidalUrl || isQueryAStreamingUrl);
+	const isQueryAUrl = $derived(isQueryATidalUrl || isQueryAStreamingUrl || isQueryASpotifyPlaylist);
 
 	type AlbumDownloadState = {
 		downloading: boolean;
@@ -265,103 +255,43 @@ import {
 			event.stopPropagation();
 		}
 
-		let trackId: number;
-		let artistName: string;
-		let albumTitle: string | undefined;
-
-		// Handle SonglinkTracks
-		if (isSonglinkTrack(track)) {
-			if (track.tidalId) {
-				trackId = track.tidalId;
-				artistName = track.artistName;
-				albumTitle = undefined;
-			} else {
-				console.warn('Cannot download SonglinkTrack directly - play it first to convert to TIDAL');
-				toasts.info('This track needs to be played first before it can be downloaded. Click to play it, then download.');
-				return;
-			}
-		} else {
-			trackId = track.id;
-			artistName = formatArtists(track.artists);
-			albumTitle = track.album?.title;
-		}
-
-		// Guard against non-numeric IDs
-		if (!Number.isFinite(trackId) || trackId <= 0) {
-			console.error('Cannot download track with invalid ID:', track.id);
-			toasts.error('Cannot download this track - invalid track ID');
-			return;
-		}
-
-		// Use the original ID for tracking active downloads in the UI to avoid confusion
-		// (since the UI list might still be using the string ID)
+		// Use track.id for UI tracking (could be string or number)
 		const uiTrackId = track.id;
 
 		if (downloadingIds.has(uiTrackId)) {
 			return;
 		}
+
 		const next = new Set(downloadingIds);
 		next.add(uiTrackId);
 		downloadingIds = next;
 
-		const quality = $userPreferencesStore.playbackQuality;
-		const extension = getExtensionForQuality(quality, convertAacToMp3Preference);
-
-		// Format title with version if present
-		let title = track.title;
-		if ('version' in track && track.version) {
-			title = `${title} (${track.version})`;
+		// Determine subtitle based on track type
+		let subtitle: string;
+		if (isSonglinkTrack(track)) {
+			subtitle = track.artistName;
+		} else {
+			subtitle = track.album?.title ?? formatArtists(track.artists);
 		}
 
-		const filename = `${artistName} - ${title}.${extension}`;
-		const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
-			subtitle: albumTitle ?? artistName
-		});
-		const taskMap = new Map(downloadTaskIds);
-		taskMap.set(uiTrackId, taskId);
-		downloadTaskIds = taskMap;
-		downloadUiStore.skipFfmpegCountdown();
-
 		try {
-			await losslessAPI.downloadTrack(trackId, quality, filename, {
-				signal: controller.signal,
-				onProgress: (progress: TrackDownloadProgress) => {
-					if (progress.stage === 'downloading') {
-						downloadUiStore.updateTrackProgress(
-							taskId,
-							progress.receivedBytes,
-							progress.totalBytes
-						);
-					} else {
-						downloadUiStore.updateTrackStage(taskId, progress.progress);
-					}
-				},
-				onFfmpegCountdown: ({ totalBytes }) => {
-					if (typeof totalBytes === 'number') {
-						downloadUiStore.startFfmpegCountdown(totalBytes, { autoTriggered: false });
-					} else {
-						downloadUiStore.startFfmpegCountdown(0, { autoTriggered: false });
-					}
-				},
-				onFfmpegStart: () => downloadUiStore.startFfmpegLoading(),
-				onFfmpegProgress: (value) => downloadUiStore.updateFfmpegProgress(value),
-				onFfmpegComplete: () => downloadUiStore.completeFfmpeg(),
-				onFfmpegError: (error) => downloadUiStore.errorFfmpeg(error),
+			const result = await downloadOrchestrator.downloadTrack(track, {
+				quality: $userPreferencesStore.playbackQuality,
+				subtitle,
+				notificationMode: 'toast',
 				ffmpegAutoTriggered: false,
-				convertAacToMp3: convertAacToMp3Preference,
-				downloadCoverSeperately: downloadCoverSeperatelyPreference
+				skipFfmpegCountdown: true,
+				autoConvertSonglink: true
 			});
 
-			downloadUiStore.completeTrackDownload(taskId);
-		} catch (error) {
-			if (error instanceof DOMException && error.name === 'AbortError') {
-				downloadUiStore.completeTrackDownload(taskId);
-			} else {
-				console.error('Failed to download track:', error);
-				const fallbackMessage = 'Failed to download track. Please try again.';
-				const message = error instanceof Error && error.message ? error.message : fallbackMessage;
-				downloadUiStore.errorTrackDownload(taskId, message);
-				toasts.error(message);
+			if (result.success && result.taskId) {
+				const taskMap = new Map(downloadTaskIds);
+				taskMap.set(uiTrackId, result.taskId);
+				downloadTaskIds = taskMap;
+			} else if (!result.success && result.error?.code === 'DOWNLOAD_CANCELLED') {
+				markCancelled(uiTrackId);
+			} else if (!result.success && result.error?.code === 'SONGLINK_NOT_SUPPORTED') {
+				toasts.info('This track needs to be played first before it can be downloaded. Click to play it, then download.');
 			}
 		} finally {
 			const next = new Set(downloadingIds);
@@ -484,255 +414,15 @@ import {
 		const trimmedQuery = $searchStore.query.trim();
 		if (!trimmedQuery) return;
 
-		// Auto-detect: if query is a Spotify playlist, convert it
-		if (isQueryASpotifyPlaylist) {
-			await handleSpotifyPlaylistConversion();
-			return;
-		}
-
-		// Auto-detect: if query is a streaming platform URL, convert it first
-		if (isQueryAStreamingUrl) {
-			await handleStreamingUrlConversion();
-			return;
-		}
-
-		// Trigger search state update
-		searchStoreActions.search(trimmedQuery, $searchStore.activeTab);
-
-		try {
-			// Use search service for execution
-			const results = await executeTabSearch(
-				trimmedQuery,
-				$searchStore.activeTab as SearchTab,
-				selectedRegion
-			);
-
-			searchStoreActions.commit({
-				results,
-				isLoading: false,
-				error: null,
-				tabLoading: {
-					tracks: false,
-					albums: false,
-					artists: false,
-					playlists: false
-				}
-			});
-		} catch (err) {
-			const message = err instanceof Error ? err.message : 'Search failed';
-			searchStoreActions.commit({
-				error: message,
-				isLoading: false,
-				tabLoading: {
-					tracks: false,
-					albums: false,
-					artists: false,
-					playlists: false
-				}
-			});
-			console.error('Search error:', err);
-			toasts.error(`Search failed: ${message}`, {
-				action: {
-					label: 'Retry',
-					handler: () => handleSearch()
-				}
-			});
-		}
-	}
-
-	async function handleStreamingUrlConversion() {
-		if (!$searchStore.query.trim()) {
-			return;
-		}
-
-		searchStoreActions.commit({
-			isLoading: true,
-			error: null,
-			tabLoading: {
-				tracks: false,
-				albums: false,
-				artists: false,
-				playlists: false
-			}
+		// Delegate to search orchestrator for all workflows
+		await searchOrchestrator.search(trimmedQuery, $searchStore.activeTab as SearchTab, {
+			region: selectedRegion,
+			showErrorToasts: true
 		});
-
-		try {
-			// Use streaming URL conversion service
-			const result = await convertStreamingUrl($searchStore.query.trim());
-
-			// Handle based on content type
-			switch (result.type) {
-				case 'track': {
-					if (result.track) {
-						// Pre-cache the stream URL for this track
-						await precacheTrackStream(result.track.id, $playerStore.quality);
-
-						playerStore.setTrack(result.track);
-						playerStore.play();
-						searchStoreActions.commit({ query: '' });
-					}
-					break;
-				}
-				case 'album': {
-					if (result.album) {
-						searchStoreActions.commit({
-							activeTab: 'albums',
-							results: {
-								tracks: [],
-								albums: [result.album],
-								artists: [],
-								playlists: []
-							}
-						});
-						searchStoreActions.commit({ query: '' });
-					}
-					break;
-				}
-				case 'playlist': {
-					if (result.playlist) {
-						searchStoreActions.commit({
-							activeTab: 'playlists',
-							results: {
-								tracks: [],
-								albums: [],
-								artists: [],
-								playlists: [result.playlist]
-							}
-						});
-						searchStoreActions.commit({ query: '' });
-					}
-					break;
-				}
-			}
-		} catch (err) {
-			searchStoreActions.commit({
-				error: err instanceof Error ? err.message : 'Failed to convert URL',
-				isLoading: false,
-				tabLoading: {
-					tracks: false,
-					albums: false,
-					artists: false,
-					playlists: false
-				}
-			});
-			console.error('Streaming URL conversion error:', err);
-		} finally {
-			searchStoreActions.commit({
-				isLoading: false,
-				tabLoading: {
-					tracks: false,
-					albums: false,
-					artists: false,
-					playlists: false
-				}
-			});
-		}
 	}
 
-	async function handleSpotifyPlaylistConversion() {
-		if (!$searchStore.query.trim()) {
-			return;
-		}
-
-		searchStoreActions.commit({
-			error: null,
-			isLoading: true,
-			tabLoading: {
-				tracks: false,
-				albums: false,
-				artists: false,
-				playlists: false
-			}
-		});
-		searchStoreActions.commit({ playlistLoadingMessage: 'Loading playlist...' });
-		searchStoreActions.commit({ isPlaylistConversionMode: true });
-
-		try {
-			// Clear previous results and switch to tracks tab
-			searchStoreActions.commit({
-				activeTab: 'tracks',
-				results: { tracks: [], albums: [], artists: [], playlists: [] }
-			});
-
-			// Set loading to false so tracks can be displayed as they're added
-			searchStoreActions.commit({
-				isLoading: false,
-				tabLoading: {
-					tracks: false,
-					albums: false,
-					artists: false,
-					playlists: false
-				}
-			});
-
-			// Use playlist conversion service with progress tracking
-			const result = await convertSpotifyPlaylistToTracks(
-				$searchStore.query.trim(),
-				(progress) => {
-					// Update progress during conversion
-					searchStoreActions.commit({
-						playlistConversionTotal: progress.total,
-						playlistLoadingMessage: `Loaded ${progress.loaded}/${progress.total} tracks...`,
-						results: { tracks: progress.successful, albums: [], artists: [], playlists: [] }
-					});
-				}
-			);
-
-			// Check if we got any tracks
-			if (result.successful.length === 0) {
-				searchStoreActions.commit({
-					error: 'Could not find TIDAL equivalents for any tracks in this playlist.',
-					isLoading: false,
-					tabLoading: {
-						tracks: false,
-						albums: false,
-						artists: false,
-						playlists: false
-					}
-				});
-				searchStoreActions.commit({ playlistLoadingMessage: null });
-				searchStoreActions.commit({ isPlaylistConversionMode: false });
-				return;
-			}
-
-			// Update final results
-			searchStoreActions.commit({
-				results: { tracks: result.successful, albums: [], artists: [], playlists: [] }
-			});
-
-			// Show completion message
-			if (result.failed.length > 0) {
-				console.warn(`${result.failed.length} tracks could not be loaded`);
-				searchStoreActions.commit({
-					playlistLoadingMessage: `Loaded ${result.successful.length} tracks (${result.failed.length} failed)`
-				});
-			} else {
-				searchStoreActions.commit({
-					playlistLoadingMessage: `Successfully loaded ${result.successful.length} tracks!`
-				});
-			}
-
-			// Clear the query and hide loading message after a brief delay
-			searchStoreActions.commit({ query: '' });
-			setTimeout(() => {
-				searchStoreActions.commit({ playlistLoadingMessage: null });
-			}, 3000);
-		} catch (err) {
-			searchStoreActions.commit({
-				error: err instanceof Error ? err.message : 'Failed to load Spotify playlist',
-				isLoading: false,
-				tabLoading: {
-					tracks: false,
-					albums: false,
-					artists: false,
-					playlists: false
-				}
-			});
-			console.error('Spotify playlist loading error:', err);
-			searchStoreActions.commit({ playlistLoadingMessage: null });
-			searchStoreActions.commit({ isPlaylistConversionMode: false });
-		}
-	}
+	// These functions are now handled by the orchestrator
+	// No longer needed - search orchestrator handles all workflows
 
 	function handlePlayAll() {
 		const tracks = $searchStore.results?.tracks ?? [];
@@ -756,65 +446,24 @@ import {
 		const tracks = $searchStore.results?.tracks ?? [];
 		if (tracks.length === 0) return;
 
-		const quality = $playerStore.quality;
-		const convertAacToMp3Preference = $userPreferencesStore.convertAacToMp3;
-		const downloadCoverSeperatelyPreference = $userPreferencesStore.downloadCoversSeperately;
-
 		for (const track of tracks) {
 			try {
-				// Use tidalId if available (for Songlink tracks), otherwise use id
-				const trackId = 'tidalId' in track && track.tidalId ? track.tidalId : track.id;
-
-				// Skip if we don't have a valid numeric ID (e.g. unconverted Songlink track)
-				if (typeof trackId !== 'number') {
-					console.warn(`Skipping download for track ${track.title}: No valid TIDAL ID`);
-					continue;
+				// Determine subtitle based on track type
+				let subtitle: string;
+				if (isSonglinkTrack(track)) {
+					subtitle = track.artistName;
+				} else {
+					subtitle = track.album?.title ?? formatArtists(track.artists);
 				}
 
-				const artistName = 'artistName' in track ? track.artistName : formatArtists(track.artists);
-				const albumTitle = 'album' in track ? track.album?.title : undefined;
-
-				let title = track.title;
-				if ('version' in track && track.version) {
-					title = `${title} (${track.version})`;
-				}
-
-				const filename = `${artistName} - ${title}.${getExtensionForQuality(quality)}`;
-
-				const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
-					subtitle: albumTitle ?? artistName
-				});
-
-				await losslessAPI.downloadTrack(trackId, quality, filename, {
-					signal: controller.signal,
-					onProgress: (progress: TrackDownloadProgress) => {
-						if (progress.stage === 'downloading') {
-							downloadUiStore.updateTrackProgress(
-								taskId,
-								progress.receivedBytes,
-								progress.totalBytes
-							);
-						} else {
-							downloadUiStore.updateTrackStage(taskId, progress.progress);
-						}
-					},
-					onFfmpegCountdown: ({ totalBytes }) => {
-						if (typeof totalBytes === 'number') {
-							downloadUiStore.startFfmpegCountdown(totalBytes, { autoTriggered: false });
-						} else {
-							downloadUiStore.startFfmpegCountdown(0, { autoTriggered: false });
-						}
-					},
-					onFfmpegStart: () => downloadUiStore.startFfmpegLoading(),
-					onFfmpegProgress: (value) => downloadUiStore.updateFfmpegProgress(value),
-					onFfmpegComplete: () => downloadUiStore.completeFfmpeg(),
-					onFfmpegError: (error) => downloadUiStore.errorFfmpeg(error),
+				await downloadOrchestrator.downloadTrack(track, {
+					quality: $playerStore.quality,
+					subtitle,
+					notificationMode: 'silent',
 					ffmpegAutoTriggered: false,
-					convertAacToMp3: convertAacToMp3Preference,
-					downloadCoverSeperately: downloadCoverSeperatelyPreference
+					skipFfmpegCountdown: false,
+					autoConvertSonglink: true
 				});
-
-				downloadUiStore.completeTrackDownload(taskId);
 			} catch (error) {
 				console.error(`Failed to download track ${track.title}:`, error);
 			}

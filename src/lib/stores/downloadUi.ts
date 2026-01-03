@@ -42,6 +42,7 @@ interface DownloadUiState {
 
 const MAX_VISIBLE_TASKS = 4;
 const COUNTDOWN_DEFAULT_SECONDS = 5;
+const ACTIVE_TASK_STATUSES = new Set<TrackDownloadStatus>(['pending', 'running']);
 
 const initialState: DownloadUiState = {
 	ffmpeg: {
@@ -115,21 +116,51 @@ function upsertTask(task: TrackDownloadTask): void {
 		}
 		return {
 			...state,
-			tasks: tasks.slice(0, MAX_VISIBLE_TASKS)
+			tasks: pruneTasks(tasks)
 		};
 	});
+}
+
+function pruneTasks(tasks: TrackDownloadTask[]): TrackDownloadTask[] {
+	const inactiveTasks = tasks.filter((task) => !ACTIVE_TASK_STATUSES.has(task.status));
+	if (inactiveTasks.length <= MAX_VISIBLE_TASKS) {
+		return tasks;
+	}
+
+	const allowedInactiveIds = new Set(
+		inactiveTasks
+			.slice()
+			.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+			.slice(0, MAX_VISIBLE_TASKS)
+			.map((task) => task.id)
+	);
+
+	return tasks.filter(
+		(task) => ACTIVE_TASK_STATUSES.has(task.status) || allowedInactiveIds.has(task.id)
+	);
 }
 
 function mutateTask(id: string, updater: (task: TrackDownloadTask) => TrackDownloadTask): void {
 	store.update((state) => {
 		const index = state.tasks.findIndex((entry) => entry.id === id);
 		if (index === -1) {
+			// INVARIANT VIOLATION: Task must exist to be mutated
+			console.error(`[DownloadUi] INVARIANT VIOLATION: Cannot mutate task ${id} - task not found in store`);
+			console.error(`[DownloadUi] Current tasks:`, state.tasks.map(t => ({ id: t.id, status: t.status })));
+
+			if (import.meta.env.DEV) {
+				throw new Error(
+					`Download task lifecycle violation: Attempted to mutate task ${id} but it does not exist. ` +
+					`This indicates a bug where the service is trying to update a task that was already removed. ` +
+					`Current task count: ${state.tasks.length}`
+				);
+			}
 			return state;
 		}
 		const tasks = state.tasks.slice();
 		const nextTask = updater({ ...tasks[index]! });
 		tasks[index] = { ...nextTask, updatedAt: Date.now() };
-		return { ...state, tasks };
+		return { ...state, tasks: pruneTasks(tasks) };
 	});
 }
 

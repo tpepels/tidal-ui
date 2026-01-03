@@ -1,12 +1,10 @@
 <script lang="ts">
 	import { downloadLogStore } from '$lib/stores/downloadLog';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
-	import { X, Copy, Trash2, CheckCircle, XCircle, Loader, Heart } from 'lucide-svelte';
+	import { X, Copy, Trash2, Heart } from 'lucide-svelte';
 	import { tick } from 'svelte';
 
 	$: activeDownloads = $downloadUiStore.tasks.filter((task) => task.status === 'running');
-	$: completedDownloads = $downloadUiStore.tasks.filter((task) => task.status === 'completed');
-	$: erroredDownloads = $downloadUiStore.tasks.filter((task) => task.status === 'error');
 
 	let scrollContainer: HTMLDivElement | null = null;
 	let healthData: {
@@ -147,82 +145,6 @@
 			</div>
 		</div>
 
-		<!-- Progress Summary Section -->
-		{#if activeDownloads.length > 0 || completedDownloads.length > 0 || erroredDownloads.length > 0}
-			<div class="download-progress-summary">
-				<h4 class="download-progress-title">Download Progress</h4>
-				<div class="download-progress-scroll">
-					<!-- Active Downloads -->
-					{#if activeDownloads.length > 0}
-						<div class="download-progress-section">
-							<h5 class="download-progress-section-title">
-								<Loader size={16} class="download-progress-icon download-progress-icon--active" />
-								Active Downloads ({activeDownloads.length})
-							</h5>
-							<div class="download-progress-tasks">
-								{#each activeDownloads as task (task.id)}
-									<div class="download-progress-task">
-										<div class="download-progress-task-header">
-											<span class="download-progress-task-title" title="{task.title}">{task.title}</span>
-											{#if task.subtitle}
-												<span class="download-progress-task-subtitle">{task.subtitle}</span>
-											{/if}
-										</div>
-										<div class="download-progress-task-progress">
-											<div class="download-progress-bar">
-												<div class="download-progress-bar-fill" style="width: {task.progress * 100}%"></div>
-											</div>
-											<span class="download-progress-percent">{Math.round(task.progress * 100)}%</span>
-										</div>
-										{#if task.totalBytes}
-											<div class="download-progress-task-bytes">
-												{formatBytes(task.receivedBytes)} / {formatBytes(task.totalBytes)}
-											</div>
-										{/if}
-									</div>
-								{/each}
-							</div>
-						</div>
-					{/if}
-
-					<!-- Completed Downloads -->
-					{#if completedDownloads.length > 0}
-						<div class="download-progress-section">
-							<h5 class="download-progress-section-title">
-								<CheckCircle size={16} class="download-progress-icon download-progress-icon--completed" />
-								Completed ({completedDownloads.length})
-							</h5>
-						</div>
-					{/if}
-
-					<!-- Errored Downloads -->
-					{#if erroredDownloads.length > 0}
-						<div class="download-progress-section">
-							<h5 class="download-progress-section-title">
-								<XCircle size={16} class="download-progress-icon download-progress-icon--error" />
-								Errors ({erroredDownloads.length})
-							</h5>
-							<div class="download-progress-tasks">
-								{#each erroredDownloads as task (task.id)}
-									<div class="download-progress-task download-progress-task--error">
-										<div class="download-progress-task-header">
-											<span class="download-progress-task-title" title="{task.title}">{task.title}</span>
-											{#if task.subtitle}
-												<span class="download-progress-task-subtitle">{task.subtitle}</span>
-											{/if}
-										</div>
-										{#if task.error}
-											<div class="download-progress-task-error">{task.error}</div>
-										{/if}
-									</div>
-								{/each}
-							</div>
-						</div>
-					{/if}
-				</div>
-			</div>
-		{/if}
-
 		<!-- Health Status -->
 		{#if healthData}
 			<div class="download-health-summary">
@@ -276,7 +198,7 @@
 		overflow: hidden;
 		transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
-		z-index: 9999;
+		z-index: 100000;
 	}
 
 	.download-log-container.is-visible {
@@ -444,161 +366,6 @@
 
 	.download-log-entry--error .download-log-time {
 		color: #7f1d1d;
-	}
-
-/* Progress Summary Styles */
-.download-progress-summary {
-	padding: 16px;
-	border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-	background: rgba(0, 0, 0, 0.2);
-	max-height: 200px;
-	display: flex;
-	flex-direction: column;
-}
-
-.download-progress-scroll {
-	flex: 1;
-	overflow-y: auto;
-}
-
-	.download-progress-title {
-		margin: 0 0 12px 0;
-		font-size: 14px;
-		font-weight: 600;
-		color: #fff;
-		letter-spacing: 0.5px;
-	}
-
-	.download-progress-section {
-		margin-bottom: 16px;
-	}
-
-	.download-progress-section:last-child {
-		margin-bottom: 0;
-	}
-
-	.download-progress-section-title {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		margin: 0 0 8px 0;
-		font-size: 13px;
-		font-weight: 500;
-		color: #ccc;
-	}
-
-	.download-progress-icon {
-		flex-shrink: 0;
-	}
-
-	.download-progress-icon--active {
-		color: #3b82f6;
-		animation: spin 1s linear infinite;
-	}
-
-	.download-progress-icon--completed {
-		color: #22c55e;
-	}
-
-	.download-progress-icon--error {
-		color: #ef4444;
-	}
-
-	@keyframes spin {
-		from { transform: rotate(0deg); }
-		to { transform: rotate(360deg); }
-	}
-
-	.download-progress-tasks {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-	}
-
-	@media (min-width: 768px) {
-		.download-progress-tasks {
-			flex-direction: row;
-			flex-wrap: wrap;
-		}
-	}
-
-	.download-progress-task {
-		padding: 8px 12px;
-		background: rgba(255, 255, 255, 0.05);
-		border-radius: 6px;
-		border: 1px solid rgba(255, 255, 255, 0.1);
-	}
-
-	.download-progress-task--error {
-		border-color: rgba(239, 68, 68, 0.3);
-		background: rgba(239, 68, 68, 0.05);
-	}
-
-	.download-progress-task-header {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		margin-bottom: 6px;
-	}
-
-	.download-progress-task-title {
-		font-size: 13px;
-		font-weight: 500;
-		color: #fff;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.download-progress-task-subtitle {
-		font-size: 11px;
-		color: #aaa;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.download-progress-task-progress {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		margin-bottom: 4px;
-	}
-
-	.download-progress-bar {
-		flex: 1;
-		height: 4px;
-		background: rgba(255, 255, 255, 0.2);
-		border-radius: 2px;
-		overflow: hidden;
-	}
-
-	.download-progress-bar-fill {
-		height: 100%;
-		background: linear-gradient(90deg, #3b82f6, #06b6d4);
-		border-radius: 2px;
-		transition: width 0.3s ease;
-	}
-
-	.download-progress-percent {
-		font-size: 11px;
-		font-weight: 500;
-		color: #ccc;
-		min-width: 32px;
-		text-align: right;
-	}
-
-	.download-progress-task-bytes {
-		font-size: 11px;
-		color: #888;
-		text-align: right;
-	}
-
-	.download-progress-task-error {
-		font-size: 12px;
-		color: #ef4444;
-		margin-top: 4px;
-		word-break: break-word;
 	}
 
 /* Health Summary Styles */
