@@ -59,6 +59,9 @@ export type UrlType = 'tidal' | 'streaming' | 'spotify-playlist' | 'none';
  * Manages search workflows with automatic URL detection and routing
  */
 export class SearchOrchestrator {
+	/** Request token to prevent stale search results from overwriting newer requests */
+	private currentSearchToken = 0;
+
 	/**
 	 * Detects the type of URL in the query
 	 *
@@ -156,12 +159,28 @@ export class SearchOrchestrator {
 		tab: SearchTab,
 		options: SearchOrchestratorOptions | undefined
 	): Promise<SearchWorkflowResult> {
+		// Increment request token to track this search request
+		const requestToken = ++this.currentSearchToken;
+
 		// Update store to loading state
 		searchStoreActions.search(query, tab);
 
 		try {
 			// Execute search via service
 			const result = await executeTabSearch(query, tab, options?.region);
+
+			// Check if this request has been superseded by a newer search
+			if (requestToken !== this.currentSearchToken) {
+				console.log('[SearchOrchestrator] Ignoring stale search result', {
+					query,
+					tab,
+					region: options?.region,
+					requestToken,
+					currentToken: this.currentSearchToken
+				});
+				// Return success but don't update store
+				return { workflow: 'standard', success: true, results: result.success ? result.results : { tracks: [], albums: [], artists: [], playlists: [] } };
+			}
 
 			if (!result.success) {
 				// Update store with error

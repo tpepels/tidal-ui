@@ -123,9 +123,10 @@ export async function executeTabSearch(
 	}
 
 	const emptyResults: SearchResults = { tracks: [], albums: [], artists: [], playlists: [] };
-	const searchKey = `${tab}:${trimmedQuery.toLowerCase()}`;
+	// Include region in cache key to prevent result mismatches across regions
+	const searchKey = `${tab}:${trimmedQuery.toLowerCase()}:${region || 'auto'}`;
 
-	// Check if there's already an in-flight search for this query+tab
+	// Check if there's already an in-flight search for this query+tab+region
 	let pending = inFlightSearches.get(searchKey);
 
 	if (!pending) {

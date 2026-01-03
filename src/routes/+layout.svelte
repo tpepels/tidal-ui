@@ -12,6 +12,7 @@
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
 	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 
+	import { toasts } from '$lib/stores/toasts';
 	import { playerStore } from '$lib/stores/player';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { downloadLogStore } from '$lib/stores/downloadLog';
@@ -246,7 +247,7 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 			triggerFileDownload(zipBlob, timestampedFilename('zip'));
 		} catch (error) {
 			console.error('Failed to build ZIP export', error);
-			alert('Unable to build ZIP export. Please try again.');
+			toasts.error('Unable to build ZIP export. Please try again.');
 		} finally {
 			isZipDownloading = false;
 		}
@@ -262,7 +263,7 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 			triggerFileDownload(blob, timestampedFilename('csv'));
 		} catch (error) {
 			console.error('Failed to export queue as CSV', error);
-			alert('Unable to export CSV. Please try again.');
+			toasts.error('Unable to export CSV. Please try again.');
 		} finally {
 			isCsvExporting = false;
 		}
@@ -272,7 +273,7 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 		const { tracks, quality } = collectQueueState();
 		if (tracks.length === 0) {
 			showSettingsMenu = false;
-			alert('Add tracks to the queue before exporting.');
+			toasts.warning('Add tracks to the queue before exporting.');
 			return;
 		}
 
@@ -359,7 +360,7 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 				]
 					.filter(Boolean)
 					.join('\n');
-				alert(summary);
+				toasts.error(summary, { duration: 10000 });
 			}
 		} finally {
 			isLegacyQueueDownloading = false;
@@ -374,7 +375,7 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 		const { tracks, quality } = collectQueueState();
 		if (tracks.length === 0) {
 			showSettingsMenu = false;
-			alert('Add tracks to the queue before downloading.');
+			toasts.warning('Add tracks to the queue before downloading.');
 			return;
 		}
 

@@ -14,6 +14,7 @@
 	import { playerStore } from '$lib/stores/player';
 	import { lyricsStore } from '$lib/stores/lyrics';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
+	import { toasts } from '$lib/stores/toasts';
 	import { formatArtists } from '$lib/utils/formatters';
 	import { losslessAPI } from '$lib/api';
 	import type { Track, AudioQuality, SonglinkTrack, PlayableTrack } from '$lib/types';
@@ -322,7 +323,7 @@ let pendingPlayAfterSource = false;
 				})
 				.catch((error) => {
 					console.error('[Conversion Effect] Conversion FAILED:', error);
-					alert(`Failed to play track: ${error instanceof Error ? error.message : 'Unknown error'}`);
+					toasts.error(`Failed to play track: ${error instanceof Error ? error.message : 'Unknown error'}`);
 				})
 				.finally(() => {
 					convertingTracks.delete(current.id);
