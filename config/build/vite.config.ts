@@ -22,8 +22,8 @@ export default defineConfig(({ mode }) => {
 		},
 		server: {
 			https: {
-				key: './key.pem',
-				cert: './cert.pem'
+				key: './.certs/key.pem',
+				cert: './.certs/cert.pem'
 			},
 			watch: { usePolling: true },
 			host: '0.0.0.0',
