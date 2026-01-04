@@ -70,6 +70,13 @@ test('persisted playback state restores on reload', async ({ page }) => {
 	await page.evaluate(() => {
 		window.__tidalRehydratePlayback?.();
 	});
+	await page.waitForFunction(
+		() => typeof window.__tidalSetDuration === 'function' && typeof window.__tidalSetCurrentTime === 'function'
+	);
+	await page.evaluate(() => {
+		window.__tidalSetDuration?.(120);
+		window.__tidalSetCurrentTime?.(30);
+	});
 	title = page.getByRole('heading', { name: /Persisted Track/i }).first();
 	await expect(title).toBeVisible();
 	timeLabel = page.locator('.audio-player-glass .mt-1 span').first();

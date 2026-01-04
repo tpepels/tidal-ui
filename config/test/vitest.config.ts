@@ -6,7 +6,8 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			$lib: resolve(__dirname, '../../src/lib'),
-			$app: resolve(__dirname, '../../src/test/mocks/app')
+			$app: resolve(__dirname, '../../src/test/mocks/app'),
+			'$env/dynamic/private': resolve(__dirname, '../../src/test/mocks/env/dynamic/private')
 		}
 	},
 	test: {
