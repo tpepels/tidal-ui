@@ -54,13 +54,10 @@
 	let audioElement: HTMLAudioElement;
 	let streamUrl = $state('');
 let isMuted = $state(false);
-let previousVolume = 0.8;
 	let currentTrackId: number | null = null;
 	let loadSequence = 0;
 	let lastMachineLoadRequestId = 0;
 	let bufferedPercent = $state(0);
-	let lastQualityTrackId: number | string | null = null;
-	let lastQualityForTrack: AudioQuality | null = null;
 	let currentPlaybackQuality = $state<AudioQuality | null>(null);
 	let isDownloadingCurrentTrack = $state(false);
 
@@ -124,7 +121,7 @@ let previousVolume = 0.8;
 				playbackTransitions.seekTo(0);
 				playbackMachine.actions.seek(0);
 			},
-			onPlayRequest: (reason: string) => {
+			onPlayRequest: () => {
 				requestPlay();
 			}
 		}
@@ -443,7 +440,13 @@ let previousVolume = 0.8;
 
 	function handlePrevious() {
 		if (!audioElement) return;
-		handlePreviousTrackService(audioElement);
+		const state = $playerStore;
+		handlePreviousTrackService(audioElement, {
+			currentTime: state.currentTime,
+			queueIndex: state.queueIndex,
+			onSetCurrentTime: (time) => playerStore.setCurrentTime(time),
+			onPrevious: () => playerStore.previous()
+		});
 		mediaSessionController.updatePositionState();
 	}
 
@@ -543,9 +546,6 @@ let previousVolume = 0.8;
 		const result = toggleMuteService($playerStore.volume, isMuted);
 		playerStore.setVolume(result.volume);
 		isMuted = result.isMuted;
-		if (!result.isMuted) {
-			previousVolume = result.previousVolume;
-		}
 	}
 
 	function formatTime(seconds: number): string {
@@ -675,8 +675,6 @@ let previousVolume = 0.8;
 					streamUrl = '';
 					bufferedPercent = 0;
 					dashPlaybackActive = false;
-					lastQualityTrackId = null;
-					lastQualityForTrack = null;
 					currentPlaybackQuality = null;
 					lastObservedTrackId = null;
 					lastObservedQuality = null;
@@ -689,8 +687,6 @@ let previousVolume = 0.8;
 				const machineTrack = playbackMachine.currentTrack;
 				if (machineTrack && machineTrack.id === trackId) {
 					currentTrackId = typeof trackId === 'number' ? trackId : null;
-					lastQualityTrackId = trackId;
-					lastQualityForTrack = state.quality;
 					lastObservedTrackId = trackId;
 					lastObservedQuality = state.quality;
 					return;
@@ -699,8 +695,6 @@ let previousVolume = 0.8;
 				streamUrl = '';
 				bufferedPercent = 0;
 				dashPlaybackActive = false;
-				lastQualityTrackId = trackId;
-				lastQualityForTrack = state.quality;
 				currentPlaybackQuality = null;
 				lastObservedTrackId = trackId;
 				lastObservedQuality = state.quality;
@@ -711,8 +705,6 @@ let previousVolume = 0.8;
 
 			if (state.quality !== lastObservedQuality) {
 				lastObservedQuality = state.quality;
-				lastQualityTrackId = trackId;
-				lastQualityForTrack = state.quality;
 				playbackMachine.actions.changeQuality(state.quality);
 			}
 		};

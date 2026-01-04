@@ -8,16 +8,16 @@
 import {
 	type PlaybackMachineState,
 	type PlaybackEvent,
-	type SideEffect,
 	transition,
 	createInitialState,
 	deriveSideEffects
 } from '$lib/machines/playbackMachine';
-import type { PlayableTrack, Track, AudioQuality } from '$lib/types';
+import type { PlayableTrack, AudioQuality } from '$lib/types';
 import { isSonglinkTrack } from '$lib/types';
 import { playerStore } from '$lib/stores/player';
 import { syncPlayerStoreFromMachine } from '$lib/stores/playbackMachineSync';
 import { PlaybackMachineSideEffectHandler } from '$lib/stores/playbackMachineEffects';
+import { get } from 'svelte/store';
 
 /**
  * Side effect handlers

@@ -6,9 +6,6 @@
  * scattered across the AudioPlayer component.
  */
 
-import { playerStore } from '$lib/stores/player';
-import { get } from 'svelte/store';
-
 /**
  * Requests audio playback with error recovery
  * Handles the common play → pause → play pattern needed for certain browser states
@@ -33,16 +30,35 @@ export async function requestAudioPlayback(audioElement: HTMLAudioElement): Prom
 	}
 }
 
+export interface SeekOptions {
+	duration?: number | null;
+	onSetCurrentTime?: (time: number) => void;
+}
+
+export interface PreviousTrackOptions extends SeekOptions {
+	currentTime: number;
+	queueIndex: number;
+	onPrevious?: () => void;
+}
+
+export interface VolumeOptions {
+	onSetVolume?: (volume: number) => void;
+}
+
 /**
  * Seeks to a specific position in the current track
  */
-export function seekToPosition(audioElement: HTMLAudioElement, position: number): void {
+export function seekToPosition(
+	audioElement: HTMLAudioElement,
+	position: number,
+	options?: SeekOptions
+): void {
 	if (!audioElement) {
 		console.warn('[PlaybackControl] Cannot seek: audio element not available');
 		return;
 	}
 
-	const duration = get(playerStore).duration;
+	const duration = options?.duration ?? 0;
 	if (!duration || duration === 0) {
 		console.warn('[PlaybackControl] Cannot seek: duration not available');
 		return;
@@ -50,7 +66,7 @@ export function seekToPosition(audioElement: HTMLAudioElement, position: number)
 
 	const clampedPosition = Math.max(0, Math.min(position, duration));
 	audioElement.currentTime = clampedPosition;
-	playerStore.setCurrentTime(clampedPosition);
+	options?.onSetCurrentTime?.(clampedPosition);
 
 	console.log('[PlaybackControl] Seeked to position:', clampedPosition);
 }
@@ -60,33 +76,39 @@ export function seekToPosition(audioElement: HTMLAudioElement, position: number)
  * If more than 5 seconds into track, restart current track
  * Otherwise, go to previous track in queue
  */
-export function handlePreviousTrack(audioElement: HTMLAudioElement): void {
-	const state = get(playerStore);
-	const currentTime = state.currentTime;
-	const queueIndex = state.queueIndex;
+export function handlePreviousTrack(audioElement: HTMLAudioElement, options: PreviousTrackOptions): void {
+	const resetToStart = () => {
+		if (!audioElement) {
+			console.warn('[PlaybackControl] Cannot seek: audio element not available');
+			return;
+		}
+		audioElement.currentTime = 0;
+		options.onSetCurrentTime?.(0);
+	};
 
 	// If more than 5 seconds in, restart current track
-	if (currentTime > 5) {
-		seekToPosition(audioElement, 0);
+	if (options.currentTime > 5) {
+		resetToStart();
 		return;
 	}
 
 	// If at start of queue, restart current track
-	if (queueIndex <= 0) {
-		seekToPosition(audioElement, 0);
+	if (options.queueIndex <= 0) {
+		resetToStart();
 		return;
 	}
 
 	// Go to previous track
-	playerStore.previous();
+	options.onPrevious?.();
 }
 
 /**
  * Adjusts volume and updates store
  */
-export function setVolume(volume: number): void {
+export function setVolume(volume: number, options?: VolumeOptions): number {
 	const clampedVolume = Math.max(0, Math.min(1, volume));
-	playerStore.setVolume(clampedVolume);
+	options?.onSetVolume?.(clampedVolume);
+	return clampedVolume;
 }
 
 /**

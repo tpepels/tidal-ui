@@ -16,7 +16,7 @@ vi.mock('$lib/stores/toasts', () => ({
 	}
 }));
 
-vi.mock('$lib/services/playback', () => ({
+vi.mock('$lib/utils/trackConversion', () => ({
 	convertSonglinkTrackToTidal: vi.fn()
 }));
 
@@ -24,6 +24,10 @@ const buildTrack = (id: number): Track => ({
 	id,
 	title: 'Test Track',
 	duration: 180,
+	version: null,
+	popularity: 0,
+	editable: false,
+	explicit: false,
 	trackNumber: 1,
 	volumeNumber: 1,
 	isrc: 'TEST123',
@@ -65,15 +69,18 @@ describe('PlaybackMachineSideEffectHandler', () => {
 		const handler = new PlaybackMachineSideEffectHandler();
 		handler.setAudioElement(audio);
 
-		const dispatch = vi.fn<(event: PlaybackEvent) => void>();
+		const dispatch = vi.fn<[PlaybackEvent], void>();
 
-		await handler.execute({ type: 'PLAY_AUDIO' } satisfies SideEffect, dispatch);
+		await handler.execute({ type: 'PLAY_AUDIO' } satisfies SideEffect, dispatch as (event: PlaybackEvent) => void);
 		expect(audio.play).toHaveBeenCalled();
 
-		await handler.execute({ type: 'PAUSE_AUDIO' } satisfies SideEffect, dispatch);
+		await handler.execute({ type: 'PAUSE_AUDIO' } satisfies SideEffect, dispatch as (event: PlaybackEvent) => void);
 		expect(audio.pause).toHaveBeenCalled();
 
-		await handler.execute({ type: 'SEEK_AUDIO', position: 12.5 } satisfies SideEffect, dispatch);
+		await handler.execute(
+			{ type: 'SEEK_AUDIO', position: 12.5 } satisfies SideEffect,
+			dispatch as (event: PlaybackEvent) => void
+		);
 		expect(audio.currentTime).toBe(12.5);
 	});
 
@@ -91,7 +98,7 @@ describe('PlaybackMachineSideEffectHandler', () => {
 		});
 
 		const track = buildTrack(202);
-		const dispatch = vi.fn<(event: PlaybackEvent) => void>();
+		const dispatch = vi.fn<[PlaybackEvent], void>();
 
 		await handler.execute(
 			{
@@ -100,7 +107,7 @@ describe('PlaybackMachineSideEffectHandler', () => {
 				quality: 'HIGH',
 				requestId: 1
 			} satisfies SideEffect,
-			dispatch
+			dispatch as (event: PlaybackEvent) => void
 		);
 
 		expect(losslessAPI.getStreamData).toHaveBeenCalledWith(track.id, 'HIGH');

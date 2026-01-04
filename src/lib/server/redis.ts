@@ -99,6 +99,7 @@ export function getRedisClient(): Redis | null {
 		return client;
 	} catch (error) {
 		markRedisUnavailable(error);
+		client = null;
 		return client;
 	}
 }

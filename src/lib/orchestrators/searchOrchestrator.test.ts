@@ -90,10 +90,14 @@ describe('SearchOrchestrator', () => {
 		id: 123,
 		title: 'Test Track',
 		duration: 180,
+		version: null,
+		popularity: 0,
+		editable: false,
+		explicit: false,
 		trackNumber: 1,
 		volumeNumber: 1,
-		explicit: false,
 		isrc: 'TEST123',
+		url: 'https://example.com',
 		audioQuality: 'LOSSLESS',
 		audioModes: ['STEREO'],
 		allowStreaming: true,
@@ -102,15 +106,25 @@ describe('SearchOrchestrator', () => {
 		premiumStreamingOnly: false,
 		replayGain: -6.5,
 		peak: 0.95,
-		artist: { id: 1, name: 'Test Artist', url: '', picture: '' },
-		artists: [{ id: 1, name: 'Test Artist', url: '', picture: '' }],
-		album: { id: 1, title: 'Test Album', cover: '', releaseDate: '2020-01-01', numberOfTracks: 10, numberOfVolumes: 1, duration: 1800 }
+		artist: { id: 1, name: 'Test Artist', type: 'MAIN', url: '', picture: '' },
+		artists: [{ id: 1, name: 'Test Artist', type: 'MAIN', url: '', picture: '' }],
+		album: {
+			id: 1,
+			title: 'Test Album',
+			cover: '',
+			videoCover: null,
+			releaseDate: '2020-01-01',
+			numberOfTracks: 10,
+			numberOfVolumes: 1,
+			duration: 1800
+		}
 	};
 
 	const mockAlbum: Album = {
 		id: 1,
 		title: 'Test Album',
 		cover: 'https://example.com/cover.jpg',
+		videoCover: null,
 		releaseDate: '2020-01-01',
 		numberOfTracks: 10,
 		numberOfVolumes: 1,
@@ -120,11 +134,19 @@ describe('SearchOrchestrator', () => {
 	const mockPlaylist: Playlist = {
 		uuid: 'pl-123',
 		title: 'Test Playlist',
+		description: 'Test playlist',
 		numberOfTracks: 5,
+		numberOfVideos: 0,
 		duration: 900,
 		image: 'https://example.com/playlist.jpg',
 		squareImage: 'https://example.com/playlist-square.jpg',
-		url: 'https://tidal.com/playlist/pl-123'
+		url: 'https://tidal.com/playlist/pl-123',
+		creator: { id: 1, name: 'Test User', picture: null },
+		created: '2024-01-01',
+		lastUpdated: '2024-01-02',
+		type: 'playlist',
+		publicPlaylist: true,
+		popularity: 0
 	};
 
 	beforeEach(() => {
@@ -189,7 +211,7 @@ describe('SearchOrchestrator', () => {
 			});
 
 			const result = await orchestrator.search('test query', 'tracks', {
-				region: 'US',
+				region: 'us',
 				showErrorToasts: true
 			});
 
@@ -201,7 +223,7 @@ describe('SearchOrchestrator', () => {
 			}
 
 			expect(mockSearchStoreActions.search).toHaveBeenCalledWith('test query', 'tracks');
-			expect(mockExecuteTabSearch).toHaveBeenCalledWith('test query', 'tracks', 'US');
+			expect(mockExecuteTabSearch).toHaveBeenCalledWith('test query', 'tracks', 'us');
 			expect(mockSearchStoreActions.commit).toHaveBeenCalledWith(
 				expect.objectContaining({
 					results: expect.any(Object),
@@ -223,8 +245,8 @@ describe('SearchOrchestrator', () => {
 
 			mockExecuteTabSearch.mockReturnValueOnce(firstPromise).mockReturnValueOnce(secondPromise);
 
-			const firstSearch = orchestrator.search('first', 'tracks', { region: 'US' });
-			const secondSearch = orchestrator.search('second', 'tracks', { region: 'US' });
+			const firstSearch = orchestrator.search('first', 'tracks', { region: 'us' });
+			const secondSearch = orchestrator.search('second', 'tracks', { region: 'us' });
 
 			resolveSecond!({
 				success: true,

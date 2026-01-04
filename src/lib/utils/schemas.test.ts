@@ -220,7 +220,9 @@ describe('Schemas', () => {
 
 				const result = safeValidateApiResponse(emptyResponse, TrackSearchResponseSchema);
 				expect(result.success).toBe(true);
-				expect(result.data.items).toHaveLength(0);
+				if (result.success) {
+					expect(result.data.items).toHaveLength(0);
+				}
 			});
 		});
 

@@ -7,10 +7,8 @@
  */
 
 import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
-import { userPreferencesStore } from '$lib/stores/userPreferences';
 import { buildTrackFilename } from '$lib/downloads';
 import { formatArtists } from '$lib/utils/formatters';
-import { get } from 'svelte/store';
 import type { Track, PlayableTrack, AudioQuality } from '$lib/types';
 import { isSonglinkTrack } from '$lib/types';
 
@@ -119,12 +117,9 @@ export async function downloadTrack(
 		return { success: false, error };
 	}
 
-	// Get user preferences
-	const prefs = get(userPreferencesStore);
-	const quality: AudioQuality = options?.quality || 'LOSSLESS';
-	const convertAacToMp3 = options?.convertAacToMp3 ?? prefs.convertAacToMp3;
-	const downloadCoversSeperately =
-		options?.downloadCoversSeperately ?? prefs.downloadCoversSeperately;
+	const quality: AudioQuality = options?.quality ?? 'LOSSLESS';
+	const convertAacToMp3 = options?.convertAacToMp3 ?? false;
+	const downloadCoversSeperately = options?.downloadCoversSeperately ?? false;
 
 	// Build filename
 	const filename = buildTrackFilename(
@@ -185,9 +180,8 @@ export function buildDownloadFilename(
 	quality?: AudioQuality,
 	convertAacToMp3?: boolean
 ): string {
-	const prefs = get(userPreferencesStore);
-	const effectiveQuality = quality || 'LOSSLESS';
-	const effectiveConvert = convertAacToMp3 ?? prefs.convertAacToMp3;
+	const effectiveQuality = quality ?? 'LOSSLESS';
+	const effectiveConvert = convertAacToMp3 ?? false;
 
 	return buildTrackFilename(
 		track.album,

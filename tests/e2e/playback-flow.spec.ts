@@ -55,7 +55,9 @@ test('playback flow toggles play state', async ({ page }) => {
 	} catch (error) {
 		console.log('[playback-flow] primary click failed, falling back to DOM click', error);
 		await trackButton.evaluate((element) => {
-			element.click();
+			if (element instanceof HTMLElement) {
+				element.click();
+			}
 		});
 	}
 

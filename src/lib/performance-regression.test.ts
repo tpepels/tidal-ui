@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import { losslessAPI } from './api';
+import type { Track } from './types';
 
 // Performance regression detection utilities
 class PerformanceMonitor {
@@ -39,7 +40,7 @@ class PerformanceMonitor {
 
 describe('Performance Regression Detection', () => {
 	let monitor: PerformanceMonitor;
-	let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+	let consoleWarnSpy: MockInstance;
 
 	beforeEach(() => {
 		monitor = new PerformanceMonitor();
@@ -304,12 +305,26 @@ describe('Performance Regression Detection', () => {
 			const { PlaybackStateMachine } = await import('../test-utils/stateMachines/PlaybackStateMachine');
 			const machine = new PlaybackStateMachine();
 
-			const mockTrack = {
+			const mockTrack: Track = {
 				id: 123,
 				title: 'State Machine Test Track',
-				artists: [{ name: 'Test Artist' }],
-				album: { title: 'Test Album' },
-				duration: 180
+				duration: 180,
+				version: null,
+				popularity: 0,
+				editable: false,
+				explicit: false,
+				trackNumber: 1,
+				volumeNumber: 1,
+				isrc: 'TEST',
+				url: 'https://example.com',
+				audioQuality: 'LOSSLESS',
+				audioModes: ['STEREO'],
+				allowStreaming: true,
+				streamReady: true,
+				premiumStreamingOnly: false,
+				artist: { id: 1, name: 'Test Artist', type: 'MAIN' },
+				artists: [{ id: 1, name: 'Test Artist', type: 'MAIN' }],
+				album: { id: 1, title: 'Test Album', cover: '', videoCover: null }
 			};
 
 			monitor.start('state-machine-transitions');

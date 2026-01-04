@@ -4,8 +4,6 @@ import type { RegionOption } from '$lib/stores/region';
 import { parseTidalUrl } from './utils/urlParser';
 import { formatArtistsForMetadata } from './utils/formatters';
 import { z } from 'zod';
-import { logger } from './core/logger';
-import { performanceMonitor } from './core/performance';
 import { prepareAlbum, prepareArtist, prepareTrack } from './api/normalizers';
 import { getAlbum, getArtist, getCover, getLyrics, getPlaylist } from './api/catalog';
 import {

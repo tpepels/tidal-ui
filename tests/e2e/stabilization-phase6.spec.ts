@@ -130,7 +130,9 @@ test('playback machine state matches UI play state', async ({ page }) => {
 
 	await expect(toggleButton).toHaveAttribute('aria-label', 'Pause');
 
-	const machineState = await page.evaluate(() => window.__tidalPlaybackMachineState?.());
+	const machineState = (await page.evaluate(
+		() => window.__tidalPlaybackMachineState?.()
+	)) as { isPlaying?: boolean; currentTrackId?: number } | undefined;
 	expect(machineState).toBeTruthy();
 	expect(machineState?.isPlaying).toBe(true);
 	expect(machineState?.currentTrackId).toBe(902);

@@ -54,8 +54,8 @@ const setupConfig = async (overrides?: Parameters<typeof buildConfig>[0]) => {
 	}));
 
 	const config = await vi.importActual<typeof import('./config')>('./config');
-	const { retryFetch } = (await import('./errors')) as { retryFetch: ReturnType<typeof vi.fn> };
-	return { config, retryFetch };
+	const { retryFetch } = await import('./errors');
+	return { config, retryFetch: vi.mocked(retryFetch) };
 };
 
 afterEach(() => {

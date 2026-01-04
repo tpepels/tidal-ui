@@ -8,10 +8,8 @@
 
 import { losslessAPI } from '$lib/api';
 import type { Track, Album, Artist, Playlist, SonglinkTrack } from '$lib/types';
-import type { SearchTab } from '$lib/stores/searchStoreAdapter';
-import type { RegionOption } from '$lib/stores/region';
-
-export type { SearchTab };
+export type SearchTab = 'tracks' | 'albums' | 'artists' | 'playlists';
+export type RegionOption = 'auto' | 'us' | 'eu';
 
 export interface SearchResults {
 	tracks: (Track | SonglinkTrack)[];

@@ -87,7 +87,7 @@ const enforceInvariants = (state: SearchStoreState) => {
 
 	// INVARIANT 3: Only the active tab can be loading
 	const loadingTabs = Object.entries(state.tabLoading)
-		.filter(([_, loading]) => loading)
+		.filter(([, loading]) => loading)
 		.map(([tab]) => tab);
 	validateInvariant(
 		loadingTabs.length === 0 || (loadingTabs.length === 1 && loadingTabs[0] === state.activeTab),

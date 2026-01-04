@@ -14,6 +14,16 @@ declare global {
 				track: (event: string, data?: Record<string, unknown>) => void;
 		  }
 		| undefined;
+
+	type RegionOption = import('$lib/stores/region').RegionOption;
+
+	interface Window {
+		__tidalSetRegion?: (region: RegionOption) => void;
+		__tidalSetDuration?: (duration: number) => void;
+		__tidalSetCurrentTime?: (time: number) => void;
+		__tidalRehydratePlayback?: () => void;
+		__tidalPlaybackMachineState?: () => unknown;
+	}
 }
 
 declare module 'shaka-player/dist/shaka-player.compiled.js' {

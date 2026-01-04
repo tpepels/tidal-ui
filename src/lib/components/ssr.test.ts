@@ -7,13 +7,13 @@ import { compile } from 'svelte/compiler';
 const compileSsr = (relativePath: string) => {
 	const filename = resolve(process.cwd(), relativePath);
 	const source = readFileSync(filename, 'utf-8');
-	return compile(source, { generate: 'ssr', filename });
+	return compile(source, { generate: 'server', filename });
 };
 
 const compileDom = (relativePath: string) => {
 	const filename = resolve(process.cwd(), relativePath);
 	const source = readFileSync(filename, 'utf-8');
-	return compile(source, { generate: 'dom', hydratable: true, filename });
+	return compile(source, { generate: 'client', filename });
 };
 
 describe('SSR compile', () => {

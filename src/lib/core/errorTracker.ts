@@ -38,6 +38,7 @@ export type ErrorContext = Record<string, unknown> & {
 	filename?: string;
 	lineno?: number;
 	colno?: number;
+	status?: number;
 	userAgent?: string;
 	url?: string;
 	userId?: string;
@@ -188,7 +189,7 @@ export class ErrorTracker {
 		}
 
 		// API errors
-		if (context.component === 'api' && context.status >= 500) {
+		if (context.component === 'api' && typeof context.status === 'number' && context.status >= 500) {
 			return 'high';
 		}
 

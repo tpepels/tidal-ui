@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
 import { parseTidalUrl, isTidalUrl } from './urlParser';
 
 describe('URL Parser', () => {
-	let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+	let consoleErrorSpy: MockInstance;
 
 	beforeEach(() => {
 		consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});

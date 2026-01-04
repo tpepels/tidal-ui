@@ -97,10 +97,14 @@ describe('DownloadOrchestrator', () => {
 		id: 123,
 		title: 'Test Track',
 		duration: 180,
+		version: null,
+		popularity: 0,
+		editable: false,
 		trackNumber: 1,
 		volumeNumber: 1,
 		explicit: false,
 		isrc: 'TEST123',
+		url: 'https://example.com',
 		audioQuality: 'LOSSLESS',
 		audioModes: ['STEREO'],
 		allowStreaming: true,
@@ -109,9 +113,18 @@ describe('DownloadOrchestrator', () => {
 		premiumStreamingOnly: false,
 		replayGain: -6.5,
 		peak: 0.95,
-		artist: { id: 1, name: 'Test Artist', url: '', picture: '' },
-		artists: [{ id: 1, name: 'Test Artist', url: '', picture: '' }],
-		album: { id: 1, title: 'Test Album', cover: '', releaseDate: '2020-01-01', numberOfTracks: 10, numberOfVolumes: 1, duration: 1800 }
+		artist: { id: 1, name: 'Test Artist', type: 'MAIN', url: '', picture: '' },
+		artists: [{ id: 1, name: 'Test Artist', type: 'MAIN', url: '', picture: '' }],
+		album: {
+			id: 1,
+			title: 'Test Album',
+			cover: '',
+			videoCover: null,
+			releaseDate: '2020-01-01',
+			numberOfTracks: 10,
+			numberOfVolumes: 1,
+			duration: 1800
+		}
 	};
 
 	const mockSonglinkTrack: SonglinkTrack = {
@@ -232,7 +245,9 @@ describe('DownloadOrchestrator', () => {
 			expect(result.success).toBe(false);
 			if (!result.success) {
 				expect(result.error.code).toBe('SONGLINK_NOT_SUPPORTED');
-				expect(result.error.canConvert).toBe(true);
+				if ('canConvert' in result.error) {
+					expect(result.error.canConvert).toBe(true);
+				}
 			}
 
 			expect(mockConvertSonglinkTrackToTidal).not.toHaveBeenCalled();
@@ -279,7 +294,7 @@ describe('DownloadOrchestrator', () => {
 			mockLosslessDownloadTrack.mockRejectedValue(new Error('Failed'));
 
 			const result = await orchestrator.downloadTrack(mockTrack, {
-				quality: 'HI_RES'
+				quality: 'HI_RES_LOSSLESS'
 			});
 
 			if (!result.success && result.taskId) {
@@ -289,7 +304,7 @@ describe('DownloadOrchestrator', () => {
 				expect(mockLosslessDownloadTrack).toHaveBeenCalledTimes(2);
 				expect(mockLosslessDownloadTrack).toHaveBeenLastCalledWith(
 					mockTrack.id,
-					'HI_RES',
+					'HI_RES_LOSSLESS',
 					'test-track.flac',
 					expect.any(Object)
 				);

@@ -223,6 +223,10 @@ describe('PlaylistOrchestrator', () => {
 
 			expect(result.success).toBe(false);
 			if (!result.success) {
+				expect(result.error).toBeTruthy();
+				if (!result.error) {
+					throw new Error('Expected error for invalid URL');
+				}
 				expect(result.error.code).toBe('INVALID_URL');
 				expect(result.error.retry).toBe(false);
 			}
@@ -237,6 +241,10 @@ describe('PlaylistOrchestrator', () => {
 
 			expect(result.success).toBe(false);
 			if (!result.success) {
+				expect(result.error).toBeTruthy();
+				if (!result.error) {
+					throw new Error('Expected error for empty URL');
+				}
 				expect(result.error.code).toBe('INVALID_URL');
 			}
 		});
@@ -257,8 +265,14 @@ describe('PlaylistOrchestrator', () => {
 
 			expect(result.success).toBe(false);
 			if (!result.success) {
+				expect(result.error).toBeTruthy();
+				if (!result.error) {
+					throw new Error('Expected error for empty playlist');
+				}
 				expect(result.error.code).toBe('ALL_TRACKS_FAILED');
-				expect(result.error.failedCount).toBe(2);
+				if (result.error.code === 'ALL_TRACKS_FAILED') {
+					expect(result.error.failedCount).toBe(2);
+				}
 			}
 
 			expect(mockSearchStoreActions.commit).toHaveBeenCalledWith(
@@ -282,6 +296,10 @@ describe('PlaylistOrchestrator', () => {
 
 			expect(result.success).toBe(false);
 			if (!result.success) {
+				expect(result.error).toBeTruthy();
+				if (!result.error) {
+					throw new Error('Expected error for conversion failure');
+				}
 				expect(result.error.code).toBe('FETCH_FAILED');
 				expect(result.error.retry).toBe(true);
 			}
@@ -338,6 +356,10 @@ describe('PlaylistOrchestrator', () => {
 
 			expect(result.success).toBe(false);
 			if (!result.success) {
+				expect(result.error).toBeTruthy();
+				if (!result.error) {
+					throw new Error('Expected error for cancellation');
+				}
 				expect(result.error.code).toBe('CONVERSION_CANCELLED');
 				expect(result.error.retry).toBe(false);
 			}

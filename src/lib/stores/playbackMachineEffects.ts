@@ -1,7 +1,8 @@
 import { losslessAPI } from '$lib/api';
 import { toasts } from '$lib/stores/toasts';
 import { API_CONFIG } from '$lib/config';
-import { convertSonglinkTrackToTidal } from '$lib/services/playback';
+import { convertSonglinkTrackToTidal } from '$lib/utils/trackConversion';
+import { isSonglinkTrack } from '$lib/types';
 import type { PlaybackEvent, SideEffect } from '$lib/machines/playbackMachine';
 import type { Track } from '$lib/types';
 
@@ -29,13 +30,20 @@ export class PlaybackMachineSideEffectHandler {
 	): Promise<void> {
 		switch (effect.type) {
 			case 'CONVERT_SONGLINK': {
-				try {
-					const tidalTrack = await convertSonglinkTrackToTidal(effect.track);
-					dispatch({ type: 'CONVERSION_COMPLETE', track: tidalTrack });
-				} catch (error) {
+				if (!isSonglinkTrack(effect.track)) {
 					dispatch({
 						type: 'CONVERSION_ERROR',
-						error: error instanceof Error ? error : new Error('Conversion failed')
+						error: new Error('Conversion requested for non-Songlink track')
+					});
+					break;
+				}
+				const conversion = await convertSonglinkTrackToTidal(effect.track);
+				if (conversion.success && conversion.track) {
+					dispatch({ type: 'CONVERSION_COMPLETE', track: conversion.track });
+				} else {
+					dispatch({
+						type: 'CONVERSION_ERROR',
+						error: new Error(conversion.error?.message ?? 'Conversion failed')
 					});
 				}
 				break;

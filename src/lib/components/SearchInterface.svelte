@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
-	import { hasRegionTargets } from '$lib/config';
-	import { downloadAlbum, getExtensionForQuality } from '$lib/downloads';
+import { losslessAPI } from '$lib/api';
+import { hasRegionTargets } from '$lib/config';
+import { downloadAlbum } from '$lib/downloads';
 	import { formatArtists } from '$lib/utils/formatters';
 	import { playerStore } from '$lib/stores/player';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
@@ -17,7 +17,6 @@
 		Track,
 		Album,
 		AudioQuality,
-		SonglinkTrack,
 		PlayableTrack
 	} from '$lib/types';
 	import { isSonglinkTrack } from '$lib/types';

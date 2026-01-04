@@ -1,15 +1,37 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { downloadUiStore } from './downloadUi';
-import type { PlayableTrack } from '../types';
+import type { PlayableTrack, Track } from '../types';
 
-const makeTrack = (id: number): PlayableTrack =>
-	({
+const makeTrack = (id: number): PlayableTrack => {
+	const track: Track = {
 		id,
 		title: `Track ${id}`,
-		artists: [],
-		duration: 120
-	}) as PlayableTrack;
+		duration: 120,
+		version: null,
+		popularity: 0,
+		editable: false,
+		explicit: false,
+		trackNumber: 1,
+		volumeNumber: 1,
+		isrc: 'TEST',
+		url: 'https://example.com',
+		audioQuality: 'LOSSLESS',
+		audioModes: ['STEREO'],
+		allowStreaming: true,
+		streamReady: true,
+		premiumStreamingOnly: false,
+		artist: { id: 1, name: 'Test Artist', type: 'MAIN' },
+		artists: [{ id: 1, name: 'Test Artist', type: 'MAIN' }],
+		album: {
+			id: 1,
+			title: 'Test Album',
+			cover: '',
+			videoCover: null
+		}
+	};
+	return track;
+};
 
 describe('downloadUiStore', () => {
 	beforeEach(() => {

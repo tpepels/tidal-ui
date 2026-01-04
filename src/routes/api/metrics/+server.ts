@@ -21,8 +21,6 @@ export const GET: RequestHandler = async ({ url }) => {
 
 		operation.complete(metricsData);
 
-		operation.complete(metrics);
-
 		return json({
 			timestamp: Date.now(),
 			timeRange,
