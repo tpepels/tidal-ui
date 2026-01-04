@@ -269,12 +269,14 @@ test('seek updates the playback time display', async ({ page, browserName }) => 
 	const playerTitle = page.getByRole('heading', { name: /Mock Track/i }).first();
 	await expect(playerTitle).toBeVisible();
 
+	await page.waitForFunction(() => typeof window.__tidalSetDuration === 'function');
 	await page.evaluate(() => {
 		window.__tidalSetDuration?.(120);
 	});
 	const durationLabel = page.locator('.audio-player-glass .mt-1 span').nth(1);
 	await expect(durationLabel).toHaveText('2:00');
 
+	await page.waitForFunction(() => typeof window.__tidalSetCurrentTime === 'function');
 	await page.evaluate(() => {
 		window.__tidalSetCurrentTime?.(42);
 	});
