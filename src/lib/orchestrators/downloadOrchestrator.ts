@@ -18,6 +18,7 @@ import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
 import { downloadUiStore } from '$lib/stores/downloadUi';
 import { userPreferencesStore } from '$lib/stores/userPreferences';
 import { toasts } from '$lib/stores/toasts';
+import { trackError } from '$lib/core/errorTracker';
 import { get } from 'svelte/store';
 
 /**
@@ -337,11 +338,23 @@ export class DownloadOrchestrator {
 		switch (mode) {
 			case 'alert':
 				if (type === 'error') {
-					alert(message);
+					toasts.error(message);
+					trackError(new Error(message), {
+						component: 'download-orchestrator',
+						source: 'notification',
+						severity: 'medium'
+					});
 				}
 				break;
 			case 'toast':
 				toasts[type](message);
+				if (type === 'error') {
+					trackError(new Error(message), {
+						component: 'download-orchestrator',
+						source: 'notification',
+						severity: 'medium'
+					});
+				}
 				break;
 			case 'silent':
 				// No notification

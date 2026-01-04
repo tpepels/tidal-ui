@@ -1,4 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const requestedBrowsers = (process.env.PLAYWRIGHT_BROWSERS ?? 'chromium,firefox')
 	.split(',')
@@ -6,7 +10,7 @@ const requestedBrowsers = (process.env.PLAYWRIGHT_BROWSERS ?? 'chromium,firefox'
 	.filter(Boolean);
 
 export default defineConfig({
-	testDir: './tests/e2e',
+	testDir: resolve(__dirname, '../../tests/e2e'),
 	fullyParallel: true,
 	forbidOnly: !!process.env.CI,
 	retries: process.env.CI ? 2 : 0,
@@ -15,7 +19,9 @@ export default defineConfig({
 	use: {
 		baseURL: 'https://127.0.0.1:5000',
 		ignoreHTTPSErrors: true,
-		trace: 'on-first-retry'
+		trace: 'retain-on-failure',
+		video: 'retain-on-failure',
+		screenshot: 'only-on-failure'
 	},
 	projects: [
 		requestedBrowsers.includes('chromium')
@@ -42,6 +48,7 @@ export default defineConfig({
 		url: 'https://127.0.0.1:5000',
 		env: {
 			E2E_OFFLINE: 'true',
+			VITE_E2E: 'true',
 			REDIS_DISABLED: 'true'
 		},
 		ignoreHTTPSErrors: true,

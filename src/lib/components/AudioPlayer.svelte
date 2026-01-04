@@ -1,11 +1,6 @@
 <!--
-	ARCHITECTURAL WARNING: This component has complex reactive effects that are prone to infinite loops.
-	DO NOT MODIFY the $effect blocks without architectural review. Changes here can cause:
-	- Infinite playback loops
-	- Unresponsive UI
-	- Battery drain on mobile devices
-
-	If you need to modify playback logic, consider the state machine approach from the stabilization plan.
+	Playback logic is owned by the playback state machine.
+	Avoid adding store-driven playback effects here; route intent/events through playbackMachine actions.
 -->
 <script lang="ts">
 	console.log('[AudioPlayer] Component loading');
@@ -14,21 +9,16 @@
 	import { playerStore } from '$lib/stores/player';
 	import { lyricsStore } from '$lib/stores/lyrics';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
-	import { toasts } from '$lib/stores/toasts';
+	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { formatArtists } from '$lib/utils/formatters';
 	import { losslessAPI } from '$lib/api';
-	import type { Track, AudioQuality, SonglinkTrack, PlayableTrack } from '$lib/types';
+	import type { Track, AudioQuality, PlayableTrack } from '$lib/types';
 	import { isSonglinkTrack } from '$lib/types';
 	// Playback domain services
 	import {
-		convertSonglinkTrackToTidal,
-		needsConversion,
-		requestAudioPlayback as requestAudioPlaybackService,
-		seekToPosition,
 		handlePreviousTrack as handlePreviousTrackService,
 		setVolume as setVolumeService,
-		toggleMute as toggleMuteService,
-		handleExternalSeek
+		toggleMute as toggleMuteService
 	} from '$lib/services/playback';
 	// Orchestrators
 	import { downloadOrchestrator } from '$lib/orchestrators';
@@ -40,6 +30,7 @@
 	import { createPlaybackFallbackController } from '$lib/controllers/playbackFallbackController';
 	import { createTrackLoadController } from '$lib/controllers/trackLoadController';
 	import { createPlaybackTransitions } from '$lib/controllers/playbackTransitions';
+	import { playbackMachine } from '$lib/stores/playbackMachine.svelte';
 	import {
 		Play,
 		Pause,
@@ -66,6 +57,7 @@ let isMuted = $state(false);
 let previousVolume = 0.8;
 	let currentTrackId: number | null = null;
 	let loadSequence = 0;
+	let lastMachineLoadRequestId = 0;
 	let bufferedPercent = $state(0);
 	let lastQualityTrackId: number | string | null = null;
 	let lastQualityForTrack: AudioQuality | null = null;
@@ -87,43 +79,21 @@ let previousVolume = 0.8;
 	const hiResQualities = new Set<AudioQuality>(['HI_RES_LOSSLESS']);
 	const sampleRateLabel = $derived(formatSampleRate($playerStore.sampleRate));
 	const bitDepthLabel = $derived(formatBitDepth($playerStore.bitDepth));
+	const machineStreamUrl = $derived(playbackMachine.streamUrl ?? streamUrl);
 	const isFirefox = typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent);
 	let dashPlaybackActive = false;
 	let supportsLosslessPlayback = true;
 	let resumeAfterFallback = false;
-let pendingPlayAfterSource = false;
-
-	function requestAudioPlayback(reason: string) {
-		if (!audioElement) return;
-		const promise = audioElement.play();
-		if (promise?.catch) {
-			promise.catch((error) => {
-				console.error(`[AudioPlayer] play() failed during ${reason}`, error);
-				playerStore.setLoading(false);
-				// Stop trying to play if we keep failing
-				if (reason === 'state machine play request') {
-					console.warn('[AudioPlayer] Playback failed, pausing to prevent loops');
-					playerStore.pause();
-				}
-				if (typeof DOMException !== 'undefined' && error instanceof DOMException) {
-					if (error.name === 'AbortError') {
-						pendingPlayAfterSource = true;
-					}
-				}
-			});
-		}
-	}
 
 	const mediaSessionController = createMediaSessionController(
 		playerStore,
 		() => audioElement,
 		{
 			onPlay: () => {
-				playbackTransitions.play();
+				requestPlay();
 			},
 			onPause: () => {
-				playbackTransitions.pause();
-				audioElement?.pause();
+				requestPause();
 			},
 			onPrevious: () => {
 				handlePrevious();
@@ -136,6 +106,7 @@ let pendingPlayAfterSource = false;
 				const nextTime = Math.max(0, time);
 				audioElement.currentTime = nextTime;
 				playbackTransitions.seekTo(nextTime);
+				playbackMachine.actions.seek(nextTime);
 			},
 			onSeekBy: (delta: number) => {
 				if (!audioElement) return;
@@ -146,17 +117,15 @@ let pendingPlayAfterSource = false;
 					: Math.max(0, tentative);
 				audioElement.currentTime = bounded;
 				playbackTransitions.seekTo(bounded);
+				playbackMachine.actions.seek(bounded);
 			},
 			onStop: () => {
-				playbackTransitions.pause();
-				if (audioElement) {
-					audioElement.pause();
-					audioElement.currentTime = 0;
-				}
+				requestPause();
 				playbackTransitions.seekTo(0);
+				playbackMachine.actions.seek(0);
 			},
 			onPlayRequest: (reason: string) => {
-				requestAudioPlayback(reason);
+				requestPlay();
 			}
 		}
 	);
@@ -178,16 +147,27 @@ let pendingPlayAfterSource = false;
 		setDashPlaybackActive: (value) => {
 			dashPlaybackActive = value;
 		},
-		setLoading: (value) => {
-			playerStore.setLoading(value);
-		},
+		setLoading: () => {},
 		setSampleRate: (value) => playerStore.setSampleRate(value),
 		setBitDepth: (value) => playerStore.setBitDepth(value),
 		setReplayGain: (value) => playerStore.setReplayGain(value),
 		createSequence: () => ++loadSequence,
 		getSequence: () => loadSequence,
 		isHiResQuality: (quality) => (quality ? hiResQualities.has(quality) : false),
-		preloadThresholdSeconds: PRELOAD_THRESHOLD_SECONDS
+		preloadThresholdSeconds: PRELOAD_THRESHOLD_SECONDS,
+		getPlaybackQuality: () => playbackMachine.quality,
+		onLoadComplete: (url, quality) => {
+			playbackMachine.dispatch({ type: 'LOAD_COMPLETE', streamUrl: url ?? null, quality });
+		},
+		onLoadError: (error) => {
+			playbackMachine.dispatch({
+				type: 'LOAD_ERROR',
+				error: error instanceof Error ? error : new Error('Failed to load track')
+			});
+		},
+		onFallbackRequested: (quality, reason) => {
+			playbackMachine.dispatch({ type: 'FALLBACK_REQUESTED', quality, reason });
+		}
 	});
 
 	const audioElementController = createAudioElementController({
@@ -215,18 +195,37 @@ let pendingPlayAfterSource = false;
 		setDashPlaybackActive: (value) => {
 			dashPlaybackActive = value;
 		},
-		setLoading: (value) => {
-			playerStore.setLoading(value);
-		},
+		setLoading: () => {},
 		loadStandardTrack: (track, quality, sequence) =>
 			trackLoadController.loadStandardTrack(track, quality, sequence),
 		createSequence: () => ++loadSequence,
 		setResumeAfterFallback: (value) => {
 			resumeAfterFallback = value;
+		},
+		onFallbackRequested: (quality, reason) => {
+			playbackMachine.dispatch({ type: 'FALLBACK_REQUESTED', quality, reason });
 		}
 	});
 
 	const playbackTransitions = createPlaybackTransitions(playerStore);
+
+	function requestPlay() {
+		playbackTransitions.play();
+		playbackMachine.actions.play();
+	}
+
+	function requestPause() {
+		playbackTransitions.pause();
+		playbackMachine.actions.pause();
+	}
+
+	function togglePlayback() {
+		if ($playerStore.isPlaying) {
+			requestPause();
+		} else {
+			requestPlay();
+		}
+	}
 
 	let isSeeking = false;
 
@@ -258,9 +257,6 @@ let pendingPlayAfterSource = false;
 		onVisibilityChange(false);
 		onHeightChange(0);
 
-		// Optional: if you want dismiss to stop playback, uncomment:
-		// playerStore.pause();
-		// playerStore.clearQueue(); // or playerStore.reset();
 	}
 
 	function restorePlayer() {
@@ -285,92 +281,22 @@ let pendingPlayAfterSource = false;
 	});
 	// -----------------------------
 
-	// Wrapper for the track conversion service to handle component-specific needs
-	async function convertSonglinkTrackToTidalWrapper(songlinkTrack: SonglinkTrack): Promise<Track> {
-		const result = await convertSonglinkTrackToTidal(songlinkTrack);
-
-		if (!result.success || !result.track) {
-			const errorMessage = result.error?.message || `Failed to convert: ${songlinkTrack.title}`;
-			throw new Error(errorMessage);
-		}
-
-		return result.track;
-	}
-
-	const convertingTracks = new Set<string>();
+	// Playback is controlled via playbackMachine; playerStore mirrors machine state for UI.
 
 	$effect(() => {
-		const current = $playerStore.currentTrack;
-		if (current && isSonglinkTrack(current)) {
-
-			if (convertingTracks.has(current.id)) {
-				return;
-			}
-
-			convertingTracks.add(current.id);
-
-			convertSonglinkTrackToTidalWrapper(current)
-				.then((tidalTrack) => {
-					const state = get(playerStore);
-					if (
-						state.currentTrack &&
-						isSonglinkTrack(state.currentTrack) &&
-						state.currentTrack.id === current.id
-					) {
-						playerStore.setTrack(tidalTrack);
-						// Conversion completed
-					}
-				})
-				.catch((error) => {
-					console.error('[Conversion Effect] Conversion FAILED:', error);
-					toasts.error(`Failed to play track: ${error instanceof Error ? error.message : 'Unknown error'}`);
-				})
-				.finally(() => {
-					convertingTracks.delete(current.id);
-				});
-		}
-	});
-
-	$effect(() => {
-		const current = $playerStore.currentTrack;
-		if (!audioElement || !current) {
-			if (!current) {
-				currentTrackId = null;
-				streamUrl = '';
-				bufferedPercent = 0;
-				dashPlaybackActive = false;
-				lastQualityTrackId = null;
-				lastQualityForTrack = null;
-				currentPlaybackQuality = null;
-			}
-		} else if (current.id !== currentTrackId) {
-			if (!isSonglinkTrack(current)) {
-				currentTrackId = current.id;
-				streamUrl = '';
-				bufferedPercent = 0;
-				dashPlaybackActive = false;
-				lastQualityTrackId = current.id;
-				lastQualityForTrack = $playerStore.quality;
-				currentPlaybackQuality = null;
-				loadTrack(current);
-			}
-		}
-	});
-
-	// Playback is controlled directly via playerStore.
-
-	$effect(() => {
-		const track = $playerStore.currentTrack;
-		if (!audioElement || !track) {
+		const machineState = playbackMachine.state;
+		const machineContext = playbackMachine.context;
+		if (machineState !== 'loading') {
 			return;
 		}
-		const quality = $playerStore.quality;
-		if (lastQualityTrackId === track.id && lastQualityForTrack === quality) {
+		if (!machineContext.currentTrack || isSonglinkTrack(machineContext.currentTrack)) {
 			return;
 		}
-		lastQualityTrackId = track.id;
-		lastQualityForTrack = quality;
-		loadTrack(track);
+		if (machineContext.loadRequestId === lastMachineLoadRequestId) {
+			return;
+		}
+		lastMachineLoadRequestId = machineContext.loadRequestId;
+		loadTrack(machineContext.currentTrack);
 	});
 
 	$effect(() => {
@@ -401,9 +327,7 @@ let pendingPlayAfterSource = false;
 	function playFromQueue(index: number) {
 		console.info('[AudioPlayer] playFromQueue called for index', index);
 		playbackTransitions.playFromQueueIndex(index);
-		if (audioElement && audioElement.paused) {
-			requestAudioPlayback('queue play');
-		}
+		playbackMachine.actions.play();
 	}
 
 	function removeFromQueue(index: number, event?: MouseEvent) {
@@ -436,12 +360,17 @@ let pendingPlayAfterSource = false;
 		}
 	});
 
+	let lastObservedPlayState: boolean | null = null;
 	$effect(() => {
-		if ($playerStore.isPlaying && !$playerStore.isLoading && audioElement) {
-			console.info('[AudioPlayer] store requested play; ensuring audio element is playing');
-			requestAudioPlayback('store play request');
-		} else if (!$playerStore.isPlaying && audioElement) {
-			audioElement.pause();
+		const shouldPlay = $playerStore.isPlaying;
+		if (lastObservedPlayState === shouldPlay) {
+			return;
+		}
+		lastObservedPlayState = shouldPlay;
+		if (shouldPlay) {
+			playbackMachine.actions.play();
+		} else {
+			playbackMachine.actions.pause();
 		}
 	});
 
@@ -458,7 +387,10 @@ let pendingPlayAfterSource = false;
 	}
 
 	function handleAudioError(event: Event) {
-		playbackFallbackController.handleAudioError(event);
+		const didFallback = playbackFallbackController.handleAudioError(event);
+		if (!didFallback) {
+			playbackMachine.actions.onAudioError(event);
+		}
 	}
 
 	function handleDurationChange() {
@@ -474,8 +406,8 @@ let pendingPlayAfterSource = false;
 	}
 
 	function handleLoadedData() {
-		playerStore.setLoading(false);
 		updateBufferedPercent();
+		playbackMachine.actions.onAudioReady();
 
 		const state = get(playerStore);
 		if (audioElement && state.currentTime > 0 && Math.abs(audioElement.currentTime - state.currentTime) > 1) {
@@ -483,14 +415,23 @@ let pendingPlayAfterSource = false;
 		}
 
 		mediaSessionController.updatePositionState();
-		if (audioElement && $playerStore.isPlaying && audioElement.paused) {
-			const shouldResume = resumeAfterFallback || pendingPlayAfterSource || $playerStore.isPlaying;
-			resumeAfterFallback = false;
-			pendingPlayAfterSource = false;
-			if (shouldResume) {
-				requestAudioPlayback('source loaded');
-			}
+		const shouldResume = resumeAfterFallback || $playerStore.isPlaying;
+		resumeAfterFallback = false;
+		if (shouldResume) {
+			playbackMachine.actions.play();
 		}
+	}
+
+	function handleAudioPlaying() {
+		playbackMachine.actions.onAudioPlaying();
+	}
+
+	function handleAudioPaused() {
+		playbackMachine.actions.onAudioPaused();
+	}
+
+	function handleAudioWaiting() {
+		playbackMachine.actions.onAudioWaiting();
 	}
 
 	function getPercent(current: number, total: number): number {
@@ -508,6 +449,7 @@ let pendingPlayAfterSource = false;
 
 	function handleEnded() {
 		audioElementController.handleEnded();
+		playbackMachine.actions.onTrackEnd();
 	}
 
 	function handleSeek(event: MouseEvent | TouchEvent) {
@@ -518,7 +460,7 @@ let pendingPlayAfterSource = false;
 		const percent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
 		const newTime = percent * $playerStore.duration;
 
-		seekToPosition(audioElement, newTime);
+		playbackMachine.actions.seek(newTime);
 		mediaSessionController.updatePositionState();
 	}
 
@@ -564,7 +506,10 @@ let pendingPlayAfterSource = false;
 		}
 
 		const shouldResume = !$playerStore.isPlaying;
-		handleExternalSeek(audioElement, targetSeconds, shouldResume);
+		playbackMachine.actions.seek(targetSeconds);
+		if (shouldResume) {
+			playbackMachine.actions.play();
+		}
 		mediaSessionController.updatePositionState();
 	}
 
@@ -584,7 +529,7 @@ let pendingPlayAfterSource = false;
 				: track.album?.title ?? track.artist?.name;
 
 			await downloadOrchestrator.downloadTrack(track, {
-				quality: $playerStore.quality,
+				quality: $downloadPreferencesStore.downloadQuality,
 				autoConvertSonglink: true,
 				notificationMode: 'alert',
 				subtitle
@@ -654,9 +599,14 @@ let pendingPlayAfterSource = false;
 
 	onMount(() => {
 		let detachLyricsSeek: (() => void) | null = null;
+		let unsubscribePlayer: (() => void) | null = null;
+		let lastObservedTrackId: number | string | null = null;
+		let lastObservedQuality: AudioQuality | null = null;
 
 		if (audioElement) {
 			audioElement.volume = $playerStore.volume;
+			playbackMachine.setAudioElement(audioElement);
+			playbackMachine.setUseExternalStreamLoader(true);
 		}
 
 		if (typeof window !== 'undefined') {
@@ -713,10 +663,68 @@ let pendingPlayAfterSource = false;
 			};
 		}
 
+		const syncFromPlayerState = (state: {
+			currentTrack: PlayableTrack | null;
+			quality: AudioQuality;
+		}) => {
+			const current = state.currentTrack;
+
+			if (!audioElement || !current) {
+				if (!current) {
+					currentTrackId = null;
+					streamUrl = '';
+					bufferedPercent = 0;
+					dashPlaybackActive = false;
+					lastQualityTrackId = null;
+					lastQualityForTrack = null;
+					currentPlaybackQuality = null;
+					lastObservedTrackId = null;
+					lastObservedQuality = null;
+				}
+				return;
+			}
+
+			const trackId = current.id;
+			if (trackId !== lastObservedTrackId) {
+				const machineTrack = playbackMachine.currentTrack;
+				if (machineTrack && machineTrack.id === trackId) {
+					currentTrackId = typeof trackId === 'number' ? trackId : null;
+					lastQualityTrackId = trackId;
+					lastQualityForTrack = state.quality;
+					lastObservedTrackId = trackId;
+					lastObservedQuality = state.quality;
+					return;
+				}
+				currentTrackId = typeof trackId === 'number' ? trackId : null;
+				streamUrl = '';
+				bufferedPercent = 0;
+				dashPlaybackActive = false;
+				lastQualityTrackId = trackId;
+				lastQualityForTrack = state.quality;
+				currentPlaybackQuality = null;
+				lastObservedTrackId = trackId;
+				lastObservedQuality = state.quality;
+				playbackMachine.actions.changeQuality(state.quality);
+				playbackMachine.actions.loadTrack(current);
+				return;
+			}
+
+			if (state.quality !== lastObservedQuality) {
+				lastObservedQuality = state.quality;
+				lastQualityTrackId = trackId;
+				lastQualityForTrack = state.quality;
+				playbackMachine.actions.changeQuality(state.quality);
+			}
+		};
+
+		unsubscribePlayer = playerStore.subscribe(syncFromPlayerState);
+		syncFromPlayerState(get(playerStore));
+
 		return () => {
 			resizeObserver?.disconnect();
 			mediaSessionController.cleanup();
 			detachLyricsSeek?.();
+			unsubscribePlayer?.();
 			trackLoadController.destroy().catch((error) => {
 				console.debug('Shaka cleanup failed', error);
 			});
@@ -741,12 +749,15 @@ let pendingPlayAfterSource = false;
 
 <audio
 	bind:this={audioElement}
-	src={streamUrl}
+	src={machineStreamUrl}
 	ontimeupdate={handleTimeUpdate}
 	ondurationchange={handleDurationChange}
 	onended={handleEnded}
 	onloadeddata={handleLoadedData}
 	onloadedmetadata={updateBufferedPercent}
+	onplaying={handleAudioPlaying}
+	onpause={handleAudioPaused}
+	onwaiting={handleAudioWaiting}
 	onprogress={handleProgress}
 	onerror={handleAudioError}
 	class="hidden"
@@ -877,7 +888,7 @@ let pendingPlayAfterSource = false;
 									</button>
 
 									<button
-										onclick={() => playbackTransitions.togglePlay()}
+										onclick={togglePlayback}
 										class="rounded-full bg-white p-3 sm:p-2.5 md:p-3 text-gray-900 transition-transform hover:scale-105"
 										aria-label={$playerStore.isPlaying ? 'Pause' : 'Play'}
 									>

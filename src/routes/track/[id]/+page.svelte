@@ -6,6 +6,7 @@
 	import { onMount } from 'svelte';
 	import { playerStore } from '$lib/stores/player';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
+	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 	import { buildTrackFilename } from '$lib/downloads';
@@ -141,7 +142,7 @@
 		if (!track) return;
 		
 		isDownloading = true;
-		const quality = $playerStore.quality;
+		const quality = $downloadPreferencesStore.downloadQuality;
 		const filename = buildTrackFilename(
 			track.album,
 			track,

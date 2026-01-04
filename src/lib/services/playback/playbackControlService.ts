@@ -113,25 +113,3 @@ export function toggleMute(
 		};
 	}
 }
-
-/**
- * Handles seeking from external sources (e.g., lyrics panel)
- */
-export function handleExternalSeek(
-	audioElement: HTMLAudioElement,
-	timeSeconds: number,
-	shouldResume: boolean = true
-): void {
-	const state = get(playerStore);
-
-	if (timeSeconds >= 0 && timeSeconds <= state.duration) {
-		seekToPosition(audioElement, timeSeconds);
-
-		// Resume playback if requested and not already playing
-		if (shouldResume && !state.isPlaying) {
-			requestAudioPlayback(audioElement).catch((err) => {
-				console.error('[PlaybackControl] Failed to resume after seek:', err);
-			});
-		}
-	}
-}

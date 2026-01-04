@@ -97,7 +97,7 @@ import {
 	let cancelledIds = $state(new Set<number | string>());
 	let activeMenuId = $state<number | string | null>(null);
 
-	const albumDownloadQuality = $derived($userPreferencesStore.playbackQuality as AudioQuality);
+	const albumDownloadQuality = $derived($downloadPreferencesStore.downloadQuality as AudioQuality);
 	const albumDownloadMode = $derived($downloadPreferencesStore.mode);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
 	const downloadCoverSeperatelyPreference = $derived(
@@ -116,6 +116,10 @@ import {
 	};
 
 	const ensureSupportedRegion = (value: RegionOption): RegionOption => {
+		const isTestHookEnabled = import.meta.env.DEV || import.meta.env.VITE_E2E === 'true';
+		if (isTestHookEnabled) {
+			return value;
+		}
 		if (value !== 'auto' && !regionAvailability[value]) {
 			return 'auto';
 		}
@@ -276,7 +280,7 @@ import {
 
 		try {
 			const result = await downloadOrchestrator.downloadTrack(track, {
-				quality: $userPreferencesStore.playbackQuality,
+				quality: $downloadPreferencesStore.downloadQuality,
 				subtitle,
 				notificationMode: 'toast',
 				ffmpegAutoTriggered: false,
@@ -457,7 +461,7 @@ import {
 				}
 
 				await downloadOrchestrator.downloadTrack(track, {
-					quality: $playerStore.quality,
+					quality: $downloadPreferencesStore.downloadQuality,
 					subtitle,
 					notificationMode: 'silent',
 					ffmpegAutoTriggered: false,

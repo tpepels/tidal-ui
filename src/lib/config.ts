@@ -216,7 +216,8 @@ export function isProxyTarget(url: URL): boolean {
 function shouldPreferPrimaryTarget(url: URL): boolean {
 	const path = url.pathname.toLowerCase();
 
-	// Prefer the proxied primary target for endpoints that routinely require the legacy domain
+	// Prefer the proxied primary target for endpoints that still require the legacy domain.
+	// Revisit once legacy endpoints are retired.
 	if (path.includes('/album/') || path.includes('/artist/') || path.includes('/playlist/')) {
 		return true;
 	}

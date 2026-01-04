@@ -26,6 +26,5 @@ export {
 	seekToPosition,
 	handlePreviousTrack,
 	setVolume,
-	toggleMute,
-	handleExternalSeek
+	toggleMute
 } from './playbackControlService';

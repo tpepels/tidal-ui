@@ -2,7 +2,7 @@ import { browser } from '$app/environment';
 import { writable } from 'svelte/store';
 import type { AudioQuality } from '../types';
 import { type PerformanceLevel } from '../utils/performance';
-import { debouncedSave, loadFromStorage, saveToStorage } from '../utils/persistence';
+import { debouncedSave, loadFromStorage } from '../utils/persistence';
 
 export type PerformanceMode = 'medium' | 'low';
 
@@ -14,48 +14,12 @@ export interface UserPreferencesState {
 }
 
 const STORAGE_KEY = 'user-preferences';
-const LEGACY_STORAGE_KEY = 'tidal-ui.userPreferences';
-
 const DEFAULT_STATE: UserPreferencesState = {
 	playbackQuality: 'HI_RES_LOSSLESS',
 	convertAacToMp3: false,
 	downloadCoversSeperately: false,
 	performanceMode: 'low'
 };
-
-function parseStoredPreferences(raw: string | null): UserPreferencesState {
-	if (!raw) {
-		return DEFAULT_STATE;
-	}
-
-	try {
-		const parsed = JSON.parse(raw) as Partial<UserPreferencesState>;
-		const quality = parsed?.playbackQuality;
-		const convertFlag = parsed?.convertAacToMp3;
-		const downloadCoversFlag = parsed?.downloadCoversSeperately;
-		const perfMode = parsed?.performanceMode;
-		return {
-			playbackQuality:
-				quality === 'HI_RES_LOSSLESS' ||
-				quality === 'LOSSLESS' ||
-				quality === 'HIGH' ||
-				quality === 'LOW'
-					? quality
-					: DEFAULT_STATE.playbackQuality,
-			convertAacToMp3:
-				typeof convertFlag === 'boolean' ? convertFlag : DEFAULT_STATE.convertAacToMp3,
-			downloadCoversSeperately:
-				typeof downloadCoversFlag === 'boolean'
-					? downloadCoversFlag
-					: DEFAULT_STATE.downloadCoversSeperately,
-			performanceMode:
-				perfMode === 'medium' || perfMode === 'low' ? perfMode : DEFAULT_STATE.performanceMode
-		};
-	} catch (error) {
-		console.warn('Failed to parse stored user preferences', error);
-		return DEFAULT_STATE;
-	}
-}
 
 const readInitialPreferences = (): UserPreferencesState => {
 	if (!browser) {
@@ -65,13 +29,6 @@ const readInitialPreferences = (): UserPreferencesState => {
 		const stored = loadFromStorage(STORAGE_KEY, null) as UserPreferencesState | null;
 		if (stored && typeof stored === 'object') {
 			return stored;
-		}
-
-		const legacyRaw = localStorage.getItem(LEGACY_STORAGE_KEY);
-		if (legacyRaw) {
-			const migrated = parseStoredPreferences(legacyRaw);
-			saveToStorage(STORAGE_KEY, migrated);
-			return migrated;
 		}
 
 		return DEFAULT_STATE;
@@ -98,9 +55,6 @@ const createUserPreferencesStore = () => {
 				const stored = loadFromStorage(STORAGE_KEY, DEFAULT_STATE) as UserPreferencesState;
 				set(stored);
 				return;
-			}
-			if (event.key === LEGACY_STORAGE_KEY) {
-				set(parseStoredPreferences(event.newValue));
 			}
 		});
 	}

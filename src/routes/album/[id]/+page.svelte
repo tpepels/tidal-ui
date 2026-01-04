@@ -139,7 +139,7 @@
 		isDownloadingAll = true;
 		downloadedCount = 0;
 		downloadError = null;
-		const quality = $userPreferencesStore.playbackQuality;
+		const quality = $downloadPreferencesStore.downloadQuality;
 		const mode = albumDownloadMode;
 
 		try {

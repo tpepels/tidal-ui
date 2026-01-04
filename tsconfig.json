@@ -1,5 +1,5 @@
 {
-	// This file redirects to the actual config in config/build/
-	// TypeScript tooling requires tsconfig.json to be in the project root
-	"extends": "./config/build/tsconfig.json"
+	// SvelteKit expects the root config to extend the generated tsconfig
+	"extends": "./.svelte-kit/tsconfig.json",
+	"references": [{ "path": "./config/build/tsconfig.json" }]
 }

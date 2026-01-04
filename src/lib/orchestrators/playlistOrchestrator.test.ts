@@ -8,19 +8,22 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { PlaylistOrchestrator } from './playlistOrchestrator';
 import type { SonglinkTrack } from '$lib/types';
 
-// Mock stores
-const mockSearchStoreActions = {
-	commit: vi.fn()
-};
-
-const mockSearchStore = {
-	query: '',
-	isPlaylistConversionMode: false
-};
-
-// Mock service
-const mockConvertSpotifyPlaylistToTracks = vi.fn();
-const mockIsSpotifyPlaylistUrl = vi.fn();
+const {
+	mockSearchStoreActions,
+	mockSearchStore,
+	mockConvertSpotifyPlaylistToTracks,
+	mockIsSpotifyPlaylistUrl
+} = vi.hoisted(() => ({
+	mockSearchStoreActions: {
+		commit: vi.fn()
+	},
+	mockSearchStore: {
+		query: '',
+		isPlaylistConversionMode: false
+	},
+	mockConvertSpotifyPlaylistToTracks: vi.fn(),
+	mockIsSpotifyPlaylistUrl: vi.fn()
+}));
 
 // Mock modules
 vi.mock('$lib/stores/searchStoreAdapter', () => ({
@@ -42,28 +45,55 @@ describe('PlaylistOrchestrator', () => {
 
 	const mockTracks: SonglinkTrack[] = [
 		{
-			id: 'sl-1',
+			id: 'spotify:track:sl-1',
 			title: 'Track 1',
 			artistName: 'Artist 1',
-			albumName: 'Album 1',
 			duration: 180,
-			url: 'https://song.link/1'
+			thumbnailUrl: 'https://song.link/1.jpg',
+			sourceUrl: 'https://song.link/1',
+			songlinkData: {
+				entityUniqueId: 'sl-1',
+				userCountry: 'US',
+				pageUrl: 'https://song.link/1',
+				entitiesByUniqueId: {},
+				linksByPlatform: {}
+			},
+			isSonglinkTrack: true,
+			audioQuality: 'LOSSLESS'
 		},
 		{
-			id: 'sl-2',
+			id: 'spotify:track:sl-2',
 			title: 'Track 2',
 			artistName: 'Artist 2',
-			albumName: 'Album 2',
 			duration: 200,
-			url: 'https://song.link/2'
+			thumbnailUrl: 'https://song.link/2.jpg',
+			sourceUrl: 'https://song.link/2',
+			songlinkData: {
+				entityUniqueId: 'sl-2',
+				userCountry: 'US',
+				pageUrl: 'https://song.link/2',
+				entitiesByUniqueId: {},
+				linksByPlatform: {}
+			},
+			isSonglinkTrack: true,
+			audioQuality: 'LOSSLESS'
 		},
 		{
-			id: 'sl-3',
+			id: 'spotify:track:sl-3',
 			title: 'Track 3',
 			artistName: 'Artist 3',
-			albumName: 'Album 3',
 			duration: 220,
-			url: 'https://song.link/3'
+			thumbnailUrl: 'https://song.link/3.jpg',
+			sourceUrl: 'https://song.link/3',
+			songlinkData: {
+				entityUniqueId: 'sl-3',
+				userCountry: 'US',
+				pageUrl: 'https://song.link/3',
+				entitiesByUniqueId: {},
+				linksByPlatform: {}
+			},
+			isSonglinkTrack: true,
+			audioQuality: 'LOSSLESS'
 		}
 	];
 

@@ -1,12 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { get } from 'svelte/store';
 
-const buildLegacyPreferences = (quality: string) =>
+const buildPersistedPreferences = (quality: string) =>
 	JSON.stringify({
-		playbackQuality: quality,
-		convertAacToMp3: false,
-		downloadCoversSeperately: false,
-		performanceMode: 'low'
+		version: 1,
+		timestamp: Date.now(),
+		data: {
+			playbackQuality: quality,
+			convertAacToMp3: false,
+			downloadCoversSeperately: false,
+			performanceMode: 'low'
+		}
 	});
 
 describe('player store quality sync', () => {
@@ -38,7 +42,7 @@ describe('player store quality sync', () => {
 	});
 
 	it('initializes player quality from persisted user preferences', async () => {
-		localStorage.setItem('tidal-ui.userPreferences', buildLegacyPreferences('HIGH'));
+		localStorage.setItem('tidal-ui:user-preferences', buildPersistedPreferences('HIGH'));
 		const { userPreferencesStore } = await import('./userPreferences');
 		const { playerStore } = await import('./player');
 
@@ -47,7 +51,7 @@ describe('player store quality sync', () => {
 	});
 
 	it('updates player quality when user preferences change', async () => {
-		localStorage.setItem('tidal-ui.userPreferences', buildLegacyPreferences('LOSSLESS'));
+		localStorage.setItem('tidal-ui:user-preferences', buildPersistedPreferences('LOSSLESS'));
 		const { userPreferencesStore } = await import('./userPreferences');
 		const { playerStore } = await import('./player');
 

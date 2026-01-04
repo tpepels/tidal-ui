@@ -8,25 +8,43 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { DownloadOrchestrator } from './downloadOrchestrator';
 import type { Track, SonglinkTrack, PlayableTrack } from '$lib/types';
 
-// Mock stores
-const mockDownloadUiStore = {
-	beginTrackDownload: vi.fn(),
-	updateTrackProgress: vi.fn(),
-	updateTrackStage: vi.fn(),
-	completeTrackDownload: vi.fn(),
-	errorTrackDownload: vi.fn(),
-	cancelTrackDownload: vi.fn()
-};
-
-const mockUserPreferencesStore = {
-	subscribe: vi.fn(),
-	convertAacToMp3: true,
-	downloadCoversSeperately: false
-};
-
-// Mock services
-const mockDownloadService = vi.fn();
-const mockConvertSonglinkTrackToTidal = vi.fn();
+const {
+	mockDownloadUiStore,
+	mockUserPreferencesStore,
+	mockDownloadService,
+	mockConvertSonglinkTrackToTidal,
+	mockLosslessDownloadTrack,
+	mockToasts,
+	mockTrackError
+} = vi.hoisted(() => ({
+	mockDownloadUiStore: {
+		beginTrackDownload: vi.fn(),
+		updateTrackProgress: vi.fn(),
+		updateTrackStage: vi.fn(),
+		completeTrackDownload: vi.fn(),
+		errorTrackDownload: vi.fn(),
+		cancelTrackDownload: vi.fn(),
+		startFfmpegCountdown: vi.fn(),
+		startFfmpegLoading: vi.fn(),
+		updateFfmpegProgress: vi.fn(),
+		completeFfmpeg: vi.fn(),
+		errorFfmpeg: vi.fn(),
+		skipFfmpegCountdown: vi.fn()
+	},
+	mockUserPreferencesStore: {
+		subscribe: vi.fn(),
+		convertAacToMp3: true,
+		downloadCoversSeperately: false
+	},
+	mockDownloadService: vi.fn(),
+	mockConvertSonglinkTrackToTidal: vi.fn(),
+	mockLosslessDownloadTrack: vi.fn(),
+	mockToasts: {
+		error: vi.fn(),
+		success: vi.fn()
+	},
+	mockTrackError: vi.fn()
+}));
 
 // Mock modules
 vi.mock('$lib/stores/downloadUi', () => ({
@@ -37,9 +55,13 @@ vi.mock('$lib/stores/userPreferences', () => ({
 	userPreferencesStore: mockUserPreferencesStore
 }));
 
-vi.mock('svelte/store', () => ({
-	get: vi.fn((store) => store)
-}));
+vi.mock('svelte/store', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('svelte/store')>();
+	return {
+		...actual,
+		get: vi.fn((store) => store)
+	};
+});
 
 vi.mock('$lib/services/playback/downloadService', () => ({
 	downloadTrack: mockDownloadService,
@@ -48,6 +70,20 @@ vi.mock('$lib/services/playback/downloadService', () => ({
 
 vi.mock('$lib/services/playback/trackConversionService', () => ({
 	convertSonglinkTrackToTidal: mockConvertSonglinkTrackToTidal
+}));
+
+vi.mock('$lib/api', () => ({
+	losslessAPI: {
+		downloadTrack: (...args: unknown[]) => mockLosslessDownloadTrack(...args)
+	}
+}));
+
+vi.mock('$lib/stores/toasts', () => ({
+	toasts: mockToasts
+}));
+
+vi.mock('$lib/core/errorTracker', () => ({
+	trackError: (...args: unknown[]) => mockTrackError(...args)
 }));
 
 vi.mock('$lib/types', () => ({
@@ -79,12 +115,21 @@ describe('DownloadOrchestrator', () => {
 	};
 
 	const mockSonglinkTrack: SonglinkTrack = {
-		id: 'sl-123',
+		id: 'spotify:track:sl-123',
 		title: 'Test Songlink Track',
 		artistName: 'Test Artist',
-		albumName: 'Test Album',
 		duration: 180,
-		url: 'https://song.link/test'
+		thumbnailUrl: 'https://song.link/test.jpg',
+		sourceUrl: 'https://song.link/test',
+		songlinkData: {
+			entityUniqueId: 'sl-123',
+			userCountry: 'US',
+			pageUrl: 'https://song.link/test',
+			entitiesByUniqueId: {},
+			linksByPlatform: {}
+		},
+		isSonglinkTrack: true,
+		audioQuality: 'LOSSLESS'
 	};
 
 	beforeEach(() => {
@@ -104,10 +149,7 @@ describe('DownloadOrchestrator', () => {
 
 	describe('downloadTrack()', () => {
 		it('should download a regular track successfully', async () => {
-			mockDownloadService.mockResolvedValue({
-				success: true,
-				filename: 'test-track.flac'
-			});
+			mockLosslessDownloadTrack.mockResolvedValue(undefined);
 
 			const result = await orchestrator.downloadTrack(mockTrack);
 
@@ -123,11 +165,13 @@ describe('DownloadOrchestrator', () => {
 				expect.objectContaining({ subtitle: '' })
 			);
 
-			expect(mockDownloadService).toHaveBeenCalledWith(
-				mockTrack,
+			expect(mockLosslessDownloadTrack).toHaveBeenCalledWith(
+				mockTrack.id,
+				'LOSSLESS',
+				'test-track.flac',
 				expect.objectContaining({
-					quality: 'LOSSLESS',
-					callbacks: expect.any(Object)
+					signal: expect.any(AbortSignal),
+					onProgress: expect.any(Function)
 				})
 			);
 		});
@@ -140,10 +184,7 @@ describe('DownloadOrchestrator', () => {
 				track: convertedTrack
 			});
 
-			mockDownloadService.mockResolvedValue({
-				success: true,
-				filename: 'converted-track.flac'
-			});
+			mockLosslessDownloadTrack.mockResolvedValue(undefined);
 
 			const result = await orchestrator.downloadTrack(mockSonglinkTrack, {
 				autoConvertSonglink: true
@@ -180,7 +221,7 @@ describe('DownloadOrchestrator', () => {
 				expect(result.error.message).toContain('Auto-conversion failed');
 			}
 
-			expect(mockDownloadService).not.toHaveBeenCalled();
+			expect(mockLosslessDownloadTrack).not.toHaveBeenCalled();
 		});
 
 		it('should return error when autoConvertSonglink is false for Songlink track', async () => {
@@ -195,7 +236,7 @@ describe('DownloadOrchestrator', () => {
 			}
 
 			expect(mockConvertSonglinkTrackToTidal).not.toHaveBeenCalled();
-			expect(mockDownloadService).not.toHaveBeenCalled();
+			expect(mockLosslessDownloadTrack).not.toHaveBeenCalled();
 		});
 
 		it('should wire callbacks to downloadUiStore', async () => {
@@ -203,52 +244,39 @@ describe('DownloadOrchestrator', () => {
 			let onCompleteCallback: any;
 			let onErrorCallback: any;
 
-			mockDownloadService.mockImplementation(async (track, options) => {
-				onProgressCallback = options.callbacks?.onProgress;
-				onCompleteCallback = options.callbacks?.onComplete;
-				onErrorCallback = options.callbacks?.onError;
+			mockLosslessDownloadTrack.mockImplementation(async (_trackId, _quality, _filename, options) => {
+				onProgressCallback = options.onProgress;
+				onCompleteCallback = options.onFfmpegComplete;
+				onErrorCallback = options.onFfmpegError;
 
-				// Simulate progress
 				onProgressCallback?.({ stage: 'downloading', receivedBytes: 500, totalBytes: 1000 });
-				onProgressCallback?.({ stage: 'embedding', progress: 'Adding metadata...' });
+				onProgressCallback?.({ stage: 'embedding', progress: 0.4 });
+				onCompleteCallback?.();
 
-				// Simulate completion
-				onCompleteCallback?.('test-track.flac');
-
-				return { success: true, filename: 'test-track.flac' };
+				return undefined;
 			});
 
 			await orchestrator.downloadTrack(mockTrack);
 
 			expect(mockDownloadUiStore.updateTrackProgress).toHaveBeenCalledWith('task-123', 500, 1000);
-			expect(mockDownloadUiStore.updateTrackStage).toHaveBeenCalledWith('task-123', 'Adding metadata...');
+			expect(mockDownloadUiStore.updateTrackStage).toHaveBeenCalledWith('task-123', 0.4);
 			expect(mockDownloadUiStore.completeTrackDownload).toHaveBeenCalledWith('task-123');
 		});
 
 		it('should handle download service errors', async () => {
-			mockDownloadService.mockResolvedValue({
-				success: false,
-				error: {
-					code: 'NETWORK_ERROR',
-					retry: true,
-					message: 'Download failed: Network error'
-				}
-			});
+			mockLosslessDownloadTrack.mockRejectedValue(new Error('Download failed: Network error'));
 
 			const result = await orchestrator.downloadTrack(mockTrack);
 
 			expect(result.success).toBe(false);
 			if (!result.success) {
-				expect(result.error.code).toBe('NETWORK_ERROR');
+				expect(result.error.code).toBe('UNKNOWN_ERROR');
 				expect(result.taskId).toBe('task-123');
 			}
 		});
 
 		it('should store download attempt for retry', async () => {
-			mockDownloadService.mockResolvedValue({
-				success: false,
-				error: { code: 'NETWORK_ERROR', retry: true, message: 'Failed' }
-			});
+			mockLosslessDownloadTrack.mockRejectedValue(new Error('Failed'));
 
 			const result = await orchestrator.downloadTrack(mockTrack, {
 				quality: 'HI_RES'
@@ -258,10 +286,12 @@ describe('DownloadOrchestrator', () => {
 				const retryResult = await orchestrator.retryDownload(result.taskId);
 
 				// Should use stored options
-				expect(mockDownloadService).toHaveBeenCalledTimes(2);
-				expect(mockDownloadService).toHaveBeenLastCalledWith(
-					mockTrack,
-					expect.objectContaining({ quality: 'HI_RES' })
+				expect(mockLosslessDownloadTrack).toHaveBeenCalledTimes(2);
+				expect(mockLosslessDownloadTrack).toHaveBeenLastCalledWith(
+					mockTrack.id,
+					'HI_RES',
+					'test-track.flac',
+					expect.any(Object)
 				);
 			}
 		});
@@ -269,23 +299,17 @@ describe('DownloadOrchestrator', () => {
 
 	describe('retryDownload()', () => {
 		it('should retry using stored attempt', async () => {
-			mockDownloadService.mockResolvedValue({
-				success: false,
-				error: { code: 'NETWORK_ERROR', retry: true, message: 'Failed' }
-			});
+			mockLosslessDownloadTrack.mockRejectedValue(new Error('Failed'));
 
 			const firstResult = await orchestrator.downloadTrack(mockTrack);
 
 			if (!firstResult.success && firstResult.taskId) {
-				mockDownloadService.mockResolvedValue({
-					success: true,
-					filename: 'test-track.flac'
-				});
+				mockLosslessDownloadTrack.mockResolvedValueOnce(undefined);
 
 				const retryResult = await orchestrator.retryDownload(firstResult.taskId);
 
 				expect(retryResult.success).toBe(true);
-				expect(mockDownloadService).toHaveBeenCalledTimes(2);
+				expect(mockLosslessDownloadTrack).toHaveBeenCalledTimes(2);
 			}
 		});
 
@@ -309,12 +333,6 @@ describe('DownloadOrchestrator', () => {
 	});
 
 	describe('notification modes', () => {
-		const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
-
-		afterEach(() => {
-			alertSpy.mockClear();
-		});
-
 		it('should show alert on error when notificationMode is "alert"', async () => {
 			mockConvertSonglinkTrackToTidal.mockResolvedValue({
 				success: false,
@@ -326,7 +344,7 @@ describe('DownloadOrchestrator', () => {
 				notificationMode: 'alert'
 			});
 
-			expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('Not found'));
+			expect(mockToasts.error).toHaveBeenCalledWith(expect.stringContaining('Not found'));
 		});
 
 		it('should not show alert when notificationMode is "silent"', async () => {
@@ -340,16 +358,13 @@ describe('DownloadOrchestrator', () => {
 				notificationMode: 'silent'
 			});
 
-			expect(alertSpy).not.toHaveBeenCalled();
+			expect(mockToasts.error).not.toHaveBeenCalled();
 		});
 	});
 
 	describe('attempt pruning', () => {
 		it('should prune old attempts when exceeding MAX_STORED_ATTEMPTS', async () => {
-			mockDownloadService.mockResolvedValue({
-				success: false,
-				error: { code: 'NETWORK_ERROR', retry: true, message: 'Failed' }
-			});
+			mockLosslessDownloadTrack.mockRejectedValue(new Error('Failed'));
 
 			// Create 55 attempts (exceeds MAX of 50)
 			const taskIds: string[] = [];
@@ -374,7 +389,7 @@ describe('DownloadOrchestrator', () => {
 
 			// Recent tasks should still be available
 			const recentRetry = await orchestrator.retryDownload(taskIds[taskIds.length - 1]);
-			expect(mockDownloadService).toHaveBeenCalled();
+			expect(mockLosslessDownloadTrack).toHaveBeenCalled();
 		});
 	});
 });

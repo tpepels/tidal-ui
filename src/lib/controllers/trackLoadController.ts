@@ -32,11 +32,15 @@ type TrackLoadControllerOptions = {
 	setSampleRate: (value: number | null) => void;
 	setBitDepth: (value: number | null) => void;
 	setReplayGain: (value: number | null) => void;
+	getPlaybackQuality?: () => AudioQuality;
 	createSequence: () => number;
 	getSequence: () => number;
 	isHiResQuality: (quality: AudioQuality | undefined) => boolean;
 	preloadThresholdSeconds: number;
 	onDASHUnavailable?: (trackId: number) => void;
+	onLoadComplete?: (streamUrl: string | null, quality: AudioQuality) => void;
+	onLoadError?: (error: Error) => void;
+	onFallbackRequested?: (quality: AudioQuality, reason: string) => void;
 };
 
 type ShakaPlayerInstance = {
@@ -214,7 +218,8 @@ export const createTrackLoadController = (
 		sampleRate: number | null;
 		bitDepth: number | null;
 	}> => {
-		const quality = overrideQuality ?? get(options.playerStore).quality;
+		const baseQuality = options.getPlaybackQuality?.() ?? get(options.playerStore).quality;
+		const quality = overrideQuality ?? baseQuality;
 		if (options.isHiResQuality(quality)) {
 			throw new Error('Attempted to resolve hi-res stream via standard resolver');
 		}
@@ -239,7 +244,7 @@ export const createTrackLoadController = (
 	};
 
 	const pruneStreamCache = () => {
-		const quality = get(options.playerStore).quality;
+		const quality = options.getPlaybackQuality?.() ?? get(options.playerStore).quality;
 		const keepKeys = new Set<string>();
 		const baseQualities: AudioQuality[] = options.isHiResQuality(quality) ? ['LOSSLESS'] : [quality];
 		const current = get(options.playerStore).currentTrack;
@@ -318,6 +323,11 @@ export const createTrackLoadController = (
 			options.setDashPlaybackActive(false);
 			const { url, replayGain, sampleRate, bitDepth } = await resolveStream(track, quality);
 			if (sequence !== options.getSequence()) {
+				console.info('[AudioPlayer] Ignoring stale stream load', {
+					trackId: track.id,
+					sequence,
+					current: options.getSequence()
+				});
 				return;
 			}
 			options.setStreamUrl(url);
@@ -325,6 +335,7 @@ export const createTrackLoadController = (
 			options.setReplayGain(replayGain);
 			options.setSampleRate(sampleRate);
 			options.setBitDepth(bitDepth);
+			options.onLoadComplete?.(url, quality);
 			pruneStreamCache();
 			const audioElement = options.getAudioElement();
 			if (audioElement) {
@@ -335,6 +346,7 @@ export const createTrackLoadController = (
 			options.setLoading(false);
 		} catch (error) {
 			console.error('[AudioPlayer] Failed to load standard track:', error);
+			options.onLoadError?.(error instanceof Error ? error : new Error('Failed to load track'));
 			options.setLoading(false);
 		}
 	};
@@ -376,6 +388,7 @@ export const createTrackLoadController = (
 		options.setDashPlaybackActive(true);
 		options.setStreamUrl('');
 		options.setCurrentPlaybackQuality('HI_RES_LOSSLESS');
+		options.onLoadComplete?.(null, 'HI_RES_LOSSLESS');
 
 		if (sequence === options.getSequence() && options.getCurrentTrackId() === track.id) {
 			options.setSampleRate(trackInfo.sampleRate);
@@ -420,7 +433,7 @@ export const createTrackLoadController = (
 		options.setCurrentPlaybackQuality(null);
 		const sequence = options.createSequence();
 		options.setLoading(true);
-		let requestedQuality = get(options.playerStore).quality;
+		let requestedQuality = options.getPlaybackQuality?.() ?? get(options.playerStore).quality;
 
 		if (options.isHiResQuality(requestedQuality) && !options.getSupportsLosslessPlayback()) {
 			requestedQuality = 'LOSSLESS';
@@ -447,6 +460,7 @@ export const createTrackLoadController = (
 					}
 					console.warn('DASH playback failed, falling back to lossless stream.', dashError);
 				}
+				options.onFallbackRequested?.('LOSSLESS', 'dash-fallback');
 				await loadStandardTrack(tidalTrack, 'LOSSLESS', sequence);
 				return;
 			}
@@ -454,12 +468,14 @@ export const createTrackLoadController = (
 			await loadStandardTrack(tidalTrack, requestedQuality, sequence);
 		} catch (error) {
 			console.error('Failed to load track:', error);
+			options.onLoadError?.(error instanceof Error ? error : new Error('Failed to load track'));
 			if (
 				sequence === options.getSequence() &&
 				requestedQuality !== 'LOSSLESS' &&
 				!options.isHiResQuality(requestedQuality)
 			) {
 				try {
+					options.onFallbackRequested?.('LOSSLESS', 'retry-lossless');
 					await loadStandardTrack(tidalTrack, 'LOSSLESS', sequence);
 				} catch (fallbackError) {
 					console.error('Secondary lossless fallback failed:', fallbackError);
@@ -470,6 +486,7 @@ export const createTrackLoadController = (
 					tidalTrack.id
 				);
 				try {
+					options.onFallbackRequested?.('HIGH', 'lossless-fallback');
 					await loadStandardTrack(tidalTrack, 'HIGH', sequence);
 				} catch (fallbackError) {
 					console.error(

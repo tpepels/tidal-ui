@@ -23,6 +23,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
       - name: Run linter
         run: npm run lint
 
@@ -51,6 +54,11 @@ jobs:
       - name: Build project
         run: npm run build
         continue-on-error: true # Build may fail due to import issues
+
+      - name: Run stabilization Playwright suite
+        env:
+          PLAYWRIGHT_BROWSERS: chromium
+        run: npm run test:e2e:stabilization
 
       - name: Run API health check
         run: node scripts/check-api-health.cjs

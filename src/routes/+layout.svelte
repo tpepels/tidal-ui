@@ -192,7 +192,7 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 			: state.currentTrack
 				? [state.currentTrack]
 				: [];
-		return { tracks, quality: state.quality };
+		return { tracks, quality: get(downloadPreferencesStore).downloadQuality };
 	}
 
 	function buildQueueFilename(track: PlayableTrack, index: number, quality: AudioQuality): string {
@@ -431,7 +431,10 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 		};
 		document.addEventListener('click', handleDocumentClick);
 
-		if ('serviceWorker' in navigator && !dev) {
+		const isLocalPreview =
+			typeof window !== 'undefined' &&
+			(window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost');
+		if ('serviceWorker' in navigator && !dev && !isLocalPreview && import.meta.env.VITE_E2E !== 'true') {
 			const registerServiceWorker = async () => {
 				try {
 					const registration = await navigator.serviceWorker.register('/service-worker.js');
@@ -538,7 +541,7 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 															<span class="glass-option__label">{option.label}</span>
 															<span class="glass-option__description">{option.description}</span>
 														</div>
-														{#if option.value === $playerStore.quality}
+														{#if option.value === $downloadPreferencesStore.downloadQuality}
 															<Check size={16} class="glass-option__check" />
 														{/if}
 													</button>

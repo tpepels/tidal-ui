@@ -12,11 +12,12 @@ type ControllerOptions = {
 	loadStandardTrack: (track: Track, quality: AudioQuality, sequence: number) => Promise<void>;
 	createSequence: () => number;
 	setResumeAfterFallback: (value: boolean) => void;
+	onFallbackRequested?: (quality: AudioQuality, reason: string) => void;
 };
 
 type PlaybackFallbackController = {
 	resetForTrack: (trackId: number | string) => void;
-	handleAudioError: (event: Event) => void;
+	handleAudioError: (event: Event) => boolean;
 };
 
 export const createPlaybackFallbackController = (
@@ -52,6 +53,7 @@ export const createPlaybackFallbackController = (
 		dashFallbackAttemptedTrackId = track.id;
 		const sequence = options.createSequence();
 		console.warn(`Attempting lossless fallback after DASH playback error (${reason}).`);
+		options.onFallbackRequested?.('LOSSLESS', `dash-playback-${reason}`);
 		try {
 			options.setDashPlaybackActive(false);
 			options.setLoading(true);
@@ -82,6 +84,7 @@ export const createPlaybackFallbackController = (
 		try {
 			options.setLoading(true);
 			const fallbackQuality: AudioQuality = options.isFirefox() ? 'LOW' : 'HIGH';
+			options.onFallbackRequested?.(fallbackQuality, 'lossless-playback');
 			await options.loadStandardTrack(track as Track, fallbackQuality, sequence);
 			console.info('[AudioPlayer] Streaming fallback loaded for track', track.id);
 		} catch (fallbackError) {
@@ -94,6 +97,7 @@ export const createPlaybackFallbackController = (
 	};
 
 	const handleAudioError = (event: Event) => {
+		let didFallback = false;
 		console.warn('[AudioPlayer] Audio element reported an error state:', event);
 		const element = event.currentTarget as HTMLAudioElement | null;
 		const mediaError = element?.error ?? null;
@@ -104,12 +108,13 @@ export const createPlaybackFallbackController = (
 			typeof code === 'number' && typeof decodeConstant === 'number' ? code === decodeConstant : false;
 		if (options.getDashPlaybackActive()) {
 			if (!isDecodeError && !code) {
-				return;
+				return false;
 			}
 			const reason = isDecodeError ? 'decode error' : code ? `code ${code}` : 'unknown error';
 			console.warn('[AudioPlayer] DASH playback error detected; attempting lossless fallback:', reason);
 			void fallbackToLosslessAfterDashError(reason);
-			return;
+			didFallback = true;
+			return didFallback;
 		}
 		const codeNumber = typeof code === 'number' ? code : null;
 		const abortedCode =
@@ -134,7 +139,9 @@ export const createPlaybackFallbackController = (
 				`[AudioPlayer] Lossless playback error (${reason}). Falling back to streaming quality for current track.`
 			);
 			void fallbackToStreamingAfterLosslessError();
+			didFallback = true;
 		}
+		return didFallback;
 	};
 
 	return {

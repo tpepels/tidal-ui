@@ -3,6 +3,7 @@
 	import { losslessAPI } from '$lib/api';
 	import { playerStore } from '$lib/stores/player';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
+	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { downloadOrchestrator } from '$lib/orchestrators';
 	import { Play, Pause, Download, ListPlus, Plus, Clock, X } from 'lucide-svelte';
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
@@ -106,7 +107,7 @@
 
 		try {
 			const result = await downloadOrchestrator.downloadTrack(track, {
-				quality: $playerStore.quality,
+				quality: $downloadPreferencesStore.downloadQuality,
 				subtitle: track.album?.title ?? track.artist?.name,
 				notificationMode: 'alert',
 				ffmpegAutoTriggered: false,

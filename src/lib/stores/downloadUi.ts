@@ -2,12 +2,14 @@ import { get, writable } from 'svelte/store';
 import type { PlayableTrack } from '../types';
 import { isSonglinkTrack } from '../types';
 import { formatArtists } from '../utils/formatters';
+import { validateInvariant } from '../core/invariants';
 
 export type FfmpegPhase = 'idle' | 'countdown' | 'loading' | 'ready' | 'error';
 
 export interface FfmpegBannerState {
 	phase: FfmpegPhase;
 	countdownSeconds: number;
+	countdownActive: boolean;
 	totalBytes?: number;
 	progress: number;
 	dismissible: boolean;
@@ -33,6 +35,7 @@ export interface TrackDownloadTask {
 	startedAt: number;
 	updatedAt: number;
 	cancellable: boolean;
+	controller?: AbortController;
 }
 
 interface DownloadUiState {
@@ -43,11 +46,13 @@ interface DownloadUiState {
 const MAX_VISIBLE_TASKS = 4;
 const COUNTDOWN_DEFAULT_SECONDS = 5;
 const ACTIVE_TASK_STATUSES = new Set<TrackDownloadStatus>(['pending', 'running']);
+const isTestHookEnabled = import.meta.env.DEV || import.meta.env.VITE_E2E === 'true';
 
 const initialState: DownloadUiState = {
 	ffmpeg: {
 		phase: 'idle',
 		countdownSeconds: COUNTDOWN_DEFAULT_SECONDS,
+		countdownActive: false,
 		totalBytes: undefined,
 		progress: 0,
 		dismissible: true,
@@ -60,8 +65,55 @@ const initialState: DownloadUiState = {
 
 const store = writable<DownloadUiState>(initialState);
 
-const taskControllers = new Map<string, AbortController>();
 let countdownInterval: ReturnType<typeof setInterval> | null = null;
+
+const enforceDownloadInvariants = (state: DownloadUiState): DownloadUiState => {
+	validateInvariant(
+		state.ffmpeg.phase !== 'countdown' || state.ffmpeg.countdownActive,
+		'FFmpeg countdown phase should be active when phase is countdown',
+		{ phase: state.ffmpeg.phase, countdownActive: state.ffmpeg.countdownActive }
+	);
+	validateInvariant(
+		!state.ffmpeg.countdownActive || state.ffmpeg.phase === 'countdown',
+		'FFmpeg countdown active while phase is not countdown',
+		{ phase: state.ffmpeg.phase, countdownActive: state.ffmpeg.countdownActive }
+	);
+	validateInvariant(
+		state.ffmpeg.countdownSeconds >= 0,
+		'FFmpeg countdown seconds should not be negative',
+		{ countdownSeconds: state.ffmpeg.countdownSeconds }
+	);
+
+	const taskIds = new Set<string>();
+	for (const task of state.tasks) {
+		if (taskIds.has(task.id)) {
+			validateInvariant(false, 'Duplicate download task id detected', { taskId: task.id });
+		}
+		taskIds.add(task.id);
+		validateInvariant(
+			task.progress >= 0 && task.progress <= 1,
+			'Download task progress must be within 0..1',
+			{ taskId: task.id, progress: task.progress }
+		);
+		if (typeof task.totalBytes === 'number') {
+			validateInvariant(
+				task.receivedBytes <= task.totalBytes,
+				'Download task received bytes exceed total bytes',
+				{ taskId: task.id, receivedBytes: task.receivedBytes, totalBytes: task.totalBytes }
+			);
+		}
+	}
+
+	return state;
+};
+
+const updateStore = (updater: (state: DownloadUiState) => DownloadUiState): void => {
+	store.update((state) => enforceDownloadInvariants(updater(state)));
+};
+
+const setStore = (state: DownloadUiState): void => {
+	store.set(enforceDownloadInvariants(state));
+};
 
 function nextTaskId(prefix: string): string {
 	return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
@@ -82,7 +134,7 @@ function stopCountdownTicker() {
 function updateCountdownTicker() {
 	stopCountdownTicker();
 	countdownInterval = setInterval(() => {
-		store.update((state) => {
+		updateStore((state) => {
 			if (state.ffmpeg.phase !== 'countdown') {
 				stopCountdownTicker();
 				return state;
@@ -96,6 +148,7 @@ function updateCountdownTicker() {
 					...state.ffmpeg,
 					phase: nextPhase,
 					countdownSeconds: nextSeconds,
+					countdownActive: nextPhase === 'countdown',
 					progress: 0,
 					updatedAt: Date.now(),
 					dismissible: nextPhase !== 'loading'
@@ -106,7 +159,7 @@ function updateCountdownTicker() {
 }
 
 function upsertTask(task: TrackDownloadTask): void {
-	store.update((state) => {
+	updateStore((state) => {
 		const existingIndex = state.tasks.findIndex((entry) => entry.id === task.id);
 		const tasks = state.tasks.slice();
 		if (existingIndex >= 0) {
@@ -141,7 +194,7 @@ function pruneTasks(tasks: TrackDownloadTask[]): TrackDownloadTask[] {
 }
 
 function mutateTask(id: string, updater: (task: TrackDownloadTask) => TrackDownloadTask): void {
-	store.update((state) => {
+	updateStore((state) => {
 		const index = state.tasks.findIndex((entry) => entry.id === id);
 		if (index === -1) {
 			// INVARIANT VIOLATION: Task must exist to be mutated
@@ -165,22 +218,23 @@ function mutateTask(id: string, updater: (task: TrackDownloadTask) => TrackDownl
 }
 
 function removeTask(id: string): void {
-	store.update((state) => ({
+	updateStore((state) => ({
 		...state,
 		tasks: state.tasks.filter((task) => task.id !== id)
 	}));
-	const controller = taskControllers.get(id);
-	if (controller) {
-		taskControllers.delete(id);
-	}
+}
+
+function getTaskController(taskId: string): AbortController | null {
+	const state = get(store);
+	const task = state.tasks.find((entry) => entry.id === taskId);
+	return task?.controller ?? null;
 }
 
 export const downloadUiStore = {
 	subscribe: store.subscribe,
 	reset(): void {
 		stopCountdownTicker();
-		store.set(initialState);
-		taskControllers.clear();
+		setStore(initialState);
 	},
 	beginTrackDownload(
 		track: PlayableTrack,
@@ -192,7 +246,6 @@ export const downloadUiStore = {
 	} {
 		const id = nextTaskId('track');
 		const controller = new AbortController();
-		taskControllers.set(id, controller);
 
 		let subtitle = options?.subtitle;
 		if (!subtitle) {
@@ -216,7 +269,8 @@ export const downloadUiStore = {
 			error: undefined,
 			startedAt: Date.now(),
 			updatedAt: Date.now(),
-			cancellable: true
+			cancellable: true,
+			controller
 		});
 		return { taskId: id, controller };
 	},
@@ -235,21 +289,22 @@ export const downloadUiStore = {
 		}));
 	},
 	completeTrackDownload(taskId: string): void {
-		const controller = taskControllers.get(taskId);
+		const controller = getTaskController(taskId);
 		if (controller) {
-			taskControllers.delete(taskId);
+			controller.abort();
 		}
 		mutateTask(taskId, (task) => ({
 			...task,
 			status: task.status === 'cancelled' ? 'cancelled' : 'completed',
 			progress: task.status === 'cancelled' ? task.progress : 1,
-			cancellable: false
+			cancellable: false,
+			controller: undefined
 		}));
 	},
 	errorTrackDownload(taskId: string, error: unknown): void {
-		const controller = taskControllers.get(taskId);
+		const controller = getTaskController(taskId);
 		if (controller) {
-			taskControllers.delete(taskId);
+			controller.abort();
 		}
 		mutateTask(taskId, (task) => ({
 			...task,
@@ -260,11 +315,12 @@ export const downloadUiStore = {
 					: typeof error === 'string'
 						? error
 						: 'Download failed',
-			cancellable: false
+			cancellable: false,
+			controller: undefined
 		}));
 	},
 	cancelTrackDownload(taskId: string): void {
-		const controller = taskControllers.get(taskId);
+		const controller = getTaskController(taskId);
 		if (controller) {
 			controller.abort();
 		}
@@ -272,7 +328,8 @@ export const downloadUiStore = {
 			...task,
 			status: 'cancelled',
 			error: undefined,
-			cancellable: false
+			cancellable: false,
+			controller: undefined
 		}));
 	},
 	dismissTrackTask(taskId: string): void {
@@ -280,11 +337,12 @@ export const downloadUiStore = {
 	},
 	startFfmpegCountdown(totalBytes: number, options?: { autoTriggered?: boolean }): void {
 		const autoTriggered = options?.autoTriggered ?? true;
-		store.set({
+		setStore({
 			...get(store),
 			ffmpeg: {
 				phase: autoTriggered ? 'countdown' : 'loading',
 				countdownSeconds: autoTriggered ? COUNTDOWN_DEFAULT_SECONDS : 0,
+				countdownActive: autoTriggered,
 				totalBytes: totalBytes > 0 ? totalBytes : undefined,
 				progress: 0,
 				dismissible: autoTriggered,
@@ -301,7 +359,7 @@ export const downloadUiStore = {
 		}
 	},
 	skipFfmpegCountdown(): void {
-		store.update((state) => {
+		updateStore((state) => {
 			if (state.ffmpeg.phase !== 'countdown') {
 				return state;
 			}
@@ -312,6 +370,7 @@ export const downloadUiStore = {
 					...state.ffmpeg,
 					phase: 'loading',
 					countdownSeconds: 0,
+					countdownActive: false,
 					progress: 0,
 					dismissible: false,
 					updatedAt: Date.now()
@@ -321,12 +380,13 @@ export const downloadUiStore = {
 	},
 	startFfmpegLoading(): void {
 		stopCountdownTicker();
-		store.update((state) => ({
+		updateStore((state) => ({
 			...state,
 			ffmpeg: {
 				...state.ffmpeg,
 				phase: 'loading',
 				countdownSeconds: 0,
+				countdownActive: false,
 				progress: 0,
 				dismissible: false,
 				updatedAt: Date.now()
@@ -334,7 +394,7 @@ export const downloadUiStore = {
 		}));
 	},
 	updateFfmpegProgress(progress: number): void {
-		store.update((state) => ({
+		updateStore((state) => ({
 			...state,
 			ffmpeg: {
 				...state.ffmpeg,
@@ -347,13 +407,14 @@ export const downloadUiStore = {
 	},
 	completeFfmpeg(): void {
 		stopCountdownTicker();
-		store.update((state) => ({
+		updateStore((state) => ({
 			...state,
 			ffmpeg: {
 				...state.ffmpeg,
 				phase: 'ready',
 				progress: 1,
 				countdownSeconds: 0,
+				countdownActive: false,
 				dismissible: true,
 				updatedAt: Date.now()
 			}
@@ -361,12 +422,13 @@ export const downloadUiStore = {
 	},
 	errorFfmpeg(error: unknown): void {
 		stopCountdownTicker();
-		store.update((state) => ({
+		updateStore((state) => ({
 			...state,
 			ffmpeg: {
 				...state.ffmpeg,
 				phase: 'error',
 				progress: 0,
+				countdownActive: false,
 				dismissible: true,
 				error:
 					error instanceof Error
@@ -380,11 +442,12 @@ export const downloadUiStore = {
 	},
 	dismissFfmpeg(): void {
 		stopCountdownTicker();
-		store.update((state) => ({
+		updateStore((state) => ({
 			...state,
 			ffmpeg: {
 				phase: 'idle',
 				countdownSeconds: COUNTDOWN_DEFAULT_SECONDS,
+				countdownActive: false,
 				totalBytes: undefined,
 				progress: 0,
 				dismissible: true,
@@ -396,3 +459,9 @@ export const downloadUiStore = {
 		}));
 	}
 };
+
+if (typeof window !== 'undefined' && isTestHookEnabled) {
+	(window as typeof window & { __tidalResetDownloads?: () => void }).__tidalResetDownloads = () => {
+		downloadUiStore.reset();
+	};
+}

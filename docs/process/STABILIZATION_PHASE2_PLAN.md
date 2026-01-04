@@ -1,6 +1,6 @@
 # Stabilization Phase 2 Plan - Race Condition & State Management Fixes
 
-**Status**: 🟡 Planning
+**Status**: 🟡 In progress
 **Priority**: Critical
 **Estimated Effort**: 2-3 days
 **Risk Level**: Medium (touches core flows)
@@ -186,6 +186,8 @@ errorTracker.trackError('DOWNLOAD_FAILED', error);
 3. Check token before setting `streamUrl`
 4. Ignore stale load completions
 
+**Status**: Implemented via `loadSequence` token checks in `AudioPlayer.svelte` and `trackLoadController.ts`; verify behavior during rapid track/quality changes.
+
 **Goal**: Prevent race between quality changes and track loads
 **Risk**: Medium (touches core flow)
 **Testing**: Rapid track/quality switches
@@ -238,55 +240,57 @@ errorTracker.trackError('DOWNLOAD_FAILED', error);
 ## Acceptance Criteria (Phase 2a)
 
 ### Search Fixes
-- [ ] Same query in different regions returns different results
-- [ ] Rapid query typing doesn't show stale results
+- [x] Same query in different regions returns different results
+- [x] Rapid query typing doesn't show stale results
 - [ ] Region switch during search shows correct results
-- [ ] Search cache key includes region
+- [x] Search cache key includes region
 
 ### Request Token Implementation
-- [ ] Search ignores stale completions (verified in console logs)
-- [ ] Playback ignores stale stream URL loads (if implemented)
+- [x] Search ignores stale completions (verified in console logs)
+- [x] Playback ignores stale stream URL loads (if implemented)
 - [ ] No visual glitches from race conditions
 
 ### Error Reporting
-- [ ] No `alert()` calls in production code (except edge cases)
-- [ ] All user-facing errors use `toasts.error()`
-- [ ] Error tracking captures error codes and context
+- [x] No `alert()` calls in production code (except edge cases)
+- [x] All user-facing errors use `toasts.error()`
+- [x] Error tracking captures error codes and context
 
 ### Regression Testing
-- [ ] All existing tests pass
-- [ ] `npm run build` succeeds
-- [ ] Manual smoke test: search, play, download
+- [x] All existing tests pass
+- [x] `npm run build` succeeds
+- [x] `npx playwright test -c config/test/playwright.config.ts tests/e2e/stabilization-phase2.spec.ts` passes
+- [x] Manual smoke test: search, play, download
 
 ---
 
 ## Acceptance Criteria (Phase 2b)
 
 ### Download State
-- [ ] Download cancellation works reliably
-- [ ] FFmpeg countdown timer visible in store state
-- [ ] No ghost tasks after cancellation
-- [ ] Task controllers managed by store, not component
+- [x] Download cancellation works reliably
+- [x] FFmpeg countdown timer visible in store state
+- [x] No ghost tasks after cancellation
+- [x] Task controllers managed by store, not component
 
 ### Playback Stability
-- [ ] Quality changes don't trigger load loops
-- [ ] Track changes complete reliably
-- [ ] Rapid track/quality switches handled gracefully
-- [ ] Console shows ignored stale requests (if any)
+- [x] Quality changes don't trigger load loops
+- [x] Track changes complete reliably
+- [x] Rapid track/quality switches handled gracefully
+- [x] Console shows ignored stale requests (if any)
 
 ---
 
 ## Testing Strategy
 
 ### Unit Tests (Add)
-- `searchService.test.ts`: Test cache key includes region
+- `searchService.test.ts`: Test cache key includes region ✅ (added)
 - `searchOrchestrator.test.ts`: Test request token ignores stale results
-- `downloadUi.test.ts`: Test timer/controller state management
+- `downloadUi.test.ts`: Test timer/controller state management ✅ (added)
+- `trackLoadController.test.ts`: Validate stale sequence guard for playback loads ✅ (added)
 
 ### Integration Tests (Add)
-- Search race scenario: Fire 3 queries rapidly, verify last wins
+- Search race scenario: Fire 3 queries rapidly, verify last wins ✅ (added)
 - Playback race scenario: Change quality mid-load, verify correct stream
-- Download cancel scenario: Cancel task, verify cleanup
+- Download cancel scenario: Cancel task, verify cleanup ✅ (added)
 
 ### Manual Test Plan
 1. **Search Race**: Type "test", wait 100ms, type "artist", verify shows "artist" results
@@ -385,7 +389,7 @@ If Phase 2a/2b introduces regressions:
 
 ## Next Steps After Phase 2
 
-### Phase 3 (Future): Playback State Machine
+### Phase 3 (Completed): Playback State Machine
 - Extract AudioPlayer effects into explicit state machine
 - Make playback transitions deterministic
 - Full test coverage for playback flows
@@ -393,9 +397,39 @@ If Phase 2a/2b introduces regressions:
 - **Risk**: High (major refactor)
 
 ### Phase 4 (Future): Integration Tests
-- Add Playwright tests for race scenarios
-- Test search, playback, download flows end-to-end
 - **Estimated**: 2-3 days
+- **Goal**: End-to-end stability coverage for race scenarios and critical flows.
+
+#### Phase 4 Todo
+- [x] Add Playwright tests for race scenarios
+- [x] Add rapid track switch playback stability test
+- [x] Add region switch during search test (uses test hook: `?testRegion=` + `window.__tidalSetRegion`)
+- [x] Add quality-change playback flow test
+- [x] Add download cancel flow test
+- [x] Add playback seek flow test (skipped on Firefox in test env)
+- [x] Add playback end flow test
+- [x] Run full Playwright regression after updates
+
+### Phase 5 (Future): Test Hooks & Release Guardrails
+- **Estimated**: 1-2 days
+- **Goal**: Make stability tests easier to author and ensure regressions are visible early.
+
+#### Phase 5 Todo
+- [x] Add test hook for region switching (URL param + window hook)
+- [x] Document E2E test hooks and constraints (`docs/development/E2E_TEST_HOOKS.md`)
+- [x] Add CI target for stabilization Playwright suite
+- [x] Add Playwright trace/video retention for failed stabilization runs
+
+### Phase 6 (Future): Deterministic Recovery & State Audits
+- **Estimated**: 2-3 days
+- **Goal**: Make runtime state recoverable and detect hidden coupling early.
+
+#### Phase 6 Todo
+- [x] Add non-fatal invariant reporting for playback/search/download state in production (diagnostics only)
+- [x] Add explicit recovery actions for playback and downloads (reset/rehydrate hooks)
+- [x] Add persistence regression test (refresh mid-playback/queue, restore correctly)
+- [x] Add cross-store consistency tests (playerStore ↔ playbackMachine expectations)
+- [x] Document recovery playbook for support/debugging (`docs/process/RECOVERY_PLAYBOOK.md`)
 
 ---
 
@@ -421,6 +455,8 @@ If Phase 2a/2b introduces regressions:
 - **Phase 1**: Orchestrator implementation (completed)
 - **ARCHITECTURE.md**: Current architecture (docs/architecture/)
 - **ADR Template**: For documenting token pattern decision
+- **Post-stabilization TODO**: `docs/process/POST_STABILIZATION_TODO.md`
+- **Stability checklist**: `docs/process/STABILITY_CHECKLIST.md`
 
 ---
 

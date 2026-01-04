@@ -46,17 +46,22 @@ function createPlayerStore() {
 		quality: preferences.playbackQuality,
 		qualitySource: 'manual'
 	};
+
+	const hydrateState = (persisted: Partial<PlayerState>): PlayerState => {
+		const nextPreferences = get(userPreferencesStore);
+		return {
+			...initialState,
+			...persisted,
+			quality: nextPreferences.playbackQuality,
+			qualitySource: 'manual',
+			isPlaying: false,
+			isLoading: false
+		};
+	};
 	if (browser) {
 		// Load persisted state
 		const persisted = loadFromStorage('player', {}) as Partial<PlayerState>;
-		startState = {
-			...initialState,
-			...persisted,
-			quality: preferences.playbackQuality,
-			qualitySource: 'manual',
-			isPlaying: false, // Don't persist playing state
-			isLoading: false
-		};
+		startState = hydrateState(persisted);
 
 		// Validate and fix persisted state
 		if (
@@ -498,11 +503,64 @@ function createPlayerStore() {
 				};
 				return applyAutoQuality(nextState, null);
 			}),
-		reset: () => set(initialState)
+		reset: () => set(initialState),
+		rehydrate: () => {
+			if (!browser) return;
+			const persisted = loadFromStorage('player', {}) as Partial<PlayerState>;
+			set(hydrateState(persisted));
+		}
 	};
 }
 
 export const playerStore = createPlayerStore();
+
+const isTestHookEnabled = import.meta.env.DEV || import.meta.env.VITE_E2E === 'true';
+if (browser && isTestHookEnabled) {
+	(
+		window as typeof window & {
+			__tidalSetCurrentTime?: (time: number) => void;
+			__tidalSetDuration?: (duration: number) => void;
+			__tidalResetPlayback?: () => void;
+			__tidalRehydratePlayback?: () => void;
+		}
+	).__tidalSetCurrentTime = (time: number) => {
+		if (Number.isFinite(time)) {
+			playerStore.setCurrentTime(time);
+		}
+	};
+	(
+		window as typeof window & {
+			__tidalSetCurrentTime?: (time: number) => void;
+			__tidalSetDuration?: (duration: number) => void;
+			__tidalResetPlayback?: () => void;
+			__tidalRehydratePlayback?: () => void;
+		}
+	).__tidalSetDuration = (duration: number) => {
+		if (Number.isFinite(duration)) {
+			playerStore.setDuration(duration);
+		}
+	};
+	(
+		window as typeof window & {
+			__tidalSetCurrentTime?: (time: number) => void;
+			__tidalSetDuration?: (duration: number) => void;
+			__tidalResetPlayback?: () => void;
+			__tidalRehydratePlayback?: () => void;
+		}
+	).__tidalResetPlayback = () => {
+		playerStore.reset();
+	};
+	(
+		window as typeof window & {
+			__tidalSetCurrentTime?: (time: number) => void;
+			__tidalSetDuration?: (duration: number) => void;
+			__tidalResetPlayback?: () => void;
+			__tidalRehydratePlayback?: () => void;
+		}
+	).__tidalRehydratePlayback = () => {
+		playerStore.rehydrate();
+	};
+}
 
 // Invariant checking for critical state consistency
 playerStore.subscribe(($state) => {

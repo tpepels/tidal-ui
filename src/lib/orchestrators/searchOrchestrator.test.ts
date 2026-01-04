@@ -8,35 +8,41 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SearchOrchestrator } from './searchOrchestrator';
 import type { Track, Album, Playlist } from '$lib/types';
 
-// Mock stores
-const mockSearchStoreActions = {
-	search: vi.fn(),
-	commit: vi.fn()
-};
-
-const mockPlayerStore = {
-	setTrack: vi.fn(),
-	play: vi.fn(),
-	quality: 'LOSSLESS'
-};
-
-const mockToasts = {
-	error: vi.fn(),
-	success: vi.fn()
-};
-
-// Mock services
-const mockExecuteTabSearch = vi.fn();
-const mockConvertStreamingUrl = vi.fn();
-const mockPlaylistOrchestrator = {
-	convertPlaylist: vi.fn()
-};
-
-// Mock URL detection utilities
-const mockIsTidalUrl = vi.fn();
-const mockIsSupportedStreamingUrl = vi.fn();
-const mockIsSpotifyPlaylistUrl = vi.fn();
-const mockPrecacheTrackStream = vi.fn();
+const {
+	mockSearchStoreActions,
+	mockPlayerStore,
+	mockToasts,
+	mockExecuteTabSearch,
+	mockConvertStreamingUrl,
+	mockPlaylistOrchestrator,
+	mockIsTidalUrl,
+	mockIsSupportedStreamingUrl,
+	mockIsSpotifyPlaylistUrl,
+	mockPrecacheTrackStream
+} = vi.hoisted(() => ({
+	mockSearchStoreActions: {
+		search: vi.fn(),
+		commit: vi.fn()
+	},
+	mockPlayerStore: {
+		setTrack: vi.fn(),
+		play: vi.fn(),
+		quality: 'LOSSLESS'
+	},
+	mockToasts: {
+		error: vi.fn(),
+		success: vi.fn()
+	},
+	mockExecuteTabSearch: vi.fn(),
+	mockConvertStreamingUrl: vi.fn(),
+	mockPlaylistOrchestrator: {
+		convertPlaylist: vi.fn()
+	},
+	mockIsTidalUrl: vi.fn(),
+	mockIsSupportedStreamingUrl: vi.fn(),
+	mockIsSpotifyPlaylistUrl: vi.fn(),
+	mockPrecacheTrackStream: vi.fn()
+}));
 
 // Mock modules
 vi.mock('$lib/stores/searchStoreAdapter', () => ({
@@ -203,6 +209,54 @@ describe('SearchOrchestrator', () => {
 					error: null
 				})
 			);
+		});
+
+		it('ignores stale results when a newer search completes', async () => {
+			let resolveFirst: (value: any) => void;
+			let resolveSecond: (value: any) => void;
+			const firstPromise = new Promise((resolve) => {
+				resolveFirst = resolve;
+			});
+			const secondPromise = new Promise((resolve) => {
+				resolveSecond = resolve;
+			});
+
+			mockExecuteTabSearch.mockReturnValueOnce(firstPromise).mockReturnValueOnce(secondPromise);
+
+			const firstSearch = orchestrator.search('first', 'tracks', { region: 'US' });
+			const secondSearch = orchestrator.search('second', 'tracks', { region: 'US' });
+
+			resolveSecond!({
+				success: true,
+				results: {
+					tracks: [{ ...mockTrack, id: 200 }],
+					albums: [],
+					artists: [],
+					playlists: []
+				}
+			});
+
+			resolveFirst!({
+				success: true,
+				results: {
+					tracks: [{ ...mockTrack, id: 100 }],
+					albums: [],
+					artists: [],
+					playlists: []
+				}
+			});
+
+			await Promise.all([firstSearch, secondSearch]);
+
+			const resultCommits = mockSearchStoreActions.commit.mock.calls
+				.map((call) => call[0])
+				.filter((payload) => payload?.results?.tracks?.length);
+			const committedTrackIds = resultCommits.map(
+				(payload) => payload.results.tracks[0]?.id
+			);
+
+			expect(committedTrackIds).toContain(200);
+			expect(committedTrackIds).not.toContain(100);
 		});
 
 		it('should handle search errors with toast notification', async () => {

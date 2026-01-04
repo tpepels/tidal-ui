@@ -5,8 +5,8 @@ import { resolve } from 'node:path';
 export default defineConfig({
 	resolve: {
 		alias: {
-			$lib: resolve(__dirname, 'src/lib'),
-			$app: resolve(__dirname, 'src/test/mocks/app')
+			$lib: resolve(__dirname, '../../src/lib'),
+			$app: resolve(__dirname, '../../src/test/mocks/app')
 		}
 	},
 	test: {

@@ -4,14 +4,35 @@ import { writable } from 'svelte/store';
 export type RegionOption = 'auto' | 'us' | 'eu';
 
 const STORAGE_KEY = 'tidal-ui.region';
+const TEST_QUERY_KEY = 'testRegion';
+
+const isRegionOption = (value: string | null): value is RegionOption =>
+	value === 'us' || value === 'eu' || value === 'auto';
+
+const isTestHookEnabled = import.meta.env.DEV || import.meta.env.VITE_E2E === 'true';
+
+const readTestRegion = (): RegionOption | null => {
+	if (!browser || !isTestHookEnabled) {
+		return null;
+	}
+
+	const params = new URLSearchParams(window.location.search);
+	const value = params.get(TEST_QUERY_KEY);
+	return isRegionOption(value) ? value : null;
+};
 
 const readInitialRegion = (): RegionOption => {
 	if (!browser) {
 		return 'auto';
 	}
 
+	const testRegion = readTestRegion();
+	if (testRegion) {
+		return testRegion;
+	}
+
 	const stored = localStorage.getItem(STORAGE_KEY);
-	if (stored === 'us' || stored === 'eu' || stored === 'auto') {
+	if (isRegionOption(stored)) {
 		return stored;
 	}
 
@@ -33,18 +54,29 @@ const createRegionStore = () => {
 		window.addEventListener('storage', (event) => {
 			if (event.key !== STORAGE_KEY) return;
 			const value = event.newValue;
-			if (value === 'us' || value === 'eu' || value === 'auto') {
+			if (isRegionOption(value)) {
 				set(value);
 			}
 		});
 	}
 
-	return {
+	const store = {
 		subscribe,
 		setRegion(value: RegionOption) {
 			update(() => value);
 		}
 	};
+
+	if (browser && isTestHookEnabled) {
+		(window as typeof window & { __tidalSetRegion?: (value: RegionOption) => void }).__tidalSetRegion =
+			(value: RegionOption) => {
+				if (isRegionOption(value)) {
+					store.setRegion(value);
+				}
+			};
+	}
+
+	return store;
 };
 
 export const regionStore = createRegionStore();
