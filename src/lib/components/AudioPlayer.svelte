@@ -73,10 +73,7 @@
 	const hiResQualities = new Set<AudioQuality>(['HI_RES_LOSSLESS']);
 	const sampleRateLabel = $derived(formatSampleRate($playerStore.sampleRate));
 	const bitDepthLabel = $derived(formatBitDepth($playerStore.bitDepth));
-	const machineStreamUrl = $derived(() => {
-		const candidate = playbackMachine.streamUrl ?? streamUrl;
-		return typeof candidate === 'string' ? candidate : '';
-	});
+	const machineStreamUrl = $derived(playbackMachine.streamUrl || streamUrl);
 	const isFirefox = typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent);
 	let supportsLosslessPlayback = true;
 

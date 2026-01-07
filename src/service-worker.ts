@@ -6,7 +6,11 @@ declare const self: ServiceWorkerGlobalScope;
 
 const CACHE_PREFIX = 'binitidal';
 const CACHE_NAME = `${CACHE_PREFIX}-v${version}`;
-const ASSETS = [...build, ...files, '/offline.html'];
+const ASSETS = [
+	...(Array.isArray(build) ? build : []),
+	...(Array.isArray(files) ? files : []),
+	'/offline.html'
+];
 
 self.addEventListener('install', (event) => {
 	self.skipWaiting();
