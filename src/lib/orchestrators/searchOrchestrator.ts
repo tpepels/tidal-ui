@@ -172,7 +172,7 @@ export class SearchOrchestrator {
 			return inflight;
 		}
 
-		const workflowPromise = (async () => {
+		const workflowPromise: Promise<SearchWorkflowResult> = (async () => {
 		// Increment request token to track this search request
 		const requestToken = ++this.currentSearchToken;
 

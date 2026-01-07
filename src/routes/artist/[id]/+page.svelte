@@ -23,6 +23,7 @@ let loadTotalBytes = $state<number | null>(null);
 	const topTracks = $derived(artist?.tracks ?? []);
 	const discography = $derived(artist?.albums ?? []);
 	const hasLoadTotal = $derived(loadTotalBytes !== null && loadTotalBytes > 0);
+	const totalBytesNumber = $derived(loadTotalBytes ?? 0);
 	const downloadQuality = $derived($downloadPreferencesStore.downloadQuality as AudioQuality);
 	const downloadMode = $derived($downloadPreferencesStore.mode);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
@@ -314,13 +315,13 @@ async function loadArtist(id: number) {
 			<div class="h-2 w-full overflow-hidden rounded-full bg-gray-800">
 				<div
 					class="h-full rounded-full bg-blue-500 transition-all {hasLoadTotal ? '' : 'animate-pulse'}"
-					style="width: {hasLoadTotal ? Math.min(100, (loadReceivedBytes / loadTotalBytes) * 100) : 45}%"
+					style="width: {hasLoadTotal ? Math.min(100, (loadReceivedBytes / totalBytesNumber) * 100) : 45}%"
 				></div>
 			</div>
 			<div class="mt-3 text-xs text-gray-400">
 				{#if hasLoadTotal}
-					{formatBytes(loadReceivedBytes)} / {formatBytes(loadTotalBytes)} (
-					{Math.min(100, Math.round((loadReceivedBytes / loadTotalBytes) * 100))}%)
+					{formatBytes(loadReceivedBytes)} / {formatBytes(totalBytesNumber)} (
+					{Math.min(100, Math.round((loadReceivedBytes / totalBytesNumber) * 100))}%)
 				{:else}
 					{formatBytes(loadReceivedBytes)} / ? total (waiting for size)
 				{/if}
