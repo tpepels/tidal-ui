@@ -3,6 +3,8 @@ import devtoolsJson from 'vite-plugin-devtools-json';
 import tailwindcss from '@tailwindcss/vite';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig, loadEnv } from 'vite';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { visualizer } from 'rollup-plugin-visualizer';
 
 export default defineConfig(({ mode, ssrBuild }) => {
@@ -10,6 +12,11 @@ export default defineConfig(({ mode, ssrBuild }) => {
 	process.env = { ...process.env, ...env };
 
 	const parsedPort = env.PORT ? Number.parseInt(env.PORT, 10) : undefined;
+	const certPath = resolve(process.cwd(), '.certs/cert.pem');
+	const keyPath = resolve(process.cwd(), '.certs/key.pem');
+	const httpsEnabled =
+		env.VITE_DISABLE_HTTPS !== 'true' && existsSync(certPath) && existsSync(keyPath);
+	const httpsConfig = httpsEnabled ? { key: keyPath, cert: certPath } : undefined;
 
 	const isTest = mode === 'test';
 	const shouldVisualize = env.VITE_VISUALIZE === 'true' && !ssrBuild;
@@ -41,11 +48,13 @@ export default defineConfig(({ mode, ssrBuild }) => {
 			}
 		},
 		server: {
-			https: {
-				key: './.certs/key.pem',
-				cert: './.certs/cert.pem'
-			},
+			https: httpsConfig,
 			watch: { usePolling: true },
+			host: '0.0.0.0',
+			port: Number.isFinite(parsedPort) ? parsedPort : undefined
+		},
+		preview: {
+			https: httpsConfig,
 			host: '0.0.0.0',
 			port: Number.isFinite(parsedPort) ? parsedPort : undefined
 		},
