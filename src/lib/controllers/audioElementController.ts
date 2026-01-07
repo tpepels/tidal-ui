@@ -63,13 +63,14 @@ export const createAudioElementController = (options: ControllerOptions): AudioE
 		if (!audioElement) return;
 		const storeState = get(options.playerStore);
 		const duration = audioElement.duration;
-		if (
-			storeState.currentTrack &&
-			storeState.duration > 0 &&
-			audioElement.currentTime === 0 &&
-			(!Number.isFinite(duration) || duration <= 0)
-		) {
-			return;
+		if (storeState.currentTrack && audioElement.currentTime === 0) {
+			const durationInvalid = !Number.isFinite(duration) || duration <= 0;
+			if (durationInvalid && storeState.currentTime > 0) {
+				return;
+			}
+			if (durationInvalid && storeState.duration > 0) {
+				return;
+			}
 		}
 		options.onSetCurrentTime(audioElement.currentTime);
 		updateBufferedPercent();

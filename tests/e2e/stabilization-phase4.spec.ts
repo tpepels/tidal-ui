@@ -193,17 +193,17 @@ test('quality change triggers a new playback load', async ({ page }) => {
 
 	const trackButton = page.getByRole('button', { name: /Mock Track/i }).first();
 	await expect(trackButton).toBeVisible();
-	const initialLoading = page.waitForFunction(() => {
-		const snapshot = window.__tidalPlaybackMachineState?.();
-		return Boolean(snapshot?.isLoading);
-	});
 	await trackButton.click();
-	await initialLoading;
 	await page.waitForFunction(() => {
 		const snapshot = window.__tidalPlaybackMachineState?.() as
-			| { currentTrackId: number | string | null; isLoading: boolean }
+			| { currentTrackId: number | string | null; loadRequestId?: number }
 			| undefined;
-		return snapshot && snapshot.currentTrackId !== null && snapshot.isLoading === false;
+		return (
+			snapshot &&
+			snapshot.currentTrackId !== null &&
+			typeof snapshot.loadRequestId === 'number' &&
+			snapshot.loadRequestId > 0
+		);
 	});
 
 	const previousRequestId = await page.evaluate(() => {
@@ -344,9 +344,14 @@ test('quality change via preferences triggers reload when gated', async ({ page 
 
 	await page.waitForFunction(() => {
 		const snapshot = window.__tidalPlaybackMachineState?.() as
-			| { currentTrackId: number | string | null; isLoading: boolean }
+			| { currentTrackId: number | string | null; loadRequestId?: number }
 			| undefined;
-		return snapshot && snapshot.currentTrackId !== null && snapshot.isLoading === false;
+		return (
+			snapshot &&
+			snapshot.currentTrackId !== null &&
+			typeof snapshot.loadRequestId === 'number' &&
+			snapshot.loadRequestId > 0
+		);
 	});
 
 	const previousRequestId = await page.evaluate(() => {
