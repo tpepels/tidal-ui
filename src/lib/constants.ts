@@ -1,7 +1,6 @@
 // API and Application Constants
 
 // API Configuration
-export const API_BASE = 'https://triton.squid.wtf';
 export const DASH_MANIFEST_UNAVAILABLE_CODE = 'DASH_MANIFEST_UNAVAILABLE';
 export const RATE_LIMIT_ERROR_MESSAGE = 'Too Many Requests. Please wait a moment and try again.';
 

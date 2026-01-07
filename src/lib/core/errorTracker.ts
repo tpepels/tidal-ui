@@ -33,6 +33,12 @@ export interface ErrorSummary {
 	errorRate: number; // Errors per minute
 }
 
+export type ErrorSummarySnapshot = {
+	capturedAt: number;
+	summary: ErrorSummary;
+	domainCounts: Record<string, number>;
+};
+
 export type ErrorContext = Record<string, unknown> & {
 	source?: string;
 	filename?: string;
@@ -43,6 +49,7 @@ export type ErrorContext = Record<string, unknown> & {
 	url?: string;
 	userId?: string;
 	sessionId?: string;
+	domain?: string;
 };
 
 export class ErrorTracker {
@@ -162,6 +169,8 @@ export class ErrorTracker {
 			}
 		});
 
+		this.persistErrorSummary();
+
 		return errorId;
 	}
 
@@ -264,6 +273,17 @@ export class ErrorTracker {
 		};
 	}
 
+	public getDomainSummary(timeRangeMs: number = 3600000): Record<string, number> {
+		const startTime = Date.now() - timeRangeMs;
+		const recentErrors = this.errors.filter((e) => e.timestamp >= startTime);
+		const counts: Record<string, number> = {};
+		for (const error of recentErrors) {
+			const domain = this.getDomainFromContext(error.context);
+			counts[domain] = (counts[domain] ?? 0) + 1;
+		}
+		return counts;
+	}
+
 	public getErrors(timeRangeMs: number = 3600000): ErrorReport[] {
 		const startTime = Date.now() - timeRangeMs;
 		return this.errors.filter((e) => e.timestamp >= startTime);
@@ -276,6 +296,58 @@ export class ErrorTracker {
 	public clearErrors(): void {
 		this.errors = [];
 		this.errorGroups.clear();
+	}
+
+	public getPersistedSummary(): ErrorSummarySnapshot | null {
+		if (typeof window === 'undefined') {
+			return null;
+		}
+		try {
+			const raw = window.localStorage.getItem('tidal-ui.error-summary');
+			if (!raw) {
+				return null;
+			}
+			return JSON.parse(raw) as ErrorSummarySnapshot;
+		} catch {
+			return null;
+		}
+	}
+
+	private getDomainFromContext(context: ErrorContext): string {
+		if (context.domain && typeof context.domain === 'string') {
+			return context.domain;
+		}
+		const component = typeof context.component === 'string' ? context.component : '';
+		if (component.includes('download')) {
+			return 'download';
+		}
+		if (component.includes('search')) {
+			return 'search';
+		}
+		if (
+			component.includes('playback') ||
+			component.includes('audio') ||
+			component.includes('state-machine')
+		) {
+			return 'playback';
+		}
+		return 'other';
+	}
+
+	private persistErrorSummary(): void {
+		if (typeof window === 'undefined') {
+			return;
+		}
+		try {
+			const snapshot: ErrorSummarySnapshot = {
+				capturedAt: Date.now(),
+				summary: this.getErrorSummary(),
+				domainCounts: this.getDomainSummary()
+			};
+			window.localStorage.setItem('tidal-ui.error-summary', JSON.stringify(snapshot));
+		} catch {
+			// Ignore localStorage failures.
+		}
 	}
 
 	public addErrorListener(listener: (error: ErrorReport) => void): () => void {
@@ -311,4 +383,8 @@ export function trackError(error: Error, context: ErrorContext = {}): string {
 
 export function getErrorSummary(timeRangeMs?: number): ErrorSummary {
 	return errorTracker.getErrorSummary(timeRangeMs);
+}
+
+export function getPersistedErrorSummary(): ErrorSummarySnapshot | null {
+	return errorTracker.getPersistedSummary();
 }

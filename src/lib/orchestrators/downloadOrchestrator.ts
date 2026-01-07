@@ -341,6 +341,7 @@ export class DownloadOrchestrator {
 					toasts.error(message);
 					trackError(new Error(message), {
 						component: 'download-orchestrator',
+						domain: 'download',
 						source: 'notification',
 						severity: 'medium'
 					});
@@ -351,6 +352,7 @@ export class DownloadOrchestrator {
 				if (type === 'error') {
 					trackError(new Error(message), {
 						component: 'download-orchestrator',
+						domain: 'download',
 						source: 'notification',
 						severity: 'medium'
 					});

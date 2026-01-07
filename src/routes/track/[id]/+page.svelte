@@ -5,6 +5,7 @@
 	import type { Track } from '$lib/types';
 	import { onMount } from 'svelte';
 	import { playerStore } from '$lib/stores/player';
+	import { playbackFacade } from '$lib/controllers/playbackFacade';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
@@ -57,13 +58,13 @@
 			}
 
 			// Automatically play the track if it's not already playing
-			if (track) {
-				const current = $playerStore.currentTrack;
-				if (!current || current.id !== track.id) {
-					playerStore.setQueue([track], 0);
-					playerStore.play();
+				if (track) {
+					const current = $playerStore.currentTrack;
+					if (!current || current.id !== track.id) {
+						playbackFacade.loadQueue([track], 0);
+						playbackFacade.play();
+					}
 				}
-			}
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load track';
 			console.error('Failed to load track:', err);
@@ -279,13 +280,13 @@
 				</div>
 
 				<div class="flex gap-4">
-					<button
-						onclick={() => {
-							if (track) {
-								playerStore.setQueue([track], 0);
-								playerStore.play();
-							}
-						}}
+						<button
+							onclick={() => {
+								if (track) {
+									playbackFacade.loadQueue([track], 0);
+									playbackFacade.play();
+								}
+							}}
 						class="flex items-center gap-2 rounded-full bg-blue-600 px-8 py-3 font-semibold transition-colors hover:bg-blue-700"
 					>
 						<Play size={20} fill="currentColor" />

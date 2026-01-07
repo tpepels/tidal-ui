@@ -201,6 +201,9 @@ export const searchStoreActions = {
 			tabLoading: markTabLoading(searchTab, true)
 		});
 	},
+	setQuery(query: string) {
+		this.commit({ query });
+	},
 
 	cancelSearch() {
 		this.commit({

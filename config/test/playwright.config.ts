@@ -49,6 +49,8 @@ export default defineConfig({
 		env: {
 			E2E_OFFLINE: 'true',
 			VITE_E2E: 'true',
+			VITE_PLAYBACK_MACHINE_QUALITY_SOT: 'true',
+			VITE_PLAYBACK_MACHINE_QUEUE_SOT: 'true',
 			REDIS_DISABLED: 'true'
 		},
 		ignoreHTTPSErrors: true,

@@ -1,15 +1,18 @@
 import { z } from 'zod';
 
+const ArtistRoleEntrySchema = z.union([
+	z.string(),
+	z.object({
+		category: z.string().optional(),
+		categoryId: z.number().optional()
+	})
+]);
+
 const ArtistRolesSchema = z
-	.array(
-		z.union([
-			z.string(),
-			z.object({
-				category: z.string().optional(),
-				categoryId: z.number().optional()
-			})
-		])
-	)
+	.union([
+		z.array(ArtistRoleEntrySchema),
+		z.object({}).passthrough()
+	])
 	.optional();
 
 // API Response Schemas

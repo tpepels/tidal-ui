@@ -2,6 +2,7 @@
 	import type { Track } from '$lib/types';
 	import { losslessAPI } from '$lib/api';
 	import { playerStore } from '$lib/stores/player';
+	import { playbackFacade } from '$lib/controllers/playbackFacade';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { downloadOrchestrator } from '$lib/orchestrators';
@@ -44,18 +45,18 @@
 
 	function handlePlayTrack(track: Track, index: number) {
 		console.info('[TopTracksGrid] handlePlayTrack', { trackId: track.id, index });
-		playerStore.setQueue(displayedTracks, index);
-		playerStore.play();
+		playbackFacade.loadQueue(displayedTracks, index);
+		playbackFacade.play();
 	}
 
 	function handleAddToQueue(track: Track, event: MouseEvent) {
 		event.stopPropagation();
-		playerStore.enqueue(track);
+		playbackFacade.enqueue(track);
 	}
 
 	function handlePlayNext(track: Track, event: MouseEvent) {
 		event.stopPropagation();
-		playerStore.enqueueNext(track);
+		playbackFacade.enqueueNext(track);
 	}
 
 	function handleCardKeydown(event: KeyboardEvent, track: Track, index: number) {

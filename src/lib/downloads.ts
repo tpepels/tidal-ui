@@ -7,7 +7,7 @@ import { downloadUiStore } from './stores/downloadUi';
 import { retryFetch } from './errors';
 import { toasts } from './stores/toasts';
 import { formatArtists } from './utils/formatters';
-import JSZip from 'jszip';
+const loadJSZip = async () => (await import('jszip')).default;
 
 const BASE_DELAY_MS = 1000;
 
@@ -636,6 +636,7 @@ export async function downloadAlbum(
 	}
 
 	if (shouldZip) {
+		const JSZip = await loadJSZip();
 		const zip = new JSZip();
 		let completed = 0;
 		const failedTracks: Array<{ track: Track; error: Error }> = [];

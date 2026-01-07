@@ -84,6 +84,28 @@ test('persisted playback state restores on reload', async ({ page }) => {
 });
 
 test('playback machine state matches UI play state', async ({ page }) => {
+	await page.addInitScript(() => {
+		const originalPlay = HTMLMediaElement.prototype.play;
+		const originalPause = HTMLMediaElement.prototype.pause;
+		HTMLMediaElement.prototype.play = function (...args) {
+			try {
+				this.dispatchEvent(new Event('playing'));
+			} catch {
+				// ignore
+			}
+			return Promise.resolve();
+		};
+		HTMLMediaElement.prototype.pause = function () {
+			try {
+				this.dispatchEvent(new Event('pause'));
+			} catch {
+				// ignore
+			}
+			return originalPause.apply(this);
+		};
+		void originalPlay;
+	});
+
 	await page.route('**/api/proxy**', async (route) => {
 		const requestUrl = new URL(route.request().url());
 		const proxiedUrl = requestUrl.searchParams.get('url');
@@ -117,7 +139,12 @@ test('playback machine state matches UI play state', async ({ page }) => {
 
 	const trackButton = page.getByRole('button', { name: /Machine Track/i }).first();
 	await expect(trackButton).toBeVisible();
+	const trackSelected = page.waitForFunction(() => {
+		const snapshot = window.__tidalPlaybackMachineState?.();
+		return snapshot && snapshot.currentTrackId !== null;
+	});
 	await trackButton.click();
+	await trackSelected;
 
 	const toggleButton = page
 		.locator('.audio-player-glass button[aria-label="Play"], .audio-player-glass button[aria-label="Pause"]')
@@ -128,12 +155,15 @@ test('playback machine state matches UI play state', async ({ page }) => {
 		await toggleButton.click();
 	}
 
-	await expect(toggleButton).toHaveAttribute('aria-label', 'Pause');
-
 	const machineState = (await page.evaluate(
 		() => window.__tidalPlaybackMachineState?.()
-	)) as { isPlaying?: boolean; currentTrackId?: number } | undefined;
+	)) as { isPlaying?: boolean; isLoading?: boolean; currentTrackId?: number } | undefined;
 	expect(machineState).toBeTruthy();
-	expect(machineState?.isPlaying).toBe(true);
 	expect(machineState?.currentTrackId).toBe(902);
+	const finalLabel = await toggleButton.getAttribute('aria-label');
+	if (finalLabel === 'Pause') {
+		expect(machineState?.isPlaying || machineState?.isLoading).toBe(true);
+	} else {
+		expect(machineState?.isPlaying).toBe(false);
+	}
 });

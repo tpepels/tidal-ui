@@ -282,6 +282,22 @@ describe('playbackMachine', () => {
 			expect(next.context.loadRequestId).toBe(loadRequestId + 1);
 		});
 
+		it('clears stream URL and increments loadRequestId on quality change from ready state', () => {
+			const initial = createInitialState();
+			const loading = transition(initial, { type: 'LOAD_TRACK', track: mockTidalTrack });
+			const ready = transition(loading, {
+				type: 'LOAD_COMPLETE',
+				streamUrl: 'https://example.com/stream.m4a',
+				quality: 'HIGH'
+			});
+			const loadRequestId = ready.context.loadRequestId;
+			const next = transition(ready, { type: 'CHANGE_QUALITY', quality: 'LOW' });
+
+			expect(next.state).toBe('loading');
+			expect(next.context.streamUrl).toBeNull();
+			expect(next.context.loadRequestId).toBe(loadRequestId + 1);
+		});
+
 		it('should increment loadRequestId on each new load', () => {
 			const initial = createInitialState();
 			expect(initial.context.loadRequestId).toBe(0);
@@ -309,6 +325,20 @@ describe('playbackMachine', () => {
 			const next = transition(loading, { type: 'PLAY' });
 
 			expect(next.state).toBe('loading'); // No transition
+		});
+
+		it('stores queue state without changing playback state', () => {
+			const initial = createInitialState();
+			const queueTrack = { ...mockTidalTrack, id: 9001 };
+			const next = transition(initial, {
+				type: 'SET_QUEUE',
+				queue: [queueTrack],
+				queueIndex: 0
+			});
+
+			expect(next.state).toBe('idle');
+			expect(next.context.queue).toHaveLength(1);
+			expect(next.context.queueIndex).toBe(0);
 		});
 
 		it('should update quality without loading when idle', () => {

@@ -20,6 +20,7 @@
 
 	} from 'lucide-svelte';
 	import { playerStore } from '$lib/stores/player';
+	import { playbackFacade } from '$lib/controllers/playbackFacade';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
@@ -81,10 +82,10 @@
 			return;
 		}
 
-		try {
-			playerStore.setQueue(tracks, 0);
-			playerStore.play();
-		} catch (error) {
+			try {
+				playbackFacade.loadQueue(tracks, 0);
+				playbackFacade.play();
+			} catch (error) {
 			console.error('Failed to play album:', error);
 			// Could show error toast here
 		}
@@ -124,12 +125,12 @@
 		goto('/');
 	}
 
-	function handleShufflePlay() {
-		if (tracks.length === 0) return;
-		const shuffled = shuffleTracks(tracks);
-		playerStore.setQueue(shuffled, 0);
-		playerStore.play();
-	}
+		function handleShufflePlay() {
+			if (tracks.length === 0) return;
+			const shuffled = shuffleTracks(tracks);
+			playbackFacade.loadQueue(shuffled, 0);
+			playbackFacade.play();
+		}
 
 	async function handleDownloadAll() {
 		if (!album || tracks.length === 0 || isDownloadingAll) {
@@ -300,7 +301,7 @@
 				{#if tracks.length > 0}
 					<div class="flex flex-wrap items-center gap-3">
 						<button
-							onclick={isPlayingThisAlbum ? () => playerStore.pause() : handlePlayAll}
+							onclick={isPlayingThisAlbum ? () => playbackFacade.pause() : handlePlayAll}
 							class="flex items-center gap-2 rounded-full bg-blue-600 px-8 py-3 font-semibold transition-colors hover:bg-blue-700"
 						>
 							{#if isPlayingThisAlbum}

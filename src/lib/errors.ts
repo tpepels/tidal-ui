@@ -1,4 +1,5 @@
 import { ERROR_MESSAGES } from './constants';
+import { trackRetry } from './core/retryTracker';
 
 export class TidalError extends Error {
 	public readonly code?: string;
@@ -160,7 +161,8 @@ export async function retryFetch(
 					error.code === 'SERVER_ERROR' ||
 					error.statusCode === 429)
 			);
-		}
+		},
+		{ operation: 'retryFetch', url }
 	);
 }
 
@@ -169,7 +171,8 @@ export async function retryWithBackoff<T>(
 	operation: () => Promise<T>,
 	maxRetries = 3,
 	baseDelay = 1000,
-	shouldRetry?: (error: unknown) => boolean
+	shouldRetry?: (error: unknown) => boolean,
+	context?: { operation?: string; url?: string; component?: string }
 ): Promise<T> {
 	let lastError: unknown;
 
@@ -191,6 +194,14 @@ export async function retryWithBackoff<T>(
 
 			// Exponential backoff with jitter
 			const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 1000;
+			trackRetry({
+				attempt: attempt + 1,
+				delayMs: delay,
+				operation: context?.operation,
+				url: context?.url,
+				component: context?.component,
+				errorMessage: error instanceof Error ? error.message : String(error)
+			});
 			await new Promise((resolve) => setTimeout(resolve, delay));
 		}
 	}

@@ -18,7 +18,8 @@ const {
 	mockIsTidalUrl,
 	mockIsSupportedStreamingUrl,
 	mockIsSpotifyPlaylistUrl,
-	mockPrecacheTrackStream
+	mockPrecacheTrackStream,
+	mockPlaybackFacade
 } = vi.hoisted(() => ({
 	mockSearchStoreActions: {
 		search: vi.fn(),
@@ -41,7 +42,12 @@ const {
 	mockIsTidalUrl: vi.fn(),
 	mockIsSupportedStreamingUrl: vi.fn(),
 	mockIsSpotifyPlaylistUrl: vi.fn(),
-	mockPrecacheTrackStream: vi.fn()
+	mockPrecacheTrackStream: vi.fn(),
+	mockPlaybackFacade: {
+		play: vi.fn(),
+		pause: vi.fn(),
+		loadQueue: vi.fn()
+	}
 }));
 
 // Mock modules
@@ -77,6 +83,10 @@ vi.mock('$lib/utils/urlParser', () => ({
 vi.mock('$lib/utils/songlink', () => ({
 	isSupportedStreamingUrl: mockIsSupportedStreamingUrl,
 	isSpotifyPlaylistUrl: mockIsSpotifyPlaylistUrl
+}));
+
+vi.mock('$lib/controllers/playbackFacade', () => ({
+	playbackFacade: mockPlaybackFacade
 }));
 
 vi.mock('svelte/store', () => ({
@@ -358,8 +368,8 @@ describe('SearchOrchestrator', () => {
 			}
 
 			expect(mockPrecacheTrackStream).toHaveBeenCalledWith(123, 'LOSSLESS');
-			expect(mockPlayerStore.setTrack).toHaveBeenCalledWith(mockTrack);
-			expect(mockPlayerStore.play).toHaveBeenCalled();
+			expect(mockPlaybackFacade.loadQueue).toHaveBeenCalledWith([mockTrack], 0);
+			expect(mockPlaybackFacade.play).toHaveBeenCalled();
 			expect(mockSearchStoreActions.commit).toHaveBeenCalledWith(
 				expect.objectContaining({
 					query: '',

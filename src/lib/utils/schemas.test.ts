@@ -411,6 +411,26 @@ describe('Schemas', () => {
 				}
 			});
 
+			it('accepts object-based artistRoles payloads', () => {
+				const nestedData = {
+					id: 456,
+					title: 'Role Track',
+					artists: [
+						{
+							id: 789,
+							name: 'Role Artist',
+							artistRoles: {
+								main: ['Artist'],
+								featured: 'Contributor'
+							}
+						}
+					]
+				};
+
+				const result = safeValidateApiResponse(nestedData, TrackSchema);
+				expect(result.success).toBe(true);
+			});
+
 			it('handles partial validation failures in arrays', () => {
 				const mixedArray = {
 					items: [

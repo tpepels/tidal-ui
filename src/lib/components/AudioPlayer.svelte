@@ -27,9 +27,9 @@
 	import { cubicOut } from 'svelte/easing';
 	import { createMediaSessionController } from '$lib/controllers/mediaSessionController';
 	import { createAudioElementController } from '$lib/controllers/audioElementController';
-	import { createPlaybackFallbackController } from '$lib/controllers/playbackFallbackController';
-	import { createTrackLoadController } from '$lib/controllers/trackLoadController';
 	import { createPlaybackTransitions } from '$lib/controllers/playbackTransitions';
+	import { playbackFacade } from '$lib/controllers/playbackFacade';
+	import { playerUiProjection } from '$lib/controllers/playerUiProjection';
 	import { playbackMachine } from '$lib/stores/playbackMachine.svelte';
 	import {
 		Play,
@@ -53,10 +53,7 @@
 
 	let audioElement: HTMLAudioElement;
 	let streamUrl = $state('');
-let isMuted = $state(false);
-	let currentTrackId: number | null = null;
-	let loadSequence = 0;
-	let lastMachineLoadRequestId = 0;
+	let isMuted = $state(false);
 	let bufferedPercent = $state(0);
 	let currentPlaybackQuality = $state<AudioQuality | null>(null);
 	let isDownloadingCurrentTrack = $state(false);
@@ -78,9 +75,7 @@ let isMuted = $state(false);
 	const bitDepthLabel = $derived(formatBitDepth($playerStore.bitDepth));
 	const machineStreamUrl = $derived(playbackMachine.streamUrl ?? streamUrl);
 	const isFirefox = typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent);
-	let dashPlaybackActive = false;
 	let supportsLosslessPlayback = true;
-	let resumeAfterFallback = false;
 
 	const mediaSessionController = createMediaSessionController(
 		playerStore,
@@ -96,7 +91,7 @@ let isMuted = $state(false);
 				handlePrevious();
 			},
 			onNext: () => {
-				playbackTransitions.next();
+				playbackFacade.next();
 			},
 			onSeekTo: (time: number) => {
 				if (!audioElement) return;
@@ -117,7 +112,7 @@ let isMuted = $state(false);
 				playbackMachine.actions.seek(bounded);
 			},
 			onStop: () => {
-				requestPause();
+				playbackFacade.pause();
 				playbackTransitions.seekTo(0);
 				playbackMachine.actions.seek(0);
 			},
@@ -127,93 +122,29 @@ let isMuted = $state(false);
 		}
 	);
 
-	const trackLoadController = createTrackLoadController({
-		playerStore,
-		getAudioElement: () => audioElement,
-		getCurrentTrackId: () => currentTrackId,
-		getSupportsLosslessPlayback: () => supportsLosslessPlayback,
-		setStreamUrl: (value) => {
-			streamUrl = value;
-		},
-		setBufferedPercent: (value) => {
-			bufferedPercent = value;
-		},
-		setCurrentPlaybackQuality: (value) => {
-			currentPlaybackQuality = value;
-		},
-		setDashPlaybackActive: (value) => {
-			dashPlaybackActive = value;
-		},
-		setLoading: () => {},
-		setSampleRate: (value) => playerStore.setSampleRate(value),
-		setBitDepth: (value) => playerStore.setBitDepth(value),
-		setReplayGain: (value) => playerStore.setReplayGain(value),
-		createSequence: () => ++loadSequence,
-		getSequence: () => loadSequence,
-		isHiResQuality: (quality) => (quality ? hiResQualities.has(quality) : false),
-		preloadThresholdSeconds: PRELOAD_THRESHOLD_SECONDS,
-		getPlaybackQuality: () => playbackMachine.quality,
-		onLoadComplete: (url, quality) => {
-			playbackMachine.dispatch({ type: 'LOAD_COMPLETE', streamUrl: url ?? null, quality });
-		},
-		onLoadError: (error) => {
-			playbackMachine.dispatch({
-				type: 'LOAD_ERROR',
-				error: error instanceof Error ? error : new Error('Failed to load track')
-			});
-		},
-		onFallbackRequested: (quality, reason) => {
-			playbackMachine.dispatch({ type: 'FALLBACK_REQUESTED', quality, reason });
-		}
-	});
-
 	const audioElementController = createAudioElementController({
 		playerStore,
 		getAudioElement: () => audioElement,
 		onSetCurrentTime: (time) => playbackTransitions.seekTo(time),
-		onSetDuration: (duration) => playerStore.setDuration(duration),
-		onNextTrack: () => playbackTransitions.next(),
+		onSetDuration: (duration) => playerUiProjection.setDuration(duration),
+		onNextTrack: () => playbackFacade.next(),
 		onBufferedPercentChange: (value) => {
 			bufferedPercent = value;
 		},
 		onMaybePreloadNextTrack: (remaining) => {
-			trackLoadController.maybePreloadNextTrack(remaining);
+			playbackMachine.maybePreloadNextTrack(remaining);
 		},
 		mediaSessionController
-	});
-
-	const playbackFallbackController = createPlaybackFallbackController({
-		getCurrentTrack: () => $playerStore.currentTrack,
-		getPlayerQuality: () => $playerStore.quality,
-		getCurrentPlaybackQuality: () => currentPlaybackQuality,
-		getIsPlaying: () => $playerStore.isPlaying,
-		isFirefox: () => isFirefox,
-		getDashPlaybackActive: () => dashPlaybackActive,
-		setDashPlaybackActive: (value) => {
-			dashPlaybackActive = value;
-		},
-		setLoading: () => {},
-		loadStandardTrack: (track, quality, sequence) =>
-			trackLoadController.loadStandardTrack(track, quality, sequence),
-		createSequence: () => ++loadSequence,
-		setResumeAfterFallback: (value) => {
-			resumeAfterFallback = value;
-		},
-		onFallbackRequested: (quality, reason) => {
-			playbackMachine.dispatch({ type: 'FALLBACK_REQUESTED', quality, reason });
-		}
 	});
 
 	const playbackTransitions = createPlaybackTransitions(playerStore);
 
 	function requestPlay() {
-		playbackTransitions.play();
-		playbackMachine.actions.play();
+		playbackFacade.play();
 	}
 
 	function requestPause() {
-		playbackTransitions.pause();
-		playbackMachine.actions.pause();
+		playbackFacade.pause();
 	}
 
 	function togglePlayback() {
@@ -281,22 +212,6 @@ let isMuted = $state(false);
 	// Playback is controlled via playbackMachine; playerStore mirrors machine state for UI.
 
 	$effect(() => {
-		const machineState = playbackMachine.state;
-		const machineContext = playbackMachine.context;
-		if (machineState !== 'loading') {
-			return;
-		}
-		if (!machineContext.currentTrack || isSonglinkTrack(machineContext.currentTrack)) {
-			return;
-		}
-		if (machineContext.loadRequestId === lastMachineLoadRequestId) {
-			return;
-		}
-		lastMachineLoadRequestId = machineContext.loadRequestId;
-		loadTrack(machineContext.currentTrack);
-	});
-
-	$effect(() => {
 		if (showQueuePanel && $playerStore.queue.length === 0) {
 			showQueuePanel = false;
 		}
@@ -323,15 +238,15 @@ let isMuted = $state(false);
 
 	function playFromQueue(index: number) {
 		console.info('[AudioPlayer] playFromQueue called for index', index);
-		playbackTransitions.playFromQueueIndex(index);
-		playbackMachine.actions.play();
+		playbackFacade.loadQueue($playerStore.queue, index);
+		playbackFacade.play();
 	}
 
 	function removeFromQueue(index: number, event?: MouseEvent) {
 		if (event) {
 			event.stopPropagation();
 		}
-		playerStore.removeFromQueue(index);
+		playbackFacade.removeFromQueue(index);
 	}
 
 	function clearQueue() {
@@ -339,7 +254,7 @@ let isMuted = $state(false);
 	}
 
 	function handleShuffleQueue() {
-		playerStore.shuffleQueue();
+		playbackFacade.shuffleQueue();
 	}
 
 	$effect(() => {
@@ -357,37 +272,12 @@ let isMuted = $state(false);
 		}
 	});
 
-	let lastObservedPlayState: boolean | null = null;
-	$effect(() => {
-		const shouldPlay = $playerStore.isPlaying;
-		if (lastObservedPlayState === shouldPlay) {
-			return;
-		}
-		lastObservedPlayState = shouldPlay;
-		if (shouldPlay) {
-			playbackMachine.actions.play();
-		} else {
-			playbackMachine.actions.pause();
-		}
-	});
-
-	async function loadTrack(track: PlayableTrack) {
-		const trackId = typeof track?.id === 'number' || typeof track?.id === 'string' ? track.id : null;
-		if (trackId !== null) {
-			playbackFallbackController.resetForTrack(trackId);
-		}
-		await trackLoadController.loadTrack(track);
-	}
-
 	function handleTimeUpdate() {
 		audioElementController.handleTimeUpdate();
 	}
 
 	function handleAudioError(event: Event) {
-		const didFallback = playbackFallbackController.handleAudioError(event);
-		if (!didFallback) {
-			playbackMachine.actions.onAudioError(event);
-		}
+		playbackMachine.actions.onAudioError(event);
 	}
 
 	function handleDurationChange() {
@@ -412,9 +302,7 @@ let isMuted = $state(false);
 		}
 
 		mediaSessionController.updatePositionState();
-		const shouldResume = resumeAfterFallback || $playerStore.isPlaying;
-		resumeAfterFallback = false;
-		if (shouldResume) {
+		if ($playerStore.isPlaying) {
 			playbackMachine.actions.play();
 		}
 	}
@@ -445,7 +333,7 @@ let isMuted = $state(false);
 			currentTime: state.currentTime,
 			queueIndex: state.queueIndex,
 			onSetCurrentTime: (time) => playerStore.setCurrentTime(time),
-			onPrevious: () => playerStore.previous()
+			onPrevious: () => playbackFacade.previous()
 		});
 		mediaSessionController.updatePositionState();
 	}
@@ -544,7 +432,7 @@ let isMuted = $state(false);
 
 	function toggleMuteHandler() {
 		const result = toggleMuteService($playerStore.volume, isMuted);
-		playerStore.setVolume(result.volume);
+		playerUiProjection.setVolume(result.volume);
 		isMuted = result.isMuted;
 	}
 
@@ -599,14 +487,29 @@ let isMuted = $state(false);
 
 	onMount(() => {
 		let detachLyricsSeek: (() => void) | null = null;
-		let unsubscribePlayer: (() => void) | null = null;
-		let lastObservedTrackId: number | string | null = null;
-		let lastObservedQuality: AudioQuality | null = null;
+
+		playbackMachine.setLoadUiCallbacks({
+			setStreamUrl: (value) => {
+				streamUrl = value;
+			},
+			setBufferedPercent: (value) => {
+				bufferedPercent = value;
+			},
+			setCurrentPlaybackQuality: (value) => {
+				currentPlaybackQuality = value;
+			},
+			setSampleRate: (value) => playerUiProjection.setSampleRate(value),
+			setBitDepth: (value) => playerUiProjection.setBitDepth(value),
+			setReplayGain: (value) => playerUiProjection.setReplayGain(value),
+			getSupportsLosslessPlayback: () => supportsLosslessPlayback,
+			isHiResQuality: (quality) => (quality ? hiResQualities.has(quality) : false),
+			isFirefox: () => isFirefox,
+			preloadThresholdSeconds: PRELOAD_THRESHOLD_SECONDS
+		});
 
 		if (audioElement) {
 			audioElement.volume = $playerStore.volume;
 			playbackMachine.setAudioElement(audioElement);
-			playbackMachine.setUseExternalStreamLoader(true);
 		}
 
 		if (typeof window !== 'undefined') {
@@ -632,7 +535,7 @@ let isMuted = $state(false);
 					);
 					// loadTrack() will automatically use LOSSLESS quality for playback when FLAC is not supported
 					// without changing the UI quality setting
-					loadTrack(state.currentTrack);
+					playbackMachine.actions.loadTrack(state.currentTrack);
 				}
 			}
 		}
@@ -663,63 +566,11 @@ let isMuted = $state(false);
 			};
 		}
 
-		const syncFromPlayerState = (state: {
-			currentTrack: PlayableTrack | null;
-			quality: AudioQuality;
-		}) => {
-			const current = state.currentTrack;
-
-			if (!audioElement || !current) {
-				if (!current) {
-					currentTrackId = null;
-					streamUrl = '';
-					bufferedPercent = 0;
-					dashPlaybackActive = false;
-					currentPlaybackQuality = null;
-					lastObservedTrackId = null;
-					lastObservedQuality = null;
-				}
-				return;
-			}
-
-			const trackId = current.id;
-			if (trackId !== lastObservedTrackId) {
-				const machineTrack = playbackMachine.currentTrack;
-				if (machineTrack && machineTrack.id === trackId) {
-					currentTrackId = typeof trackId === 'number' ? trackId : null;
-					lastObservedTrackId = trackId;
-					lastObservedQuality = state.quality;
-					return;
-				}
-				currentTrackId = typeof trackId === 'number' ? trackId : null;
-				streamUrl = '';
-				bufferedPercent = 0;
-				dashPlaybackActive = false;
-				currentPlaybackQuality = null;
-				lastObservedTrackId = trackId;
-				lastObservedQuality = state.quality;
-				playbackMachine.actions.changeQuality(state.quality);
-				playbackMachine.actions.loadTrack(current);
-				return;
-			}
-
-			if (state.quality !== lastObservedQuality) {
-				lastObservedQuality = state.quality;
-				playbackMachine.actions.changeQuality(state.quality);
-			}
-		};
-
-		unsubscribePlayer = playerStore.subscribe(syncFromPlayerState);
-		syncFromPlayerState(get(playerStore));
-
 		return () => {
 			resizeObserver?.disconnect();
 			mediaSessionController.cleanup();
 			detachLyricsSeek?.();
-			unsubscribePlayer?.();
-			trackLoadController.destroy().catch((error) => {
-				console.debug('Shaka cleanup failed', error);
-			});
+			playbackMachine.setAudioElement(null);
 		};
 	});
 
@@ -892,7 +743,7 @@ let isMuted = $state(false);
 									</button>
 
 									<button
-										onclick={() => playbackTransitions.next()}
+										onclick={() => playbackFacade.next()}
 										class="p-2 sm:p-1.5 md:p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
 										disabled={$playerStore.queueIndex >= $playerStore.queue.length - 1}
 										aria-label="Next track"

@@ -16,13 +16,26 @@ declare global {
 		| undefined;
 
 	type RegionOption = import('$lib/stores/region').RegionOption;
+	type PlaybackMachineSnapshot = {
+		state: string;
+		isPlaying: boolean;
+		isLoading: boolean;
+		currentTrackId: number | string | null;
+		quality: import('$lib/types').AudioQuality;
+		loadRequestId: number;
+		queueIndex: number;
+		queueLength: number;
+	};
 
 	interface Window {
 		__tidalSetRegion?: (region: RegionOption) => void;
 		__tidalSetDuration?: (duration: number) => void;
 		__tidalSetCurrentTime?: (time: number) => void;
+		__tidalSetQueue?: (tracks: import('$lib/types').PlayableTrack[], startIndex?: number) => void;
+		__tidalShuffleQueue?: () => void;
 		__tidalRehydratePlayback?: () => void;
-		__tidalPlaybackMachineState?: () => unknown;
+		__tidalSetPlaybackQuality?: (quality: import('$lib/types').AudioQuality) => void;
+		__tidalPlaybackMachineState?: () => PlaybackMachineSnapshot;
 	}
 }
 

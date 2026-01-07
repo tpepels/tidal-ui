@@ -160,6 +160,7 @@ function createPlayerStore() {
 
 	return {
 		subscribe,
+		getSnapshot: () => get({ subscribe }),
 		setTrack: (track: PlayableTrack) =>
 			update((state) => {
 				const next: PlayerState = {

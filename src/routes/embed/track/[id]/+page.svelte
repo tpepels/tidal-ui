@@ -4,6 +4,7 @@
 	import type { Track, TrackInfo } from '$lib/types';
 	import { onMount } from 'svelte';
 	import { playerStore } from '$lib/stores/player';
+	import { playbackFacade } from '$lib/controllers/playbackFacade';
 	import { LoaderCircle, Play, Pause, ExternalLink } from 'lucide-svelte';
 	import { formatArtists } from '$lib/utils/formatters';
 
@@ -74,12 +75,12 @@
         if (!track) return;
         
         if (isPlaying) {
-            playerStore.pause();
+            playbackFacade.pause();
         } else {
             if ($playerStore.currentTrack?.id !== track.id) {
-                playerStore.setQueue([track], 0);
+                playbackFacade.loadQueue([track], 0);
             }
-            playerStore.play();
+            playbackFacade.play();
         }
     }
 </script>

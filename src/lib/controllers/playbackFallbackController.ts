@@ -15,7 +15,7 @@ type ControllerOptions = {
 	onFallbackRequested?: (quality: AudioQuality, reason: string) => void;
 };
 
-type PlaybackFallbackController = {
+export type PlaybackFallbackController = {
 	resetForTrack: (trackId: number | string) => void;
 	handleAudioError: (event: Event) => boolean;
 };

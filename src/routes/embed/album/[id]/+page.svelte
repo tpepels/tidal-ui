@@ -5,6 +5,7 @@
 	import { onMount } from 'svelte';
 	import { slide } from 'svelte/transition';
 	import { playerStore } from '$lib/stores/player';
+	import { playbackFacade } from '$lib/controllers/playbackFacade';
 	import { LoaderCircle, Play, Pause, ExternalLink } from 'lucide-svelte';
 
 	import { isSonglinkTrack } from '$lib/types';
@@ -75,19 +76,19 @@
         if (!album || tracks.length === 0) return;
         
         if (isPlaying) {
-            playerStore.pause();
+            playbackFacade.pause();
         } else {
             // If not playing this album, start from beginning
             if (!tracks.some(t => t.id === $playerStore.currentTrack?.id)) {
-                playerStore.setQueue(tracks, 0);
+                playbackFacade.loadQueue(tracks, 0);
             }
-            playerStore.play();
+            playbackFacade.play();
         }
     }
 
     function playTrack(track: Track, index: number) {
-        playerStore.setQueue(tracks, index);
-        playerStore.play();
+        playbackFacade.loadQueue(tracks, index);
+        playbackFacade.play();
     }
 </script>
 
@@ -166,7 +167,7 @@
                         </span>
                     </div>
                 </div>
-                <button class="np-play-button" onclick={() => playerStore.togglePlay()}>
+				<button class="np-play-button" onclick={() => playbackFacade.toggle()}>
                     {#if $playerStore.isPlaying}
                         <Pause size={20} fill="currentColor" />
                     {:else}

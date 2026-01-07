@@ -1,0 +1,79 @@
+# Codex Work Log
+
+## Current TODO
+- [ ] Confirm shaka CDN availability in production or set `VITE_SHAKA_CDN_URL`.
+
+## Work Notes
+- 2026-01-04: Initialized work log and added Phase 1 TODO for cross-layer playback contract test.
+- 2026-01-04: Added contract test `src/lib/stores/playbackMachineContract.test.ts`.
+- 2026-01-04: Audited usage of listed API endpoints.
+- 2026-01-04: Added playback machine/store drift invariant in `src/lib/stores/playbackMachineSync.ts`.
+- 2026-01-04: Added mismatch warning test in `src/lib/stores/playbackMachineSync.test.ts`.
+- 2026-01-04: Added non-warning cases to playback machine/store drift tests in `src/lib/stores/playbackMachineSync.test.ts`.
+- 2026-01-04: Added AudioPlayer integration contract test in `src/lib/components/AudioPlayer.integration.test.ts`.
+- 2026-01-04: Audited API_BASE usage (only referenced in `src/lib/api-endpoint-validation.test.ts`; runtime uses API_CONFIG).
+- 2026-01-04: Removed test-only API_BASE constant and aligned `src/lib/api-endpoint-validation.test.ts` with `API_CONFIG.baseUrl`.
+- 2026-01-04: Added runtime AudioPlayer integration test in `src/lib/components/AudioPlayer.runtime.test.ts`.
+- 2026-01-04: Added and later removed store→machine sync gating in `src/lib/components/AudioPlayer.svelte`.
+- 2026-01-04: Inventoried store→machine sync call sites (AudioPlayer and playerStore direct mutators across routes/components).
+- 2026-01-04: Added runtime test for disabling store→machine sync in `src/lib/components/AudioPlayer.runtime.test.ts`.
+- 2026-01-04: Added playback facade scaffold in `src/lib/controllers/playbackFacade.ts`.
+- 2026-01-04: Refined playback facade implementation to avoid `this` binding pitfalls.
+- 2026-01-04: Added machine-first migration doc in `docs/architecture/PLAYBACK_MACHINE_FIRST_MIGRATION.md`.
+- 2026-01-04: Switched `src/lib/components/TrackList.svelte` and `src/lib/components/TopTracksGrid.svelte` to playback facade.
+- 2026-01-04: Added `playerStore.getSnapshot()` for facade usage in `src/lib/stores/player.ts`.
+- 2026-01-04: Switched Search/Album/Playlist/Track views and Lyrics to playback facade.
+- 2026-01-04: Added playback facade unit test in `src/lib/controllers/playbackFacade.test.ts`.
+- 2026-01-04: Switched remaining routes and search orchestrator to playback facade (`src/routes/+page.svelte`, `src/routes/embed/*`, `src/lib/orchestrators/searchOrchestrator.ts`).
+- 2026-01-04: Removed store→machine sync from `src/lib/components/AudioPlayer.svelte` and updated related tests.
+- 2026-01-04: Updated machine-first migration rollback guidance and removed `.env.test.example`.
+- 2026-01-04: Routed AudioPlayer playback controls through playbackFacade and set `currentTrackId` during load.
+- 2026-01-04: Confirmed playbackTransitions only used for seek/clearQueue in AudioPlayer.
+- 2026-01-04: Added Phase 3 design doc in `docs/architecture/PLAYBACK_SIDE_EFFECTS_CONSOLIDATION.md`.
+- 2026-01-05: Added playback machine UI callbacks + preload hook for load/fallback consolidation.
+- 2026-01-05: Removed AudioPlayer track load/fallback controllers; machine now owns loading side effects.
+- 2026-01-05: Updated playback machine side-effect tests to mock controller-based loading/fallback.
+- 2026-01-05: Updated migration doc to reflect Phase 3 side-effect consolidation.
+- 2026-01-05: Added regression test for cleanup when playback machine clears audio element.
+- 2026-01-05: Added regression test for fallback reset on new load and E2E playback machine hook smoke test.
+- 2026-01-05: Added E2E playback quality test hook and stabilized playback machine E2E assertions.
+- 2026-01-05: Expanded playback machine test hook with quality/loadRequestId and stabilized Phase 4 quality change test.
+- 2026-01-05: Ran full Playwright stabilization suite (all passing) and added loadRequestId quality-change regression test.
+- 2026-01-05: Updated E2E test hooks registry and stability checklist for playback quality hook coverage.
+- 2026-01-05: Added gating for machine-owned playback quality sync and started Phase A TODO.
+- 2026-01-05: Added E2E preference-driven quality change reload test and documented Phase A test strategy.
+- 2026-01-05: Completed Phase A quality gate verification and tests for machine-owned quality sync.
+- 2026-01-05: Started Phase B queue ownership gate (SET_QUEUE event + facade dual-write).
+- 2026-01-05: Enabled queue gate in Playwright and added queue index regression tests in playbackFacade.
+- 2026-01-05: Added queue gate E2E index sync test and extended queue sync to enqueue/remove/clear paths.
+- 2026-01-05: Updated queue gate E2E test to add a second track via queue actions before advancing.
+- 2026-01-05: Re-ran queue gate E2E regression test (passes) and routed embed play toggles + streaming URL playback through playbackFacade.
+- 2026-01-05: Routed playbackTransitions play/pause/queue actions through playbackFacade to avoid direct playerStore flag writes.
+- 2026-01-05: Updated migration doc + stability checklist for Phase C facade-only playback intent.
+- 2026-01-05: Routed queue shuffle through playbackFacade and refreshed playerStore UI mutation audit.
+- 2026-01-05: Added player UI projection adapter and a queue shuffle E2E regression under the queue gate.
+- 2026-01-05: Added playback facade test hooks for queue set/shuffle and used them in the shuffle E2E regression.
+- 2026-01-05: Added playerUiProjection unit test and re-ran full Playwright stabilization suite (49 passed, 1 skipped).
+- 2026-01-05: Updated Phase 5 checklist to include queue management hooks in stabilization plan.
+- 2026-01-05: Added QA diagnostics overlay, persisted error summary snapshots, and domain error metrics.
+- 2026-01-05: Added queue transition tests and centralized queue mutations in playbackQueueCoordinator.
+- 2026-01-05: Added retry tracker + diagnostics overlay retry visibility for API backoff.
+- 2026-01-05: Persisted error summaries with domain counts and tagged search/download/playback error sources.
+- 2026-01-05: Code-split JSZip for queue/album ZIP exports and added slow/flaky proxy fixtures for E2E.
+- 2026-01-05: Documented hook stability policy/deprecations and CI stabilization guardrails.
+- 2026-01-05: Fixed svelte-check issues (fallback controller type export, playback machine snapshot typing, queue test casts) and ran full CI-equivalent test suite.
+- 2026-01-05: Added manual chunking for shaka/jszip/lucide to reduce build chunk warnings.
+- 2026-01-05: Adjusted manual chunking to avoid SSR externals; build still reports a large client chunk warning.
+- 2026-01-05: Added build visualizer output (`stats/client-stats.json`) and confirmed the largest chunk is `shaka-player` (~767 KB).
+- 2026-01-05: Lazy-loaded `trackLoadController` to push shaka loading behind playback side effects.
+- 2026-01-05: Lazy-loaded `AudioPlayer` to defer shaka further; raised Vite `chunkSizeWarningLimit` to 900 KB.
+- 2026-01-05: Added Vite visualizer hook via `VITE_VISUALIZE=true` and replaced deprecated `<svelte:component>` usage.
+- 2026-01-05: Moved Shaka loading to CDN + user-initiated load path; build chunk warning cleared.
+- 2026-01-05: Added README visualizer instructions and updated playback effects tests for deferred controller init.
+- 2026-01-05: Re-ran CI-equivalent suite after lazy-load fixes; stabilization E2E green.
+- 2026-01-05: Added searchStore setQuery action, wired SearchInterface input to it, and pruned completed README TODOs.
+- 2026-01-05: Relaxed artistRoles schema to accept object payloads and added a validation test.
+
+## Phase 2 Inventory
+- `src/lib/components/AudioPlayer.svelte` store→machine sync: `playerStore.subscribe(syncFromPlayerState)` and `lastObservedPlayState` mirror.
+- Direct `playerStore` control used in: routes (`src/routes/+page.svelte`, `src/routes/album/[id]/+page.svelte`, `src/routes/artist/[id]/+page.svelte`, `src/routes/playlist/[id]/+page.svelte`, `src/routes/track/[id]/+page.svelte`, `src/routes/embed/*`) and components (`src/lib/components/TrackList.svelte`, `src/lib/components/TopTracksGrid.svelte`, `src/lib/components/SearchInterface.svelte`, `src/lib/components/LyricsPopup.svelte`), and orchestrator (`src/lib/orchestrators/searchOrchestrator.ts`).

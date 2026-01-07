@@ -2,6 +2,7 @@
 	import type { Track } from '$lib/types';
 	import { losslessAPI } from '$lib/api';
 	import { playerStore } from '$lib/stores/player';
+	import { playbackFacade } from '$lib/controllers/playbackFacade';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { downloadOrchestrator } from '$lib/orchestrators';
@@ -51,18 +52,18 @@
 
 	function handlePlayTrack(track: Track, index: number) {
 		console.info('[TrackList] handlePlayTrack', { trackId: track.id, index });
-		playerStore.setQueue(tracks, index);
-		playerStore.play();
+		playbackFacade.loadQueue(tracks, index);
+		playbackFacade.play();
 	}
 
 	function handleAddToQueue(track: Track, event: MouseEvent) {
 		event.stopPropagation();
-		playerStore.enqueue(track);
+		playbackFacade.enqueue(track);
 	}
 
 	function handlePlayNext(track: Track, event: MouseEvent) {
 		event.stopPropagation();
-		playerStore.enqueueNext(track);
+		playbackFacade.enqueueNext(track);
 	}
 
 	function markCancelled(trackId: number) {
@@ -149,7 +150,7 @@
 				>
 					<!-- Track Number / Play Button -->
 					<button
-						onclick={() => isPlaying(track) ? playerStore.pause() : handlePlayTrack(track, index)}
+						onclick={() => isPlaying(track) ? playbackFacade.pause() : handlePlayTrack(track, index)}
 						class="group flex w-6 sm:w-8 flex-shrink-0 items-center justify-center transition-transform hover:scale-110"
 						aria-label={isPlaying(track) ? 'Pause' : 'Play'}
 					>

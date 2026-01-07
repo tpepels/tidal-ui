@@ -63,7 +63,11 @@ type ShakaNamespace = {
 	};
 };
 
-type ShakaModule = { default: ShakaNamespace };
+type ShakaModule = { default?: ShakaNamespace; shaka?: ShakaNamespace };
+
+const SHAKA_CDN_URL =
+	import.meta.env.VITE_SHAKA_CDN_URL ??
+	'https://cdn.jsdelivr.net/npm/shaka-player@4.11.7/dist/shaka-player.compiled.js';
 
 export type TrackLoadController = {
 	loadTrack: (track: PlayableTrack) => Promise<void>;
@@ -120,11 +124,12 @@ export const createTrackLoadController = (
 			throw new Error('Audio element not ready for Shaka initialization');
 		}
 		if (!shakaNamespace) {
-			const module = await import('shaka-player/dist/shaka-player.compiled.js');
+			const module = await import(/* @vite-ignore */ SHAKA_CDN_URL);
 			const resolved =
-				(module as ShakaModule | { default: ShakaNamespace }).default ??
-				(module as unknown as ShakaNamespace);
-			shakaNamespace = resolved;
+				(module as ShakaModule).default ??
+				(module as ShakaModule).shaka ??
+				(window as typeof window & { shaka?: ShakaNamespace }).shaka;
+			shakaNamespace = resolved ?? null;
 			if (shakaNamespace?.polyfill?.installAll) {
 				try {
 					shakaNamespace.polyfill.installAll();

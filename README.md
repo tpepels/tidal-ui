@@ -54,12 +54,10 @@ Pass any optional configuration (for example `TITLE`, `REDIS_URL`, or the Redis 
 - Cached responses are stored only for safe GET requests without `Authorization`, `Cookie`, or `Range` headers. Responses larger than `REDIS_CACHE_MAX_BODY_BYTES`, non-text/JSON payloads, 4xx/5xx statuses, and responses with `Cache-Control: no-store|private` are never cached.
 - User preferences persistence migrated from `localStorage` key `tidal-ui.userPreferences` to `tidal-ui:user-preferences` and will auto-migrate on next load.
 - Install dependencies with `npm install` after updating `package.json`.
+- Build visualizer: run `VITE_VISUALIZE=true npm run build`, then open `stats/client-stats.json` with `npx rollup-plugin-visualizer --open stats/client-stats.json`.
+- Shaka loads from the CDN by default; override with `VITE_SHAKA_CDN_URL` if needed.
 
 ## Todo
-- Unify playback ownership by removing `uiStore` playback subscriptions from `AudioPlayer` and relying on `playerStore` only.
-- Use `searchStoreActions.setQuery()` in Search input binding to avoid implicit store `set`.
-- Relax artist schema validation to accept object `artistRoles` payloads without warning spam.
-- Disable service worker registration in dev to reduce console noise.
 - Add request de-duplication for search (per query + tab).
 - Short-circuit proxy cache reads/writes after Redis failure for clarity.
 - Make download log visibility follow player show/hide state.

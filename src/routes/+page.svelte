@@ -1,7 +1,7 @@
 <script lang="ts">
 	import SearchInterface from '$lib/components/SearchInterface.svelte';
 	import type { PlayableTrack } from '$lib/types';
-	import { playerStore } from '$lib/stores/player';
+	import { playbackFacade } from '$lib/controllers/playbackFacade';
 	import { onMount } from 'svelte';
 	import { APP_VERSION } from '$lib/version';
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
@@ -29,8 +29,8 @@
 		}
 
 		try {
-			playerStore.setQueue([track], 0);
-			playerStore.play();
+			playbackFacade.loadQueue([track], 0);
+			playbackFacade.play();
 		} catch (error) {
 			console.error('Failed to play track:', error);
 			// Could show a toast notification here

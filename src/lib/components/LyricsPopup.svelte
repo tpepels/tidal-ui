@@ -2,6 +2,7 @@
 	import { browser } from '$app/environment';
 	import { onDestroy } from 'svelte';
 	import { currentTime, playerStore } from '$lib/stores/player';
+	import { playbackFacade } from '$lib/controllers/playbackFacade';
 	import { lyricsStore } from '$lib/stores/lyrics';
 	import { formatArtists } from '$lib/utils/formatters';
 	import { isSonglinkTrack } from '$lib/types';
@@ -248,7 +249,7 @@
 		const detail = (event as CustomEvent<{ timestamp: number }>).detail;
 		if (!detail) return;
 		const timeSeconds = detail.timestamp / 1000;
-		playerStore.play();
+		playbackFacade.play();
 		window.dispatchEvent(new CustomEvent('lyrics:seek', { detail: { timeSeconds } }));
 	}
 

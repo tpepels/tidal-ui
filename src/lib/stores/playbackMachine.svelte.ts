@@ -30,6 +30,7 @@ export function createPlaybackMachineStore(initialQuality: AudioQuality = 'HIGH'
 	let machineState = $state<PlaybackMachineState>(createInitialState(initialQuality));
 	let pendingSyncState: PlaybackMachineState | null = null;
 	let syncScheduled = false;
+	const qualitySyncEnabled = import.meta.env.VITE_PLAYBACK_MACHINE_QUALITY_SOT === 'true';
 	const effectHandler = new PlaybackMachineSideEffectHandler({
 		syncPlayerTrack: (track) => {
 			const state = get(playerStore);
@@ -71,6 +72,19 @@ export function createPlaybackMachineStore(initialQuality: AudioQuality = 'HIGH'
 		}
 	}
 
+	if (qualitySyncEnabled) {
+		let lastQuality = playerStore.getSnapshot().quality;
+		playerStore.subscribe((state) => {
+			if (state.quality === lastQuality) {
+				return;
+			}
+			lastQuality = state.quality;
+			if (state.quality !== machineState.context.quality) {
+				dispatch({ type: 'CHANGE_QUALITY', quality: state.quality });
+			}
+		});
+	}
+
 	/**
 	 * Set the audio element reference for side effects
 	 */
@@ -78,8 +92,24 @@ export function createPlaybackMachineStore(initialQuality: AudioQuality = 'HIGH'
 		effectHandler.setAudioElement(element);
 	}
 
-	function setUseExternalStreamLoader(enabled: boolean) {
-		effectHandler.setUseExternalStreamLoader(enabled);
+	function setLoadUiCallbacks(callbacks: {
+		setStreamUrl?: (url: string) => void;
+		setBufferedPercent?: (value: number) => void;
+		setCurrentPlaybackQuality?: (quality: AudioQuality | null) => void;
+		setDashPlaybackActive?: (value: boolean) => void;
+		setSampleRate?: (value: number | null) => void;
+		setBitDepth?: (value: number | null) => void;
+		setReplayGain?: (value: number | null) => void;
+		getSupportsLosslessPlayback?: () => boolean;
+		isHiResQuality?: (quality: AudioQuality | undefined) => boolean;
+		isFirefox?: () => boolean;
+		preloadThresholdSeconds?: number;
+	}) {
+		effectHandler.setLoadUiCallbacks(callbacks);
+	}
+
+	function maybePreloadNextTrack(remainingSeconds: number) {
+		effectHandler.maybePreloadNextTrack(remainingSeconds);
 	}
 
 	/**
@@ -102,6 +132,9 @@ export function createPlaybackMachineStore(initialQuality: AudioQuality = 'HIGH'
 	const actions = {
 		loadTrack(track: PlayableTrack) {
 			dispatch({ type: 'LOAD_TRACK', track });
+		},
+		setQueue(queue: PlayableTrack[], queueIndex: number) {
+			dispatch({ type: 'SET_QUEUE', queue, queueIndex });
 		},
 
 		play() {
@@ -183,7 +216,8 @@ export function createPlaybackMachineStore(initialQuality: AudioQuality = 'HIGH'
 		// Methods
 		dispatch,
 		setAudioElement,
-		setUseExternalStreamLoader,
+		setLoadUiCallbacks,
+		maybePreloadNextTrack,
 		actions
 	};
 }
@@ -202,12 +236,35 @@ if (typeof window !== 'undefined' && isTestHookEnabled) {
 				isPlaying: boolean;
 				isLoading: boolean;
 				currentTrackId: number | string | null;
+				quality: AudioQuality;
+				loadRequestId: number;
+				queueIndex: number;
+				queueLength: number;
 			};
+			__tidalSetPlaybackQuality?: (quality: AudioQuality) => void;
 		}
 	).__tidalPlaybackMachineState = () => ({
 		state: playbackMachine.state,
 		isPlaying: playbackMachine.isPlaying,
 		isLoading: playbackMachine.isLoading,
-		currentTrackId: playbackMachine.currentTrack?.id ?? null
+		currentTrackId: playbackMachine.currentTrack?.id ?? null,
+		quality: playbackMachine.quality,
+		loadRequestId: playbackMachine.context.loadRequestId,
+		queueIndex: playbackMachine.context.queueIndex,
+		queueLength: playbackMachine.context.queue.length
 	});
+	(
+		window as typeof window & {
+			__tidalPlaybackMachineState?: () => {
+				state: string;
+				isPlaying: boolean;
+				isLoading: boolean;
+				currentTrackId: number | string | null;
+			};
+			__tidalSetPlaybackQuality?: (quality: AudioQuality) => void;
+		}
+	).__tidalSetPlaybackQuality = (quality: AudioQuality) => {
+		playerStore.setQuality(quality);
+		playbackMachine.actions.changeQuality(quality);
+	};
 }

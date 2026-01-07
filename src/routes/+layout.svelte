@@ -3,10 +3,10 @@
 	import { get } from 'svelte/store';
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
-	import AudioPlayer from '$lib/components/AudioPlayer.svelte';
 	import LyricsPopup from '$lib/components/LyricsPopup.svelte';
 	import DownloadLog from '$lib/components/DownloadLog.svelte';
 	import DownloadProgress from '$lib/components/DownloadProgress.svelte';
+	import DiagnosticsOverlay from '$lib/components/DiagnosticsOverlay.svelte';
 
 
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
@@ -29,7 +29,8 @@
 	import { navigating, page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { dev } from '$app/environment';
-	import JSZip from 'jszip';
+	import { errorTracker, getErrorSummary, getPersistedErrorSummary } from '$lib/core/errorTracker';
+	import { getRetrySummary, type RetrySummary } from '$lib/core/retryTracker';
 	import {
 		Archive,
 		FileSpreadsheet,
@@ -46,13 +47,16 @@
 	let headerHeight = $state(0);
 	let playerHeight = $state(0);
 	let isPlayerVisible = $state(false);
+	let AudioPlayerComponent = $state<typeof import('$lib/components/AudioPlayer.svelte').default | null>(
+		null
+	);
 	let viewportHeight = $state(0);
 	let showSettingsMenu = $state(false);
 
 	let isZipDownloading = $state(false);
 	let isCsvExporting = $state(false);
 	let isLegacyQueueDownloading = $state(false);
-let settingsMenuContainer = $state<HTMLDivElement | null>(null);
+	let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 	const downloadMode = $derived($downloadPreferencesStore.mode);
 	const queueActionBusy = $derived(
 		downloadMode === 'zip'
@@ -63,6 +67,16 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 	);
 
 	const isEmbed = $derived($page.url.pathname.startsWith('/embed'));
+	const diagnosticsEnabled = dev || import.meta.env.VITE_E2E === 'true';
+	let diagnosticsOpen = $state(false);
+	let diagnosticsLoading = $state(false);
+	let diagnosticsSummary = $state<ReturnType<typeof getErrorSummary> | null>(null);
+	let diagnosticsDomains = $state<Record<string, number> | null>(null);
+	let diagnosticsHealth = $state<{ status?: string; responseTime?: number; issues?: string[] } | null>(
+		null
+	);
+	let diagnosticsPersisted = $state<ReturnType<typeof getPersistedErrorSummary> | null>(null);
+	let diagnosticsRetries = $state<RetrySummary | null>(null);
 
 	$effect(() => {
 		const current = $playerStore.currentTrack;
@@ -81,6 +95,23 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 
 	const mainMarginBottom = $derived(() => Math.max(playerHeight, 128));
 	const settingsMenuOffset = $derived(() => Math.max(0, headerHeight + 12));
+
+	const ensureAudioPlayerLoaded = async () => {
+		if (AudioPlayerComponent) return;
+		const module = await import('$lib/components/AudioPlayer.svelte');
+		AudioPlayerComponent = module.default;
+	};
+
+	$effect(() => {
+		if ($playerStore.currentTrack && !AudioPlayerComponent) {
+			void ensureAudioPlayerLoaded();
+		}
+	});
+	$effect(() => {
+		if (isEmbed && !AudioPlayerComponent) {
+			void ensureAudioPlayerLoaded();
+		}
+	});
 
 	const QUALITY_OPTIONS: Array<{
 		value: AudioQuality;
@@ -167,6 +198,29 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 		userPreferencesStore.setPerformanceMode(mode);
 	}
 
+	async function refreshDiagnostics(): Promise<void> {
+		diagnosticsLoading = true;
+		diagnosticsSummary = getErrorSummary();
+		diagnosticsDomains = errorTracker.getDomainSummary();
+		diagnosticsPersisted = getPersistedErrorSummary();
+		diagnosticsRetries = getRetrySummary();
+		try {
+			const res = await fetch('/api/health');
+			diagnosticsHealth = (await res.json()) as typeof diagnosticsHealth;
+		} catch {
+			diagnosticsHealth = null;
+		} finally {
+			diagnosticsLoading = false;
+		}
+	}
+
+	function toggleDiagnostics(): void {
+		diagnosticsOpen = !diagnosticsOpen;
+		if (diagnosticsOpen) {
+			void refreshDiagnostics();
+		}
+	}
+
 
 	// Update page title with currently playing song
 	$effect(() => {
@@ -183,6 +237,20 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 		} else {
 			document.title = pageTitle;
 		}
+	});
+
+	onMount(() => {
+		if (!diagnosticsEnabled) {
+			return;
+		}
+		const handler = (event: KeyboardEvent) => {
+			if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'd') {
+				event.preventDefault();
+				toggleDiagnostics();
+			}
+		};
+		window.addEventListener('keydown', handler);
+		return () => window.removeEventListener('keydown', handler);
 	});
 
 	function collectQueueState(): { tracks: PlayableTrack[]; quality: AudioQuality } {
@@ -225,6 +293,7 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 		isZipDownloading = true;
 
 		try {
+			const { default: JSZip } = await import('jszip');
 			const zip = new JSZip();
 			for (const [index, track] of tracks.entries()) {
 				const trackId = isSonglinkTrack(track) ? track.tidalId : track.id;
@@ -499,7 +568,9 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 
 {#if isEmbed}
 	{@render children?.()}
-	<AudioPlayer headless={true} />
+	{#if AudioPlayerComponent}
+		<AudioPlayerComponent headless={true} />
+	{/if}
 {:else}
 	<div class="app-root">
 	<div class="app-shell">
@@ -781,8 +852,8 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 				</div>
 			</main>
 
-			{#if $playerStore.currentTrack}
-				<AudioPlayer
+			{#if $playerStore.currentTrack && AudioPlayerComponent}
+				<AudioPlayerComponent
 					onHeightChange={handlePlayerHeight}
 					onVisibilityChange={(visible) => {
 						isPlayerVisible = visible;
@@ -795,6 +866,23 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 	<LyricsPopup />
 	<ToastContainer />
 	<DownloadProgress />
+	{#if diagnosticsEnabled && !isEmbed}
+		<button class="diagnostics-toggle" type="button" onclick={toggleDiagnostics}>
+			Diagnostics
+		</button>
+		<DiagnosticsOverlay
+			open={diagnosticsOpen}
+			loading={diagnosticsLoading}
+			summary={diagnosticsSummary}
+			domainCounts={diagnosticsDomains}
+			health={diagnosticsHealth}
+			persisted={diagnosticsPersisted}
+			retries={diagnosticsRetries}
+			onClose={() => {
+				diagnosticsOpen = false;
+			}}
+		/>
+	{/if}
 {/if}
 
 
@@ -840,6 +928,25 @@ let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 		display: flex;
 		flex-direction: column;
 		min-height: 100vh;
+	}
+
+	.diagnostics-toggle {
+		position: fixed;
+		right: 1.5rem;
+		bottom: 1.5rem;
+		z-index: 110;
+		border-radius: 999px;
+		padding: 0.45rem 1rem;
+		background: rgba(59, 130, 246, 0.18);
+		border: 1px solid rgba(59, 130, 246, 0.4);
+		color: #e2e8f0;
+		font-size: 0.85rem;
+		cursor: pointer;
+		backdrop-filter: blur(10px);
+	}
+
+	.diagnostics-toggle:hover {
+		background: rgba(59, 130, 246, 0.28);
 	}
 
 	.glass-panel {

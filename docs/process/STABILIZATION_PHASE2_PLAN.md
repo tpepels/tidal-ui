@@ -405,9 +405,12 @@ If Phase 2a/2b introduces regressions:
 - [x] Add rapid track switch playback stability test
 - [x] Add region switch during search test (uses test hook: `?testRegion=` + `window.__tidalSetRegion`)
 - [x] Add quality-change playback flow test
+- [x] Add playback quality change hook for E2E stability
 - [x] Add download cancel flow test
 - [x] Add playback seek flow test (skipped on Firefox in test env)
 - [x] Add playback end flow test
+- [x] Add playback machine state hook smoke test
+- [x] Add queue gate E2E sync test
 - [x] Run full Playwright regression after updates
 
 ### Phase 5 (Future): Test Hooks & Release Guardrails
@@ -417,6 +420,7 @@ If Phase 2a/2b introduces regressions:
 #### Phase 5 Todo
 - [x] Add test hook for region switching (URL param + window hook)
 - [x] Document E2E test hooks and constraints (`docs/development/E2E_TEST_HOOKS.md`)
+- [x] Add queue management E2E hooks (setQueue/shuffle) and document usage
 - [x] Add CI target for stabilization Playwright suite
 - [x] Add Playwright trace/video retention for failed stabilization runs
 

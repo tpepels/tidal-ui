@@ -1,11 +1,25 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const playbackMachineActions = vi.hoisted(() => ({
+	setQueue: vi.fn(),
+	play: vi.fn(),
+	pause: vi.fn(),
+	changeQuality: vi.fn(),
+	loadTrack: vi.fn()
+}));
+
+vi.mock('$lib/stores/playbackMachine.svelte', () => ({
+	playbackMachine: { actions: playbackMachineActions }
+}));
+
 import type { PlayableTrack } from '../types';
 import { get } from 'svelte/store';
 import { playerStore } from '../stores/player';
+import { playbackMachine } from '$lib/stores/playbackMachine.svelte';
 import { createPlaybackTransitions } from './playbackTransitions';
 
 describe('playbackTransitions', () => {
-	const transitions = createPlaybackTransitions(playerStore);
+	let transitions = createPlaybackTransitions(playerStore);
 
 	const makeTrack = (id: number): PlayableTrack =>
 		({
@@ -15,7 +29,10 @@ describe('playbackTransitions', () => {
 		}) as PlayableTrack;
 
 	beforeEach(() => {
+		vi.unstubAllEnvs();
+		playbackMachineActions.setQueue.mockClear();
 		playerStore.reset();
+		transitions = createPlaybackTransitions(playerStore);
 	});
 
 	it('throws when trying to play without a track', () => {
@@ -42,5 +59,20 @@ describe('playbackTransitions', () => {
 		transitions.setQueue(tracks, 0);
 		transitions.playFromQueueIndex(1);
 		expect(get(playerStore).currentTrack?.id).toBe(2);
+	});
+
+	it('syncs queue index on next/previous when gate enabled', () => {
+		vi.stubEnv('VITE_PLAYBACK_MACHINE_QUEUE_SOT', 'true');
+		transitions = createPlaybackTransitions(playerStore);
+		const tracks = [makeTrack(1), makeTrack(2), makeTrack(3)];
+		transitions.setQueue(tracks, 0);
+		playbackMachineActions.setQueue.mockClear();
+
+		transitions.next();
+		expect(playbackMachineActions.setQueue).toHaveBeenCalledWith(tracks, 1);
+
+		playbackMachineActions.setQueue.mockClear();
+		transitions.previous();
+		expect(playbackMachineActions.setQueue).toHaveBeenCalledWith(tracks, 0);
 	});
 });

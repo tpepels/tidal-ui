@@ -4,7 +4,7 @@ import { losslessAPI } from '$lib/api';
 import { hasRegionTargets } from '$lib/config';
 import { downloadAlbum } from '$lib/downloads';
 	import { formatArtists } from '$lib/utils/formatters';
-	import { playerStore } from '$lib/stores/player';
+	import { playbackFacade } from '$lib/controllers/playbackFacade';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
@@ -378,12 +378,12 @@ import {
 
 	function handleAddToQueue(track: PlayableTrack, event: MouseEvent) {
 		event.stopPropagation();
-		playerStore.enqueue(track);
+		playbackFacade.enqueue(track);
 	}
 
 	function handlePlayNext(track: PlayableTrack, event: MouseEvent) {
 		event.stopPropagation();
-		playerStore.enqueueNext(track);
+		playbackFacade.enqueueNext(track);
 	}
 
 	function handleTrackKeydown(event: KeyboardEvent, track: PlayableTrack) {
@@ -430,8 +430,8 @@ import {
 	function handlePlayAll() {
 		const tracks = $searchStore.results?.tracks ?? [];
 		if (tracks.length > 0) {
-			playerStore.setQueue(tracks, 0);
-			playerStore.play();
+			playbackFacade.loadQueue(tracks, 0);
+			playbackFacade.play();
 		}
 	}
 
@@ -440,8 +440,8 @@ import {
 		if (tracks.length > 0) {
 			// Shuffle the tracks
 			const shuffled = [...tracks].sort(() => Math.random() - 0.5);
-			playerStore.setQueue(shuffled, 0);
-			playerStore.play();
+			playbackFacade.loadQueue(shuffled, 0);
+			playbackFacade.play();
 		}
 	}
 
@@ -528,7 +528,7 @@ import {
 						oninput={(event) => {
 							const target = event.currentTarget as HTMLInputElement | null;
 							if (target) {
-								searchStoreActions.commit({ query: target.value });
+								searchStoreActions.setQuery(target.value);
 							}
 						}}
 						onkeypress={handleKeyPress}

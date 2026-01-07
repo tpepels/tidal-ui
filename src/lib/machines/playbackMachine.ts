@@ -38,6 +38,7 @@ export type PlaybackState =
 
 export type PlaybackEvent =
 	| { type: 'LOAD_TRACK'; track: PlayableTrack }
+	| { type: 'SET_QUEUE'; queue: PlayableTrack[]; queueIndex: number }
 	| { type: 'CONVERSION_COMPLETE'; track: Track }
 	| { type: 'CONVERSION_ERROR'; error: Error }
 	| { type: 'LOAD_COMPLETE'; streamUrl: string | null; quality: AudioQuality }
@@ -56,6 +57,8 @@ export type PlaybackEvent =
 
 export interface PlaybackContext {
 	currentTrack: PlayableTrack | null;
+	queue: PlayableTrack[];
+	queueIndex: number;
 	streamUrl: string | null;
 	quality: AudioQuality;
 	currentTime: number;
@@ -94,6 +97,17 @@ export function transition(
 					error: null,
 					loadRequestId: context.loadRequestId + 1,
 					autoPlay: context.autoPlay || state === 'playing' || state === 'buffering'
+				}
+			};
+		}
+
+		case 'SET_QUEUE': {
+			return {
+				state,
+				context: {
+					...context,
+					queue: event.queue,
+					queueIndex: event.queueIndex
 				}
 			};
 		}
@@ -338,6 +352,8 @@ export function createInitialState(quality: AudioQuality = 'HIGH'): PlaybackMach
 		state: 'idle',
 		context: {
 			currentTrack: null,
+			queue: [],
+			queueIndex: -1,
 			streamUrl: null,
 			quality,
 			currentTime: 0,
@@ -363,7 +379,8 @@ export type SideEffect =
 	| { type: 'PAUSE_AUDIO' }
 	| { type: 'SEEK_AUDIO'; position: number }
 	| { type: 'SHOW_ERROR'; error: Error }
-	| { type: 'SYNC_PLAYER_TRACK'; track: Track };
+	| { type: 'SYNC_PLAYER_TRACK'; track: Track }
+	| { type: 'HANDLE_AUDIO_ERROR'; error: Event };
 
 /**
  * Derives side effects from state transitions
@@ -426,6 +443,9 @@ export function deriveSideEffects(
 	}
 	if (event.type === 'SEEK') {
 		effects.push({ type: 'SEEK_AUDIO', position: event.position });
+	}
+	if (event.type === 'AUDIO_ERROR') {
+		effects.push({ type: 'HANDLE_AUDIO_ERROR', error: event.error });
 	}
 
 	return effects;

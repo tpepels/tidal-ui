@@ -61,9 +61,18 @@ export const createAudioElementController = (options: ControllerOptions): AudioE
 	const handleTimeUpdate = () => {
 		const audioElement = options.getAudioElement();
 		if (!audioElement) return;
+		const storeState = get(options.playerStore);
+		const duration = audioElement.duration;
+		if (
+			storeState.currentTrack &&
+			storeState.duration > 0 &&
+			audioElement.currentTime === 0 &&
+			(!Number.isFinite(duration) || duration <= 0)
+		) {
+			return;
+		}
 		options.onSetCurrentTime(audioElement.currentTime);
 		updateBufferedPercent();
-		const storeState = get(options.playerStore);
 		const remaining = (storeState.duration ?? 0) - audioElement.currentTime;
 		options.onMaybePreloadNextTrack(remaining);
 		options.mediaSessionController.updatePositionState();

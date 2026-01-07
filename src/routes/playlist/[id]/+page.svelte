@@ -7,7 +7,7 @@
 	import type { Playlist, Track } from '$lib/types';
 	import { onMount } from 'svelte';
 	import { ArrowLeft, Play, User, Clock, LoaderCircle } from 'lucide-svelte';
-	import { playerStore } from '$lib/stores/player';
+	import { playbackFacade } from '$lib/controllers/playbackFacade';
 
 	let playlist = $state<Playlist | null>(null);
 	let tracks = $state<Track[]>([]);
@@ -39,8 +39,8 @@
 
 	function handlePlayAll() {
 		if (tracks.length > 0) {
-			playerStore.setQueue(tracks, 0);
-			playerStore.play();
+			playbackFacade.loadQueue(tracks, 0);
+			playbackFacade.play();
 		}
 	}
 

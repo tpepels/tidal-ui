@@ -3,17 +3,37 @@ import devtoolsJson from 'vite-plugin-devtools-json';
 import tailwindcss from '@tailwindcss/vite';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig, loadEnv } from 'vite';
+import { visualizer } from 'rollup-plugin-visualizer';
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode, ssrBuild }) => {
 	const env = loadEnv(mode, process.cwd(), '');
 	process.env = { ...process.env, ...env };
 
 	const parsedPort = env.PORT ? Number.parseInt(env.PORT, 10) : undefined;
 
 	const isTest = mode === 'test';
+	const shouldVisualize = env.VITE_VISUALIZE === 'true' && !ssrBuild;
+	const vizPlugin = shouldVisualize
+		? visualizer({
+				filename: 'stats/client-stats.json',
+				template: 'raw-data',
+				gzipSize: true,
+				brotliSize: true
+			})
+		: null;
+	const plugins = [tailwindcss(), sveltekit(), ...(isTest ? [] : [devtoolsJson()])];
+	if (vizPlugin) {
+		plugins.push(vizPlugin);
+	}
+	const manualChunks = (id: string) => {
+		if (!id.includes('node_modules')) return undefined;
+		if (id.includes('/node_modules/jszip/')) return 'vendor-zip';
+		if (id.includes('/node_modules/lucide-svelte/')) return 'vendor-ui';
+		return undefined;
+	};
 
 	return {
-		plugins: [tailwindcss(), sveltekit(), ...(isTest ? [] : [devtoolsJson()])],
+		plugins,
 		resolve: {
 			alias: {
 				$lib: 'src/lib',
@@ -31,6 +51,14 @@ export default defineConfig(({ mode }) => {
 		},
 		optimizeDeps: {
 			exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util']
+		},
+		build: {
+			chunkSizeWarningLimit: 900,
+			rollupOptions: {
+				output: {
+					manualChunks
+				}
+			}
 		},
 		ssr: {
 			external: ['@ffmpeg/ffmpeg', '@ffmpeg/util']

@@ -2,6 +2,8 @@ import { get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 import type { PlayableTrack } from '$lib/types';
 import { assertInvariant } from '$lib/core/invariants';
+import { playbackFacade } from '$lib/controllers/playbackFacade';
+import { playerUiProjection } from '$lib/controllers/playerUiProjection';
 
 type PlaybackState = {
 	currentTrack: PlayableTrack | null;
@@ -51,17 +53,17 @@ export const createPlaybackTransitions = (playerStore: PlaybackStore): PlaybackT
 		play() {
 			const state = getState();
 			assertInvariant(state.currentTrack !== null, 'Cannot play without a current track');
-			playerStore.play();
+			playbackFacade.play();
 		},
 		pause() {
-			playerStore.pause();
+			playbackFacade.pause();
 		},
 		togglePlay() {
 			const state = getState();
 			if (!state.currentTrack) {
 				return;
 			}
-			playerStore.togglePlay();
+			playbackFacade.toggle();
 		},
 		playFromQueueIndex(index: number) {
 			const state = getState();
@@ -70,7 +72,8 @@ export const createPlaybackTransitions = (playerStore: PlaybackStore): PlaybackT
 				'Queue index must be within bounds',
 				{ index, queueLength: state.queue.length }
 			);
-			playerStore.playAtIndex(index);
+			playbackFacade.loadQueue(state.queue, index);
+			playbackFacade.play();
 		},
 		seekTo(time: number) {
 			const state = getState();
@@ -78,28 +81,28 @@ export const createPlaybackTransitions = (playerStore: PlaybackStore): PlaybackT
 				duration: state.duration
 			});
 			const bounded = Math.max(0, Math.min(time, state.duration || time));
-			playerStore.setCurrentTime(bounded);
+			playerUiProjection.setCurrentTime(bounded);
 		},
 		next() {
-			playerStore.next();
+			playbackFacade.next();
 		},
 		previous() {
-			playerStore.previous();
+			playbackFacade.previous();
 		},
 		setTrack(track: PlayableTrack) {
-			playerStore.setTrack(track);
+			playbackFacade.loadQueue([track], 0);
 		},
 		setQueue(queue: PlayableTrack[], startIndex = 0) {
-			playerStore.setQueue(queue, startIndex);
+			playbackFacade.loadQueue(queue, startIndex);
 		},
 		enqueue(track: PlayableTrack) {
-			playerStore.enqueue(track);
+			playbackFacade.enqueue(track);
 		},
 		enqueueNext(track: PlayableTrack) {
-			playerStore.enqueueNext(track);
+			playbackFacade.enqueueNext(track);
 		},
 		clearQueue() {
-			playerStore.clearQueue();
+			playbackFacade.clearQueue();
 		}
 	};
 };

@@ -10,7 +10,9 @@ import type { SearchTab } from '$lib/stores/searchStoreAdapter';
 import type { RegionOption } from '$lib/stores/region';
 import { searchStoreActions } from '$lib/stores/searchStoreAdapter';
 import { playerStore } from '$lib/stores/player';
+import { playbackFacade } from '$lib/controllers/playbackFacade';
 import { toasts } from '$lib/stores/toasts';
+import { trackError } from '$lib/core/errorTracker';
 import { executeTabSearch, type SearchError, type SearchResults } from '$lib/services/search/searchService';
 import {
 	convertStreamingUrl,
@@ -243,6 +245,13 @@ export class SearchOrchestrator {
 			});
 
 			console.error('[SearchOrchestrator] Search error:', error);
+			trackError(new Error(message), {
+				component: 'search-orchestrator',
+				domain: 'search',
+				source: 'search',
+				query,
+				tab
+			});
 
 			return { workflow: 'standard', success: false, error: searchError };
 		}
@@ -302,8 +311,8 @@ export class SearchOrchestrator {
 					await precacheTrackStream(track.id, currentQuality);
 
 					// Play track immediately
-					playerStore.setTrack(track);
-					playerStore.play();
+					playbackFacade.loadQueue([track], 0);
+					playbackFacade.play();
 
 					// Clear query
 					searchStoreActions.commit({ query: '', isLoading: false });
@@ -386,6 +395,12 @@ export class SearchOrchestrator {
 			});
 
 			console.error('[SearchOrchestrator] Streaming URL conversion error:', error);
+			trackError(new Error(message), {
+				component: 'search-orchestrator',
+				domain: 'search',
+				source: 'streaming-url',
+				url
+			});
 
 			return {
 				workflow: 'streamingUrl',
@@ -427,6 +442,12 @@ export class SearchOrchestrator {
 			};
 		} catch (error) {
 			console.error('[SearchOrchestrator] Playlist conversion error:', error);
+			trackError(new Error('Playlist conversion failed'), {
+				component: 'search-orchestrator',
+				domain: 'search',
+				source: 'playlist',
+				url
+			});
 
 			return {
 				workflow: 'playlist',
