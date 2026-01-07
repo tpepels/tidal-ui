@@ -63,6 +63,7 @@ export type UrlType = 'tidal' | 'streaming' | 'spotify-playlist' | 'none';
 export class SearchOrchestrator {
 	/** Request token to prevent stale search results from overwriting newer requests */
 	private currentSearchToken = 0;
+	private inflightSearches = new Map<string, Promise<SearchWorkflowResult>>();
 
 	/**
 	 * Detects the type of URL in the query
@@ -124,6 +125,10 @@ export class SearchOrchestrator {
 		}
 	}
 
+	private buildSearchKey(query: string, tab: SearchTab, region?: RegionOption): string {
+		return `${tab}:${region ?? 'auto'}:${query.toLowerCase()}`;
+	}
+
 	/**
 	 * Changes the active search tab
 	 *
@@ -161,6 +166,13 @@ export class SearchOrchestrator {
 		tab: SearchTab,
 		options: SearchOrchestratorOptions | undefined
 	): Promise<SearchWorkflowResult> {
+		const searchKey = this.buildSearchKey(query, tab, options?.region);
+		const inflight = this.inflightSearches.get(searchKey);
+		if (inflight) {
+			return inflight;
+		}
+
+		const workflowPromise = (async () => {
 		// Increment request token to track this search request
 		const requestToken = ++this.currentSearchToken;
 
@@ -181,7 +193,11 @@ export class SearchOrchestrator {
 					currentToken: this.currentSearchToken
 				});
 				// Return success but don't update store
-				return { workflow: 'standard', success: true, results: result.success ? result.results : { tracks: [], albums: [], artists: [], playlists: [] } };
+				return {
+					workflow: 'standard',
+					success: true,
+					results: result.success ? result.results : { tracks: [], albums: [], artists: [], playlists: [] }
+				};
 			}
 
 			if (!result.success) {
@@ -255,6 +271,14 @@ export class SearchOrchestrator {
 
 			return { workflow: 'standard', success: false, error: searchError };
 		}
+		})();
+
+		this.inflightSearches.set(searchKey, workflowPromise);
+		workflowPromise.finally(() => {
+			this.inflightSearches.delete(searchKey);
+		});
+
+		return workflowPromise;
 	}
 
 	/**

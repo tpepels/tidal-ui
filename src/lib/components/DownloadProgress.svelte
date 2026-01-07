@@ -11,7 +11,10 @@
 		<div class="download-progress-standalone-header">
 			<Loader size={16} />
 			<span class="download-progress-title">
-				Downloading {activeDownloads.length} track{activeDownloads.length > 1 ? 's' : ''}
+				<span class="download-progress-title-label">Downloading</span>
+				<span class="download-progress-title-count">
+					{activeDownloads.length} track{activeDownloads.length > 1 ? 's' : ''}
+				</span>
 			</span>
 		</div>
 
@@ -47,7 +50,7 @@
 <style>
 	.download-progress-standalone {
 		position: fixed;
-		bottom: 20px;
+		bottom: calc(20px + var(--player-height, 0px) + env(safe-area-inset-bottom, 0px));
 		left: 50%;
 		transform: translateX(-50%);
 		background: rgba(11, 16, 26, 0.95);
@@ -83,9 +86,17 @@
 
 
 	.download-progress-title {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
 		font-size: 14px;
 		font-weight: 600;
 		color: #fff;
+		white-space: nowrap;
+	}
+
+	.download-progress-title-count {
+		font-variant-numeric: tabular-nums;
 	}
 
 	.download-progress-standalone-list {

@@ -224,12 +224,16 @@ class LosslessAPI {
 	}
 
 	private isV2ApiContainer(payload: unknown): payload is { version?: unknown; data?: unknown } {
-		return Boolean(
-			payload &&
-			typeof payload === 'object' &&
-			'version' in (payload as Record<string, unknown>) &&
-			(payload as { version?: unknown }).version === '2.0'
-		);
+		if (!payload || typeof payload !== 'object') return false;
+		if (!('version' in (payload as Record<string, unknown>))) return false;
+		const version = (payload as { version?: unknown }).version;
+		if (typeof version === 'number') {
+			return version >= 2 && version < 3;
+		}
+		if (typeof version === 'string') {
+			return version.startsWith('2');
+		}
+		return false;
 	}
 
 	private decodeBase64Manifest(manifest: string): string {

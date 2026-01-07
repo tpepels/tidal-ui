@@ -7,7 +7,18 @@ export type CacheTtlConfig = {
 };
 
 export function sanitizeHeaderEntries(entries: Array<[string, string]>): Array<[string, string]> {
-	const blocklist = new Set(['content-encoding', 'content-length', 'transfer-encoding']);
+	const blocklist = new Set([
+		'content-encoding',
+		'content-length',
+		'transfer-encoding',
+		'connection',
+		'keep-alive',
+		'proxy-authenticate',
+		'proxy-authorization',
+		'te',
+		'trailer',
+		'upgrade'
+	]);
 	return entries.filter(([key]) => !blocklist.has(key.toLowerCase()));
 }
 

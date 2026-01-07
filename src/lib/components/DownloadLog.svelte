@@ -72,7 +72,10 @@
 	<div class="download-progress-compact">
 		<div class="download-progress-compact-header">
 			<span class="download-progress-compact-title">
-				Downloading {activeDownloads.length} track{activeDownloads.length > 1 ? 's' : ''}
+				<span class="download-progress-compact-label">Downloading</span>
+				<span class="download-progress-compact-count">
+					{activeDownloads.length} track{activeDownloads.length > 1 ? 's' : ''}
+				</span>
 			</span>
 			<button
 				type="button"
@@ -421,7 +424,7 @@
 /* Compact Progress Indicator Styles */
 .download-progress-compact {
 	position: fixed;
-	bottom: 20px;
+	bottom: calc(20px + var(--player-height, 0px) + env(safe-area-inset-bottom, 0px));
 	right: 20px;
 	background: rgba(11, 16, 26, 0.95);
 	border: 1px solid rgba(255, 255, 255, 0.1);
@@ -442,9 +445,17 @@
 }
 
 .download-progress-compact-title {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
 	font-size: 14px;
 	font-weight: 600;
 	color: #fff;
+	white-space: nowrap;
+}
+
+.download-progress-compact-count {
+	font-variant-numeric: tabular-nums;
 }
 
 .download-progress-compact-toggle {

@@ -16,7 +16,8 @@ COPY . .
 RUN npm run build
 
 # Generate self-signed SSL certificate
-RUN openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=localhost"
+RUN mkdir -p /app/.certs && \
+	openssl req -x509 -newkey rsa:4096 -keyout /app/.certs/key.pem -out /app/.certs/cert.pem -days 365 -nodes -subj "/CN=localhost"
 
 # Prune dependencies to production-only
 RUN npm prune --production
@@ -32,15 +33,14 @@ WORKDIR /app
 
 # Copy the built app, server script, certs, and production node_modules from the builder stage
 COPY --from=builder /app/build build/
-COPY --from=builder /app/server.js server.js
-COPY --from=builder /app/start.sh start.sh
-COPY --from=builder /app/key.pem key.pem
-COPY --from=builder /app/cert.pem cert.pem
+COPY --from=builder /app/scripts/dev/server.js scripts/dev/server.js
+COPY --from=builder /app/scripts/dev/start.sh scripts/dev/start.sh
+COPY --from=builder /app/.certs .certs/
 COPY --from=builder /app/node_modules node_modules/
 COPY package.json .
 
 # Set correct permissions for SSL certificates
-RUN chown node:node key.pem cert.pem && chmod 644 cert.pem && chmod 600 key.pem
+RUN chown node:node .certs/key.pem .certs/cert.pem && chmod 644 .certs/cert.pem && chmod 600 .certs/key.pem
 
 # Create data directory for upload state and ensure node user can write to it
 RUN mkdir -p /app/data && chown -R node:node /app && chmod -R 755 /app/data
@@ -52,4 +52,4 @@ EXPOSE 5000
 ENV NODE_ENV=production
 
 # Specify the command to run the app with HTTPS and Redis
-CMD ["sh", "start.sh"]
+CMD ["sh", "scripts/dev/start.sh"]

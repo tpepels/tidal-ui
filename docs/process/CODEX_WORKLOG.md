@@ -73,6 +73,13 @@
 - 2026-01-05: Re-ran CI-equivalent suite after lazy-load fixes; stabilization E2E green.
 - 2026-01-05: Added searchStore setQuery action, wired SearchInterface input to it, and pruned completed README TODOs.
 - 2026-01-05: Relaxed artistRoles schema to accept object payloads and added a validation test.
+- 2026-01-05: Added per-request redis cache short-circuit after proxy read/write failures.
+- 2026-01-05: Tied download log visibility to player state and regrouped settings sections for a shorter menu.
+- 2026-01-05: Rendered "Downloading n tracks" with a horizontal label/count layout in download UI widgets.
+- 2026-01-05: Relaxed API v2 container version handling and allow nullable artist pictures in schemas.
+- 2026-01-05: Fixed artist load progress to show totals when available and added indeterminate loading state.
+- 2026-01-05: Offset download progress and diagnostics UI to avoid player overlap, and reset player height CSS when hidden.
+- 2026-01-05: Updated Dockerfile and compose paths for moved scripts/certs, plus adjusted dev start script.
 
 ## Phase 2 Inventory
 - `src/lib/components/AudioPlayer.svelte` store→machine sync: `playerStore.subscribe(syncFromPlayerState)` and `lastObservedPlayState` mirror.

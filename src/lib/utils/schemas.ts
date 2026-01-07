@@ -15,6 +15,8 @@ const ArtistRolesSchema = z
 	])
 	.optional();
 
+const OptionalStringSchema = z.string().nullable().optional();
+
 // API Response Schemas
 export const TrackSchema = z.object({
 	id: z.number(),
@@ -28,7 +30,7 @@ export const TrackSchema = z.object({
 				artistTypes: z.array(z.string()).optional(),
 				artistRoles: ArtistRolesSchema,
 				url: z.string().optional(),
-				picture: z.string().optional()
+				picture: OptionalStringSchema
 			})
 		)
 		.optional(),
@@ -40,7 +42,7 @@ export const TrackSchema = z.object({
 			artistTypes: z.array(z.string()).optional(),
 			artistRoles: ArtistRolesSchema,
 			url: z.string().optional(),
-			picture: z.string().optional()
+			picture: OptionalStringSchema
 		})
 		.optional(),
 	album: z
@@ -56,7 +58,7 @@ export const TrackSchema = z.object({
 					artistTypes: z.array(z.string()).optional(),
 					artistRoles: ArtistRolesSchema,
 					url: z.string().optional(),
-					picture: z.string().optional()
+					picture: OptionalStringSchema
 				})
 				.optional(),
 			artists: z
@@ -68,7 +70,7 @@ export const TrackSchema = z.object({
 						artistTypes: z.array(z.string()).optional(),
 						artistRoles: ArtistRolesSchema,
 						url: z.string().optional(),
-						picture: z.string().optional()
+						picture: OptionalStringSchema
 					})
 				)
 				.optional(),
@@ -108,7 +110,7 @@ export const AlbumSchema = z.object({
 			artistTypes: z.array(z.string()).optional(),
 			artistRoles: ArtistRolesSchema,
 			url: z.string().optional(),
-			picture: z.string().optional()
+			picture: OptionalStringSchema
 		})
 		.optional(),
 	artists: z
@@ -120,7 +122,7 @@ export const AlbumSchema = z.object({
 				artistTypes: z.array(z.string()).optional(),
 				artistRoles: ArtistRolesSchema,
 				url: z.string().optional(),
-				picture: z.string().optional()
+				picture: OptionalStringSchema
 			})
 		)
 		.optional(),
@@ -136,7 +138,7 @@ export const AlbumSchema = z.object({
 export const ArtistSchema = z.object({
 	id: z.number(),
 	name: z.string(),
-	picture: z.string().optional(),
+	picture: OptionalStringSchema,
 	type: z.string().optional(),
 	artistTypes: z.array(z.string()).optional(),
 	artistRoles: ArtistRolesSchema,
@@ -156,7 +158,7 @@ export const PlaylistSchema = z.object({
 			artistTypes: z.array(z.string()).optional(),
 			artistRoles: ArtistRolesSchema,
 			url: z.string().optional(),
-			picture: z.string().optional()
+			picture: OptionalStringSchema
 		})
 		.optional(),
 	numberOfTracks: z.number().optional(),
@@ -208,7 +210,11 @@ export const PlaylistSearchResponseSchema = SearchResponseSchema.extend({
 
 // API v2 container schema
 export const ApiV2ContainerSchema = z.object({
-	version: z.literal('2.0'),
+	version: z.union([
+		z.literal('2.0'),
+		z.string().regex(/^2(\.\d+)?$/),
+		z.number().refine((value) => value >= 2 && value < 3)
+	]),
 	data: z.unknown()
 });
 

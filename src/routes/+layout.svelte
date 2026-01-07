@@ -198,6 +198,11 @@
 		userPreferencesStore.setPerformanceMode(mode);
 	}
 
+	function toggleDownloadLog(): void {
+		if (!isPlayerVisible) return;
+		downloadLogStore.toggle();
+	}
+
 	async function refreshDiagnostics(): Promise<void> {
 		diagnosticsLoading = true;
 		diagnosticsSummary = getErrorSummary();
@@ -220,6 +225,18 @@
 			void refreshDiagnostics();
 		}
 	}
+
+	$effect(() => {
+		if (!isPlayerVisible && $downloadLogStore.isVisible) {
+			downloadLogStore.hide();
+		}
+	});
+
+	$effect(() => {
+		if (!isPlayerVisible && typeof document !== 'undefined') {
+			document.documentElement.style.setProperty('--player-height', '0px');
+		}
+	});
 
 
 	// Update page title with currently playing song
@@ -503,7 +520,21 @@
 		const isLocalPreview =
 			typeof window !== 'undefined' &&
 			(window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost');
-		if ('serviceWorker' in navigator && !dev && !isLocalPreview && import.meta.env.VITE_E2E !== 'true') {
+		const shouldUseServiceWorker =
+			!dev && !isLocalPreview && import.meta.env.VITE_E2E !== 'true';
+		if ('serviceWorker' in navigator && !shouldUseServiceWorker) {
+			navigator.serviceWorker
+				.getRegistrations()
+				.then((registrations) => {
+					registrations.forEach((registration) => {
+						void registration.unregister();
+					});
+				})
+				.catch((error) => {
+					console.warn('Failed to unregister service workers', error);
+				});
+		}
+		if ('serviceWorker' in navigator && shouldUseServiceWorker) {
 			const registerServiceWorker = async () => {
 				try {
 					const registration = await navigator.serviceWorker.register('/service-worker.js');
@@ -619,7 +650,7 @@
 												{/each}
 											</div>
 										</section>
-										<section class="settings-section settings-section--wide">
+										<section class="settings-section">
 											<p class="section-heading">Conversions</p>
 											<button
 												type="button"
@@ -659,7 +690,7 @@
 												</span>
 											</button>
 										</section>
-										<section class="settings-section settings-section--wide">
+										<section class="settings-section">
 											<p class="section-heading">Queue exports</p>
 											<div class="option-grid option-grid--compact">
 												<button
@@ -712,7 +743,7 @@
 												</button>
 											</div>
 										</section>
-										<section class="settings-section settings-section--wide">
+										<section class="settings-section">
 											<p class="section-heading">Download Storage</p>
 											<div class="option-grid option-grid--compact">
 												<button
@@ -749,24 +780,29 @@
 												</button>
 											</div>
 										</section>
-										<section class="settings-section settings-section--wide">
+										<section class="settings-section">
 											<p class="section-heading">Download Log</p>
 											<button
 												type="button"
-												onclick={() => downloadLogStore.toggle()}
+												onclick={toggleDownloadLog}
 												class="glass-option glass-option--wide glass-option--primary"
+												disabled={!isPlayerVisible}
 											>
 												<span class="glass-option__content">
 													<span class="glass-option__label">
 														View Download Log
 													</span>
 													<span class="glass-option__description">
-														{$downloadLogStore.isVisible ? 'Hide' : 'Show'} real-time download progress
+														{!isPlayerVisible
+															? 'Open the player to see downloads.'
+															: $downloadLogStore.isVisible
+																? 'Hide real-time download progress'
+																: 'Show real-time download progress'}
 													</span>
 												</span>
 											</button>
 										</section>
-										<section class="settings-section settings-section--wide">
+										<section class="settings-section">
 											<p class="section-heading">Performance Mode</p>
 											<div class="option-grid option-grid--compact">
 												{#each PERFORMANCE_OPTIONS as option (option.value)}
@@ -786,7 +822,7 @@
 												{/each}
 											</div>
 										</section>
-										<section class="settings-section settings-section--bordered">
+										<section class="settings-section settings-section--bordered settings-section--wide">
 											<p class="section-heading">Queue actions</p>
 											<div class="actions-column">
 												<button
@@ -932,8 +968,8 @@
 
 	.diagnostics-toggle {
 		position: fixed;
-		right: 1.5rem;
-		bottom: 1.5rem;
+		left: 1.5rem;
+		bottom: calc(1.5rem + var(--player-height, 0px));
 		z-index: 110;
 		border-radius: 999px;
 		padding: 0.45rem 1rem;

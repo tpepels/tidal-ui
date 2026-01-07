@@ -338,7 +338,11 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 	return copy.buffer;
 }
 
-async function readCachedResponse(redis: Redis, key: string): Promise<CachedProxyEntry | null> {
+async function readCachedResponse(
+	redis: Redis,
+	key: string,
+	onFailure?: () => void
+): Promise<CachedProxyEntry | null> {
 	try {
 		const raw = await redis.get(key);
 		if (!raw) {
@@ -348,6 +352,7 @@ async function readCachedResponse(redis: Redis, key: string): Promise<CachedProx
 		return isCachedProxyEntry(parsed) ? (parsed as CachedProxyEntry) : null;
 	} catch (error) {
 		console.error('Failed to read proxy cache entry:', error);
+		onFailure?.();
 		disableRedisClient(error);
 		return null;
 	}
@@ -357,13 +362,15 @@ async function writeCachedResponse(
 	redis: Redis,
 	key: string,
 	entry: CachedProxyEntry,
-	ttlSeconds: number
+	ttlSeconds: number,
+	onFailure?: () => void
 ): Promise<void> {
 	if (ttlSeconds <= 0) return;
 	try {
 		await redis.set(key, JSON.stringify(entry), 'EX', ttlSeconds);
 	} catch (error) {
 		console.error('Failed to store proxy cache entry:', error);
+		onFailure?.();
 		disableRedisClient(error);
 	}
 }
@@ -558,11 +565,13 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 
 	const shouldUseCache = !hasRangeRequest && !hasAuthorizationHeader && !hasCookieHeader;
 	const redis = shouldUseCache ? getRedisClient() : null;
-	const redisReady = Boolean(redis && redis.status === 'ready');
-	const cacheKey = redisReady ? createCacheKey(parsedTarget, upstreamHeaders, CACHE_NAMESPACE) : null;
+	let redisHealthy = Boolean(redis && redis.status === 'ready');
+	const cacheKey = redisHealthy ? createCacheKey(parsedTarget, upstreamHeaders, CACHE_NAMESPACE) : null;
 
-	if (redisReady && cacheKey && redis) {
-		const cached = await readCachedResponse(redis, cacheKey);
+	if (redisHealthy && cacheKey && redis) {
+		const cached = await readCachedResponse(redis, cacheKey, () => {
+			redisHealthy = false;
+		});
 		if (cached) {
 			const headers = applyProxyHeaders(cached.headers, origin);
 			const bodyBytes = base64ToUint8Array(cached.bodyBase64);
@@ -606,7 +615,7 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 		console.log('Proxy response body size:', bodyArrayBuffer.byteLength);
 		const bodyBytes = new Uint8Array(bodyArrayBuffer);
 
-		if (redisReady && cacheKey && redis) {
+		if (redisHealthy && cacheKey && redis) {
 			const ttlSeconds = getCacheTtlSeconds(parsedTarget, cacheTtlConfig);
 			const contentType = upstream.headers.get('content-type');
 			const cacheControl = upstream.headers.get('cache-control');
@@ -625,7 +634,9 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 					headers: sanitizedHeaderEntries,
 					bodyBase64: uint8ArrayToBase64(bodyBytes)
 				};
-				await writeCachedResponse(redis, cacheKey, entry, ttlSeconds);
+				await writeCachedResponse(redis, cacheKey, entry, ttlSeconds, () => {
+					redisHealthy = false;
+				});
 			}
 		}
 

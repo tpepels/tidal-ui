@@ -179,6 +179,9 @@ async function readJsonWithProgress(
 	const reader = response.body.getReader();
 	const chunks: Uint8Array[] = [];
 	let receivedBytes = 0;
+	if (totalBytes && onProgress) {
+		onProgress({ receivedBytes, totalBytes, percent: 0 });
+	}
 
 	while (true) {
 		const { done, value } = await reader.read();
