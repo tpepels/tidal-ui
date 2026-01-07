@@ -5,6 +5,7 @@ import type { PlayableTrack } from '$lib/types';
 type PlayerState = {
 	currentTrack: PlayableTrack | null;
 	duration: number;
+	currentTime: number;
 };
 
 type MediaSessionController = {
