@@ -27,3 +27,4 @@ Use this checklist before shipping feature changes that touch core flows.
 ## Regression
 - [ ] Run `npm run test:run` or targeted unit suite.
 - [ ] Run `npm run test:e2e` when UI behavior changed.
+- [ ] UI consistency rules reviewed (`docs/process/UI_CONSISTENCY_RULES.md`).

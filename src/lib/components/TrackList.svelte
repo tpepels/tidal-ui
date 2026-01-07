@@ -1,16 +1,16 @@
 <script lang="ts">
 	import type { Track } from '$lib/types';
 	import { losslessAPI } from '$lib/api';
+	import { onMount } from 'svelte';
 	import { playerStore } from '$lib/stores/player';
 	import { playbackFacade } from '$lib/controllers/playbackFacade';
-	import { downloadUiStore } from '$lib/stores/downloadUi';
-	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
-	import { downloadOrchestrator } from '$lib/orchestrators';
+	import { createTrackDownloadUi } from '$lib/controllers/trackDownloadUi';
 	import ShareButton from '$lib/components/ShareButton.svelte';
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
 	import AlbumLink from '$lib/components/AlbumLink.svelte';
 	import LazyImage from '$lib/components/LazyImage.svelte';
-	import { Play, Pause, Download, Clock, Plus, ListPlus, X } from 'lucide-svelte';
+	import TrackDownloadButton from '$lib/components/TrackDownloadButton.svelte';
+	import { Play, Pause, Clock, ListPlus, ListVideo, MoreVertical } from 'lucide-svelte';
 
 	interface Props {
 		tracks: Track[];
@@ -20,10 +20,33 @@
 	}
 
 	let { tracks, showAlbum = true, showArtist = true, showCover = true }: Props = $props();
-	let downloadingIds = $state(new Set<number>());
-	let downloadTaskIds = $state(new Map<number, string>());
-	let cancelledIds = $state(new Set<number>());
+	let activeMenuId = $state<number | null>(null);
 	const IGNORED_TAGS = new Set(['HI_RES_LOSSLESS']);
+	const trackDownloadUi = createTrackDownloadUi({
+		resolveSubtitle: (track) =>
+			showAlbum ? (track.album?.title ?? track.artist?.name) : track.artist?.name,
+		notificationMode: 'alert',
+		skipFfmpegCountdown: true
+	});
+	const { downloadingIds, cancelledIds, handleCancelDownload, handleDownload } = trackDownloadUi;
+
+	onMount(() => {
+		const handleClickOutside = (event: MouseEvent) => {
+			const target = event.target as HTMLElement | null;
+			if (
+				!target?.closest('.track-menu-container') &&
+				!target?.closest('button[title="Queue actions"]')
+			) {
+				activeMenuId = null;
+			}
+		};
+
+		document.addEventListener('click', handleClickOutside);
+
+		return () => {
+			document.removeEventListener('click', handleClickOutside);
+		};
+	});
 
 	function getDisplayTags(tags?: string[] | null): string[] {
 		if (!tags) return [];
@@ -66,70 +89,18 @@
 		playbackFacade.enqueueNext(track);
 	}
 
-	function markCancelled(trackId: number) {
-		const next = new Set(cancelledIds);
-		next.add(trackId);
-		cancelledIds = next;
-		setTimeout(() => {
-			const updated = new Set(cancelledIds);
-			updated.delete(trackId);
-			cancelledIds = updated;
-		}, 1500);
-	}
-
-	function handleCancelDownload(trackId: number, event: MouseEvent) {
-		event.stopPropagation();
-		const taskId = downloadTaskIds.get(trackId);
-		if (taskId) {
-			downloadUiStore.cancelTrackDownload(taskId);
-		}
-		const next = new Set(downloadingIds);
-		next.delete(trackId);
-		downloadingIds = next;
-		const nextTasks = new Map(downloadTaskIds);
-		nextTasks.delete(trackId);
-		downloadTaskIds = nextTasks;
-		markCancelled(trackId);
-	}
-
-	async function handleDownload(track: Track, event: MouseEvent) {
-		event.stopPropagation();
-		const next = new Set(downloadingIds);
-		next.add(track.id);
-		downloadingIds = next;
-
-		try {
-			const result = await downloadOrchestrator.downloadTrack(track, {
-				quality: $downloadPreferencesStore.downloadQuality,
-				subtitle: showAlbum ? (track.album?.title ?? track.artist?.name) : track.artist?.name,
-				notificationMode: 'alert',
-				ffmpegAutoTriggered: false,
-				skipFfmpegCountdown: true
-			});
-
-			if (result.success && result.taskId) {
-				const taskMap = new Map(downloadTaskIds);
-				taskMap.set(track.id, result.taskId);
-				downloadTaskIds = taskMap;
-			} else if (!result.success && result.error?.code === 'DOWNLOAD_CANCELLED') {
-				markCancelled(track.id);
-			}
-		} finally {
-			const updated = new Set(downloadingIds);
-			updated.delete(track.id);
-			downloadingIds = updated;
-			const ids = new Map(downloadTaskIds);
-			ids.delete(track.id);
-			downloadTaskIds = ids;
-		}
-	}
-
 	function isCurrentTrack(track: Track): boolean {
 		return $playerStore.currentTrack?.id === track.id;
 	}
 
 	function isPlaying(track: Track): boolean {
 		return isCurrentTrack(track) && $playerStore.isPlaying;
+	}
+
+	function handleRowActivation(event: Event, track: Track, index: number) {
+		const target = event.target as Element | null;
+		if (target?.closest('a') || target?.closest('button')) return;
+		handlePlayTrack(track, index);
 	}
 </script>
 
@@ -142,7 +113,16 @@
 		<div class="space-y-1">
 			{#each tracks as track, index (track.id)}
 				<div
-					class="track-glass group flex w-full items-center gap-2 sm:gap-3 rounded-lg p-2 sm:p-3 text-left transition-colors overflow-hidden {isCurrentTrack(
+					role="button"
+					tabindex="0"
+					onclick={(event) => handleRowActivation(event, track, index)}
+					onkeydown={(event) => {
+						if (event.key === 'Enter' || event.key === ' ') {
+							event.preventDefault();
+							handleRowActivation(event, track, index);
+						}
+					}}
+					class="track-glass group flex w-full items-center gap-2 sm:gap-3 rounded-lg p-2 sm:p-3 text-left transition-colors overflow-hidden cursor-pointer focus:ring-2 focus:ring-blue-500 focus:outline-none {activeMenuId === track.id ? 'relative z-20' : ''} {isCurrentTrack(
 						track
 					)
 						? 'bg-blue-900/20 border-blue-500/30'
@@ -217,54 +197,60 @@
 
 					<!-- Actions -->
 					<div class="flex flex-shrink-0 items-center gap-1 sm:gap-2">
-						<button
-							onclick={(event) => handlePlayNext(track, event)}
-							class="hidden sm:flex p-2 text-gray-400 transition-colors hover:text-white"
-							title="Play next"
-							aria-label={`Play ${track.title} next`}
-						>
-							<ListPlus size={18} />
-						</button>
-						<button
-							onclick={(event) => handleAddToQueue(track, event)}
-							class="hidden sm:flex p-2 text-gray-400 transition-colors hover:text-white"
-							title="Add to queue"
-							aria-label={`Add ${track.title} to queue`}
-						>
-							<Plus size={18} />
-						</button>
+						<div class="relative">
+							<button
+								onclick={(event) => {
+									event.stopPropagation();
+									activeMenuId = activeMenuId === track.id ? null : track.id;
+								}}
+								class="p-2 text-gray-400 transition-colors hover:text-white"
+								title="Queue actions"
+								aria-label={`Queue actions for ${track.title}`}
+							>
+								<MoreVertical size={18} />
+							</button>
+							{#if activeMenuId === track.id}
+								<div
+									class="track-menu-container absolute top-full right-0 z-10 mt-1 w-48 rounded-lg border border-gray-700 bg-gray-800 shadow-lg"
+								>
+									<button
+										onclick={(event) => {
+											handlePlayNext(track, event);
+											activeMenuId = null;
+										}}
+										class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+									>
+										<ListVideo size={16} />
+										Play Next
+									</button>
+									<button
+										onclick={(event) => {
+											handleAddToQueue(track, event);
+											activeMenuId = null;
+										}}
+										class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+									>
+										<ListPlus size={16} />
+										Add to Queue
+									</button>
+								</div>
+							{/if}
+						</div>
 
 						<div class="text-gray-400 hover:text-white">
 							<ShareButton type="track" id={track.id} iconOnly size={18} title="Share track" />
 						</div>
 
-						<button
-							onclick={(e) =>
-								downloadingIds.has(track.id)
-									? handleCancelDownload(track.id, e)
-									: handleDownload(track, e)}
-							class="p-2 text-gray-400 transition-colors hover:text-white"
-							aria-label={downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
-							title={downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
-							aria-busy={downloadingIds.has(track.id)}
-							aria-pressed={downloadingIds.has(track.id)}
-						>
-							{#if downloadingIds.has(track.id)}
-								<span class="flex h-4 w-4 items-center justify-center">
-									{#if cancelledIds.has(track.id)}
-										<X size={14} />
-									{:else}
-										<span
-											class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
-										></span>
-									{/if}
-								</span>
-							{:else if cancelledIds.has(track.id)}
-								<X size={18} />
-							{:else}
-								<Download size={18} />
-							{/if}
-						</button>
+						<TrackDownloadButton
+							isDownloading={$downloadingIds.has(track.id)}
+							isCancelled={$cancelledIds.has(track.id)}
+							onCancel={(event) => handleCancelDownload(track.id, event)}
+							onDownload={(event) => handleDownload(track, event)}
+							title={$downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
+							ariaLabel={$downloadingIds.has(track.id)
+								? `Cancel download for ${track.title}`
+								: `Download ${track.title}`}
+						/>
 
 						<!-- Duration -->
 						<div class="flex w-16 items-center justify-end gap-1 text-sm text-gray-400">

@@ -882,18 +882,20 @@
 											class="flex items-center gap-1 rounded-full border border-transparent px-3 py-1 text-xs tracking-wide text-gray-400 uppercase transition-colors hover:border-blue-500 hover:text-blue-200 disabled:opacity-40"
 											type="button"
 											disabled={$playerStore.queue.length <= 1}
+											aria-label="Shuffle queue"
 										>
 											<Shuffle size={14} />
-											Shuffle
+											Shuffle Queue
 										</button>
 										<button
 											onclick={clearQueue}
 											class="flex items-center gap-1 rounded-full border border-transparent px-3 py-1 text-xs tracking-wide text-gray-400 uppercase transition-colors hover:border-red-500 hover:text-red-400"
 											type="button"
 											disabled={$playerStore.queue.length === 0}
+											aria-label="Clear queue"
 										>
 											<Trash2 size={14} />
-											Clear
+											Clear Queue
 										</button>
 										<button
 											onclick={closeQueuePanel}

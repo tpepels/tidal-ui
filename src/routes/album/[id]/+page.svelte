@@ -303,13 +303,14 @@
 						<button
 							onclick={isPlayingThisAlbum ? () => playbackFacade.pause() : handlePlayAll}
 							class="flex items-center gap-2 rounded-full bg-blue-600 px-8 py-3 font-semibold transition-colors hover:bg-blue-700"
+							aria-label={isPlayingThisAlbum ? 'Pause album' : 'Play album'}
 						>
 							{#if isPlayingThisAlbum}
 								<Pause size={20} fill="currentColor" />
 								Pause
 							{:else}
 								<Play size={20} fill="currentColor" />
-								Play All
+								Play Album
 							{/if}
 						</button>
 						<button
@@ -317,17 +318,18 @@
 							class="flex items-center gap-2 rounded-full border border-purple-400/50 px-6 py-3 text-sm font-semibold text-purple-200 transition-colors hover:border-purple-300 hover:text-purple-100"
 						>
 							<Shuffle size={18} />
-							Shuffle Play
+							Shuffle Album
 						</button>
 						<button
 							onclick={handleDownloadAll}
 							class="flex items-center gap-2 rounded-full border border-blue-400/40 px-6 py-3 text-sm font-semibold text-blue-300 transition-colors hover:border-blue-400 hover:text-blue-200 disabled:cursor-not-allowed disabled:opacity-60"
 							disabled={isDownloadingAll}
+							aria-label="Download album"
 						>
 							<Download size={18} />
 							{isDownloadingAll
 								? `Downloading ${downloadedCount}/${tracks.length}`
-								: 'Download All'}
+								: 'Download Album'}
 						</button>
 
 						<ShareButton type="album" id={album.id} variant="secondary" />

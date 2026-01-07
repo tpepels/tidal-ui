@@ -4,8 +4,9 @@ import { losslessAPI } from '$lib/api';
 import { hasRegionTargets } from '$lib/config';
 import { downloadAlbum } from '$lib/downloads';
 	import { formatArtists } from '$lib/utils/formatters';
-	import { playbackFacade } from '$lib/controllers/playbackFacade';
-	import { downloadUiStore } from '$lib/stores/downloadUi';
+import { playbackFacade } from '$lib/controllers/playbackFacade';
+import { createTrackDownloadUi } from '$lib/controllers/trackDownloadUi';
+import TrackDownloadButton from '$lib/components/TrackDownloadButton.svelte';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { regionStore, type RegionOption } from '$lib/stores/region';
@@ -30,7 +31,6 @@ import {
 	ListPlus,
 	ListVideo,
 	LoaderCircle,
-	X,
 	Link2,
 	MoreVertical,
 	List,
@@ -91,9 +91,14 @@ import {
 		}
 	}
 
-	let downloadingIds = $state(new Set<number | string>());
-	let downloadTaskIds = $state(new Map<number | string, string>());
-	let cancelledIds = $state(new Set<number | string>());
+	const trackDownloadUi = createTrackDownloadUi({
+		resolveSubtitle: (track) =>
+			isSonglinkTrack(track) ? track.artistName : track.album?.title ?? formatArtists(track.artists),
+		notificationMode: 'toast',
+		autoConvertSonglink: true,
+		skipFfmpegCountdown: true
+	});
+	const { downloadingIds, cancelledIds, handleDownload, handleCancelDownload } = trackDownloadUi;
 	let activeMenuId = $state<number | string | null>(null);
 
 	const albumDownloadQuality = $derived($downloadPreferencesStore.downloadQuality as AudioQuality);
@@ -227,82 +232,16 @@ import {
 		};
 	});
 
-	function markCancelled(trackId: number | string) {
-		const next = new Set(cancelledIds);
-		next.add(trackId);
-		cancelledIds = next;
-		setTimeout(() => {
-			const updated = new Set(cancelledIds);
-			updated.delete(trackId);
-			cancelledIds = updated;
-		}, 1500);
-	}
-
-	function handleCancelDownload(trackId: number | string, event: MouseEvent) {
-		event.stopPropagation();
-		const taskId = downloadTaskIds.get(trackId);
-		if (taskId) {
-			downloadUiStore.cancelTrackDownload(taskId);
-		}
-		const next = new Set(downloadingIds);
-		next.delete(trackId);
-		downloadingIds = next;
-		const taskMap = new Map(downloadTaskIds);
-		taskMap.delete(trackId);
-		downloadTaskIds = taskMap;
-		markCancelled(trackId);
-	}
-
-	async function handleDownload(track: PlayableTrack, event?: MouseEvent) {
-		if (event) {
-			event.stopPropagation();
-		}
-
-		// Use track.id for UI tracking (could be string or number)
-		const uiTrackId = track.id;
-
-		if (downloadingIds.has(uiTrackId)) {
-			return;
-		}
-
-		const next = new Set(downloadingIds);
-		next.add(uiTrackId);
-		downloadingIds = next;
-
-		// Determine subtitle based on track type
-		let subtitle: string;
-		if (isSonglinkTrack(track)) {
-			subtitle = track.artistName;
-		} else {
-			subtitle = track.album?.title ?? formatArtists(track.artists);
-		}
-
+	async function handleDownloadWithFallback(track: PlayableTrack, event?: MouseEvent) {
 		try {
-			const result = await downloadOrchestrator.downloadTrack(track, {
-				quality: $downloadPreferencesStore.downloadQuality,
-				subtitle,
-				notificationMode: 'toast',
-				ffmpegAutoTriggered: false,
-				skipFfmpegCountdown: true,
-				autoConvertSonglink: true
-			});
-
-			if (result.success && result.taskId) {
-				const taskMap = new Map(downloadTaskIds);
-				taskMap.set(uiTrackId, result.taskId);
-				downloadTaskIds = taskMap;
-			} else if (!result.success && result.error?.code === 'DOWNLOAD_CANCELLED') {
-				markCancelled(uiTrackId);
-			} else if (!result.success && result.error?.code === 'SONGLINK_NOT_SUPPORTED') {
-				toasts.info('This track needs to be played first before it can be downloaded. Click to play it, then download.');
+			const result = await handleDownload(track, event);
+			if (!result?.success && result?.error?.code === 'SONGLINK_NOT_SUPPORTED') {
+				toasts.info(
+					'This track needs to be played first before it can be downloaded. Click to play it, then download.'
+				);
 			}
-		} finally {
-			const next = new Set(downloadingIds);
-			next.delete(uiTrackId);
-			downloadingIds = next;
-			const taskMap = new Map(downloadTaskIds);
-			taskMap.delete(uiTrackId);
-			downloadTaskIds = taskMap;
+		} catch (error) {
+			console.error('Failed to download track:', error);
 		}
 	}
 
@@ -662,23 +601,26 @@ import {
 					<button
 						onclick={handlePlayAll}
 						class="flex items-center gap-2 rounded-full bg-blue-600 px-6 py-3 font-semibold transition-colors hover:bg-blue-700"
+						aria-label="Play search results"
 					>
 						<Play size={20} fill="currentColor" />
-						Play All
+						Play Results
 					</button>
 					<button
 						onclick={handleShuffleAll}
 						class="flex items-center gap-2 rounded-full bg-purple-600 px-6 py-3 font-semibold transition-colors hover:bg-purple-700"
+						aria-label="Shuffle search results"
 					>
 						<Shuffle size={20} />
-						Shuffle All
+						Shuffle Results
 					</button>
 					<button
 						onclick={handleDownloadAll}
 						class="flex items-center gap-2 rounded-full bg-green-600 px-6 py-3 font-semibold transition-colors hover:bg-green-700"
+						aria-label="Download search results"
 					>
 						<Download size={20} />
-						Download All
+						Download Results
 					</button>
 					<div class="ml-auto text-sm text-gray-400">
 						{($searchStore.results?.tracks ?? []).length} of {$searchStore.playlistConversionTotal} tracks
@@ -847,35 +789,17 @@ import {
 								</p>
 							</div>
 							<div class="flex items-center gap-2 text-sm text-gray-400">
-								<button
-									onclick={(event) =>
-										downloadingIds.has(track.id)
-											? handleCancelDownload(track.id, event)
-											: handleDownload(track, event)}
-									class="rounded-full p-2 text-gray-400 transition-colors hover:text-white"
-									title={downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
-									aria-label={downloadingIds.has(track.id)
+								<TrackDownloadButton
+									isDownloading={$downloadingIds.has(track.id)}
+									isCancelled={$cancelledIds.has(track.id)}
+									onCancel={(event) => handleCancelDownload(track.id, event)}
+									onDownload={(event) => handleDownloadWithFallback(track, event)}
+									title={$downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
+									ariaLabel={$downloadingIds.has(track.id)
 										? `Cancel download for ${track.title}`
 										: `Download ${track.title}`}
-									aria-busy={downloadingIds.has(track.id)}
-									aria-pressed={downloadingIds.has(track.id)}
-								>
-									{#if downloadingIds.has(track.id)}
-										<span class="flex h-4 w-4 items-center justify-center">
-											{#if cancelledIds.has(track.id)}
-												<X size={14} />
-											{:else}
-												<span
-													class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
-												></span>
-											{/if}
-										</span>
-									{:else if cancelledIds.has(track.id)}
-										<X size={18} />
-									{:else}
-										<Download size={18} />
-									{/if}
-								</button>
+									class="rounded-full"
+								/>
 								<div class="relative">
 									<button
 										onclick={(event) => {

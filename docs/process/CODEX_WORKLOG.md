@@ -80,6 +80,15 @@
 - 2026-01-05: Fixed artist load progress to show totals when available and added indeterminate loading state.
 - 2026-01-05: Offset download progress and diagnostics UI to avoid player overlap, and reset player height CSS when hidden.
 - 2026-01-05: Updated Dockerfile and compose paths for moved scripts/certs, plus adjusted dev start script.
+- 2026-01-05: Normalized queue actions in TrackList/TopTracksGrid via a shared dropdown menu to align with SearchInterface.
+- 2026-01-05: Started Phase 3 by extracting TrackDownloadButton and wiring list/grid download controls through it.
+- 2026-01-05: Continued Phase 3 by routing SearchInterface track downloads through TrackDownloadButton.
+- 2026-01-05: Consolidated track download UI state/handlers via createTrackDownloadUi and wired SearchInterface/TrackList/TopTracksGrid to it.
+- 2026-01-05: Added trackDownloadUi unit coverage and clarified shuffle/clear queue button labels to make scope explicit.
+- 2026-01-05: Clarified search bulk playback labels to "Play Results"/"Shuffle Results" with scope-specific aria labels.
+- 2026-01-05: Added explicit play scope aria labels for album and playlist bulk play buttons.
+- 2026-01-05: Clarified bulk download/play labels for search/album/playlist scope visibility.
+- 2026-01-05: Added UI consistency rules doc + checklist link and a trackDownloadUi invariant test.
 
 ## Phase 2 Inventory
 - `src/lib/components/AudioPlayer.svelte` store→machine sync: `playerStore.subscribe(syncFromPlayerState)` and `lastObservedPlayState` mirror.

@@ -164,9 +164,10 @@
 						<button
 							onclick={handlePlayAll}
 							class="flex w-fit items-center gap-2 rounded-full bg-blue-600 px-8 py-3 font-semibold transition-colors hover:bg-blue-700"
+							aria-label="Play playlist"
 						>
 							<Play size={20} fill="currentColor" />
-							Play All
+							Play Playlist
 						</button>
 						<ShareButton type="playlist" id={playlist.uuid} variant="secondary" />
 					</div>
