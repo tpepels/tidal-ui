@@ -32,7 +32,7 @@
 	const columnClass = $derived(getColumnClass(columns));
 	const displayedTracks = $derived(maxTracks ? tracks.slice(0, maxTracks) : tracks);
 
-	const trackDownloadUi = createTrackDownloadUi({
+	const trackDownloadUi = createTrackDownloadUi<Track>({
 		resolveSubtitle: (track) => track.album?.title ?? track.artist?.name,
 		notificationMode: 'alert',
 		skipFfmpegCountdown: true

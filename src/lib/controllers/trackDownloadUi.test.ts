@@ -29,7 +29,7 @@ describe('trackDownloadUi', () => {
 
 	it('dispatches download with resolved subtitle and clears in-flight state', async () => {
 		downloadTrackMock.mockResolvedValueOnce({ success: true, taskId: 'task-1' });
-		const ui = createTrackDownloadUi({
+		const ui = createTrackDownloadUi<Track>({
 			resolveSubtitle: (track) => track.album?.title ?? 'Unknown',
 			notificationMode: 'alert',
 			skipFfmpegCountdown: true
@@ -55,7 +55,7 @@ describe('trackDownloadUi', () => {
 			success: false,
 			error: { code: 'DOWNLOAD_CANCELLED' }
 		});
-		const ui = createTrackDownloadUi({
+		const ui = createTrackDownloadUi<Track>({
 			resolveSubtitle: () => 'Artist',
 			notificationMode: 'alert'
 		});
@@ -75,7 +75,7 @@ describe('trackDownloadUi', () => {
 			resolveDownload = resolve;
 		});
 		downloadTrackMock.mockReturnValueOnce(deferred);
-		const ui = createTrackDownloadUi({
+		const ui = createTrackDownloadUi<Track>({
 			resolveSubtitle: () => 'Artist'
 		});
 		const track = makeTrack(3);

@@ -22,7 +22,7 @@
 	let { tracks, showAlbum = true, showArtist = true, showCover = true }: Props = $props();
 	let activeMenuId = $state<number | null>(null);
 	const IGNORED_TAGS = new Set(['HI_RES_LOSSLESS']);
-	const trackDownloadUi = createTrackDownloadUi({
+	const trackDownloadUi = createTrackDownloadUi<Track>({
 		resolveSubtitle: (track) =>
 			showAlbum ? (track.album?.title ?? track.artist?.name) : track.artist?.name,
 		notificationMode: 'alert',
