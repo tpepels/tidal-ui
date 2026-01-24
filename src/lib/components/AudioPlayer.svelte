@@ -31,6 +31,7 @@
 	import { playbackFacade } from '$lib/controllers/playbackFacade';
 	import { playerUiProjection } from '$lib/controllers/playerUiProjection';
 	import { playbackMachine } from '$lib/stores/playbackMachine.svelte';
+	import { detectAudioSupport } from '$lib/utils/audioSupport';
 	import {
 		Play,
 		Pause,
@@ -76,6 +77,7 @@
 	const machineStreamUrl = $derived(playbackMachine.streamUrl || streamUrl);
 	const isFirefox = typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent);
 	let supportsLosslessPlayback = true;
+	let streamingFallbackQuality: AudioQuality = 'HIGH';
 
 	const mediaSessionController = createMediaSessionController(
 		playerStore,
@@ -148,6 +150,9 @@
 	}
 
 	function togglePlayback() {
+		if (!$playerStore.currentTrack) {
+			return;
+		}
 		if ($playerStore.isPlaying) {
 			requestPause();
 		} else {
@@ -502,6 +507,7 @@
 			setBitDepth: (value) => playerUiProjection.setBitDepth(value),
 			setReplayGain: (value) => playerUiProjection.setReplayGain(value),
 			getSupportsLosslessPlayback: () => supportsLosslessPlayback,
+			getStreamingFallbackQuality: () => streamingFallbackQuality,
 			isHiResQuality: (quality) => (quality ? hiResQualities.has(quality) : false),
 			isFirefox: () => isFirefox,
 			preloadThresholdSeconds: PRELOAD_THRESHOLD_SECONDS
@@ -514,15 +520,21 @@
 
 		if (typeof window !== 'undefined') {
 			const probe = document.createElement('audio');
-			const support = probe.canPlayType?.('audio/flac');
-			const supportedByCodec = Boolean(support);
-			if (isFirefox && supportedByCodec) {
+			const { supportsLosslessPlayback: detectedLossless, streamingFallbackQuality: fallbackQuality, flacSupported } =
+				detectAudioSupport({
+					canPlayType: probe.canPlayType?.bind(probe),
+					isFirefox
+				});
+
+			streamingFallbackQuality = fallbackQuality;
+
+			if (isFirefox && flacSupported) {
 				console.info(
 					'[AudioPlayer] Browser reported FLAC support but running on Firefox; forcing streaming fallback.'
 				);
 			}
 			const previousSupport = supportsLosslessPlayback;
-			supportsLosslessPlayback = supportedByCodec && !isFirefox;
+			supportsLosslessPlayback = detectedLossless;
 			console.info(
 				'[AudioPlayer] Browser lossless playback support detected:',
 				supportsLosslessPlayback
@@ -531,9 +543,9 @@
 				const state = get(playerStore);
 				if (state.currentTrack) {
 					console.info(
-						'[AudioPlayer] Re-loading current track with LOSSLESS quality due to unsupported FLAC playback.'
+						'[AudioPlayer] Re-loading current track with streaming quality due to unsupported FLAC playback.'
 					);
-					// loadTrack() will automatically use LOSSLESS quality for playback when FLAC is not supported
+					// loadTrack() will automatically select a streaming quality when FLAC is not supported
 					// without changing the UI quality setting
 					playbackMachine.actions.loadTrack(state.currentTrack);
 				}
@@ -732,8 +744,9 @@
 
 									<button
 										onclick={togglePlayback}
-										class="rounded-full bg-white p-3 sm:p-2.5 md:p-3 text-gray-900 transition-transform hover:scale-105"
+										class="rounded-full bg-white p-3 sm:p-2.5 md:p-3 text-gray-900 transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-60"
 										aria-label={$playerStore.isPlaying ? 'Pause' : 'Play'}
+										disabled={!$playerStore.currentTrack}
 									>
 										{#if $playerStore.isPlaying}
 											<Pause size={20} class="sm:w-5 sm:h-5 md:w-6 md:h-6" fill="currentColor" />

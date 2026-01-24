@@ -33,6 +33,7 @@ type TrackLoadControllerOptions = {
 	setBitDepth: (value: number | null) => void;
 	setReplayGain: (value: number | null) => void;
 	getPlaybackQuality?: () => AudioQuality;
+	getStreamingFallbackQuality?: () => AudioQuality;
 	createSequence: () => number;
 	getSequence: () => number;
 	isHiResQuality: (quality: AudioQuality | undefined) => boolean;
@@ -476,15 +477,32 @@ export const createTrackLoadController = (
 		options.setCurrentPlaybackQuality(null);
 		const sequence = options.createSequence();
 		options.setLoading(true);
+		const supportsLosslessPlayback = options.getSupportsLosslessPlayback();
+		const streamingFallbackQuality = options.getStreamingFallbackQuality?.() ?? 'HIGH';
 		let requestedQuality = options.getPlaybackQuality?.() ?? get(options.playerStore).quality;
+		const originalRequestedQuality = requestedQuality;
+		let fallbackReason: string | null = null;
 
-		if (options.isHiResQuality(requestedQuality) && !options.getSupportsLosslessPlayback()) {
-			requestedQuality = 'LOSSLESS';
+		if (options.isHiResQuality(requestedQuality) && !supportsLosslessPlayback) {
+			requestedQuality = streamingFallbackQuality;
+			fallbackReason = 'lossless-unsupported';
 		}
 
 		const trackBestQuality = deriveTrackQuality(tidalTrack);
-		if (options.isHiResQuality(requestedQuality) && trackBestQuality && !options.isHiResQuality(trackBestQuality)) {
+		if (
+			options.isHiResQuality(requestedQuality) &&
+			trackBestQuality &&
+			!options.isHiResQuality(trackBestQuality)
+		) {
 			requestedQuality = trackBestQuality;
+			fallbackReason ??= 'track-quality';
+		}
+		if (!supportsLosslessPlayback && requestedQuality === 'LOSSLESS') {
+			requestedQuality = streamingFallbackQuality;
+			fallbackReason = 'lossless-unsupported';
+		}
+		if (fallbackReason && requestedQuality !== originalRequestedQuality) {
+			options.onFallbackRequested?.(requestedQuality, fallbackReason);
 		}
 
 		try {
@@ -503,8 +521,11 @@ export const createTrackLoadController = (
 					}
 					console.warn('DASH playback failed, falling back to lossless stream.', dashError);
 				}
-				options.onFallbackRequested?.('LOSSLESS', 'dash-fallback');
-				await loadStandardTrack(tidalTrack, 'LOSSLESS', sequence);
+				const dashFallbackQuality: AudioQuality = supportsLosslessPlayback
+					? 'LOSSLESS'
+					: streamingFallbackQuality;
+				options.onFallbackRequested?.(dashFallbackQuality, 'dash-fallback');
+				await loadStandardTrack(tidalTrack, dashFallbackQuality, sequence);
 				return;
 			}
 
@@ -520,8 +541,12 @@ export const createTrackLoadController = (
 				!options.isHiResQuality(requestedQuality)
 			) {
 				try {
-					options.onFallbackRequested?.('LOSSLESS', 'retry-lossless');
-					await loadStandardTrack(tidalTrack, 'LOSSLESS', sequence);
+					const fallbackQuality: AudioQuality = supportsLosslessPlayback
+						? 'LOSSLESS'
+						: streamingFallbackQuality;
+					const reason = supportsLosslessPlayback ? 'retry-lossless' : 'lossless-unsupported';
+					options.onFallbackRequested?.(fallbackQuality, reason);
+					await loadStandardTrack(tidalTrack, fallbackQuality, sequence);
 				} catch (fallbackError) {
 					console.error('Secondary lossless fallback failed:', fallbackError);
 				}
@@ -531,8 +556,8 @@ export const createTrackLoadController = (
 					tidalTrack.id
 				);
 				try {
-					options.onFallbackRequested?.('HIGH', 'lossless-fallback');
-					await loadStandardTrack(tidalTrack, 'HIGH', sequence);
+					options.onFallbackRequested?.(streamingFallbackQuality, 'lossless-fallback');
+					await loadStandardTrack(tidalTrack, streamingFallbackQuality, sequence);
 				} catch (fallbackError) {
 					console.error(
 						'[AudioPlayer] Streaming fallback after lossless load failure also failed',

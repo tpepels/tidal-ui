@@ -68,6 +68,7 @@
 
 	const isEmbed = $derived($page.url.pathname.startsWith('/embed'));
 	const diagnosticsEnabled = dev || import.meta.env.VITE_E2E === 'true';
+	const MAX_QUEUE_ZIP_TRACKS = 75;
 	let diagnosticsOpen = $state(false);
 	let diagnosticsLoading = $state(false);
 	let diagnosticsSummary = $state<ReturnType<typeof getErrorSummary> | null>(null);
@@ -280,6 +281,17 @@
 		return { tracks, quality: get(downloadPreferencesStore).downloadQuality };
 	}
 
+	function filterExportableQueueTracks(tracks: PlayableTrack[]): Track[] {
+		const exportable = tracks.filter((track): track is Track => !isSonglinkTrack(track));
+		const skipped = tracks.length - exportable.length;
+		if (skipped > 0 && exportable.length > 0) {
+			toasts.warning(
+				`Skipped ${skipped} Songlink track${skipped === 1 ? '' : 's'}; convert to TIDAL before exporting.`
+			);
+		}
+		return exportable;
+	}
+
 	function buildQueueFilename(track: PlayableTrack, index: number, quality: AudioQuality): string {
 		const ext = getExtensionForQuality(quality, convertAacToMp3);
 		const order = `${index + 1}`.padStart(2, '0');
@@ -310,14 +322,22 @@
 		isZipDownloading = true;
 
 		try {
+			const exportableTracks = filterExportableQueueTracks(tracks);
+			if (exportableTracks.length === 0) {
+				toasts.warning('No exportable TIDAL tracks in the queue.');
+				return;
+			}
+			if (exportableTracks.length > MAX_QUEUE_ZIP_TRACKS) {
+				toasts.warning(
+					`ZIP export is limited to ${MAX_QUEUE_ZIP_TRACKS} tracks to avoid memory issues.`
+				);
+				return;
+			}
 			const { default: JSZip } = await import('jszip');
 			const zip = new JSZip();
-			for (const [index, track] of tracks.entries()) {
-				const trackId = isSonglinkTrack(track) ? track.tidalId : track.id;
-				if (!trackId) continue;
-
+			for (const [index, track] of exportableTracks.entries()) {
 				const filename = buildQueueFilename(track, index, quality);
-				const { blob } = await losslessAPI.fetchTrackBlob(trackId, quality, filename, {
+				const { blob } = await losslessAPI.fetchTrackBlob(track.id, quality, filename, {
 					ffmpegAutoTriggered: false,
 					convertAacToMp3
 				});
@@ -327,7 +347,8 @@
 			const zipBlob = await zip.generateAsync({
 				type: 'blob',
 				compression: 'DEFLATE',
-				compressionOptions: { level: 6 }
+				compressionOptions: { level: 6 },
+				streamFiles: true
 			});
 
 			triggerFileDownload(zipBlob, timestampedFilename('zip'));
@@ -343,8 +364,12 @@
 		isCsvExporting = true;
 
 		try {
-			// @ts-expect-error - buildTrackLinksCsv needs update but we can cast for now or update it later
-			const csvContent = await buildTrackLinksCsv(tracks, quality);
+			const exportableTracks = filterExportableQueueTracks(tracks);
+			if (exportableTracks.length === 0) {
+				toasts.warning('No exportable TIDAL tracks in the queue.');
+				return;
+			}
+			const csvContent = await buildTrackLinksCsv(exportableTracks, quality);
 			const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
 			triggerFileDownload(blob, timestampedFilename('csv'));
 		} catch (error) {

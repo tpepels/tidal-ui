@@ -47,10 +47,14 @@ vi.mock('$lib/controllers/playbackFallbackController', () => ({
 	}))
 }));
 
+const mockToasts = vi.hoisted(() => ({
+	error: vi.fn(),
+	info: vi.fn(),
+	warning: vi.fn()
+}));
+
 vi.mock('$lib/stores/toasts', () => ({
-	toasts: {
-		error: vi.fn()
-	}
+	toasts: mockToasts
 }));
 
 vi.mock('$lib/utils/trackConversion', () => ({
@@ -107,6 +111,9 @@ describe('PlaybackMachineSideEffectHandler', () => {
 		mockHandleAudioError.mockClear();
 		mockResetForTrack.mockClear();
 		mockCreateTrackLoadController.mockClear();
+		mockToasts.error.mockClear();
+		mockToasts.info.mockClear();
+		mockToasts.warning.mockClear();
 	});
 	it('plays, pauses, and seeks through the audio element', async () => {
 		const audio = buildAudioElement();
@@ -210,5 +217,42 @@ describe('PlaybackMachineSideEffectHandler', () => {
 		);
 
 		expect(mockResetForTrack).toHaveBeenCalledWith(track.id);
+	});
+
+	it('shows a toast when fallback is requested', async () => {
+		mockCreateTrackLoadController.mockImplementationOnce((options) => {
+			const loadTrack = vi.fn(async () => {
+				options.onFallbackRequested?.('LOW', 'lossless-unsupported');
+				options.onLoadComplete?.('https://example.com/stream.m4a', 'LOW');
+			});
+			return {
+				loadTrack,
+				loadStandardTrack: vi.fn().mockResolvedValue(undefined),
+				maybePreloadNextTrack: vi.fn(),
+				destroy: vi.fn().mockResolvedValue(undefined)
+			};
+		});
+
+		const audio = buildAudioElement();
+		const handler = new PlaybackMachineSideEffectHandler();
+		handler.setAudioElement(audio);
+
+		const track = buildTrack(404);
+		const dispatch = vi.fn<[PlaybackEvent], void>();
+
+		await handler.execute(
+			{
+				type: 'LOAD_STREAM',
+				track,
+				quality: 'LOSSLESS',
+				requestId: 1
+			} satisfies SideEffect,
+			dispatch as (event: PlaybackEvent) => void
+		);
+
+		expect(mockToasts.info).toHaveBeenCalledWith(
+			expect.stringContaining('Lossless playback'),
+			expect.objectContaining({ duration: 3500 })
+		);
 	});
 });

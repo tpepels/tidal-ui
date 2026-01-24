@@ -5,6 +5,9 @@ const originalEnv = { ...process.env };
 const loadRedisModule = async (env: Record<string, string | undefined>, redisInstance?: object) => {
 	vi.resetModules();
 	process.env = { ...originalEnv, ...env };
+	if (env.REDIS_DISABLED === undefined) {
+		delete process.env.REDIS_DISABLED;
+	}
 	const constructor = vi.fn(() => redisInstance ?? { on: vi.fn(), disconnect: vi.fn() });
 	vi.doMock('ioredis', () => ({ default: constructor }));
 	const module = await vi.importActual<typeof import('./redis')>('./redis');

@@ -22,6 +22,32 @@ async function calculateBlobChecksum(blob: Blob): Promise<string> {
 	return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+	typeof value === 'object' && value !== null;
+
+const formatDownloadError = (payload: unknown, fallback: string): string => {
+	if (!payload) return fallback;
+	if (typeof payload === 'string') return payload;
+	if (!isRecord(payload)) return fallback;
+
+	const errorValue = payload.error;
+	if (typeof errorValue === 'string') return errorValue;
+	if (isRecord(errorValue)) {
+		const message = typeof errorValue.message === 'string' ? errorValue.message : undefined;
+		const suggestion = typeof errorValue.suggestion === 'string' ? errorValue.suggestion : undefined;
+		if (message && suggestion) return `${message} ${suggestion}`;
+		if (message) return message;
+	}
+
+	const directMessage =
+		typeof payload.userMessage === 'string'
+			? payload.userMessage
+			: typeof payload.message === 'string'
+				? payload.message
+				: undefined;
+	return directMessage ?? fallback;
+};
+
 function detectImageFormat(data: Uint8Array): { extension: string; mimeType: string } | null {
 	if (!data || data.length < 4) {
 		return null;
@@ -273,7 +299,7 @@ export async function downloadTrackServerSide(
 		}
 
 		const totalBytes = blob.size;
-		const useChunks = blob.size > 1024 * 1024; // Use chunks for files > 1MB for better progress granularity
+		const useChunks = options?.useChunks ?? blob.size > 1024 * 1024; // Use chunks for files > 1MB for better progress granularity
 		const chunkSize = options?.chunkSize ?? 2 * 1024 * 1024; // 2MB chunks (reduced CPU load)
 		const conflictResolution = options?.conflictResolution ?? 'overwrite_if_different';
 
@@ -327,19 +353,21 @@ export async function downloadTrackServerSide(
 				albumTitle,
 				artistName,
 				trackTitle,
-				blobSize: useChunks ? undefined : totalBytes,
+				blobSize: totalBytes,
 				useChunks,
 				chunkSize,
 				checksum,
-				conflictResolution
+				conflictResolution,
+				downloadCoverSeperately: options?.downloadCoverSeperately ?? false,
+				coverUrl: options?.coverUrl
 			}),
 			timeout: 10000,
 			maxRetries: 2
 		});
 
 		if (!response.ok) {
-			const errorData = await response.json().catch(() => ({}));
-			const errMsg = errorData.error || `HTTP ${response.status}`;
+			const errorData = await response.json().catch(() => null);
+			const errMsg = formatDownloadError(errorData, `HTTP ${response.status}`);
 			console.error(`[Server Download] Phase 1 failed: ${errMsg}`);
 			throw new Error(errMsg);
 		}
@@ -348,6 +376,9 @@ export async function downloadTrackServerSide(
 		const { uploadId, chunked, totalChunks } = responseData;
 
 		if (chunked && useChunks) {
+			if (!Number.isFinite(totalChunks) || totalChunks <= 0) {
+				throw new Error('Invalid chunked upload response');
+			}
 			// Chunked upload
 			return await uploadInChunks(blob, uploadId, totalChunks, chunkSize, options?.onProgress);
 		} else {
@@ -389,6 +420,7 @@ export async function downloadTrackServerSide(
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
+					uploadId,
 					trackId,
 					quality,
 					albumTitle,
@@ -403,8 +435,8 @@ export async function downloadTrackServerSide(
 			});
 
 			if (!uploadResponse.ok) {
-				const errorData = await uploadResponse.json().catch(() => ({}));
-				const errMsg = errorData.error || `Upload failed: ${uploadResponse.status}`;
+				const errorData = await uploadResponse.json().catch(() => null);
+				const errMsg = formatDownloadError(errorData, `Upload failed: ${uploadResponse.status}`);
 				console.error(`[Server Download] Direct upload failed: ${errMsg}`);
 				throw new Error(errMsg);
 			}
@@ -468,8 +500,21 @@ async function uploadInChunks(
 	error?: string;
 	action?: string;
 }> {
+	if (!Number.isFinite(totalChunks) || totalChunks <= 0) {
+		throw new Error('Invalid totalChunks for upload');
+	}
+	if (!Number.isFinite(chunkSize) || chunkSize <= 0) {
+		throw new Error('Invalid chunkSize for upload');
+	}
 	const startTime = Date.now();
 	let uploadedBytes = 0;
+
+	let finalData: {
+		success?: boolean;
+		filepath?: string;
+		message?: string;
+		action?: string;
+	} | null = null;
 
 	for (let i = 0; i < totalChunks; i++) {
 		const start = i * chunkSize;
@@ -489,10 +534,11 @@ async function uploadInChunks(
 		});
 
 		if (!response.ok) {
-			const errorData = await response.json().catch(() => ({}));
-			const errMsg = errorData.error
-				? JSON.stringify(errorData.error)
-				: `Chunk ${i + 1} upload failed: ${response.status}`;
+			const errorData = await response.json().catch(() => null);
+			const errMsg = formatDownloadError(
+				errorData,
+				`Chunk ${i + 1} upload failed: ${response.status}`
+			);
 			console.error(`[Chunk Upload] Failed: ${errMsg}`);
 			throw new Error(errMsg);
 		}
@@ -515,31 +561,20 @@ async function uploadInChunks(
 		downloadLogStore.log(
 			`Uploaded chunk ${i + 1}/${totalChunks} (${((uploadedBytes / blob.size) * 100).toFixed(1)}%)`
 		);
+
+		if (i === totalChunks - 1) {
+			finalData = await response.json().catch(() => null);
+		}
 	}
 
-	// Final response should be available from the last chunk upload
-	const finalResponse = await retryFetch(`/api/download-track/${uploadId}/chunk`, {
-		method: 'POST',
-		headers: {
-			'Content-Type': 'application/octet-stream',
-			'x-chunk-index': totalChunks.toString(),
-			'x-total-chunks': totalChunks.toString()
-		},
-		body: new ArrayBuffer(0), // Empty chunk to finalize
-		timeout: 10000,
-		maxRetries: 2
-	});
-
-	if (!finalResponse.ok) {
+	if (!finalData || finalData.success !== true) {
 		throw new Error('Failed to complete chunked upload');
 	}
-
-	const data = await finalResponse.json();
 	return {
 		success: true,
-		filepath: data.filepath,
-		message: data.message,
-		action: data.action || 'overwrite'
+		filepath: finalData.filepath,
+		message: finalData.message,
+		action: finalData.action || 'overwrite'
 	};
 }
 

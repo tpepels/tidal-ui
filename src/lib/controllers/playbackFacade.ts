@@ -28,6 +28,9 @@ const loadQueue = (tracks: PlayableTrack[], startIndex = 0) => {
 };
 
 const play = () => {
+	if (!playerStore.getSnapshot().currentTrack) {
+		return;
+	}
 	playerStore.play();
 	playbackMachine.actions.play();
 };

@@ -16,47 +16,90 @@ expect.extend(matchers);
 
 // Redis is assumed to be available as infrastructure
 // Try to use real Redis first, fall back to mocks only if unavailable
-let redisAvailable = false;
+const redisProbeState = globalThis as {
+	__REDIS_AVAILABLE?: boolean;
+	__REDIS_LOGGED?: boolean;
+};
+let redisAvailable = redisProbeState.__REDIS_AVAILABLE ?? false;
 
 try {
-	// Test Redis connection synchronously (this will throw if Redis not available)
-	// We'll do this in a way that doesn't block the test setup
-	const testRedisConnection = async () => {
-		try {
-			const { default: Redis } = await import('ioredis');
-			const redis = new Redis({
-				host: 'localhost',
-				port: 6379,
-				lazyConnect: true,
-				connectTimeout: 1000, // 1 second timeout
-				maxRetriesPerRequest: 0
-			});
+	if (redisProbeState.__REDIS_AVAILABLE === undefined) {
+		// Test Redis connection synchronously (this will throw if Redis not available)
+		// We'll do this in a way that doesn't block the test setup
+		const testRedisConnection = async () => {
+			try {
+				const { default: Redis } = await import('ioredis');
+				const tryConnect = async (url: string) => {
+					const redis = new Redis(url, {
+						lazyConnect: true,
+						connectTimeout: 1000, // 1 second timeout
+						maxRetriesPerRequest: 0,
+						enableOfflineQueue: false
+					});
+					redis.on('error', () => {
+						// Swallow connection errors during availability probe.
+					});
+					try {
+						await redis.connect();
+						await redis.ping();
+						await redis.quit();
+						return true;
+					} catch {
+						try {
+							redis.disconnect();
+						} catch {
+							// ignore disconnect errors
+						}
+						return false;
+					}
+				};
 
-			await redis.connect();
-			await redis.ping();
-			await redis.quit();
-			return true;
-		} catch (error) {
-			console.warn(
-				'Redis not available for tests, using mocks:',
-				error instanceof Error ? error.message : String(error)
-			);
-			return false;
-		}
-	};
+				const envUrl = process.env.REDIS_URL;
+				const primaryUrl = envUrl || 'redis://127.0.0.1:6379';
+				if (await tryConnect(primaryUrl)) {
+					process.env.REDIS_URL ??= primaryUrl;
+					return true;
+				}
+				if (envUrl) {
+					const fallbackUrl = 'redis://127.0.0.1:6379';
+					if (await tryConnect(fallbackUrl)) {
+						process.env.REDIS_URL = fallbackUrl;
+						return true;
+					}
+				}
+				return false;
+			} catch (error) {
+				if (!redisProbeState.__REDIS_LOGGED) {
+					console.info(
+						'Redis not available for tests, using mocks:',
+						error instanceof Error ? error.message : String(error)
+					);
+					redisProbeState.__REDIS_LOGGED = true;
+				}
+				return false;
+			}
+		};
 
-	// Run connection test
-	redisAvailable = await testRedisConnection();
+		// Run connection test
+		redisAvailable = await testRedisConnection();
+		redisProbeState.__REDIS_AVAILABLE = redisAvailable;
+	}
 } catch (error) {
-	console.warn(
-		'Error testing Redis connection, using mocks:',
-		error instanceof Error ? error.message : String(error)
-	);
+	if (!redisProbeState.__REDIS_LOGGED) {
+		console.info(
+			'Error testing Redis connection, using mocks:',
+			error instanceof Error ? error.message : String(error)
+		);
+		redisProbeState.__REDIS_LOGGED = true;
+	}
 	redisAvailable = false;
 }
 
 if (!redisAvailable) {
-	console.log('🔄 Using Redis mocks for tests (Redis not available)');
+	if (!redisProbeState.__REDIS_LOGGED) {
+		console.log('🔄 Using Redis mocks for tests (Redis not available)');
+		redisProbeState.__REDIS_LOGGED = true;
+	}
 	process.env.REDIS_DISABLED = 'true';
 	(globalThis as { __REDIS_AVAILABLE?: boolean }).__REDIS_AVAILABLE = false;
 

@@ -1,18 +1,19 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
-import * as fs from 'fs/promises';
 import * as path from 'path';
-import { pendingUploads, getDownloadDir, sanitizePath } from '../_shared';
-
-// Ensure directory exists
-const ensureDir = async (dirPath: string): Promise<void> => {
-	try {
-		await fs.mkdir(dirPath, { recursive: true });
-	} catch (err) {
-		console.error(`Failed to create directory ${dirPath}:`, err);
-		throw err;
-	}
-};
+import * as fs from 'fs/promises';
+import {
+	pendingUploads,
+	getDownloadDir,
+	sanitizePath,
+	ensureDir,
+	resolveFileConflict,
+	MAX_FILE_SIZE,
+	validateChecksum,
+	downloadCoverToDir,
+	retryFs,
+	endUpload
+} from '../_shared';
 
 export const POST: RequestHandler = async ({ request, params }) => {
 	try {
@@ -36,7 +37,18 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			return json({ error: 'Empty blob' }, { status: 400 });
 		}
 
-		const { trackId, quality, albumTitle, artistName, trackTitle } = uploadData;
+		const {
+			trackId,
+			quality,
+			albumTitle,
+			artistName,
+			trackTitle,
+			conflictResolution,
+			totalSize,
+			checksum,
+			downloadCoverSeperately,
+			coverUrl
+		} = uploadData;
 
 		// Determine file extension based on quality
 		let ext = 'm4a';
@@ -67,29 +79,77 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		// Ensure target directory exists
 		await ensureDir(targetDir);
 
+		const buffer = Buffer.from(arrayBuffer);
+		if (buffer.length > MAX_FILE_SIZE) {
+			return json(
+				{ error: `File too large: maximum ${MAX_FILE_SIZE} bytes allowed` },
+				{ status: 400 }
+			);
+		}
+		if (totalSize && buffer.length !== totalSize) {
+			return json({ error: 'File size mismatch' }, { status: 400 });
+		}
+		if (checksum && !(await validateChecksum(buffer, checksum))) {
+			return json({ error: 'Checksum validation failed' }, { status: 400 });
+		}
+
 		// Full filepath
-		const filepath = path.join(targetDir, filename);
+		const initialFilepath = path.join(targetDir, filename);
+		const { finalPath, action } = await resolveFileConflict(
+			initialFilepath,
+			conflictResolution || 'overwrite_if_different',
+			buffer.length,
+			checksum
+		);
+		if (action === 'skip') {
+			const finalFilename = path.basename(finalPath);
+			endUpload(uploadId);
+			return json(
+				{
+					success: true,
+					filepath: finalPath,
+					filename: finalFilename,
+					action,
+					message: `File already exists, skipped: ${artistDir}/${albumDir}/${finalFilename}`
+				},
+				{ status: 201 }
+			);
+		}
 
 		// Write blob directly to file
 		// Note: Metadata is already embedded client-side by losslessAPI.fetchTrackBlob()
-		const buffer = Buffer.from(arrayBuffer);
-		await fs.writeFile(filepath, buffer);
+		await retryFs(() => fs.writeFile(finalPath, buffer));
+
+		let coverDownloaded = false;
+		if (downloadCoverSeperately && coverUrl) {
+			coverDownloaded = await downloadCoverToDir(coverUrl, targetDir);
+		}
 
 		// Clean up the upload session
-		pendingUploads.delete(uploadId);
+		endUpload(uploadId);
 
 		return json(
 			{
 				success: true,
-				filepath,
-				filename,
-				message: `File saved to ${artistDir}/${albumDir}/${filename}`
+				filepath: finalPath,
+				filename: path.basename(finalPath),
+				action,
+				message:
+					action === 'rename'
+						? `File renamed and saved to ${artistDir}/${albumDir}/${path.basename(finalPath)}`
+						: action === 'skip'
+							? `File already exists, skipped: ${artistDir}/${albumDir}/${path.basename(finalPath)}`
+							: `File saved to ${artistDir}/${albumDir}/${path.basename(finalPath)}`
+							+ (coverDownloaded ? ' (with cover)' : '')
 			},
 			{ status: 201 }
 		);
 	} catch (error) {
 		const errorMsg = error instanceof Error ? error.message : String(error);
 		console.error(`[Server Download] Error: ${errorMsg}`, error);
+		if (params.uploadId) {
+			endUpload(params.uploadId);
+		}
 		return json({ error: 'Download failed: ' + errorMsg }, { status: 500 });
 	}
 };

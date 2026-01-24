@@ -11,6 +11,63 @@ import {
 	type PlaybackFallbackController
 } from '$lib/controllers/playbackFallbackController';
 
+const QUALITY_LABELS: Record<AudioQuality, string> = {
+	HI_RES_LOSSLESS: 'Hi-Res',
+	LOSSLESS: 'CD',
+	HIGH: 'High',
+	LOW: 'Low'
+};
+
+const formatQualityLabel = (quality: AudioQuality): string => QUALITY_LABELS[quality] ?? quality;
+
+const formatFallbackToast = (
+	quality: AudioQuality,
+	reason: string,
+	requestedQuality: AudioQuality | null
+): { type: 'info' | 'warning'; message: string } => {
+	const fallbackLabel = formatQualityLabel(quality);
+	const requestedLabel =
+		requestedQuality && requestedQuality !== quality
+			? formatQualityLabel(requestedQuality)
+			: null;
+
+	if (reason === 'lossless-unsupported') {
+		return {
+			type: 'info',
+			message: `Lossless playback isn't supported in this browser. Playing ${fallbackLabel}.`
+		};
+	}
+	if (reason === 'track-quality') {
+		const detail = requestedLabel ? ` in ${requestedLabel}` : '';
+		return {
+			type: 'info',
+			message: `Track not available${detail}. Playing ${fallbackLabel}.`
+		};
+	}
+	if (reason.startsWith('dash')) {
+		return {
+			type: 'warning',
+			message: `Hi-Res playback failed. Playing ${fallbackLabel}.`
+		};
+	}
+	if (reason === 'retry-lossless') {
+		return {
+			type: 'warning',
+			message: `Playback issue detected. Switching to ${fallbackLabel}.`
+		};
+	}
+	if (reason.startsWith('lossless')) {
+		return {
+			type: 'warning',
+			message: `Lossless playback failed. Playing ${fallbackLabel}.`
+		};
+	}
+	return {
+		type: 'info',
+		message: `Playback switched to ${fallbackLabel}.`
+	};
+};
+
 type PlaybackLoadUiCallbacks = {
 	setStreamUrl?: (url: string) => void;
 	setBufferedPercent?: (value: number) => void;
@@ -20,6 +77,7 @@ type PlaybackLoadUiCallbacks = {
 	setBitDepth?: (value: number | null) => void;
 	setReplayGain?: (value: number | null) => void;
 	getSupportsLosslessPlayback?: () => boolean;
+	getStreamingFallbackQuality?: () => AudioQuality;
 	isHiResQuality?: (quality: AudioQuality | undefined) => boolean;
 	isFirefox?: () => boolean;
 	preloadThresholdSeconds?: number;
@@ -38,6 +96,9 @@ export class PlaybackMachineSideEffectHandler {
 	private currentPlaybackQuality: AudioQuality | null = null;
 	private dashPlaybackActive = false;
 	private requestedQuality: AudioQuality | null = null;
+	private resumeAfterFallback = false;
+	private lastFallbackToastKey: string | null = null;
+	private lastFallbackToastAt = 0;
 
 	constructor(options?: { syncPlayerTrack?: (track: Track) => void }) {
 		this.syncPlayerTrack = options?.syncPlayerTrack ?? null;
@@ -113,7 +174,13 @@ export class PlaybackMachineSideEffectHandler {
 			isHiResQuality: hiResCheck,
 			preloadThresholdSeconds: preloadThreshold,
 			getPlaybackQuality: () => this.requestedQuality ?? playerStore.getSnapshot().quality,
+			getStreamingFallbackQuality: () =>
+				this.loadUiCallbacks.getStreamingFallbackQuality?.() ??
+				(this.loadUiCallbacks.isFirefox?.() ? 'LOW' : 'HIGH'),
 			onLoadComplete: (url, quality) => {
+				if (this.resumeAfterFallback) {
+					this.resumeAfterFallback = false;
+				}
 				this.dispatch?.({ type: 'LOAD_COMPLETE', streamUrl: url ?? null, quality });
 			},
 			onLoadError: (error) => {
@@ -123,6 +190,7 @@ export class PlaybackMachineSideEffectHandler {
 				});
 			},
 			onFallbackRequested: (quality, reason) => {
+				this.notifyFallback(quality, reason);
 				this.dispatch?.({ type: 'FALLBACK_REQUESTED', quality, reason });
 			}
 		});
@@ -132,6 +200,11 @@ export class PlaybackMachineSideEffectHandler {
 			getPlayerQuality: () => playerStore.getSnapshot().quality,
 			getCurrentPlaybackQuality: () => this.currentPlaybackQuality,
 			getIsPlaying: () => playerStore.getSnapshot().isPlaying,
+			getSupportsLosslessPlayback: () =>
+				this.loadUiCallbacks.getSupportsLosslessPlayback?.() ?? true,
+			getStreamingFallbackQuality: () =>
+				this.loadUiCallbacks.getStreamingFallbackQuality?.() ??
+				(this.loadUiCallbacks.isFirefox?.() ? 'LOW' : 'HIGH'),
 			isFirefox: () => this.loadUiCallbacks.isFirefox?.() ?? false,
 			getDashPlaybackActive: () => this.dashPlaybackActive,
 			setDashPlaybackActive: (value) => {
@@ -139,13 +212,36 @@ export class PlaybackMachineSideEffectHandler {
 				this.loadUiCallbacks.setDashPlaybackActive?.(value);
 			},
 			setLoading: () => {},
-			loadStandardTrack: async () => {},
+			loadStandardTrack: async (track, quality, sequence) => {
+				await this.trackLoadController?.loadStandardTrack(track, quality, sequence);
+			},
 			createSequence: () => ++this.loadSequence,
-			setResumeAfterFallback: () => {},
+			setResumeAfterFallback: (value) => {
+				this.resumeAfterFallback = value;
+			},
 			onFallbackRequested: (quality, reason) => {
+				this.notifyFallback(quality, reason);
 				this.dispatch?.({ type: 'FALLBACK_REQUESTED', quality, reason });
 			}
 		});
+	}
+
+	private notifyFallback(quality: AudioQuality, reason: string) {
+		const trackKey = this.currentTrackId ?? 'unknown';
+		const key = `${trackKey}:${quality}:${reason}`;
+		const now = Date.now();
+		if (this.lastFallbackToastKey === key && now - this.lastFallbackToastAt < 8000) {
+			return;
+		}
+		this.lastFallbackToastKey = key;
+		this.lastFallbackToastAt = now;
+
+		const { type, message } = formatFallbackToast(quality, reason, this.requestedQuality);
+		if (type === 'warning') {
+			toasts.warning(message, { duration: 4500 });
+		} else {
+			toasts.info(message, { duration: 3500 });
+		}
 	}
 
 	async execute(
@@ -247,7 +343,15 @@ export class PlaybackMachineSideEffectHandler {
 				const didFallback =
 					this.playbackFallbackController?.handleAudioError(effect.error) ?? false;
 				if (!didFallback) {
-					dispatch({ type: 'LOAD_ERROR', error: new Error('Audio playback error') });
+					const element = (effect.error as Event)?.currentTarget as HTMLMediaElement | null;
+					const mediaError = element?.error ?? null;
+					const code = mediaError?.code;
+					const details =
+						typeof code === 'number' ? ` (code ${code})` : '';
+					dispatch({
+						type: 'LOAD_ERROR',
+						error: new Error(`Audio playback error${details}`)
+					});
 				}
 				break;
 			}

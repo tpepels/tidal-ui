@@ -5,6 +5,8 @@ type ControllerOptions = {
 	getPlayerQuality: () => AudioQuality;
 	getCurrentPlaybackQuality: () => AudioQuality | null;
 	getIsPlaying: () => boolean;
+	getSupportsLosslessPlayback?: () => boolean;
+	getStreamingFallbackQuality?: () => AudioQuality;
 	isFirefox: () => boolean;
 	getDashPlaybackActive: () => boolean;
 	setDashPlaybackActive: (value: boolean) => void;
@@ -53,11 +55,15 @@ export const createPlaybackFallbackController = (
 		dashFallbackAttemptedTrackId = track.id;
 		const sequence = options.createSequence();
 		console.warn(`Attempting lossless fallback after DASH playback error (${reason}).`);
-		options.onFallbackRequested?.('LOSSLESS', `dash-playback-${reason}`);
+		const supportsLossless = options.getSupportsLosslessPlayback?.() ?? true;
+		const streamingFallback =
+			options.getStreamingFallbackQuality?.() ?? (options.isFirefox() ? 'LOW' : 'HIGH');
+		const fallbackQuality: AudioQuality = supportsLossless ? 'LOSSLESS' : streamingFallback;
+		options.onFallbackRequested?.(fallbackQuality, `dash-playback-${reason}`);
 		try {
 			options.setDashPlaybackActive(false);
 			options.setLoading(true);
-			await options.loadStandardTrack(track as Track, 'LOSSLESS', sequence);
+			await options.loadStandardTrack(track as Track, fallbackQuality, sequence);
 		} catch (fallbackError) {
 			console.error('Lossless fallback after DASH playback error failed', fallbackError);
 		} finally {
@@ -83,7 +89,8 @@ export const createPlaybackFallbackController = (
 		const sequence = options.createSequence();
 		try {
 			options.setLoading(true);
-			const fallbackQuality: AudioQuality = options.isFirefox() ? 'LOW' : 'HIGH';
+			const fallbackQuality: AudioQuality =
+				options.getStreamingFallbackQuality?.() ?? (options.isFirefox() ? 'LOW' : 'HIGH');
 			options.onFallbackRequested?.(fallbackQuality, 'lossless-playback');
 			await options.loadStandardTrack(track as Track, fallbackQuality, sequence);
 			console.info('[AudioPlayer] Streaming fallback loaded for track', track.id);

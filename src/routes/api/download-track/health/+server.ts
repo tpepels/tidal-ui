@@ -5,7 +5,8 @@ import {
 	chunkUploads,
 	activeUploads,
 	cleanupExpiredUploads,
-	forceCleanupAllUploads
+	forceCleanupAllUploads,
+	MAX_CONCURRENT_UPLOADS
 } from '../_shared';
 import Redis from 'ioredis';
 
@@ -20,7 +21,16 @@ export const GET: RequestHandler = async () => {
 		const redisDisabled = ['true', '1'].includes((process.env.REDIS_DISABLED || '').toLowerCase());
 		if (!redisDisabled) {
 			try {
-				const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+				const redis = new Redis(process.env.REDIS_URL || 'redis://127.0.0.1:6379', {
+					lazyConnect: true,
+					connectTimeout: 1000,
+					maxRetriesPerRequest: 0,
+					enableOfflineQueue: false
+				});
+				redis.on('error', () => {
+					// Avoid unhandled error events during health checks.
+				});
+				await redis.connect();
 				await redis.ping();
 				redisConnected = true;
 				redis.disconnect();
@@ -34,7 +44,7 @@ export const GET: RequestHandler = async () => {
 			activeUploads: activeIds.length,
 			pendingUploads: pendingIds.length,
 			chunkUploads: chunkIds.length,
-			maxConcurrent: 40, // or from env
+			maxConcurrent: MAX_CONCURRENT_UPLOADS,
 			redisConnected,
 			activeIds,
 			pendingIds,

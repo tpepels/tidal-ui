@@ -7,7 +7,6 @@ import * as path from 'path';
 import {
 	pendingUploads,
 	chunkUploads,
-	activeUploads,
 	startCleanupInterval,
 	getDownloadDir,
 	getTempDir,
@@ -19,6 +18,9 @@ import {
 	endUpload,
 	cleanupExpiredUploads,
 	MAX_FILE_SIZE,
+	MAX_CHUNK_SIZE,
+	downloadCoverToDir,
+	validateChecksum,
 	retryFs
 } from './_shared';
 import { embedMetadataToFile } from '$lib/server/metadataEmbedder';
@@ -34,6 +36,8 @@ export const POST: RequestHandler = async ({ request, url }) => {
 		if (!uploadId) {
 			const body = await request.json();
 			if (body.blob) {
+				const bodyUploadId = typeof body.uploadId === 'string' ? body.uploadId : undefined;
+				const pendingUpload = bodyUploadId ? pendingUploads.get(bodyUploadId) : undefined;
 				// Direct blob upload
 				const blobParts = body.blob.split(',');
 				if (blobParts.length !== 2 || !blobParts[1])
@@ -45,6 +49,12 @@ export const POST: RequestHandler = async ({ request, url }) => {
 						{ error: `File too large: maximum ${MAX_FILE_SIZE} bytes allowed` },
 						{ status: 400 }
 					);
+				if (pendingUpload?.totalSize && buffer.length !== pendingUpload.totalSize) {
+					return json({ error: 'File size mismatch' }, { status: 400 });
+				}
+				if (pendingUpload?.checksum && !(await validateChecksum(buffer, pendingUpload.checksum))) {
+					return json({ error: 'Checksum validation failed' }, { status: 400 });
+				}
 				// Validate other fields
 				if (typeof body.trackId !== 'number' || body.trackId <= 0)
 					return json({ error: 'Invalid trackId: must be a positive number' }, { status: 400 });
@@ -93,11 +103,29 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				const initialFilepath = path.join(targetDir, filename);
 				const { finalPath, action } = await resolveFileConflict(
 					initialFilepath,
-					body.conflictResolution || 'overwrite',
-					buffer.length
+					body.conflictResolution || pendingUpload?.conflictResolution || 'overwrite',
+					buffer.length,
+					pendingUpload?.checksum
 				);
+				if (action === 'skip') {
+					const finalFilename = path.basename(finalPath);
+					if (bodyUploadId) {
+						endUpload(bodyUploadId);
+					}
+					return json(
+						{
+							success: true,
+							filepath: finalPath,
+							filename: finalFilename,
+							action,
+							message: `File already exists, skipped: ${artistDir}/${albumDir}/${finalFilename}`,
+							coverDownloaded: false
+						},
+						{ status: 201 }
+					);
+				}
 				try {
-					await fs.writeFile(finalPath, buffer);
+					await retryFs(() => fs.writeFile(finalPath, buffer));
 				} catch (err: unknown) {
 					console.error('Direct blob write error:', err);
 					const error = err as NodeJS.ErrnoException;
@@ -124,32 +152,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				// Download album cover if requested
 				let coverDownloaded = false;
 				if (body.downloadCoverSeperately && body.coverUrl) {
-					try {
-						console.log('[Server Download] Downloading cover from:', body.coverUrl);
-						const coverResponse = await fetch(body.coverUrl, {
-							headers: {
-								Accept: 'image/jpeg,image/jpg,image/png,image/*',
-								'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-							},
-							signal: AbortSignal.timeout(10000)
-						});
-
-						if (coverResponse.ok) {
-							const coverBuffer = await coverResponse.arrayBuffer();
-							const coverFilename = 'cover.jpg';
-							const coverPath = path.join(targetDir, coverFilename);
-							await fs.writeFile(coverPath, Buffer.from(coverBuffer));
-							console.log('[Server Download] Cover saved to:', coverPath);
-							coverDownloaded = true;
-						} else {
-							console.warn(
-								'[Server Download] Cover download failed with status:',
-								coverResponse.status
-							);
-						}
-					} catch (coverError) {
-						console.warn('[Server Download] Cover download failed:', coverError);
-					}
+					coverDownloaded = await downloadCoverToDir(body.coverUrl, targetDir);
 				}
 				const finalFilename = path.basename(finalPath);
 				let message = `File saved to ${artistDir}/${albumDir}/${finalFilename}`;
@@ -160,6 +163,9 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					message = `File renamed and saved to ${artistDir}/${albumDir}/${finalFilename}`;
 				else if (action === 'skip')
 					message = `File already exists, skipped: ${artistDir}/${albumDir}/${finalFilename}`;
+				if (bodyUploadId) {
+					endUpload(bodyUploadId);
+				}
 				return json(
 					{
 						success: true,
@@ -183,7 +189,9 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					useChunks,
 					chunkSize,
 					checksum,
-					conflictResolution
+					conflictResolution,
+					downloadCoverSeperately,
+					coverUrl
 				} = body;
 				// Input validation
 				if (typeof trackId !== 'number' || trackId <= 0)
@@ -224,6 +232,17 @@ export const POST: RequestHandler = async ({ request, url }) => {
 						{ error: 'Invalid chunkSize: must be a positive number or undefined' },
 						{ status: 400 }
 					);
+				if (useChunks && chunkSize === undefined) {
+					return json(
+						{ error: 'chunkSize is required when useChunks is true' },
+						{ status: 400 }
+					);
+				}
+				if (chunkSize !== undefined && chunkSize > MAX_CHUNK_SIZE)
+					return json(
+						{ error: `Invalid chunkSize: maximum ${MAX_CHUNK_SIZE} bytes` },
+						{ status: 400 }
+					);
 				if (checksum !== undefined && typeof checksum !== 'string')
 					return json(
 						{ error: 'Invalid checksum: must be a string or undefined' },
@@ -240,16 +259,33 @@ export const POST: RequestHandler = async ({ request, url }) => {
 						},
 						{ status: 400 }
 					);
+				if (
+					downloadCoverSeperately !== undefined &&
+					typeof downloadCoverSeperately !== 'boolean'
+				)
+					return json(
+						{ error: 'Invalid downloadCoverSeperately: must be a boolean or undefined' },
+						{ status: 400 }
+					);
+				if (coverUrl !== undefined && typeof coverUrl !== 'string')
+					return json({ error: 'Invalid coverUrl: must be a string or undefined' }, { status: 400 });
 				if (blobSize !== undefined && blobSize > MAX_FILE_SIZE)
 					return json(
 						{ error: `File too large: maximum ${MAX_FILE_SIZE} bytes allowed` },
 						{ status: 400 }
 					);
+				if (useChunks && blobSize === undefined) {
+					return json(
+						{ error: 'blobSize is required when useChunks is true' },
+						{ status: 400 }
+					);
+				}
 
 				const newUploadId = randomBytes(16).toString('hex');
-				cleanupExpiredUploads(); // Aggressive cleanup before starting
+				await cleanupExpiredUploads(); // Aggressive cleanup before starting
 				if (!canStartUpload()) return json({ error: 'Too many uploads' }, { status: 429 });
-				startUpload(newUploadId);
+				if (!startUpload(newUploadId))
+					return json({ error: 'Too many uploads' }, { status: 429 });
 				startedUploadId = newUploadId;
 				pendingUploads.set(newUploadId, {
 					trackId,
@@ -257,6 +293,8 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					albumTitle,
 					artistName,
 					trackTitle,
+					downloadCoverSeperately,
+					coverUrl,
 					timestamp: Date.now(),
 					totalSize: blobSize,
 					checksum,
@@ -276,6 +314,9 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				};
 				if (useChunks && blobSize) {
 					const totalChunks = Math.ceil(blobSize / chunkSize);
+					if (!Number.isFinite(totalChunks) || totalChunks <= 0) {
+						return json({ error: 'Invalid chunk configuration' }, { status: 400 });
+					}
 					const tempDir = getTempDir();
 					await ensureDir(tempDir);
 					const tempFilePath = path.join(tempDir, `${newUploadId}.tmp`);
@@ -318,15 +359,41 @@ export const POST: RequestHandler = async ({ request, url }) => {
 			await ensureDir(targetDir);
 			const initialFilepath = path.join(targetDir, filename);
 			const buffer = Buffer.from(arrayBuffer);
-			const { finalPath, action } = await resolveFileConflict(
-				initialFilepath,
-				conflictResolution,
-				buffer.length,
-				uploadData.checksum
-			);
-			try {
-				await retryFs(() => fs.writeFile(finalPath, buffer));
-			} catch (err: unknown) {
+			if (buffer.length > MAX_FILE_SIZE) {
+				return json(
+					{ error: `File too large: maximum ${MAX_FILE_SIZE} bytes allowed` },
+					{ status: 400 }
+				);
+			}
+			if (uploadData.totalSize && buffer.length !== uploadData.totalSize) {
+				return json({ error: 'File size mismatch' }, { status: 400 });
+			}
+			if (uploadData.checksum && !(await validateChecksum(buffer, uploadData.checksum))) {
+				return json({ error: 'Checksum validation failed' }, { status: 400 });
+			}
+				const { finalPath, action } = await resolveFileConflict(
+					initialFilepath,
+					conflictResolution,
+					buffer.length,
+					uploadData.checksum
+				);
+				if (action === 'skip') {
+					const finalFilename = path.basename(finalPath);
+					endUpload(uploadId);
+					return json(
+						{
+							success: true,
+							filepath: finalPath,
+							filename: finalFilename,
+							action,
+							message: `File already exists, skipped: ${artistDir}/${albumDir}/${finalFilename}`
+						},
+						{ status: 201 }
+					);
+				}
+				try {
+					await retryFs(() => fs.writeFile(finalPath, buffer));
+				} catch (err: unknown) {
 				console.error('Blob upload write error:', err);
 				const error = err as NodeJS.ErrnoException;
 				if (error.code === 'ENOSPC')
@@ -334,8 +401,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				if (error.code === 'EACCES') return json({ error: 'Permission denied' }, { status: 403 });
 				return json({ error: 'File write failed' }, { status: 500 });
 			}
-			pendingUploads.delete(uploadId);
-			activeUploads.delete(uploadId);
+			endUpload(uploadId);
 			const finalFilename = path.basename(finalPath);
 			let message = `File saved to ${artistDir}/${albumDir}/${finalFilename}`;
 			if (action === 'rename') message = `File renamed`;

@@ -402,7 +402,11 @@ export function deriveSideEffects(
 				break;
 
 			case 'loading':
-				if (next.context.currentTrack && !isSonglinkTrack(next.context.currentTrack)) {
+				if (
+					next.context.currentTrack &&
+					!isSonglinkTrack(next.context.currentTrack) &&
+					event.type !== 'FALLBACK_REQUESTED'
+				) {
 					effects.push({
 						type: 'LOAD_STREAM',
 						track: next.context.currentTrack,

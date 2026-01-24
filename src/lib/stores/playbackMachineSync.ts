@@ -1,20 +1,22 @@
-import { get } from 'svelte/store';
+import { get, type Readable } from 'svelte/store';
 import type { PlaybackMachineState } from '$lib/machines/playbackMachine';
 import { isSonglinkTrack } from '$lib/types';
 import { playerStore } from '$lib/stores/player';
 import { validateInvariant } from '$lib/core/invariants';
 
+type PlayerState = ReturnType<typeof playerStore.getSnapshot>;
+
 export type PlaybackSyncStore = {
 	setLoading: (value: boolean) => void;
 	play: () => void;
 	pause: () => void;
-};
+} & Readable<PlayerState>;
 
 export const syncPlayerStoreFromMachine = (
 	next: PlaybackMachineState,
 	store: PlaybackSyncStore = playerStore
 ): void => {
-	const playerState = get(playerStore);
+	const playerState = get(store);
 	const machineTrack = next.context.currentTrack;
 	const storeTrack = playerState.currentTrack;
 	if (machineTrack && storeTrack) {

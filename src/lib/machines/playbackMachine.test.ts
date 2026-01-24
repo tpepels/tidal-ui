@@ -456,6 +456,30 @@ describe('playbackMachine', () => {
 			);
 		});
 
+		it('should not derive LOAD_STREAM when fallback controller already loads', () => {
+			const initial = createInitialState();
+			const loading = transition(initial, { type: 'LOAD_TRACK', track: mockTidalTrack });
+			const ready = transition(loading, {
+				type: 'LOAD_COMPLETE',
+				streamUrl: 'https://example.com/stream.m4a',
+				quality: 'LOSSLESS'
+			});
+			const playing = transition(ready, { type: 'PLAY' });
+			const next = transition(playing, {
+				type: 'FALLBACK_REQUESTED',
+				quality: 'HIGH',
+				reason: 'lossless-playback'
+			});
+			const effects = deriveSideEffects(playing, next, {
+				type: 'FALLBACK_REQUESTED',
+				quality: 'HIGH',
+				reason: 'lossless-playback'
+			});
+
+			expect(next.state).toBe('loading');
+			expect(effects.find((effect) => effect.type === 'LOAD_STREAM')).toBeUndefined();
+		});
+
 		it('should derive SET_AUDIO_SRC effect when entering ready state', () => {
 			const initial = createInitialState();
 			const loading = transition(initial, { type: 'LOAD_TRACK', track: mockTidalTrack });

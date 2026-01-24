@@ -67,9 +67,9 @@ describe('trackLoadController DASH handling', () => {
 		URL.revokeObjectURL = vi.fn() as typeof URL.revokeObjectURL;
 	});
 
-	it('uses DASH manifest for standard quality and skips direct stream resolver', async () => {
-		vi.resetModules();
-		const { createTrackLoadController } = await import('./trackLoadController');
+it('uses direct stream resolver for standard quality and skips DASH manifest', async () => {
+	vi.resetModules();
+	const { createTrackLoadController } = await import('./trackLoadController');
 
 		const store = writable({
 			currentTrack: null,
@@ -104,11 +104,11 @@ describe('trackLoadController DASH handling', () => {
 			preloadThresholdSeconds: 5
 		});
 
-		await controller.loadTrack(makeTrack(1));
+	await controller.loadTrack(makeTrack(1));
 
-		expect(mockGetDashManifestWithMetadata).toHaveBeenCalledWith(1, 'HIGH');
-		expect(setDashPlaybackActive).toHaveBeenCalledWith(true);
-		expect(mockGetStreamData).not.toHaveBeenCalled();
-		expect(setStreamUrl).toHaveBeenCalledWith('');
-	});
+	expect(mockGetStreamData).toHaveBeenCalledWith(1, 'HIGH');
+	expect(mockGetDashManifestWithMetadata).not.toHaveBeenCalled();
+	expect(setDashPlaybackActive).toHaveBeenCalledWith(false);
+	expect(setStreamUrl).toHaveBeenCalledWith('https://example.com/stream');
+});
 });

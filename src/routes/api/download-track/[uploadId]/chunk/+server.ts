@@ -7,7 +7,6 @@ import {
 	pendingUploads,
 	getDownloadDir,
 	sanitizePath,
-	validateChecksum,
 	ensureDir,
 	resolveFileConflict,
 	createDownloadError,
@@ -15,6 +14,9 @@ import {
 	endUpload,
 	MAX_FILE_SIZE,
 	MAX_CHUNK_SIZE,
+	validateFileChecksum,
+	downloadCoverToDir,
+	moveFile,
 	retryFs
 } from '../../_shared';
 
@@ -54,6 +56,213 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			);
 			return json({ error }, { status: 404 });
 		}
+		if (
+			!Number.isFinite(chunkState.totalSize) ||
+			chunkState.totalSize <= 0 ||
+			!Number.isFinite(chunkState.chunkSize) ||
+			chunkState.chunkSize <= 0 ||
+			!Number.isFinite(chunkState.totalChunks) ||
+			chunkState.totalChunks <= 0
+		) {
+			const error = createDownloadError(
+				ERROR_CODES.INVALID_FILE,
+				'Invalid upload state detected',
+				true,
+				{ uploadId },
+				30,
+				'Please restart the download.'
+			);
+			endUpload(uploadId);
+			return json({ error }, { status: 400 });
+		}
+		if (chunkState.totalSize > MAX_FILE_SIZE) {
+			await fs.unlink(chunkState.tempFilePath).catch(() => {});
+			endUpload(uploadId);
+			return json(
+				{ error: `File too large: maximum ${MAX_FILE_SIZE} bytes allowed` },
+				{ status: 400 }
+			);
+		}
+
+		const finalizeUpload = async () => {
+			let stats: { size: number };
+			try {
+				stats = await fs.stat(chunkState.tempFilePath);
+			} catch (err) {
+				console.error('Temp file missing during finalize:', err);
+				endUpload(uploadId);
+				return json({ error: 'Temporary file missing' }, { status: 500 });
+			}
+
+			if (stats.size !== chunkState.totalSize) {
+				await fs.unlink(chunkState.tempFilePath).catch(() => {});
+				endUpload(uploadId);
+				return json({ error: 'File size mismatch' }, { status: 400 });
+			}
+
+			if (chunkState.checksum) {
+				if (!(await validateFileChecksum(chunkState.tempFilePath, chunkState.checksum))) {
+					await fs.unlink(chunkState.tempFilePath).catch(() => {});
+					endUpload(uploadId);
+					return json({ error: 'Checksum validation failed' }, { status: 400 });
+				}
+			}
+
+			const uploadData = pendingUploads.get(uploadId);
+			if (!uploadData) {
+				await fs.unlink(chunkState.tempFilePath).catch(() => {});
+				endUpload(uploadId);
+				return json({ error: 'Upload metadata not found' }, { status: 404 });
+			}
+
+			const {
+				trackId,
+				quality,
+				albumTitle,
+				artistName,
+				trackTitle,
+				conflictResolution,
+				totalSize,
+				downloadCoverSeperately,
+				coverUrl
+			} = uploadData;
+			if (totalSize && totalSize > MAX_FILE_SIZE) {
+				await fs.unlink(chunkState.tempFilePath).catch(() => {});
+				endUpload(uploadId);
+				return json(
+					{ error: `File too large: maximum ${MAX_FILE_SIZE} bytes allowed` },
+					{ status: 400 }
+				);
+			}
+
+			// Determine file extension based on quality
+			let ext = 'm4a';
+			if (quality === 'HI_RES_LOSSLESS' || quality === 'LOSSLESS') {
+				ext = 'flac';
+			} else if (quality === 'HIGH') {
+				ext = 'm4a';
+			}
+
+			// Generate filename
+			let filename: string;
+			if (trackTitle) {
+				const sanitizedTitle = sanitizePath(trackTitle);
+				const sanitizedArtist = sanitizePath(artistName || 'Unknown');
+				filename = `${sanitizedArtist} - ${sanitizedTitle}.${ext}`;
+			} else {
+				filename = `track-${trackId}.${ext}`;
+			}
+
+			// Organize by artist/album directory structure
+			const baseDir = getDownloadDir();
+			const artistDir = sanitizePath(artistName || 'Unknown Artist');
+			const albumDir = sanitizePath(albumTitle || 'Unknown Album');
+			const targetDir = path.join(baseDir, artistDir, albumDir);
+
+			await ensureDir(targetDir);
+			const initialFilepath = path.join(targetDir, filename);
+
+			// Handle file conflicts
+			const { finalPath, action } = await resolveFileConflict(
+				initialFilepath,
+				conflictResolution || 'overwrite_if_different',
+				chunkState.totalSize,
+				chunkState.checksum || undefined
+			);
+
+			if (action === 'skip') {
+				await fs.unlink(chunkState.tempFilePath).catch(() => {});
+				endUpload(uploadId);
+				const finalFilename = path.basename(finalPath);
+				return json(
+					{
+						success: true,
+						filepath: finalPath,
+						filename: finalFilename,
+						action,
+						message: `File already exists, skipped: ${artistDir}/${albumDir}/${finalFilename}`,
+						coverDownloaded: false
+					},
+					{ status: 201 }
+				);
+			}
+
+			try {
+				await moveFile(chunkState.tempFilePath, finalPath);
+			} catch (err: unknown) {
+				console.error('File move error:', err);
+				const error = err as NodeJS.ErrnoException;
+				await fs.unlink(finalPath).catch(() => {});
+				if (error.code === 'ENOSPC' || error.message?.includes('disk full')) {
+					await fs.unlink(chunkState.tempFilePath).catch(() => {});
+					endUpload(uploadId);
+					const downloadError = createDownloadError(
+						ERROR_CODES.DISK_FULL,
+						'Not enough disk space available to finalize the download',
+						false,
+						{ originalError: error.message, uploadId },
+						undefined,
+						'Please free up disk space and retry the download.'
+					);
+					return json({ error: downloadError }, { status: 507 });
+				}
+				if (error.code === 'EACCES' || error.message?.includes('permission denied')) {
+					await fs.unlink(chunkState.tempFilePath).catch(() => {});
+					endUpload(uploadId);
+					const downloadError = createDownloadError(
+						ERROR_CODES.PERMISSION_DENIED,
+						'Permission denied when saving the file',
+						false,
+						{ originalError: error.message, uploadId },
+						undefined,
+						'Please check file permissions and retry the download.'
+					);
+					return json({ error: downloadError }, { status: 403 });
+				}
+				chunkState.timestamp = Date.now();
+				const pending = pendingUploads.get(uploadId);
+				if (pending) {
+					pending.timestamp = Date.now();
+				}
+				const downloadError = createDownloadError(
+					ERROR_CODES.UNKNOWN_ERROR,
+					'Failed to move file to final location: ' + (error.message || 'Unknown error'),
+					true,
+					{ originalError: error.message, uploadId },
+					10,
+					'Please retry. The upload can continue from the last chunk.'
+				);
+				return json({ error: downloadError }, { status: 500 });
+			}
+
+			let coverDownloaded = false;
+			if (downloadCoverSeperately && coverUrl) {
+				coverDownloaded = await downloadCoverToDir(coverUrl, targetDir);
+			}
+
+			endUpload(uploadId);
+
+			const finalFilename = path.basename(finalPath);
+			let message = `File saved to ${artistDir}/${albumDir}/${finalFilename}`;
+			if (action === 'rename') {
+				message = `File renamed and saved to ${artistDir}/${albumDir}/${finalFilename}`;
+			}
+			if (coverDownloaded) {
+				message += ' (with cover)';
+			}
+
+			return json(
+				{
+					success: true,
+					filepath: finalPath,
+					filename: finalFilename,
+					action,
+					message,
+					coverDownloaded
+				},
+				{ status: 201 }
+			);
+		};
 
 		if (chunkIndex >= chunkState.totalChunks) {
 			const error = createDownloadError(
@@ -66,6 +275,42 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			);
 			return json({ error }, { status: 400 });
 		}
+		if (totalChunks !== chunkState.totalChunks) {
+			return json(
+				{
+					error: `Chunk count mismatch: expected ${chunkState.totalChunks}, received ${totalChunks}`
+				},
+				{ status: 400 }
+			);
+		}
+
+		if (chunkIndex < chunkState.chunkIndex) {
+			chunkState.timestamp = Date.now();
+			const pending = pendingUploads.get(uploadId);
+			if (pending) {
+				pending.timestamp = Date.now();
+			}
+			if (chunkState.chunkIndex >= chunkState.totalChunks && !chunkState.completed) {
+				return await finalizeUpload();
+			}
+			const progress = (chunkState.chunkIndex / chunkState.totalChunks) * 100;
+			return json({
+				success: true,
+				progress: Math.round(progress),
+				uploadedChunks: chunkState.chunkIndex,
+				totalChunks: chunkState.totalChunks,
+				message: `Chunk ${chunkIndex + 1} already received`
+			});
+		}
+
+		if (chunkIndex !== chunkState.chunkIndex) {
+			return json(
+				{
+					error: `Out-of-order chunk: expected ${chunkState.chunkIndex}, received ${chunkIndex}`
+				},
+				{ status: 409 }
+			);
+		}
 
 		// Read chunk data
 		const chunkBuffer = Buffer.from(await request.arrayBuffer());
@@ -74,6 +319,21 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		}
 		if (chunkBuffer.length > MAX_CHUNK_SIZE) {
 			return json({ error: `Chunk too large: maximum ${MAX_CHUNK_SIZE} bytes` }, { status: 400 });
+		}
+		const expectedChunkSize =
+			chunkIndex === chunkState.totalChunks - 1
+				? chunkState.totalSize - chunkIndex * chunkState.chunkSize
+				: chunkState.chunkSize;
+		if (expectedChunkSize <= 0) {
+			return json({ error: 'Invalid chunk size configuration' }, { status: 400 });
+		}
+		if (chunkBuffer.length !== expectedChunkSize) {
+			return json(
+				{
+					error: `Chunk size mismatch: expected ${expectedChunkSize} bytes, received ${chunkBuffer.length}`
+				},
+				{ status: 400 }
+			);
 		}
 
 		// Append chunk to temp file
@@ -118,133 +378,16 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		}
 
 		// Update chunk state
-		chunkState.chunkIndex = Math.max(chunkState.chunkIndex, chunkIndex + 1);
+		chunkState.chunkIndex = chunkIndex + 1;
+		chunkState.timestamp = Date.now();
+		const pending = pendingUploads.get(uploadId);
+		if (pending) {
+			pending.timestamp = Date.now();
+		}
 
 		// Check if upload is complete
 		if (chunkState.chunkIndex >= chunkState.totalChunks) {
-			chunkState.completed = true;
-
-			// Validate file size
-			const stats = await fs.stat(chunkState.tempFilePath);
-			if (stats.size !== chunkState.totalSize) {
-				await fs.unlink(chunkState.tempFilePath);
-				chunkUploads.delete(uploadId);
-				return json({ error: 'File size mismatch' }, { status: 400 });
-			}
-
-			// Validate checksum if provided
-			if (chunkState.checksum) {
-				const fileBuffer = await fs.readFile(chunkState.tempFilePath);
-				if (!(await validateChecksum(fileBuffer, chunkState.checksum))) {
-					await fs.unlink(chunkState.tempFilePath);
-					chunkUploads.delete(uploadId);
-					endUpload(uploadId);
-					return json({ error: 'Checksum validation failed' }, { status: 400 });
-				}
-			}
-
-			// Move file to final location
-			const uploadData = pendingUploads.get(uploadId);
-			if (!uploadData) {
-				await fs.unlink(chunkState.tempFilePath);
-				chunkUploads.delete(uploadId);
-				endUpload(uploadId);
-				return json({ error: 'Upload metadata not found' }, { status: 404 });
-			}
-
-			const {
-				trackId,
-				quality,
-				albumTitle,
-				artistName,
-				trackTitle,
-				conflictResolution,
-				totalSize
-			} = uploadData;
-			if (totalSize && totalSize > MAX_FILE_SIZE) {
-				await fs.unlink(chunkState.tempFilePath);
-				chunkUploads.delete(uploadId);
-				return json(
-					{ error: `File too large: maximum ${MAX_FILE_SIZE} bytes allowed` },
-					{ status: 400 }
-				);
-			}
-
-			// Determine file extension based on quality
-			let ext = 'm4a';
-			if (quality === 'HI_RES_LOSSLESS' || quality === 'LOSSLESS') {
-				ext = 'flac';
-			} else if (quality === 'HIGH') {
-				ext = 'm4a';
-			}
-
-			// Generate filename
-			let filename: string;
-			if (trackTitle) {
-				const sanitizedTitle = sanitizePath(trackTitle);
-				const sanitizedArtist = sanitizePath(artistName || 'Unknown');
-				filename = `${sanitizedArtist} - ${sanitizedTitle}.${ext}`;
-			} else {
-				filename = `track-${trackId}.${ext}`;
-			}
-
-			// Organize by artist/album directory structure
-			const baseDir = getDownloadDir();
-			const artistDir = sanitizePath(artistName || 'Unknown Artist');
-			const albumDir = sanitizePath(albumTitle || 'Unknown Album');
-			const targetDir = path.join(baseDir, artistDir, albumDir);
-
-			await ensureDir(targetDir);
-			const initialFilepath = path.join(targetDir, filename);
-
-			// Handle file conflicts
-			const { finalPath, action } = await resolveFileConflict(
-				initialFilepath,
-				conflictResolution || 'overwrite_if_different',
-				chunkState.totalSize,
-				chunkState.checksum || undefined
-			);
-
-			// Move temp file to final location
-			try {
-				await retryFs(() => fs.rename(chunkState.tempFilePath, finalPath));
-			} catch (err: unknown) {
-				console.error('File rename error:', err);
-				const error = err as NodeJS.ErrnoException;
-				const downloadError = createDownloadError(
-					ERROR_CODES.UNKNOWN_ERROR,
-					'Failed to move file to final location: ' + (error.message || 'Unknown error'),
-					false,
-					{ originalError: error.message, uploadId },
-					undefined,
-					'Please check disk space and permissions.'
-				);
-				return json({ error: downloadError }, { status: 500 });
-			}
-
-			// Clean up
-			pendingUploads.delete(uploadId);
-			chunkUploads.delete(uploadId);
-			endUpload(uploadId);
-
-			const finalFilename = path.basename(finalPath);
-			let message = `File saved to ${artistDir}/${albumDir}/${finalFilename}`;
-			if (action === 'rename') {
-				message = `File renamed and saved to ${artistDir}/${albumDir}/${finalFilename}`;
-			} else if (action === 'skip') {
-				message = `File already exists, skipped: ${artistDir}/${albumDir}/${finalFilename}`;
-			}
-
-			return json(
-				{
-					success: true,
-					filepath: finalPath,
-					filename: finalFilename,
-					action,
-					message
-				},
-				{ status: 201 }
-			);
+			return await finalizeUpload();
 		} else {
 			// Upload not complete, return progress
 			const progress = (chunkState.chunkIndex / chunkState.totalChunks) * 100;

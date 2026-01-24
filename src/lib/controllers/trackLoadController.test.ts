@@ -268,4 +268,43 @@ describe('trackLoadController', () => {
 		expect(setStreamUrl).toHaveBeenCalledTimes(1);
 		expect(setStreamUrl).toHaveBeenCalledWith('https://example.com/stream-2');
 	});
+
+	it('falls back to streaming quality when lossless playback is unsupported', async () => {
+		const store = writable({
+			currentTrack: null,
+			queue: [],
+			queueIndex: -1,
+			quality: 'LOSSLESS' as AudioQuality
+		});
+
+		const setStreamUrl = vi.fn();
+		const onFallbackRequested = vi.fn();
+
+		const controller = createTrackLoadController({
+			playerStore: store,
+			getAudioElement: () => null,
+			getCurrentTrackId: () => null,
+			getSupportsLosslessPlayback: () => false,
+			getStreamingFallbackQuality: () => 'HIGH',
+			setStreamUrl,
+			setBufferedPercent: vi.fn(),
+			setCurrentPlaybackQuality: vi.fn(),
+			setDashPlaybackActive: vi.fn(),
+			setLoading: vi.fn(),
+			setSampleRate: vi.fn(),
+			setBitDepth: vi.fn(),
+			setReplayGain: vi.fn(),
+			createSequence: () => 1,
+			getSequence: () => 1,
+			isHiResQuality: () => false,
+			preloadThresholdSeconds: 5,
+			onFallbackRequested
+		});
+
+		await controller.loadTrack(makeTrack(4));
+
+		expect(mockGetStreamData).toHaveBeenCalledWith(4, 'HIGH');
+		expect(onFallbackRequested).toHaveBeenCalledWith('HIGH', 'lossless-unsupported');
+		expect(setStreamUrl).toHaveBeenCalledWith('https://example.com/stream');
+	});
 });

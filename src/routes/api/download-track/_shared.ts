@@ -5,6 +5,8 @@ import { createHash } from 'crypto';
 import Redis from 'ioredis';
 
 const STATE_FILE = path.join(process.cwd(), 'data', 'upload-state.json');
+const CHECKSUM_SAMPLE_BYTES = 1024 * 1024;
+const CHECKSUM_ALGORITHM = 'sha256';
 
 // Redis client for persistence
 let redis: Redis | null = null;
@@ -93,6 +95,8 @@ export interface PendingUpload {
 	albumTitle?: string;
 	artistName?: string;
 	trackTitle?: string;
+	downloadCoverSeperately?: boolean;
+	coverUrl?: string;
 	timestamp: number;
 	totalSize?: number;
 	uploadedChunks?: number[];
@@ -121,6 +125,75 @@ const UPLOAD_TTL = 5 * 60 * 1000; // 5 minutes
 export const MAX_CONCURRENT_UPLOADS = parseInt(process.env.MAX_CONCURRENT_UPLOADS || '40');
 export const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || '524288000'); // 500MB default
 export const MAX_CHUNK_SIZE = parseInt(process.env.MAX_CHUNK_SIZE || '10485760'); // 10MB default
+export const MAX_COVER_BYTES = 10 * 1024 * 1024;
+const ALLOWED_COVER_HOSTS = new Set(['resources.tidal.com']);
+
+export const isAllowedCoverUrl = (value: string): boolean => {
+	try {
+		const parsed = new URL(value);
+		return (
+			(parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+			ALLOWED_COVER_HOSTS.has(parsed.hostname)
+		);
+	} catch {
+		return false;
+	}
+};
+
+export const downloadCoverToDir = async (
+	coverUrl: string,
+	targetDir: string,
+	filename = 'cover.jpg'
+): Promise<boolean> => {
+	if (!isAllowedCoverUrl(coverUrl)) {
+		console.warn('[Server Download] Cover URL rejected:', coverUrl);
+		return false;
+	}
+	try {
+		console.log('[Server Download] Downloading cover from:', coverUrl);
+		const coverResponse = await fetch(coverUrl, {
+			headers: {
+				Accept: 'image/jpeg,image/jpg,image/png,image/*',
+				'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+			},
+			signal: AbortSignal.timeout(10000)
+		});
+
+		if (!coverResponse.ok) {
+			console.warn('[Server Download] Cover download failed with status:', coverResponse.status);
+			return false;
+		}
+
+		const contentLength = coverResponse.headers.get('Content-Length');
+		const contentLengthBytes = contentLength ? Number.parseInt(contentLength, 10) : null;
+		if (
+			typeof contentLengthBytes === 'number' &&
+			Number.isFinite(contentLengthBytes) &&
+			contentLengthBytes > MAX_COVER_BYTES
+		) {
+			console.warn(
+				`[Server Download] Cover size ${contentLengthBytes} exceeds limit (${MAX_COVER_BYTES} bytes)`
+			);
+			return false;
+		}
+
+		const coverBuffer = await coverResponse.arrayBuffer();
+		if (coverBuffer.byteLength > MAX_COVER_BYTES) {
+			console.warn(
+				`[Server Download] Cover size ${coverBuffer.byteLength} exceeds limit (${MAX_COVER_BYTES} bytes)`
+			);
+			return false;
+		}
+
+		const coverPath = path.join(targetDir, filename);
+		await fs.writeFile(coverPath, Buffer.from(coverBuffer));
+		console.log('[Server Download] Cover saved to:', coverPath);
+		return true;
+	} catch (coverError) {
+		console.warn('[Server Download] Cover download failed:', coverError);
+		return false;
+	}
+};
 
 // Save upload state
 const saveState = async () => {
@@ -232,6 +305,19 @@ export const retryFs = async <T>(fn: () => Promise<T>, retries = 3): Promise<T> 
 	throw new Error('Retry function should never reach this point');
 };
 
+export const moveFile = async (sourcePath: string, targetPath: string): Promise<void> => {
+	try {
+		await retryFs(() => fs.rename(sourcePath, targetPath));
+	} catch (err: unknown) {
+		const error = err as NodeJS.ErrnoException;
+		if (error.code !== 'EXDEV') {
+			throw err;
+		}
+		await retryFs(() => fs.copyFile(sourcePath, targetPath));
+		await retryFs(() => fs.unlink(sourcePath));
+	}
+};
+
 // Clean up orphaned temp files
 export const cleanupTempFiles = async () => {
 	try {
@@ -264,7 +350,9 @@ export const cleanupExpiredUploads = async () => {
 		}
 	}
 	for (const [uploadId, data] of chunkUploads.entries()) {
-		if (now - data.timestamp > UPLOAD_TTL) {
+		const isExpired = now - data.timestamp > UPLOAD_TTL;
+		const missingPending = !pendingUploads.has(uploadId);
+		if (isExpired || data.completed || missingPending) {
 			// Clean up temp files
 			try {
 				await fs.unlink(data.tempFilePath).catch(() => {});
@@ -272,6 +360,11 @@ export const cleanupExpiredUploads = async () => {
 				// Ignore cleanup errors
 			}
 			chunkUploads.delete(uploadId);
+			activeUploads.delete(uploadId);
+		}
+	}
+	for (const uploadId of activeUploads) {
+		if (!pendingUploads.has(uploadId) && !chunkUploads.has(uploadId)) {
 			activeUploads.delete(uploadId);
 		}
 	}
@@ -322,6 +415,7 @@ export const startCleanupInterval = async () => {
 	// Clean up orphaned temp files on startup
 	await cleanupTempFiles();
 	await loadState();
+	await cleanupExpiredUploads();
 
 	// Clean up on process exit
 	const cleanupOnExit = async () => {
@@ -366,8 +460,13 @@ export const sanitizePath = (input: string | null | undefined): string => {
 };
 
 // Generate MD5 checksum for file integrity
+const hashBufferSample = (buffer: Buffer): string => {
+	const slice = buffer.subarray(0, Math.min(buffer.length, CHECKSUM_SAMPLE_BYTES));
+	return createHash(CHECKSUM_ALGORITHM).update(slice).digest('hex');
+};
+
 export const generateChecksum = async (buffer: Buffer): Promise<string> => {
-	return createHash('md5').update(buffer).digest('hex');
+	return hashBufferSample(buffer);
 };
 
 // Validate checksum
@@ -376,8 +475,34 @@ export const validateChecksum = async (
 	expectedChecksum: string
 ): Promise<boolean> => {
 	try {
-		const actualChecksum = createHash('md5').update(buffer).digest('hex');
-		return actualChecksum === expectedChecksum;
+		return hashBufferSample(buffer) === expectedChecksum;
+	} catch {
+		return false;
+	}
+};
+
+export const readFileSample = async (filePath: string): Promise<Buffer> => {
+	const handle = await fs.open(filePath, 'r');
+	try {
+		const stats = await handle.stat();
+		const length = Math.min(stats.size, CHECKSUM_SAMPLE_BYTES);
+		const buffer = Buffer.alloc(length);
+		if (length > 0) {
+			await handle.read(buffer, 0, length, 0);
+		}
+		return buffer;
+	} finally {
+		await handle.close().catch(() => {});
+	}
+};
+
+export const validateFileChecksum = async (
+	filePath: string,
+	expectedChecksum: string
+): Promise<boolean> => {
+	try {
+		const sample = await readFileSample(filePath);
+		return hashBufferSample(sample) === expectedChecksum;
 	} catch {
 		return false;
 	}
@@ -484,7 +609,7 @@ export const resolveFileConflict = async (
 				// If checksums are available and different, overwrite
 				if (newFileChecksum) {
 					try {
-						const fileBuffer = await fs.readFile(targetPath);
+						const fileBuffer = await readFileSample(targetPath);
 						const existingChecksum = await generateChecksum(fileBuffer);
 						if (existingChecksum !== newFileChecksum) {
 							return { finalPath: targetPath, action: 'overwrite' };

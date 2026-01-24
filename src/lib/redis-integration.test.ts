@@ -13,11 +13,15 @@ describeRedis('Redis Integration Tests', () => {
 			// Import Redis dynamically to avoid issues when not available
 			const redisModule = await import('ioredis');
 			Redis = redisModule.default;
-
-			redis = new Redis({
-				host: 'localhost',
-				port: 6379,
-				lazyConnect: true
+			const redisUrl = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
+			redis = new Redis(redisUrl, {
+				lazyConnect: true,
+				connectTimeout: 1000,
+				maxRetriesPerRequest: 0,
+				enableOfflineQueue: false
+			});
+			redis.on('error', () => {
+				// Avoid unhandled error events in test output.
 			});
 			await redis.connect();
 			const pong = await redis.ping(); // Test connection

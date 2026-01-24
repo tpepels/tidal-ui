@@ -12,13 +12,16 @@ vi.mock('../routes/api/download-track/_shared', () => ({
 	endUpload: vi.fn(),
 	cleanupExpiredUploads: vi.fn(),
 	MAX_FILE_SIZE: 100 * 1024 * 1024, // 100MB
+	MAX_CHUNK_SIZE: 10 * 1024 * 1024,
 	retryFs: vi.fn(),
 	sanitizePath: (path: string) => path.replace(/[^a-zA-Z0-9\-_.]/g, '_'),
 	ensureDir: vi.fn(),
 	resolveFileConflict: vi.fn(),
+	validateChecksum: vi.fn().mockResolvedValue(true),
 	canStartUpload: vi.fn(() => true),
 	getDownloadDir: vi.fn(() => '/tmp/downloads'),
-	getTempDir: vi.fn(() => '/tmp/temp')
+	getTempDir: vi.fn(() => '/tmp/temp'),
+	downloadCoverToDir: vi.fn().mockResolvedValue(false)
 }));
 
 describe('Download Track API', () => {

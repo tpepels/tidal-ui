@@ -101,6 +101,7 @@ export function createPlaybackMachineStore(initialQuality: AudioQuality = 'HIGH'
 		setBitDepth?: (value: number | null) => void;
 		setReplayGain?: (value: number | null) => void;
 		getSupportsLosslessPlayback?: () => boolean;
+		getStreamingFallbackQuality?: () => AudioQuality;
 		isHiResQuality?: (quality: AudioQuality | undefined) => boolean;
 		isFirefox?: () => boolean;
 		preloadThresholdSeconds?: number;

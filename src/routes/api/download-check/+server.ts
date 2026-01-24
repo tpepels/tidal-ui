@@ -16,8 +16,12 @@ export const POST: RequestHandler = async ({ request }) => {
 			trackTitle?: string;
 		};
 
-		if (!trackId || !quality) {
+		if (typeof trackId !== 'number' || trackId <= 0 || !quality) {
 			return json({ error: 'Missing required fields: trackId, quality' }, { status: 400 });
+		}
+		const validQualities: AudioQuality[] = ['LOW', 'HIGH', 'LOSSLESS', 'HI_RES_LOSSLESS'];
+		if (!validQualities.includes(quality)) {
+			return json({ error: 'Invalid quality' }, { status: 400 });
 		}
 
 		// Determine file extension based on quality
