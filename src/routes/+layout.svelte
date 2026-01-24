@@ -24,7 +24,13 @@
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { effectivePerformanceLevel } from '$lib/stores/performance';
 	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
-	import { sanitizeForFilename, getExtensionForQuality, buildTrackLinksCsv } from '$lib/downloads';
+	import {
+		sanitizeForFilename,
+		getExtensionForQuality,
+		buildTrackLinksCsv,
+		downloadTrackToServer,
+		type ServerDownloadProgress
+	} from '$lib/downloads';
 	import { formatArtists } from '$lib/utils/formatters';
 	import { navigating, page } from '$app/stores';
 	import { goto } from '$app/navigation';
@@ -58,6 +64,7 @@
 	let isLegacyQueueDownloading = $state(false);
 	let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 	const downloadMode = $derived($downloadPreferencesStore.mode);
+	const isServerStorage = $derived($downloadPreferencesStore.storage === 'server');
 	const queueActionBusy = $derived(
 		downloadMode === 'zip'
 			? Boolean(isZipDownloading || isLegacyQueueDownloading || isCsvExporting)
@@ -65,6 +72,12 @@
 				? Boolean(isCsvExporting)
 				: Boolean(isLegacyQueueDownloading)
 	);
+
+	$effect(() => {
+		if (isServerStorage && downloadMode !== 'individual') {
+			downloadPreferencesStore.setMode('individual');
+		}
+	});
 
 	const isEmbed = $derived($page.url.pathname.startsWith('/embed'));
 	const diagnosticsEnabled = dev || import.meta.env.VITE_E2E === 'true';
@@ -293,13 +306,45 @@
 	}
 
 	function buildQueueFilename(track: PlayableTrack, index: number, quality: AudioQuality): string {
-		const ext = getExtensionForQuality(quality, convertAacToMp3);
+		const ext = getExtensionForQuality(quality, convertAacToMp3 && !isServerStorage);
 		const order = `${index + 1}`.padStart(2, '0');
 		const artistName = sanitizeForFilename(
 			isSonglinkTrack(track) ? track.artistName : formatArtists(track.artists)
 		);
 		const titleName = sanitizeForFilename(track.title ?? `Track ${order}`);
 		return `${order} - ${artistName} - ${titleName}.${ext}`;
+	}
+
+	function createServerProgressHandler(taskId: string) {
+		const downloadWeight = 0.55;
+		let downloadFraction = 0;
+		let uploadFraction = 0;
+
+		return (progress: ServerDownloadProgress) => {
+			if (progress.stage === 'downloading') {
+				downloadUiStore.updateTrackPhase(taskId, 'downloading');
+				const fraction = progress.totalBytes
+					? progress.receivedBytes / progress.totalBytes
+					: Math.min(downloadFraction + 0.05, 0.9);
+				downloadFraction = Math.max(downloadFraction, Math.min(1, fraction));
+			} else if (progress.stage === 'embedding') {
+				downloadUiStore.updateTrackPhase(taskId, 'embedding');
+				const fraction = 0.85 + progress.progress * 0.15;
+				downloadFraction = Math.max(downloadFraction, Math.min(1, fraction));
+			} else if (progress.stage === 'uploading') {
+				downloadUiStore.updateTrackPhase(taskId, 'uploading');
+				const fraction = progress.totalBytes
+					? progress.uploadedBytes / progress.totalBytes
+					: uploadFraction;
+				uploadFraction = Math.max(uploadFraction, Math.min(1, fraction));
+			}
+
+			const overall = Math.min(
+				1,
+				downloadFraction * downloadWeight + uploadFraction * (1 - downloadWeight)
+			);
+			downloadUiStore.updateTrackStage(taskId, overall);
+		};
 	}
 
 	function triggerFileDownload(blob: Blob, filename: string): void {
@@ -402,6 +447,7 @@
 
 		isLegacyQueueDownloading = true;
 		const errors: string[] = [];
+		const storage = get(downloadPreferencesStore).storage;
 
 		try {
 			for (const [index, track] of tracks.entries()) {
@@ -415,12 +461,39 @@
 					{
 						subtitle: isSonglinkTrack(track)
 							? track.artistName
-							: (track.album?.title ?? formatArtists(track.artists))
+							: (track.album?.title ?? formatArtists(track.artists)),
+						storage
 					}
 				);
 				downloadUiStore.skipFfmpegCountdown();
 
 				try {
+					if (storage === 'server') {
+						let resolvedTrack = track as Track;
+						if (isSonglinkTrack(track)) {
+							const lookup = await losslessAPI.getTrack(trackId, quality);
+							resolvedTrack = lookup.track;
+						}
+
+						const progressHandler = createServerProgressHandler(taskId);
+						const serverResult = await downloadTrackToServer(resolvedTrack, quality, {
+							downloadCoverSeperately: downloadCoversSeperately,
+							conflictResolution: 'overwrite_if_different',
+							signal: controller.signal,
+							onProgress: progressHandler
+						});
+
+						if (!serverResult.success) {
+							const serverError = serverResult.error ?? 'Server download failed';
+							downloadUiStore.errorTrackDownload(taskId, serverError);
+							const label = `${formatArtists(resolvedTrack.artists)} - ${resolvedTrack.title ?? 'Unknown Track'}`;
+							errors.push(`${label}: ${serverError}`);
+						} else {
+							downloadUiStore.completeTrackDownload(taskId);
+						}
+						continue;
+					}
+
 					await losslessAPI.downloadTrack(trackId, quality, filename, {
 						signal: controller.signal,
 						onProgress: (progress: TrackDownloadProgress) => {
@@ -484,6 +557,7 @@
 		}
 
 		const { tracks, quality } = collectQueueState();
+		const storage = get(downloadPreferencesStore).storage;
 		if (tracks.length === 0) {
 			showSettingsMenu = false;
 			toasts.warning('Add tracks to the queue before downloading.');
@@ -491,6 +565,11 @@
 		}
 
 		showSettingsMenu = false;
+
+		if (storage === 'server' && downloadMode !== 'individual') {
+			setDownloadMode('individual');
+			toasts.info('Server downloads are saved as individual files.');
+		}
 
 		if (downloadMode === 'csv') {
 			await exportQueueAsCsv(tracks, quality);
@@ -680,14 +759,17 @@
 											<button
 												type="button"
 												onclick={toggleAacConversion}
-												class={`glass-option ${convertAacToMp3 ? 'is-active' : ''}`}
+												class={`glass-option ${convertAacToMp3 ? 'is-active' : ''} ${isServerStorage ? 'cursor-not-allowed opacity-50' : ''}`}
 												aria-pressed={convertAacToMp3}
+												disabled={isServerStorage}
 											>
 												<span class="glass-option__content">
 													<span class="glass-option__label">Convert AAC downloads to MP3</span>
-													<span class="glass-option__description"
-														>Applies to 320kbps and 96kbps downloads.</span
-													>
+													<span class="glass-option__description">
+														{isServerStorage
+															? 'Client-only. Server downloads keep the original AAC codec.'
+															: 'Applies to 320kbps and 96kbps downloads.'}
+													</span>
 												</span>
 												<span class={`glass-option__chip ${convertAacToMp3 ? 'is-active' : ''}`}>
 													{convertAacToMp3 ? 'On' : 'Off'}
@@ -695,18 +777,18 @@
 											</button>
 											<button
 												type="button"
-												onclick={() => {
-													if ($downloadPreferencesStore.storage !== 'server') {
-														toggleDownloadCoversSeperately();
-													}
-												}}
-												class={`glass-option ${downloadCoversSeperately ? 'is-active' : ''}`}
+												onclick={toggleDownloadCoversSeperately}
+												class={`glass-option ${downloadCoversSeperately ? 'is-active' : ''} ${isServerStorage ? 'cursor-not-allowed opacity-50' : ''}`}
 												aria-pressed={downloadCoversSeperately}
-												disabled={false}
+												disabled={isServerStorage}
 											>
 												<span class="glass-option__content">
 													<span class="glass-option__label">Download covers separately</span>
-													<span class="glass-option__description">Save cover.jpg alongside audio files.</span>
+													<span class="glass-option__description">
+														{isServerStorage
+															? 'Server downloads store cover art next to audio files.'
+															: 'Save cover.jpg alongside audio files.'}
+													</span>
 												</span>
 												<span
 													class={`glass-option__chip ${downloadCoversSeperately ? 'is-active' : ''}`}
@@ -737,8 +819,9 @@
 												<button
 													type="button"
 													onclick={() => setDownloadMode('zip')}
-													class={`glass-option glass-option--compact ${downloadMode === 'zip' ? 'is-active' : ''}`}
+													class={`glass-option glass-option--compact ${downloadMode === 'zip' ? 'is-active' : ''} ${isServerStorage ? 'cursor-not-allowed opacity-50' : ''}`}
 													aria-pressed={downloadMode === 'zip'}
+													disabled={isServerStorage}
 												>
 													<span class="glass-option__content">
 														<span class="glass-option__label">
@@ -753,8 +836,9 @@
 												<button
 													type="button"
 													onclick={() => setDownloadMode('csv')}
-													class={`glass-option glass-option--compact ${downloadMode === 'csv' ? 'is-active' : ''}`}
+													class={`glass-option glass-option--compact ${downloadMode === 'csv' ? 'is-active' : ''} ${isServerStorage ? 'cursor-not-allowed opacity-50' : ''}`}
 													aria-pressed={downloadMode === 'csv'}
+													disabled={isServerStorage}
 												>
 													<span class="glass-option__content">
 														<span class="glass-option__label">
@@ -767,6 +851,11 @@
 													{/if}
 												</button>
 											</div>
+											{#if isServerStorage}
+												<p class="section-footnote">
+													Server downloads are saved as individual files. ZIP and CSV exports are client-only.
+												</p>
+											{/if}
 										</section>
 										<section class="settings-section">
 											<p class="section-heading">Download Storage</p>
@@ -804,6 +893,11 @@
 													{/if}
 												</button>
 											</div>
+											<p class="section-footnote">
+												{isServerStorage
+													? 'Files are saved on the server disk. Use Download Log for path and status.'
+													: 'Downloads are saved to your browser.'}
+											</p>
 										</section>
 										<section class="settings-section">
 											<p class="section-heading">Download Log</p>
@@ -811,17 +905,17 @@
 												type="button"
 												onclick={toggleDownloadLog}
 												class="glass-option glass-option--wide glass-option--primary"
-												disabled={!isPlayerVisible}
+												disabled={false}
 											>
 												<span class="glass-option__content">
 													<span class="glass-option__label">
 														View Download Log
 													</span>
 													<span class="glass-option__description">
-														{!isPlayerVisible
-															? 'Open the player to see downloads.'
-															: $downloadLogStore.isVisible
-																? 'Hide real-time download progress'
+														{$downloadLogStore.isVisible
+															? 'Hide real-time download progress'
+															: isServerStorage
+																? 'Show server download status and file location.'
 																: 'Show real-time download progress'}
 													</span>
 												</span>
@@ -857,7 +951,10 @@
 													disabled={queueActionBusy}
 												>
 													<span class="glass-action__label">
-														{#if downloadMode === 'zip'}
+														{#if isServerStorage}
+															<Download size={16} />
+															<span>Save queue to server</span>
+														{:else if downloadMode === 'zip'}
 															<Archive size={16} />
 															<span>Download queue</span>
 														{:else if downloadMode === 'csv'}
@@ -872,24 +969,27 @@
 														<LoaderCircle size={16} class="glass-action__spinner" />
 													{/if}
 												</button>
-												<button
-													onclick={handleExportQueueCsv}
-													type="button"
-													class="glass-action"
-													disabled={isCsvExporting}
-												>
-													<span class="glass-action__label">
-														<FileSpreadsheet size={16} />
-														<span>Export links as CSV</span>
-													</span>
-													{#if isCsvExporting}
-														<LoaderCircle size={16} class="glass-action__spinner" />
-													{/if}
-												</button>
+												{#if !isServerStorage}
+													<button
+														onclick={handleExportQueueCsv}
+														type="button"
+														class="glass-action"
+														disabled={isCsvExporting}
+													>
+														<span class="glass-action__label">
+															<FileSpreadsheet size={16} />
+															<span>Export links as CSV</span>
+														</span>
+														{#if isCsvExporting}
+															<LoaderCircle size={16} class="glass-action__spinner" />
+														{/if}
+													</button>
+												{/if}
 											</div>
 											<p class="section-footnote">
-												Queue actions follow your selection above. ZIP bundles require at least two
-												tracks, while CSV exports capture the track links without downloading audio.
+												{isServerStorage
+													? 'Server saves use individual files and keep your browser clean. Use the Download Log to track progress and see the server path.'
+													: 'Queue actions follow your selection above. ZIP bundles require at least two tracks, while CSV exports capture the track links without downloading audio.'}
 											</p>
 										</section>
 		</div>
@@ -897,9 +997,7 @@
 
 	<LyricsPopup />
 	<ToastContainer />
-	{#if isPlayerVisible || $downloadLogStore.isVisible}
-		<DownloadLog />
-	{/if}
+	<DownloadLog />
 {/if}
 			</div>
 

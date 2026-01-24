@@ -173,6 +173,9 @@
 	const activeDownloads = $derived($downloadUiStore.tasks.filter((task) => task.status === 'running'));
 	const erroredDownloads = $derived($downloadUiStore.tasks.filter((task) => task.status === 'error'));
 	const ffmpegBannerState = $derived($downloadUiStore.ffmpeg);
+	const downloadActionLabel = $derived(
+		$downloadPreferencesStore.storage === 'server' ? 'Save to server' : 'Download'
+	);
 
   const hasTrack = $derived(Boolean($playerStore.currentTrack));
   const currentTrackDownloadTask = $derived(activeDownloads.find(task => task.trackId === $playerStore.currentTrack?.id));
@@ -781,7 +784,7 @@
 									<button
 										onclick={handleDownloadCurrentTrack}
 										class="player-toggle-button p-2 sm:p-1.5 md:p-2"
-										aria-label="Download current track"
+										aria-label={`${downloadActionLabel} current track`}
 										type="button"
 										disabled={!$playerStore.currentTrack || isDownloadingCurrentTrack}
 									>
@@ -790,7 +793,7 @@
 										{:else}
 											<Download size={16} class="sm:w-4 sm:h-4 md:w-[18px] md:h-[18px]" />
 										{/if}
-										<span class="hidden md:inline">Download</span>
+										<span class="hidden md:inline">{downloadActionLabel}</span>
 									</button>
 									<button
 										onclick={() => lyricsStore.toggle()}

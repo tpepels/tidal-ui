@@ -16,9 +16,12 @@ import { convertSonglinkTrackToTidal } from '$lib/services/playback/trackConvers
 import type { TrackConversionError } from '$lib/services/playback/trackConversionService';
 import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
 import { downloadUiStore } from '$lib/stores/downloadUi';
+import { downloadPreferencesStore, type DownloadStorage } from '$lib/stores/downloadPreferences';
+import { downloadLogStore } from '$lib/stores/downloadLog';
 import { userPreferencesStore } from '$lib/stores/userPreferences';
 import { toasts } from '$lib/stores/toasts';
 import { trackError } from '$lib/core/errorTracker';
+import { downloadTrackToServer } from '$lib/downloads';
 import { get } from 'svelte/store';
 
 /**
@@ -51,6 +54,12 @@ export interface DownloadOrchestratorOptions {
 
 	/** Whether to skip the ffmpeg countdown UI */
 	skipFfmpegCountdown?: boolean;
+
+	/** Storage target for download */
+	storage?: DownloadStorage;
+
+	/** Conflict resolution strategy for server downloads */
+	conflictResolution?: 'overwrite' | 'skip' | 'rename' | 'overwrite_if_different';
 }
 
 /**
@@ -100,6 +109,8 @@ export class DownloadOrchestrator {
 		options?: DownloadOrchestratorOptions
 	): Promise<DownloadOrchestratorResult> {
 		const effectiveOptions = this.resolveOptions(options);
+		const effectiveConvertAacToMp3 =
+			effectiveOptions.storage === 'client' ? effectiveOptions.convertAacToMp3 : false;
 		let targetTrack: Track;
 
 		// Step 1: Handle Songlink conversion if needed
@@ -153,14 +164,17 @@ export class DownloadOrchestrator {
 		const filename = buildDownloadFilename(
 			targetTrack,
 			effectiveOptions.quality,
-			effectiveOptions.convertAacToMp3
+			effectiveConvertAacToMp3
 		);
 
 		// Step 3: Initialize download task in UI store
 		const { taskId, controller } = downloadUiStore.beginTrackDownload(
 			targetTrack,
 			filename,
-			{ subtitle: effectiveOptions.subtitle }
+			{
+				subtitle: effectiveOptions.subtitle,
+				storage: effectiveOptions.storage
+			}
 		);
 
 		// Store attempt for potential retry
@@ -173,43 +187,98 @@ export class DownloadOrchestrator {
 
 		// Step 4: Execute download via API with all callbacks wired to store
 		try {
-			await losslessAPI.downloadTrack(targetTrack.id, effectiveOptions.quality, filename, {
-				signal: effectiveOptions.signal ?? controller.signal,
-				convertAacToMp3: effectiveOptions.convertAacToMp3,
-				downloadCoverSeperately: effectiveOptions.downloadCoversSeperately,
-				ffmpegAutoTriggered: effectiveOptions.ffmpegAutoTriggered ?? false,
-				onProgress: (progress: TrackDownloadProgress) => {
-					if (progress.stage === 'downloading') {
-						downloadUiStore.updateTrackProgress(taskId!, progress.receivedBytes, progress.totalBytes);
-					} else if (progress.stage === 'embedding') {
-						downloadUiStore.updateTrackStage(taskId!, progress.progress);
+			if (effectiveOptions.storage === 'server') {
+				const downloadWeight = 0.55;
+				let downloadFraction = 0;
+				let uploadFraction = 0;
+
+				const updateProgress = () => {
+					const overall = Math.min(
+						1,
+						downloadFraction * downloadWeight + uploadFraction * (1 - downloadWeight)
+					);
+					downloadUiStore.updateTrackStage(taskId!, overall);
+				};
+
+				const serverResult = await downloadTrackToServer(targetTrack, effectiveOptions.quality, {
+					downloadCoverSeperately: effectiveOptions.downloadCoversSeperately,
+					conflictResolution: effectiveOptions.conflictResolution,
+					signal: effectiveOptions.signal ?? controller.signal,
+					onProgress: (progress) => {
+						if (progress.stage === 'downloading') {
+							downloadUiStore.updateTrackPhase(taskId!, 'downloading');
+							const fraction = progress.totalBytes
+								? progress.receivedBytes / progress.totalBytes
+								: Math.min(downloadFraction + 0.05, 0.9);
+							downloadFraction = Math.max(downloadFraction, fraction);
+						} else if (progress.stage === 'embedding') {
+							downloadUiStore.updateTrackPhase(taskId!, 'embedding');
+							const fraction = 0.85 + progress.progress * 0.15;
+							downloadFraction = Math.max(downloadFraction, Math.min(1, fraction));
+						} else if (progress.stage === 'uploading') {
+							downloadUiStore.updateTrackPhase(taskId!, 'uploading');
+							const fraction = progress.totalBytes
+								? progress.uploadedBytes / progress.totalBytes
+								: uploadFraction;
+							uploadFraction = Math.max(uploadFraction, Math.min(1, fraction));
+						}
+						updateProgress();
 					}
-				},
-				onFfmpegCountdown: ({ totalBytes, autoTriggered }) => {
-					if (typeof totalBytes === 'number') {
-						downloadUiStore.startFfmpegCountdown(totalBytes, { autoTriggered });
-					} else {
-						downloadUiStore.startFfmpegCountdown(0, { autoTriggered });
-					}
-				},
-				onFfmpegStart: () => {
-					downloadUiStore.startFfmpegLoading();
-				},
-				onFfmpegProgress: (progress: number) => {
-					downloadUiStore.updateFfmpegProgress(progress);
-				},
-				onFfmpegComplete: () => {
-					downloadUiStore.completeFfmpeg();
-				},
-				onFfmpegError: (error: unknown) => {
-					const message = error instanceof Error ? error.message : 'FFmpeg conversion failed';
-					downloadUiStore.errorFfmpeg(message);
+				});
+
+				if (!serverResult.success) {
+					const errorMessage = serverResult.error ?? 'Server download failed';
+					downloadUiStore.errorTrackDownload(taskId, errorMessage);
+					downloadLogStore.error(`Server download failed: ${errorMessage}`);
+					throw new Error(errorMessage);
 				}
-			});
+
+				downloadLogStore.success(
+					serverResult.message ? `Server download complete: ${serverResult.message}` : 'Server download complete'
+				);
+			} else {
+				await losslessAPI.downloadTrack(targetTrack.id, effectiveOptions.quality, filename, {
+					signal: effectiveOptions.signal ?? controller.signal,
+					convertAacToMp3: effectiveConvertAacToMp3,
+					downloadCoverSeperately: effectiveOptions.downloadCoversSeperately,
+					ffmpegAutoTriggered: effectiveOptions.ffmpegAutoTriggered ?? false,
+					onProgress: (progress: TrackDownloadProgress) => {
+						if (progress.stage === 'downloading') {
+							downloadUiStore.updateTrackProgress(taskId!, progress.receivedBytes, progress.totalBytes);
+						} else if (progress.stage === 'embedding') {
+							downloadUiStore.updateTrackStage(taskId!, progress.progress);
+						}
+					},
+					onFfmpegCountdown: ({ totalBytes, autoTriggered }) => {
+						if (typeof totalBytes === 'number') {
+							downloadUiStore.startFfmpegCountdown(totalBytes, { autoTriggered });
+						} else {
+							downloadUiStore.startFfmpegCountdown(0, { autoTriggered });
+						}
+					},
+					onFfmpegStart: () => {
+						downloadUiStore.startFfmpegLoading();
+					},
+					onFfmpegProgress: (progress: number) => {
+						downloadUiStore.updateFfmpegProgress(progress);
+					},
+					onFfmpegComplete: () => {
+						downloadUiStore.completeFfmpeg();
+					},
+					onFfmpegError: (error: unknown) => {
+						const message = error instanceof Error ? error.message : 'FFmpeg conversion failed';
+						downloadUiStore.errorFfmpeg(message);
+					}
+				});
+			}
 
 			// Download completed successfully
 			downloadUiStore.completeTrackDownload(taskId!);
-			this.showNotification('success', `Downloaded: ${filename}`, effectiveOptions.notificationMode);
+			const successMessage =
+				effectiveOptions.storage === 'server'
+					? `Saved to server: ${filename}`
+					: `Downloaded: ${filename}`;
+			this.showNotification('success', successMessage, effectiveOptions.notificationMode);
 
 			return { success: true, filename, taskId };
 		} catch (error) {
@@ -292,6 +361,7 @@ export class DownloadOrchestrator {
 		options?: DownloadOrchestratorOptions
 	): Required<Omit<DownloadOrchestratorOptions, 'signal'>> & Pick<DownloadOrchestratorOptions, 'signal'> {
 		const prefs = get(userPreferencesStore);
+		const downloadPrefs = get(downloadPreferencesStore);
 
 		return {
 			quality: options?.quality ?? 'LOSSLESS',
@@ -302,6 +372,8 @@ export class DownloadOrchestrator {
 			subtitle: options?.subtitle ?? '',
 			ffmpegAutoTriggered: options?.ffmpegAutoTriggered ?? false,
 			skipFfmpegCountdown: options?.skipFfmpegCountdown ?? false,
+			storage: options?.storage ?? downloadPrefs.storage,
+			conflictResolution: options?.conflictResolution ?? 'overwrite_if_different',
 			signal: options?.signal
 		};
 	}

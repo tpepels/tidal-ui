@@ -5,6 +5,8 @@
 	import { tick } from 'svelte';
 
 	$: activeDownloads = $downloadUiStore.tasks.filter((task) => task.status === 'running');
+	$: hasServerDownloads = activeDownloads.some((task) => task.storage === 'server');
+	$: compactLabel = hasServerDownloads ? 'Saving to server' : 'Downloading';
 
 	let scrollContainer: HTMLDivElement | null = null;
 	let healthData: {
@@ -13,6 +15,13 @@
 		pendingUploads: number;
 		chunkUploads: number;
 		redisConnected: boolean;
+		downloadDir?: string;
+		tempDir?: string;
+		disk?: {
+			freeBytes: number;
+			totalBytes: number;
+			usedBytes: number;
+		} | null;
 	} | null = null;
 	let loadingHealth = false;
 
@@ -31,6 +40,18 @@
 			.join('\n');
 
 		navigator.clipboard.writeText(logText);
+	}
+
+	function formatBytes(bytes?: number): string {
+		if (!bytes || !Number.isFinite(bytes)) return '—';
+		const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+		let value = bytes;
+		let unitIndex = 0;
+		while (value >= 1024 && unitIndex < units.length - 1) {
+			value /= 1024;
+			unitIndex++;
+		}
+		return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unitIndex]}`;
 	}
 
 	async function fetchHealth() {
@@ -72,7 +93,7 @@
 	<div class="download-progress-compact">
 		<div class="download-progress-compact-header">
 			<span class="download-progress-compact-title">
-				<span class="download-progress-compact-label">Downloading</span>
+				<span class="download-progress-compact-label">{compactLabel}</span>
 				<span class="download-progress-compact-count">
 					{activeDownloads.length} track{activeDownloads.length > 1 ? 's' : ''}
 				</span>
@@ -159,6 +180,26 @@
 							{healthData.redisConnected ? 'Connected' : 'Disconnected'}
 						</span>
 					</div>
+					{#if healthData.downloadDir}
+						<div class="download-health-stat download-health-stat--wide">
+							<span class="download-health-label">Download Dir:</span>
+							<span class="download-health-value">{healthData.downloadDir}</span>
+						</div>
+					{/if}
+					{#if healthData.tempDir}
+						<div class="download-health-stat download-health-stat--wide">
+							<span class="download-health-label">Temp Dir:</span>
+							<span class="download-health-value">{healthData.tempDir}</span>
+						</div>
+					{/if}
+					{#if healthData.disk}
+						<div class="download-health-stat download-health-stat--wide">
+							<span class="download-health-label">Disk Free:</span>
+							<span class="download-health-value">
+								{formatBytes(healthData.disk.freeBytes)} / {formatBytes(healthData.disk.totalBytes)}
+							</span>
+						</div>
+					{/if}
 				</div>
 				<button type="button" class="download-health-btn" on:click={cleanupHealth}>Cleanup Stuck</button>
 			</div>
@@ -388,6 +429,12 @@
 	font-size: 13px;
 }
 
+.download-health-stat--wide {
+	align-items: flex-start;
+	flex-direction: column;
+	gap: 4px;
+}
+
 .download-health-label {
 	color: #ccc;
 }
@@ -395,6 +442,12 @@
 .download-health-value {
 	color: #fff;
 	font-weight: 500;
+}
+
+.download-health-stat--wide .download-health-value {
+	font-size: 12px;
+	color: #e2e8f0;
+	word-break: break-all;
 }
 
 .download-health-value.connected {

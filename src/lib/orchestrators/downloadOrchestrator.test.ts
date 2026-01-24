@@ -11,9 +11,12 @@ import type { Track, SonglinkTrack, PlayableTrack } from '$lib/types';
 const {
 	mockDownloadUiStore,
 	mockUserPreferencesStore,
+	mockDownloadPreferencesStore,
+	mockDownloadLogStore,
 	mockDownloadService,
 	mockConvertSonglinkTrackToTidal,
 	mockLosslessDownloadTrack,
+	mockDownloadTrackToServer,
 	mockToasts,
 	mockTrackError
 } = vi.hoisted(() => ({
@@ -21,6 +24,7 @@ const {
 		beginTrackDownload: vi.fn(),
 		updateTrackProgress: vi.fn(),
 		updateTrackStage: vi.fn(),
+		updateTrackPhase: vi.fn(),
 		completeTrackDownload: vi.fn(),
 		errorTrackDownload: vi.fn(),
 		cancelTrackDownload: vi.fn(),
@@ -36,9 +40,18 @@ const {
 		convertAacToMp3: true,
 		downloadCoversSeperately: false
 	},
+	mockDownloadPreferencesStore: {
+		subscribe: vi.fn(),
+		storage: 'client'
+	},
+	mockDownloadLogStore: {
+		error: vi.fn(),
+		success: vi.fn()
+	},
 	mockDownloadService: vi.fn(),
 	mockConvertSonglinkTrackToTidal: vi.fn(),
 	mockLosslessDownloadTrack: vi.fn(),
+	mockDownloadTrackToServer: vi.fn(),
 	mockToasts: {
 		error: vi.fn(),
 		success: vi.fn()
@@ -53,6 +66,14 @@ vi.mock('$lib/stores/downloadUi', () => ({
 
 vi.mock('$lib/stores/userPreferences', () => ({
 	userPreferencesStore: mockUserPreferencesStore
+}));
+
+vi.mock('$lib/stores/downloadPreferences', () => ({
+	downloadPreferencesStore: mockDownloadPreferencesStore
+}));
+
+vi.mock('$lib/stores/downloadLog', () => ({
+	downloadLogStore: mockDownloadLogStore
 }));
 
 vi.mock('svelte/store', async (importOriginal) => {
@@ -76,6 +97,10 @@ vi.mock('$lib/api', () => ({
 	losslessAPI: {
 		downloadTrack: (...args: unknown[]) => mockLosslessDownloadTrack(...args)
 	}
+}));
+
+vi.mock('$lib/downloads', () => ({
+	downloadTrackToServer: (...args: unknown[]) => mockDownloadTrackToServer(...args)
 }));
 
 vi.mock('$lib/stores/toasts', () => ({
@@ -148,6 +173,7 @@ describe('DownloadOrchestrator', () => {
 	beforeEach(() => {
 		orchestrator = new DownloadOrchestrator();
 		vi.clearAllMocks();
+		mockDownloadPreferencesStore.storage = 'client';
 
 		// Default mock behavior
 		mockDownloadUiStore.beginTrackDownload.mockReturnValue({
@@ -187,6 +213,28 @@ describe('DownloadOrchestrator', () => {
 					onProgress: expect.any(Function)
 				})
 			);
+		});
+
+		it('routes downloads to the server when storage is server', async () => {
+			mockDownloadPreferencesStore.storage = 'server';
+			mockDownloadTrackToServer.mockResolvedValue({
+				success: true,
+				filename: 'test-track.flac',
+				message: 'Saved to server'
+			});
+
+			const result = await orchestrator.downloadTrack(mockTrack);
+
+			expect(result.success).toBe(true);
+			expect(mockDownloadTrackToServer).toHaveBeenCalledWith(
+				mockTrack,
+				'LOSSLESS',
+				expect.objectContaining({
+					downloadCoverSeperately: false,
+					conflictResolution: 'overwrite_if_different'
+				})
+			);
+			expect(mockLosslessDownloadTrack).not.toHaveBeenCalled();
 		});
 
 		it('should auto-convert Songlink track when autoConvertSonglink is true', async () => {

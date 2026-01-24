@@ -3,6 +3,25 @@
 	import { Loader } from 'lucide-svelte';
 
 	$: activeDownloads = $downloadUiStore.tasks.filter((task) => task.status === 'running');
+	$: hasServerDownloads = activeDownloads.some((task) => task.storage === 'server');
+	$: headerLabel = hasServerDownloads ? 'Saving to server' : 'Downloading';
+
+	const formatPhaseLabel = (task: (typeof activeDownloads)[number]) => {
+		if (task.storage === 'server') {
+			switch (task.phase) {
+				case 'uploading':
+					return 'Uploading to server';
+				case 'embedding':
+					return 'Finalizing audio';
+				default:
+					return 'Downloading source';
+			}
+		}
+		if (task.phase === 'embedding') {
+			return 'Finalizing audio';
+		}
+		return null;
+	};
 </script>
 
 <!-- Standalone Download Progress - Bottom of screen, independent of log -->
@@ -11,7 +30,7 @@
 		<div class="download-progress-standalone-header">
 			<Loader size={16} />
 			<span class="download-progress-title">
-				<span class="download-progress-title-label">Downloading</span>
+				<span class="download-progress-title-label">{headerLabel}</span>
 				<span class="download-progress-title-count">
 					{activeDownloads.length} track{activeDownloads.length > 1 ? 's' : ''}
 				</span>
@@ -20,11 +39,15 @@
 
 		<div class="download-progress-standalone-list">
 			{#each activeDownloads.slice(0, 5) as task (task.id)}
+				{@const phaseLabel = formatPhaseLabel(task)}
 				<div class="download-progress-item">
 					<div class="download-progress-item-info">
 						<span class="download-progress-item-title" title="{task.title}">{task.title}</span>
 						{#if task.subtitle}
 							<span class="download-progress-item-subtitle">{task.subtitle}</span>
+						{/if}
+						{#if phaseLabel}
+							<span class="download-progress-item-phase">{phaseLabel}</span>
 						{/if}
 					</div>
 					<div class="download-progress-item-progress">
@@ -144,6 +167,13 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+
+	.download-progress-item-phase {
+		font-size: 10px;
+		color: rgba(148, 163, 184, 0.8);
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
 	}
 
 	.download-progress-item-progress {

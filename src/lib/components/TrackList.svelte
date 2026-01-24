@@ -10,6 +10,7 @@
 	import AlbumLink from '$lib/components/AlbumLink.svelte';
 	import LazyImage from '$lib/components/LazyImage.svelte';
 	import TrackDownloadButton from '$lib/components/TrackDownloadButton.svelte';
+	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { Play, Pause, Clock, ListPlus, ListVideo, MoreVertical } from 'lucide-svelte';
 
 	interface Props {
@@ -29,6 +30,9 @@
 		skipFfmpegCountdown: true
 	});
 	const { downloadingIds, cancelledIds, handleCancelDownload, handleDownload } = trackDownloadUi;
+	const downloadActionLabel = $derived(
+		$downloadPreferencesStore.storage === 'server' ? 'Save to server' : 'Download'
+	);
 
 	onMount(() => {
 		const handleClickOutside = (event: MouseEvent) => {
@@ -246,10 +250,10 @@
 							isCancelled={$cancelledIds.has(track.id)}
 							onCancel={(event) => handleCancelDownload(track.id, event)}
 							onDownload={(event) => handleDownload(track, event)}
-							title={$downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
+							title={$downloadingIds.has(track.id) ? 'Cancel download' : `${downloadActionLabel} track`}
 							ariaLabel={$downloadingIds.has(track.id)
 								? `Cancel download for ${track.title}`
-								: `Download ${track.title}`}
+								: `${downloadActionLabel} ${track.title}`}
 						/>
 
 						<!-- Duration -->

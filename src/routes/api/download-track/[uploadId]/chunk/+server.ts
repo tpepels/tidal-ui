@@ -19,6 +19,7 @@ import {
 	moveFile,
 	retryFs
 } from '../../_shared';
+import { embedMetadataToFile } from '$lib/server/metadataEmbedder';
 
 export const POST: RequestHandler = async ({ request, params }) => {
 	const uploadId = params.uploadId;
@@ -233,6 +234,18 @@ export const POST: RequestHandler = async ({ request, params }) => {
 					'Please retry. The upload can continue from the last chunk.'
 				);
 				return json({ error: downloadError }, { status: 500 });
+			}
+
+			if (uploadData.trackMetadata) {
+				try {
+					await embedMetadataToFile(finalPath, uploadData.trackMetadata);
+					console.log('[Server Download] Metadata embedded successfully');
+				} catch (metadataError) {
+					console.warn(
+						'[Server Download] Metadata embedding failed, continuing with raw file:',
+						metadataError
+					);
+				}
 			}
 
 			let coverDownloaded = false;

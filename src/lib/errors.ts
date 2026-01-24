@@ -103,12 +103,23 @@ export async function retryFetch(
 	url: string,
 	options: RequestInit & { timeout?: number; maxRetries?: number } = {}
 ): Promise<Response> {
-	const { timeout = 10000, maxRetries = 3, ...fetchOptions } = options;
+	const { timeout = 10000, maxRetries = 3, signal, ...fetchOptions } = options;
 
 	return retryWithBackoff(
 		async () => {
 			const controller = new AbortController();
 			const timeoutId = setTimeout(() => controller.abort(), timeout);
+			let removeAbortListener: (() => void) | null = null;
+
+			if (signal) {
+				if (signal.aborted) {
+					clearTimeout(timeoutId);
+					throw new DOMException('Aborted', 'AbortError');
+				}
+				const handleAbort = () => controller.abort();
+				signal.addEventListener('abort', handleAbort, { once: true });
+				removeAbortListener = () => signal.removeEventListener('abort', handleAbort);
+			}
 
 			try {
 				const response = await fetch(url, {
@@ -116,6 +127,7 @@ export async function retryFetch(
 					signal: controller.signal
 				});
 				clearTimeout(timeoutId);
+				removeAbortListener?.();
 
 				if (!response) {
 					throw TidalError.networkError(new Error('Empty response'));
@@ -137,9 +149,13 @@ export async function retryFetch(
 				return response;
 			} catch (error) {
 				clearTimeout(timeoutId);
+				removeAbortListener?.();
 
 				// Handle abort/timeout
 				if (error instanceof DOMException && error.name === 'AbortError') {
+					if (signal?.aborted) {
+						throw error;
+					}
 					throw TidalError.networkError(new Error('Request timeout'));
 				}
 

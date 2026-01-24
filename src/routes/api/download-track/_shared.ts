@@ -1,4 +1,4 @@
-import type { AudioQuality } from '$lib/types';
+import type { AudioQuality, TrackLookup } from '$lib/types';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { createHash } from 'crypto';
@@ -11,6 +11,7 @@ const CHECKSUM_ALGORITHM = 'sha256';
 // Redis client for persistence
 let redis: Redis | null = null;
 let redisConnected = false;
+let cleanupIntervalStarted = false;
 
 function getRedisClient(): Redis | null {
 	const redisDisabled = ['true', '1'].includes((process.env.REDIS_DISABLED || '').toLowerCase());
@@ -26,7 +27,14 @@ function getRedisClient(): Redis | null {
 		redis = new Redis(redisUrl);
 		redis.on('error', (err) => {
 			console.warn('Redis connection error:', err);
+			redisConnected = false;
 			redis = null; // Fallback to file
+		});
+		redis.on('close', () => {
+			redisConnected = false;
+		});
+		redis.on('end', () => {
+			redisConnected = false;
 		});
 		redis.on('connect', () => {
 			redisConnected = true;
@@ -95,6 +103,7 @@ export interface PendingUpload {
 	albumTitle?: string;
 	artistName?: string;
 	trackTitle?: string;
+	trackMetadata?: TrackLookup;
 	downloadCoverSeperately?: boolean;
 	coverUrl?: string;
 	timestamp: number;
@@ -412,6 +421,10 @@ export const forceCleanupAllUploads = async (): Promise<{ cleaned: number }> => 
 
 // Clean up expired uploads periodically
 export const startCleanupInterval = async () => {
+	if (cleanupIntervalStarted) {
+		return;
+	}
+	cleanupIntervalStarted = true;
 	// Clean up orphaned temp files on startup
 	await cleanupTempFiles();
 	await loadState();

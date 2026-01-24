@@ -6,6 +6,7 @@
 	import { playbackFacade } from '$lib/controllers/playbackFacade';
 	import { createTrackDownloadUi } from '$lib/controllers/trackDownloadUi';
 	import TrackDownloadButton from '$lib/components/TrackDownloadButton.svelte';
+	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { Play, Pause, ListPlus, ListVideo, MoreVertical, Clock } from 'lucide-svelte';
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
 	import AlbumLink from '$lib/components/AlbumLink.svelte';
@@ -38,6 +39,9 @@
 		skipFfmpegCountdown: true
 	});
 	const { downloadingIds, cancelledIds, handleCancelDownload, handleDownload } = trackDownloadUi;
+	const downloadActionLabel = $derived(
+		$downloadPreferencesStore.storage === 'server' ? 'Save to server' : 'Download'
+	);
 	let activeMenuId = $state<number | null>(null);
 
 	const IGNORED_TAGS = new Set(['HI_RES_LOSSLESS']);
@@ -215,10 +219,10 @@
 							isCancelled={$cancelledIds.has(track.id)}
 							onCancel={(event) => handleCancelDownload(track.id, event)}
 							onDownload={(event) => handleDownload(track, event)}
-							title={$downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
+							title={$downloadingIds.has(track.id) ? 'Cancel download' : `${downloadActionLabel} track`}
 							ariaLabel={$downloadingIds.has(track.id)
 								? `Cancel download for ${track.title}`
-								: `Download ${track.title}`}
+								: `${downloadActionLabel} ${track.title}`}
 							class="rounded-full hover:bg-gray-800"
 						/>
 					</div>

@@ -136,9 +136,10 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				}
 
 				// Embed metadata into the file if track metadata is provided
-				if (body.trackMetadata) {
+				const trackMetadata = body.trackMetadata ?? pendingUpload?.trackMetadata;
+				if (trackMetadata) {
 					try {
-						await embedMetadataToFile(finalPath, body.trackMetadata);
+						await embedMetadataToFile(finalPath, trackMetadata);
 						console.log('[Server Download] Metadata embedded successfully');
 					} catch (metadataError) {
 						console.warn(
@@ -191,7 +192,8 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					checksum,
 					conflictResolution,
 					downloadCoverSeperately,
-					coverUrl
+					coverUrl,
+					trackMetadata
 				} = body;
 				// Input validation
 				if (typeof trackId !== 'number' || trackId <= 0)
@@ -269,6 +271,14 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					);
 				if (coverUrl !== undefined && typeof coverUrl !== 'string')
 					return json({ error: 'Invalid coverUrl: must be a string or undefined' }, { status: 400 });
+				if (
+					trackMetadata !== undefined &&
+					(typeof trackMetadata !== 'object' || trackMetadata === null)
+				)
+					return json(
+						{ error: 'Invalid trackMetadata: must be an object or undefined' },
+						{ status: 400 }
+					);
 				if (blobSize !== undefined && blobSize > MAX_FILE_SIZE)
 					return json(
 						{ error: `File too large: maximum ${MAX_FILE_SIZE} bytes allowed` },
@@ -293,6 +303,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					albumTitle,
 					artistName,
 					trackTitle,
+					trackMetadata,
 					downloadCoverSeperately,
 					coverUrl,
 					timestamp: Date.now(),

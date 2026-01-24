@@ -148,6 +148,11 @@ export interface AlbumDownloadCallbacks {
 	onTrackFailed?(track: Track, error: Error, attempt: number): void;
 }
 
+export type ServerDownloadProgress =
+	| { stage: 'downloading'; receivedBytes: number; totalBytes?: number }
+	| { stage: 'embedding'; progress: number }
+	| { stage: 'uploading'; uploadedBytes: number; totalBytes: number; speed?: number; eta?: number };
+
 function escapeCsvValue(value: string): string {
 	const normalized = value.replace(/\r?\n|\r/g, ' ');
 	if (/[",]/.test(normalized)) {
@@ -193,6 +198,7 @@ async function downloadTrackWithRetry(
 		convertAacToMp3?: boolean;
 		downloadCoverSeperately?: boolean;
 		storage?: DownloadStorage;
+		signal?: AbortSignal;
 		onProgress?: (
 			progress:
 				| { stage: 'downloading'; receivedBytes: number; totalBytes?: number }
@@ -214,11 +220,15 @@ async function downloadTrackWithRetry(
 			const { blob } = await losslessAPI.fetchTrackBlob(trackId, quality, filename, {
 				ffmpegAutoTriggered: false,
 				convertAacToMp3: storage === 'client' ? options?.convertAacToMp3 : false,
+				signal: options?.signal,
 				onProgress: options?.onProgress
 			});
 
 			return { success: true, blob };
 		} catch (error) {
+			if (error instanceof DOMException && error.name === 'AbortError') {
+				throw error;
+			}
 			const errorObj = error instanceof Error ? error : new Error(String(error));
 			console.warn(
 				`[Track Download] ✗ Attempt ${attempt}/${maxAttempts} failed for "${trackTitle}": ${errorObj.message}`
@@ -275,6 +285,7 @@ export async function downloadTrackServerSide(
 		checkExisting?: boolean;
 		downloadCoverSeperately?: boolean;
 		coverUrl?: string;
+		signal?: AbortSignal;
 		onProgress?: (progress: {
 			uploaded: number;
 			total: number;
@@ -309,6 +320,36 @@ export async function downloadTrackServerSide(
 		// Generate checksum for integrity check
 		const checksum = await calculateBlobChecksum(blob);
 
+		const trackMetadata = track
+			? {
+					track: {
+						id: track.id,
+						title: track.title,
+						duration: track.duration,
+						replayGain: track.replayGain,
+						peak: track.peak,
+						trackNumber: track.trackNumber,
+						volumeNumber: track.volumeNumber,
+						version: track.version,
+						isrc: track.isrc,
+						copyright: track.copyright,
+						artists: track.artists,
+						album: {
+							id: track.album.id,
+							title: track.album.title,
+							cover: track.album.cover,
+							releaseDate: track.album.releaseDate,
+							numberOfTracks: track.album.numberOfTracks,
+							numberOfVolumes: track.album.numberOfVolumes,
+							copyright: track.album.copyright,
+							artist: track.album.artist,
+							artists: track.album.artists
+						}
+					},
+					info: undefined // We don't have lookup info in server context
+				}
+			: undefined;
+
 		// Check if file already exists on server (if requested)
 		if (options?.checkExisting) {
 			try {
@@ -323,6 +364,7 @@ export async function downloadTrackServerSide(
 						trackTitle
 					}),
 					timeout: 5000,
+					signal: options?.signal,
 					maxRetries: 1
 				});
 
@@ -359,9 +401,11 @@ export async function downloadTrackServerSide(
 				checksum,
 				conflictResolution,
 				downloadCoverSeperately: options?.downloadCoverSeperately ?? false,
-				coverUrl: options?.coverUrl
+				coverUrl: options?.coverUrl,
+				trackMetadata
 			}),
 			timeout: 10000,
+			signal: options?.signal,
 			maxRetries: 2
 		});
 
@@ -380,41 +424,24 @@ export async function downloadTrackServerSide(
 				throw new Error('Invalid chunked upload response');
 			}
 			// Chunked upload
-			return await uploadInChunks(blob, uploadId, totalChunks, chunkSize, options?.onProgress);
+			const uploadResult = await uploadInChunks(
+				blob,
+				uploadId,
+				totalChunks,
+				chunkSize,
+				options?.onProgress,
+				options?.signal
+			);
+			if (uploadResult.success) {
+				const toastMessage = uploadResult.message ?? 'Server download completed';
+				toasts.success(`Download completed: ${toastMessage}`);
+			}
+			return uploadResult;
 		} else {
 			// Single upload
 			const base64 = await blobToBase64(blob);
 			// Prepare track metadata for server-side embedding
 			const downloadCoverSeperately = options?.downloadCoverSeperately ?? false;
-			const trackMetadata = track
-				? {
-						track: {
-							id: track.id,
-							title: track.title,
-							duration: track.duration,
-							replayGain: track.replayGain,
-							peak: track.peak,
-							trackNumber: track.trackNumber,
-							volumeNumber: track.volumeNumber,
-							version: track.version,
-							isrc: track.isrc,
-							copyright: track.copyright,
-							artists: track.artists,
-							album: {
-								id: track.album.id,
-								title: track.album.title,
-								cover: track.album.cover,
-								releaseDate: track.album.releaseDate,
-								numberOfTracks: track.album.numberOfTracks,
-								numberOfVolumes: track.album.numberOfVolumes,
-								copyright: track.album.copyright,
-								artist: track.album.artist,
-								artists: track.album.artists
-							}
-						},
-						info: undefined // We don't have lookup info in server context
-					}
-				: undefined;
 
 			const uploadResponse = await fetch('/api/download-track', {
 				method: 'POST',
@@ -431,7 +458,8 @@ export async function downloadTrackServerSide(
 					downloadCoverSeperately,
 					coverUrl: options?.coverUrl,
 					trackMetadata
-				})
+				}),
+				signal: options?.signal
 			});
 
 			if (!uploadResponse.ok) {
@@ -451,6 +479,9 @@ export async function downloadTrackServerSide(
 			};
 		}
 	} catch (error) {
+		if (error instanceof DOMException && error.name === 'AbortError') {
+			throw error;
+		}
 		const errorMsg = error instanceof Error ? error.message : String(error);
 		console.error(`[Server Download] Error: ${errorMsg}`);
 		toasts.error(`Download failed: ${errorMsg}`, {
@@ -476,6 +507,121 @@ export async function downloadTrackServerSide(
 	}
 }
 
+export async function downloadTrackToServer(
+	track: Track,
+	quality: AudioQuality,
+	options?: {
+		convertAacToMp3?: boolean;
+		downloadCoverSeperately?: boolean;
+		conflictResolution?: 'overwrite' | 'skip' | 'rename' | 'overwrite_if_different';
+		signal?: AbortSignal;
+		onProgress?: (progress: ServerDownloadProgress) => void;
+	}
+): Promise<{
+	success: boolean;
+	filename: string;
+	filepath?: string;
+	message?: string;
+	action?: string;
+	error?: string;
+}> {
+	const convertAacToMp3 = false;
+	const filename = buildTrackFilename(
+		track.album,
+		track,
+		quality,
+		formatArtists(track.artists),
+		convertAacToMp3
+	);
+
+	const fetchResult = await downloadTrackWithRetry(
+		track.id,
+		quality,
+		filename,
+		track,
+		undefined,
+		{
+			convertAacToMp3,
+			downloadCoverSeperately: false,
+			storage: 'server',
+			signal: options?.signal,
+			onProgress: (progress) => {
+				if (progress.stage === 'downloading') {
+					options?.onProgress?.({
+						stage: 'downloading',
+						receivedBytes: progress.receivedBytes,
+						totalBytes: progress.totalBytes
+					});
+				} else if (progress.stage === 'embedding') {
+					options?.onProgress?.({ stage: 'embedding', progress: progress.progress });
+				}
+			}
+		}
+	);
+
+	if (!fetchResult.success || !fetchResult.blob) {
+		const errorMessage =
+			fetchResult.error instanceof Error
+				? fetchResult.error.message
+				: typeof fetchResult.error === 'string'
+					? fetchResult.error
+					: 'Failed to fetch track for server download';
+		return { success: false, filename, error: errorMessage };
+	}
+
+	const coverUrl =
+		options?.downloadCoverSeperately && track.album?.cover
+			? losslessAPI.getCoverUrl(track.album.cover, '1280')
+			: undefined;
+
+	const resolvedTrackTitle = track.title
+		? track.version
+			? `${track.title} (${track.version})`
+			: track.title
+		: undefined;
+
+	const uploadResult = await downloadTrackServerSide(
+		track.id,
+		quality,
+		track.album?.title ?? 'Unknown Album',
+		formatArtists(track.artists),
+		resolvedTrackTitle,
+		fetchResult.blob,
+		track,
+		{
+			conflictResolution: options?.conflictResolution,
+			downloadCoverSeperately: options?.downloadCoverSeperately ?? false,
+			coverUrl,
+			signal: options?.signal,
+			onProgress: (progress) => {
+				options?.onProgress?.({
+					stage: 'uploading',
+					uploadedBytes: progress.uploaded,
+					totalBytes: progress.total,
+					speed: progress.speed,
+					eta: progress.eta
+				});
+			}
+		}
+	);
+
+	if (!uploadResult.success) {
+		return {
+			success: false,
+			filename,
+			error: uploadResult.error ?? 'Server upload failed'
+		};
+	}
+
+	return {
+		success: true,
+		filename,
+		filepath: uploadResult.filepath,
+		message: uploadResult.message,
+		action: uploadResult.action
+	};
+}
+
 // Convert blob to base64
 async function blobToBase64(blob: Blob): Promise<string> {
 	return new Promise((resolve, reject) => {
@@ -492,7 +638,8 @@ async function uploadInChunks(
 	uploadId: string,
 	totalChunks: number,
 	chunkSize: number,
-	onProgress?: (progress: { uploaded: number; total: number; speed?: number; eta?: number }) => void
+	onProgress?: (progress: { uploaded: number; total: number; speed?: number; eta?: number }) => void,
+	signal?: AbortSignal
 ): Promise<{
 	success: boolean;
 	filepath?: string;
@@ -517,6 +664,9 @@ async function uploadInChunks(
 	} | null = null;
 
 	for (let i = 0; i < totalChunks; i++) {
+		if (signal?.aborted) {
+			throw new DOMException('Aborted', 'AbortError');
+		}
 		const start = i * chunkSize;
 		const end = Math.min(start + chunkSize, blob.size);
 		const chunk = blob.slice(start, end);
@@ -530,6 +680,7 @@ async function uploadInChunks(
 			},
 			body: chunk,
 			timeout: 30000, // Longer for uploads
+			signal,
 			maxRetries: 3
 		});
 
@@ -631,6 +782,7 @@ export async function downloadAlbum(
 	const useCsv = mode === 'csv';
 	const convertAacToMp3 = options?.convertAacToMp3 ?? false;
 	const storage = options?.storage ?? 'client';
+	const effectiveConvertAacToMp3 = storage === 'client' ? convertAacToMp3 : false;
 	const downloadCoverSeperately = options?.downloadCoverSeperately ?? false;
 	const artistName = sanitizeForFilename(
 		preferredArtistName ?? canonicalAlbum.artist?.name ?? 'Unknown Artist'
@@ -858,12 +1010,13 @@ export async function downloadAlbum(
 			track,
 			quality,
 			preferredArtistName,
-			convertAacToMp3
+			effectiveConvertAacToMp3
 		);
 
 		// Start tracking this track download
 		const { taskId } = downloadUiStore.beginTrackDownload(track, filename, {
-			subtitle: album.title
+			subtitle: album.title,
+			storage
 		});
 
 		// Initialize progress to show download has started
@@ -880,7 +1033,7 @@ export async function downloadAlbum(
 						track,
 						undefined, // no callbacks for parallel
 						{
-							convertAacToMp3,
+							convertAacToMp3: effectiveConvertAacToMp3,
 							downloadCoverSeperately,
 							storage: 'server',
 							onProgress: (progress) => {
@@ -898,12 +1051,17 @@ export async function downloadAlbum(
 					);
 
 					if (result.success && result.blob) {
+						const serverTrackTitle = track.title
+							? track.version
+								? `${track.title} (${track.version})`
+								: track.title
+							: undefined;
 						const serverResult = await downloadTrackServerSide(
 							track.id,
 							quality,
 							albumTitle,
 							artistName,
-							track.title,
+							serverTrackTitle,
 							result.blob,
 							track, // Pass track object for metadata
 							{
@@ -936,17 +1094,17 @@ export async function downloadAlbum(
 				}
 			} else {
 				// Client-side download
-				const result = await downloadTrackWithRetry(
-					track.id,
-					quality,
-					filename,
-					track,
-					undefined, // no callbacks for parallel
-					{
-						convertAacToMp3,
-						downloadCoverSeperately,
-						storage: 'client',
-						onProgress: (progress) => {
+					const result = await downloadTrackWithRetry(
+						track.id,
+						quality,
+						filename,
+						track,
+						undefined, // no callbacks for parallel
+						{
+							convertAacToMp3: effectiveConvertAacToMp3,
+							downloadCoverSeperately,
+							storage: 'client',
+							onProgress: (progress) => {
 							if (progress.stage === 'downloading') {
 								downloadUiStore.updateTrackProgress(
 									taskId,

@@ -1,5 +1,6 @@
 import { get, writable } from 'svelte/store';
 import type { PlayableTrack } from '../types';
+import type { DownloadStorage } from './downloadPreferences';
 import { isSonglinkTrack } from '../types';
 import { formatArtists } from '../utils/formatters';
 import { validateInvariant } from '../core/invariants';
@@ -20,6 +21,7 @@ export interface FfmpegBannerState {
 }
 
 export type TrackDownloadStatus = 'pending' | 'running' | 'completed' | 'error' | 'cancelled';
+export type TrackDownloadPhase = 'downloading' | 'uploading' | 'embedding' | 'finalizing';
 
 export interface TrackDownloadTask {
 	id: string;
@@ -28,6 +30,8 @@ export interface TrackDownloadTask {
 	subtitle?: string;
 	filename: string;
 	status: TrackDownloadStatus;
+	phase?: TrackDownloadPhase;
+	storage?: DownloadStorage;
 	receivedBytes: number;
 	totalBytes?: number;
 	progress: number;
@@ -239,7 +243,7 @@ export const downloadUiStore = {
 	beginTrackDownload(
 		track: PlayableTrack,
 		filename: string,
-		options?: { subtitle?: string }
+		options?: { subtitle?: string; storage?: DownloadStorage; phase?: TrackDownloadPhase }
 	): {
 		taskId: string;
 		controller: AbortController;
@@ -263,6 +267,8 @@ export const downloadUiStore = {
 			subtitle,
 			filename,
 			status: 'running',
+			phase: options?.phase ?? 'downloading',
+			storage: options?.storage,
 			receivedBytes: 0,
 			totalBytes: undefined,
 			progress: 0,
@@ -277,6 +283,7 @@ export const downloadUiStore = {
 	updateTrackProgress(taskId: string, received: number, total?: number): void {
 		mutateTask(taskId, (task) => ({
 			...task,
+			phase: task.phase ?? 'downloading',
 			receivedBytes: received,
 			totalBytes: total,
 			progress: total ? clampProgress(received / total) : received > 0 ? 0.5 : 0
@@ -285,7 +292,14 @@ export const downloadUiStore = {
 	updateTrackStage(taskId: string, progress: number): void {
 		mutateTask(taskId, (task) => ({
 			...task,
+			phase: task.phase ?? 'downloading',
 			progress: clampProgress(progress)
+		}));
+	},
+	updateTrackPhase(taskId: string, phase: TrackDownloadPhase): void {
+		mutateTask(taskId, (task) => ({
+			...task,
+			phase
 		}));
 	},
 	completeTrackDownload(taskId: string): void {

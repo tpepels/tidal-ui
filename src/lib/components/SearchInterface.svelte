@@ -103,6 +103,9 @@ import {
 
 	const albumDownloadQuality = $derived($downloadPreferencesStore.downloadQuality as AudioQuality);
 	const albumDownloadMode = $derived($downloadPreferencesStore.mode);
+	const downloadActionLabel = $derived(
+		$downloadPreferencesStore.storage === 'server' ? 'Save to server' : 'Download'
+	);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
 	const downloadCoverSeperatelyPreference = $derived(
 		$userPreferencesStore.downloadCoversSeperately
@@ -794,10 +797,10 @@ import {
 									isCancelled={$cancelledIds.has(track.id)}
 									onCancel={(event) => handleCancelDownload(track.id, event)}
 									onDownload={(event) => handleDownloadWithFallback(track, event)}
-									title={$downloadingIds.has(track.id) ? 'Cancel download' : 'Download track'}
+									title={$downloadingIds.has(track.id) ? 'Cancel download' : `${downloadActionLabel} track`}
 									ariaLabel={$downloadingIds.has(track.id)
 										? `Cancel download for ${track.title}`
-										: `Download ${track.title}`}
+										: `${downloadActionLabel} ${track.title}`}
 									class="rounded-full"
 								/>
 								<div class="relative">
