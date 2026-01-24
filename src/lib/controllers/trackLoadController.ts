@@ -470,6 +470,15 @@ export const createTrackLoadController = (
 				return;
 			}
 
+			try {
+				const dashResult = await loadDashTrack(tidalTrack, requestedQuality, sequence);
+				if (dashResult.result.kind === 'dash') {
+					return;
+				}
+			} catch (dashError) {
+				console.warn('DASH playback failed for standard quality, falling back to direct stream.', dashError);
+			}
+
 			await loadStandardTrack(tidalTrack, requestedQuality, sequence);
 		} catch (error) {
 			console.error('Failed to load track:', error);

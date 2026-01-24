@@ -171,7 +171,12 @@ async function readJsonWithProgress(
 		return response.json();
 	}
 	if (!response.body || typeof response.body.getReader !== 'function') {
-		return response.json();
+		const text = await response.text();
+		const receivedBytes = new TextEncoder().encode(text).byteLength;
+		if (receivedBytes > 0) {
+			onProgress({ receivedBytes, totalBytes: receivedBytes, percent: 1 });
+		}
+		return text ? JSON.parse(text) : null;
 	}
 
 	const contentLength = response.headers.get('content-length');
@@ -199,6 +204,8 @@ async function readJsonWithProgress(
 
 	if (totalBytes) {
 		onProgress({ receivedBytes, totalBytes, percent: 1 });
+	} else if (receivedBytes > 0) {
+		onProgress({ receivedBytes, totalBytes: receivedBytes, percent: 1 });
 	}
 
 	const merged = new Uint8Array(receivedBytes);

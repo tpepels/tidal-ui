@@ -338,6 +338,11 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 	return copy.buffer;
 }
 
+async function bufferReadableStream(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> {
+	const arrayBuffer = await new Response(stream).arrayBuffer();
+	return new Uint8Array(arrayBuffer);
+}
+
 async function readCachedResponse(
 	redis: Redis,
 	key: string,
@@ -575,6 +580,7 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 		if (cached) {
 			const headers = applyProxyHeaders(cached.headers, origin);
 			const bodyBytes = base64ToUint8Array(cached.bodyBase64);
+			headers.set('Content-Length', String(bodyBytes.byteLength));
 			return new Response(toArrayBuffer(bodyBytes), {
 				status: cached.status,
 				statusText: cached.statusText,
@@ -607,18 +613,72 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 				);
 			}
 			console.log('Proxy upstream response status:', upstream.status, upstream.statusText);
-			console.log('Proxy upstream content-type:', upstream.headers.get('content-type'));
+			const upstreamContentType = upstream.headers.get('content-type');
+			console.log('Proxy upstream content-type:', upstreamContentType);
 		const upstreamHeaderEntries = Array.from(upstream.headers.entries());
 		const sanitizedHeaderEntries = sanitizeHeaderEntries(upstreamHeaderEntries);
 		const headers = applyProxyHeaders(sanitizedHeaderEntries, origin);
+
+		const upstreamCacheControl = upstream.headers.get('cache-control');
+		const upstreamContentLength = upstream.headers.get('content-length');
+		const canStream =
+			Boolean(upstream.body) &&
+			!hasRangeRequest &&
+			Boolean(upstreamContentType && isCacheableContentType(upstreamContentType));
+
+		if (canStream && upstream.body) {
+			const [streamForClient, streamForCache] = upstream.body.tee();
+			if (upstreamContentLength) {
+				headers.set('Content-Length', upstreamContentLength);
+			}
+
+			if (redisHealthy && cacheKey && redis) {
+				void (async () => {
+					try {
+						const bodyBytes = await bufferReadableStream(streamForCache);
+						const ttlSeconds = getCacheTtlSeconds(parsedTarget, cacheTtlConfig);
+						const cacheable =
+							upstream.status === 200 &&
+							ttlSeconds > 0 &&
+							!hasDisqualifyingCacheControl(upstreamCacheControl) &&
+							isCacheableContentType(upstreamContentType) &&
+							bodyBytes.byteLength <= MAX_CACHE_BODY_BYTES;
+						if (cacheable) {
+							const entry: CachedProxyEntry = {
+								status: upstream.status,
+								statusText: upstream.statusText,
+								headers: sanitizedHeaderEntries,
+								bodyBase64: uint8ArrayToBase64(bodyBytes)
+							};
+							await writeCachedResponse(redis, cacheKey, entry, ttlSeconds, () => {
+								redisHealthy = false;
+							});
+						}
+					} catch (error) {
+						console.error('Failed to buffer streamed proxy response:', error);
+					}
+				})();
+			} else {
+				void bufferReadableStream(streamForCache).catch((error) => {
+					console.error('Failed to drain streamed proxy response:', error);
+				});
+			}
+
+			return new Response(streamForClient, {
+				status: upstream.status,
+				statusText: upstream.statusText,
+				headers
+			});
+		}
+
 		const bodyArrayBuffer = await upstream.arrayBuffer();
 		console.log('Proxy response body size:', bodyArrayBuffer.byteLength);
 		const bodyBytes = new Uint8Array(bodyArrayBuffer);
 
 		if (redisHealthy && cacheKey && redis) {
 			const ttlSeconds = getCacheTtlSeconds(parsedTarget, cacheTtlConfig);
-			const contentType = upstream.headers.get('content-type');
-			const cacheControl = upstream.headers.get('cache-control');
+			const contentType = upstreamContentType;
+			const cacheControl = upstreamCacheControl;
 			const byteLength = bodyBytes.byteLength;
 			const cacheable =
 				upstream.status === 200 &&
@@ -639,6 +699,8 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 				});
 			}
 		}
+
+		headers.set('Content-Length', String(bodyBytes.byteLength));
 
 		// Force 200 for media content that returns 206 (some servers incorrectly return 206 without range requests)
 		let responseStatus = upstream.status;

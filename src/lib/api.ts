@@ -173,15 +173,27 @@ class LosslessAPI {
 
 	private extractStreamUrlFromManifest(manifest: string): string | null {
 		try {
-			const decoded = this.decodeBase64Manifest(manifest);
-			try {
-				const parsed = JSON.parse(decoded) as { urls?: string[] };
-				if (parsed && Array.isArray(parsed.urls) && parsed.urls.length > 0) {
-					return parsed.urls[0] ?? null;
+			let decoded = this.decodeBase64Manifest(manifest);
+			const trimmed = decoded.trim();
+			if (!trimmed.startsWith('{') && !trimmed.startsWith('[') && this.isValidMediaUrl(decoded)) {
+				return decoded;
+			}
+			const parsed = parseJsonSafely<{ urls?: unknown; url?: unknown; manifest?: unknown }>(decoded);
+			if (parsed) {
+				if (Array.isArray(parsed.urls) && parsed.urls.length > 0) {
+					const candidate = parsed.urls.find((value) => typeof value === 'string');
+					if (candidate) return candidate;
 				}
-			} catch (jsonError) {
-				// Ignore JSON parse failure and fall back to regex/XML search
-				console.debug('Manifest JSON parse failed, falling back to pattern match', jsonError);
+				if (typeof parsed.url === 'string') {
+					return parsed.url;
+				}
+				if (typeof parsed.manifest === 'string') {
+					decoded = this.decodeBase64Manifest(parsed.manifest);
+					const nestedTrimmed = decoded.trim();
+					if (!nestedTrimmed.startsWith('{') && !nestedTrimmed.startsWith('[') && this.isValidMediaUrl(decoded)) {
+						return decoded;
+					}
+				}
 			}
 
 			// If this is a segmented DASH manifest, don't extract a URL - let it fall through to segment download
@@ -974,6 +986,7 @@ class LosslessAPI {
 		let replayGain: number | null = null;
 		let sampleRate: number | null = null;
 		let bitDepth: number | null = null;
+		const isDev = import.meta.env.DEV;
 
 		if (this.isHiResQuality(quality)) {
 			try {
@@ -1039,6 +1052,19 @@ class LosslessAPI {
 					return result;
 				}
 
+				if (isDev) {
+					const manifestPayload = lookup.info.manifest;
+					console.debug('[getStreamData] manifest payload summary', {
+						trackId,
+						quality,
+						manifestType: typeof manifestPayload,
+						manifestLength: typeof manifestPayload === 'string' ? manifestPayload.length : null,
+						manifestStartsWith: typeof manifestPayload === 'string'
+							? manifestPayload.trim().slice(0, 40)
+							: null,
+						manifestMimeType: lookup.info.manifestMimeType ?? null
+					});
+				}
 				const manifestUrl = this.extractStreamUrlFromManifest(lookup.info.manifest);
 				if (manifestUrl) {
 					const result = { url: manifestUrl, replayGain, sampleRate, bitDepth };
