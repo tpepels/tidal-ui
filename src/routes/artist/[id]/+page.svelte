@@ -313,17 +313,24 @@ async function loadArtist(id: number) {
 		<div class="rounded-2xl border border-gray-800 bg-gray-900/40 p-6">
 			<div class="mb-3 text-sm font-semibold text-gray-300">Loading artist data</div>
 			<div class="h-2 w-full overflow-hidden rounded-full bg-gray-800">
-				<div
-					class="h-full rounded-full bg-blue-500 transition-all {hasLoadTotal ? '' : 'animate-pulse'}"
-					style="width: {hasLoadTotal ? Math.min(100, (loadReceivedBytes / totalBytesNumber) * 100) : 45}%"
-				></div>
+				{#if hasLoadTotal}
+					<div
+						class="h-full rounded-full bg-blue-500 transition-all"
+						style="width: {Math.min(100, (loadReceivedBytes / totalBytesNumber) * 100)}%"
+					></div>
+				{:else}
+					<div
+						class="h-full w-1/3 rounded-full bg-blue-500 animate-[indeterminate_1.5s_ease-in-out_infinite]"
+					></div>
+				{/if}
 			</div>
 			<div class="mt-3 text-xs text-gray-400">
 				{#if hasLoadTotal}
-					{formatBytes(loadReceivedBytes)} / {formatBytes(totalBytesNumber)} (
-					{Math.min(100, Math.round((loadReceivedBytes / totalBytesNumber) * 100))}%)
+					{formatBytes(loadReceivedBytes)} / {formatBytes(totalBytesNumber)} ({Math.min(100, Math.round((loadReceivedBytes / totalBytesNumber) * 100))}%)
+				{:else if loadReceivedBytes > 0}
+					{formatBytes(loadReceivedBytes)} received...
 				{:else}
-					{formatBytes(loadReceivedBytes)} / ? total (waiting for size)
+					Loading artist data...
 				{/if}
 			</div>
 		</div>
@@ -560,3 +567,14 @@ async function loadArtist(id: number) {
 		{/if}
 	</div>
 {/if}
+
+<style>
+	@keyframes indeterminate {
+		0% {
+			transform: translateX(-100%);
+		}
+		100% {
+			transform: translateX(400%);
+		}
+	}
+</style>

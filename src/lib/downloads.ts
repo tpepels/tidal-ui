@@ -809,6 +809,13 @@ export async function downloadAlbum(
 		`[Album Download] Using max ${maxConcurrent} concurrent downloads (memory: ${Math.round(getMemoryUsage() / 1024 / 1024)}MB)`
 	);
 
+	// Track completed downloads for progress callbacks (thread-safe counter)
+	let completedDownloads = 0;
+	const reportProgress = (track: Track) => {
+		completedDownloads += 1;
+		callbacks?.onTrackDownloaded?.(completedDownloads, total, track);
+	};
+
 	// Create async download task for each track
 	const downloadTasks = tracks.map(async (track) => {
 		const filename = buildTrackFilename(
@@ -875,6 +882,7 @@ export async function downloadAlbum(
 						);
 						if (serverResult.success) {
 							downloadUiStore.completeTrackDownload(taskId);
+							reportProgress(track);
 							return { success: true, track };
 						} else {
 							downloadLogStore.error(`Server download failed: ${serverResult.error}`);
@@ -1051,33 +1059,29 @@ export async function downloadAlbum(
 				// Mark as 100% complete
 				downloadUiStore.updateTrackStage(taskId, 1.0);
 				downloadUiStore.completeTrackDownload(taskId);
+				reportProgress(track);
 				return { success: true, track };
 			}
 		} catch (error) {
 			downloadLogStore.error(`Processing error: ${error}`);
 			downloadUiStore.errorTrackDownload(taskId, error);
 			return { success: false, track, error };
-		} finally {
-			// Progress tracking is now handled after all tasks complete to avoid race conditions
 		}
 	});
 
 	// Wait for all downloads to complete (adaptive concurrency based on memory)
 	const results = await parallelMap(downloadTasks, (task) => task, maxConcurrent);
 
-	// Count successes/failures (avoiding race conditions)
-	const completedCount = results.filter((r) => r.success).length;
+	// Count successes/failures
+	const successCount = results.filter((r) => r.success).length;
 	const failedCount = results.filter((r) => !r.success).length;
 
-	// Progress logging and callbacks (now safe since all tasks are complete)
-	const progressMsg = `Progress: ${completedCount}/${total} tracks`;
+	// Progress logging (callbacks already called in real-time via reportProgress)
+	const progressMsg = `Completed: ${successCount}/${total} tracks`;
 	downloadLogStore.log(progressMsg);
-	if (completedCount === total) {
+	if (successCount === total) {
 		downloadLogStore.success('All downloads completed!');
 	}
-	results.forEach((result, index) => {
-		callbacks?.onTrackDownloaded?.(index + 1, total, result.track);
-	});
 
 	// Summary logging
 	if (failedCount > 0) {

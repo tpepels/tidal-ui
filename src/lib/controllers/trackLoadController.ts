@@ -93,6 +93,27 @@ export const createTrackLoadController = (
 
 	const getCacheKey = (trackId: number, quality: AudioQuality) => `${trackId}:${quality}`;
 
+	/**
+	 * Helper to check if a sequence is still valid before and after an async operation.
+	 * Returns true if the sequence is still current, false if it was invalidated.
+	 */
+	const isSequenceValid = (sequence: number): boolean => sequence === options.getSequence();
+
+	/**
+	 * Executes state updates only if the sequence is still valid.
+	 * Prevents partial state updates from stale operations.
+	 */
+	const withSequenceCheck = <T>(sequence: number, updates: () => T): T | null => {
+		if (!isSequenceValid(sequence)) {
+			console.debug('[TrackLoadController] Skipping update for stale sequence', {
+				sequence,
+				current: options.getSequence()
+			});
+			return null;
+		}
+		return updates();
+	};
+
 	const revokeHiResObjectUrl = () => {
 		if (hiResObjectUrl) {
 			URL.revokeObjectURL(hiResObjectUrl);
@@ -327,7 +348,19 @@ export const createTrackLoadController = (
 			await destroy();
 			options.setDashPlaybackActive(false);
 			const { url, replayGain, sampleRate, bitDepth } = await resolveStream(track, quality);
-			if (sequence !== options.getSequence()) {
+
+			// Use sequence check to prevent partial state updates from stale operations
+			const updated = withSequenceCheck(sequence, () => {
+				options.setStreamUrl(url);
+				options.setCurrentPlaybackQuality(quality);
+				options.setReplayGain(replayGain);
+				options.setSampleRate(sampleRate);
+				options.setBitDepth(bitDepth);
+				options.onLoadComplete?.(url, quality);
+				return true;
+			});
+
+			if (!updated) {
 				console.info('[AudioPlayer] Ignoring stale stream load', {
 					trackId: track.id,
 					sequence,
@@ -335,12 +368,7 @@ export const createTrackLoadController = (
 				});
 				return;
 			}
-			options.setStreamUrl(url);
-			options.setCurrentPlaybackQuality(quality);
-			options.setReplayGain(replayGain);
-			options.setSampleRate(sampleRate);
-			options.setBitDepth(bitDepth);
-			options.onLoadComplete?.(url, quality);
+
 			pruneStreamCache();
 			const audioElement = options.getAudioElement();
 			if (audioElement) {
@@ -352,7 +380,9 @@ export const createTrackLoadController = (
 		} catch (error) {
 			console.error('[AudioPlayer] Failed to load standard track:', error);
 			options.onLoadError?.(error instanceof Error ? error : new Error('Failed to load track'));
-			options.setLoading(false);
+			if (isSequenceValid(sequence)) {
+				options.setLoading(false);
+			}
 		}
 	};
 
@@ -379,9 +409,13 @@ export const createTrackLoadController = (
 		});
 		hiResObjectUrl = URL.createObjectURL(blob);
 		const player = await ensureShakaPlayer();
-		if (sequence !== options.getSequence()) {
+
+		// Check sequence validity before continuing with playback setup
+		if (!isSequenceValid(sequence)) {
+			console.debug('[TrackLoadController] Aborting DASH load for stale sequence');
 			return cached;
 		}
+
 		const audioElement = options.getAudioElement();
 		if (audioElement) {
 			audioElement.pause();
@@ -390,18 +424,22 @@ export const createTrackLoadController = (
 		}
 		await player.unload();
 		await player.load(hiResObjectUrl);
-		options.setDashPlaybackActive(true);
-		options.setStreamUrl('');
-		options.setCurrentPlaybackQuality('HI_RES_LOSSLESS');
-		options.onLoadComplete?.(null, 'HI_RES_LOSSLESS');
 
-		if (sequence === options.getSequence() && options.getCurrentTrackId() === track.id) {
-			options.setSampleRate(trackInfo.sampleRate);
-			options.setBitDepth(trackInfo.bitDepth);
-			if (trackInfo.replayGain !== null) {
-				options.setReplayGain(trackInfo.replayGain);
+		// Use sequence check to apply all state updates atomically
+		withSequenceCheck(sequence, () => {
+			options.setDashPlaybackActive(true);
+			options.setStreamUrl('');
+			options.setCurrentPlaybackQuality('HI_RES_LOSSLESS');
+			options.onLoadComplete?.(null, 'HI_RES_LOSSLESS');
+
+			if (options.getCurrentTrackId() === track.id) {
+				options.setSampleRate(trackInfo.sampleRate);
+				options.setBitDepth(trackInfo.bitDepth);
+				if (trackInfo.replayGain !== null) {
+					options.setReplayGain(trackInfo.replayGain);
+				}
 			}
-		}
+		});
 
 		pruneDashManifestCache();
 		return cached;
@@ -470,15 +508,8 @@ export const createTrackLoadController = (
 				return;
 			}
 
-			try {
-				const dashResult = await loadDashTrack(tidalTrack, requestedQuality, sequence);
-				if (dashResult.result.kind === 'dash') {
-					return;
-				}
-			} catch (dashError) {
-				console.warn('DASH playback failed for standard quality, falling back to direct stream.', dashError);
-			}
-
+			// For standard qualities, go directly to stream resolution without DASH attempt
+			// This avoids unnecessary latency and simplifies the fallback chain
 			await loadStandardTrack(tidalTrack, requestedQuality, sequence);
 		} catch (error) {
 			console.error('Failed to load track:', error);

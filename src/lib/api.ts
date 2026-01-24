@@ -1478,7 +1478,7 @@ class LosslessAPI {
 			if (artworkId && options?.downloadCoverSeperately) {
 				// Try multiple sizes as fallback
 				const coverSizes: Array<'1280' | '640' | '320'> = ['1280', '640', '320'];
-				const coverFetchSuccess = false;
+				let coverFetchSuccess = false;
 
 				for (const size of coverSizes) {
 					if (coverFetchSuccess) break;
@@ -1585,6 +1585,7 @@ class LosslessAPI {
 							console.log(
 								`[Cover Download] Successfully downloaded (${size}x${size}, format: ${imageFormat.extension}, strategy: ${strategy.name})`
 							);
+							coverFetchSuccess = true;
 							break;
 						} catch (sizeError) {
 							console.warn(
@@ -1985,7 +1986,7 @@ class LosslessAPI {
 
 						// Try multiple sizes as fallback
 						const coverSizes: Array<'1280' | '640' | '320'> = ['1280', '640', '320'];
-						const coverFetchSuccess = false;
+						let coverFetchSuccess = false;
 
 						for (const size of coverSizes) {
 							if (coverFetchSuccess) break;
@@ -2092,6 +2093,7 @@ class LosslessAPI {
 									console.log(
 										`[Cover Download] Successfully downloaded (${size}x${size}, format: ${imageFormat.extension}, strategy: ${strategy.name})`
 									);
+									coverFetchSuccess = true;
 									break;
 								} catch (sizeError) {
 									console.warn(

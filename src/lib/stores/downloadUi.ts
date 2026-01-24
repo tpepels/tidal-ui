@@ -43,7 +43,7 @@ interface DownloadUiState {
 	tasks: TrackDownloadTask[];
 }
 
-const MAX_VISIBLE_TASKS = 4;
+const MAX_VISIBLE_TASKS = 8;
 const COUNTDOWN_DEFAULT_SECONDS = 5;
 const ACTIVE_TASK_STATUSES = new Set<TrackDownloadStatus>(['pending', 'running']);
 const isTestHookEnabled = import.meta.env.DEV || import.meta.env.VITE_E2E === 'true';
