@@ -6,23 +6,44 @@
  * and the download/conversion services.
  */
 
-import type { PlayableTrack, Track, AudioQuality } from '$lib/types';
-import { isSonglinkTrack } from '$lib/types';
+import type { PlayableTrack, AudioQuality } from '$lib/types';
 import {
 	buildDownloadFilename,
 	type DownloadError
 } from '$lib/services/playback/downloadService';
-import { convertSonglinkTrackToTidal } from '$lib/services/playback/trackConversionService';
-import type { TrackConversionError } from '$lib/services/playback/trackConversionService';
-import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
-import { downloadUiStore } from '$lib/stores/downloadUi';
 import { downloadPreferencesStore, type DownloadStorage } from '$lib/stores/downloadPreferences';
-import { downloadLogStore } from '$lib/stores/downloadLog';
 import { userPreferencesStore } from '$lib/stores/userPreferences';
-import { toasts } from '$lib/stores/toasts';
-import { trackError } from '$lib/core/errorTracker';
-import { downloadTrackToServer } from '$lib/downloads';
+import { resolveDownloadOptions } from './download/resolveDownloadOptions';
+import { mapDownloadError, type MappedDownloadError } from '$lib/downloadErrorMapper';
+import { createDownloadUiPort, type DownloadUiPort } from './download/downloadUiPort';
+import {
+	createDownloadExecutionPort,
+	type DownloadExecutionPort
+} from './download/downloadExecutionPort';
+import { createTrackResolver, type TrackResolutionError, type TrackResolver } from './download/trackResolver';
+import { createDownloadExecutors } from './download/executors';
+import { createProgressTracker } from './download/progressTracker';
+import { createDownloadLogPort, type DownloadLogPort } from './download/downloadLogPort';
+import {
+	createDownloadNotificationPort,
+	type DownloadNotificationPort
+} from './download/downloadNotificationPort';
 import { get } from 'svelte/store';
+
+const isMappedDownloadError = (value: unknown): value is MappedDownloadError =>
+	typeof value === 'object' &&
+	value !== null &&
+	'code' in value &&
+	'retry' in value &&
+	'userMessage' in value;
+
+export interface DownloadOrchestratorDeps {
+	ui?: DownloadUiPort;
+	log?: DownloadLogPort;
+	notifier?: DownloadNotificationPort;
+	trackResolver?: TrackResolver;
+	execution?: DownloadExecutionPort;
+}
 
 /**
  * Download orchestration options
@@ -55,6 +76,9 @@ export interface DownloadOrchestratorOptions {
 	/** Whether to skip the ffmpeg countdown UI */
 	skipFfmpegCountdown?: boolean;
 
+	/** Whether to use the download coordinator path */
+	useCoordinator?: boolean;
+
 	/** Storage target for download */
 	storage?: DownloadStorage;
 
@@ -73,8 +97,8 @@ export type DownloadOrchestratorResult =
  * Unified error type combining conversion and download errors
  */
 export type DownloadOrchestratorError =
-	| { code: 'SONGLINK_NOT_SUPPORTED'; retry: false; message: string; canConvert: true }
-	| { code: 'CONVERSION_FAILED'; retry: false; message: string; conversionError: TrackConversionError }
+	| TrackResolutionError
+	| { code: 'SERVER_ERROR'; retry: true; message: string; originalError?: unknown }
 	| DownloadError;
 
 /**
@@ -96,6 +120,21 @@ export class DownloadOrchestrator {
 
 	/** Maximum number of stored attempts (prevents memory leak) */
 	private readonly MAX_STORED_ATTEMPTS = 50;
+	private readonly ui: DownloadUiPort;
+	private readonly log: DownloadLogPort;
+	private readonly notifier: DownloadNotificationPort;
+	private readonly trackResolver: TrackResolver;
+	private readonly execution: DownloadExecutionPort;
+	private readonly executors: ReturnType<typeof createDownloadExecutors>;
+
+	constructor(deps?: DownloadOrchestratorDeps) {
+		this.ui = deps?.ui ?? createDownloadUiPort();
+		this.log = deps?.log ?? createDownloadLogPort();
+		this.notifier = deps?.notifier ?? createDownloadNotificationPort();
+		this.trackResolver = deps?.trackResolver ?? createTrackResolver();
+		this.execution = deps?.execution ?? createDownloadExecutionPort();
+		this.executors = createDownloadExecutors(this.execution);
+	}
 
 	/**
 	 * Initiates a track download with automatic Songlink conversion if needed
@@ -111,53 +150,37 @@ export class DownloadOrchestrator {
 		const effectiveOptions = this.resolveOptions(options);
 		const effectiveConvertAacToMp3 =
 			effectiveOptions.storage === 'client' ? effectiveOptions.convertAacToMp3 : false;
-		let targetTrack: Track;
 
 		// Step 1: Handle Songlink conversion if needed
-		if (isSonglinkTrack(track)) {
-			if (!effectiveOptions.autoConvertSonglink) {
-				return {
-					success: false,
-					error: {
-						code: 'SONGLINK_NOT_SUPPORTED',
-						retry: false,
-						message:
-							'Songlink tracks must be converted to TIDAL first. Enable auto-conversion or convert manually.',
-						canConvert: true
-					}
-				};
-			}
+		const resolutionResult = await this.trackResolver.resolve(track, {
+			autoConvertSonglink: effectiveOptions.autoConvertSonglink
+		});
 
-			// Attempt automatic conversion
-			const conversionResult = await convertSonglinkTrackToTidal(track);
-
-			if (!conversionResult.success || !conversionResult.track) {
+		if (!resolutionResult.success) {
+			if (resolutionResult.error.code === 'CONVERSION_FAILED') {
 				this.showNotification(
 					'error',
-					`Failed to convert track: ${conversionResult.error?.message || 'Unknown error'}`,
+					`Failed to convert track: ${
+						resolutionResult.error.conversionError?.message || 'Unknown error'
+					}`,
 					effectiveOptions.notificationMode
 				);
-
-				return {
-					success: false,
-					error: {
-						code: 'CONVERSION_FAILED',
-						retry: false,
-						message: `Auto-conversion failed: ${conversionResult.error?.message || 'Unknown error'}`,
-						conversionError: conversionResult.error!
-					}
-				};
 			}
 
-			targetTrack = conversionResult.track;
+			return {
+				success: false,
+				error: resolutionResult.error
+			};
+		}
 
+		const targetTrack = resolutionResult.track;
+
+		if (resolutionResult.converted) {
 			this.showNotification(
 				'success',
 				`Converted "${track.title}" to TIDAL`,
 				effectiveOptions.notificationMode
 			);
-		} else {
-			targetTrack = track;
 		}
 
 		// Step 2: Build filename
@@ -168,7 +191,7 @@ export class DownloadOrchestrator {
 		);
 
 		// Step 3: Initialize download task in UI store
-		const { taskId, controller } = downloadUiStore.beginTrackDownload(
+		const { taskId, controller } = this.ui.beginTrackDownload(
 			targetTrack,
 			filename,
 			{
@@ -182,98 +205,105 @@ export class DownloadOrchestrator {
 
 		// Optionally skip ffmpeg countdown
 		if (effectiveOptions.skipFfmpegCountdown) {
-			downloadUiStore.skipFfmpegCountdown();
+			this.ui.skipFfmpegCountdown();
 		}
 
 		// Step 4: Execute download via API with all callbacks wired to store
 		try {
-			if (effectiveOptions.storage === 'server') {
-				const downloadWeight = 0.55;
-				let downloadFraction = 0;
-				let uploadFraction = 0;
+			const progressTracker = createProgressTracker({
+				taskId: taskId!,
+				storage: effectiveOptions.storage,
+				ui: this.ui
+			});
 
-				const updateProgress = () => {
-					const overall = Math.min(
-						1,
-						downloadFraction * downloadWeight + uploadFraction * (1 - downloadWeight)
-					);
-					downloadUiStore.updateTrackStage(taskId!, overall);
-				};
-
-				const serverResult = await downloadTrackToServer(targetTrack, effectiveOptions.quality, {
+			if (effectiveOptions.useCoordinator) {
+				const isServer = effectiveOptions.storage === 'server';
+				const coordinatorResult = await this.executors.coordinator.execute({
+					track: targetTrack,
+					quality: effectiveOptions.quality,
+					filename,
+					storage: effectiveOptions.storage,
+					convertAacToMp3: effectiveConvertAacToMp3,
 					downloadCoverSeperately: effectiveOptions.downloadCoversSeperately,
 					conflictResolution: effectiveOptions.conflictResolution,
 					signal: effectiveOptions.signal ?? controller.signal,
-					onProgress: (progress) => {
-						if (progress.stage === 'downloading') {
-							downloadUiStore.updateTrackPhase(taskId!, 'downloading');
-							const fraction = progress.totalBytes
-								? progress.receivedBytes / progress.totalBytes
-								: Math.min(downloadFraction + 0.05, 0.9);
-							downloadFraction = Math.max(downloadFraction, fraction);
-						} else if (progress.stage === 'embedding') {
-							downloadUiStore.updateTrackPhase(taskId!, 'embedding');
-							const fraction = 0.85 + progress.progress * 0.15;
-							downloadFraction = Math.max(downloadFraction, Math.min(1, fraction));
-						} else if (progress.stage === 'uploading') {
-							downloadUiStore.updateTrackPhase(taskId!, 'uploading');
-							const fraction = progress.totalBytes
-								? progress.uploadedBytes / progress.totalBytes
-								: uploadFraction;
-							uploadFraction = Math.max(uploadFraction, Math.min(1, fraction));
-						}
-						updateProgress();
+					onProgress: progressTracker
+				});
+
+				if (!coordinatorResult.success) {
+					const mappedError = mapDownloadError(coordinatorResult.error ?? 'Download failed');
+					if (isServer) {
+						this.log.error(`Server download failed: ${mappedError.message}`);
 					}
+					throw mappedError;
+				}
+
+				if (isServer) {
+					this.log.success(
+						coordinatorResult.message
+							? `Server download complete: ${coordinatorResult.message}`
+							: 'Server download complete'
+					);
+				}
+			} else if (effectiveOptions.storage === 'server') {
+				const serverResult = await this.executors.server.execute({
+					track: targetTrack,
+					quality: effectiveOptions.quality,
+					filename,
+					storage: effectiveOptions.storage,
+					convertAacToMp3: effectiveConvertAacToMp3,
+					downloadCoverSeperately: effectiveOptions.downloadCoversSeperately,
+					conflictResolution: effectiveOptions.conflictResolution,
+					signal: effectiveOptions.signal ?? controller.signal,
+					onProgress: progressTracker
 				});
 
 				if (!serverResult.success) {
 					const errorMessage = serverResult.error ?? 'Server download failed';
-					downloadUiStore.errorTrackDownload(taskId, errorMessage);
-					downloadLogStore.error(`Server download failed: ${errorMessage}`);
+					this.ui.errorTrackDownload(taskId, errorMessage);
+					this.log.error(`Server download failed: ${errorMessage}`);
 					throw new Error(errorMessage);
 				}
 
-				downloadLogStore.success(
+				this.log.success(
 					serverResult.message ? `Server download complete: ${serverResult.message}` : 'Server download complete'
 				);
 			} else {
-				await losslessAPI.downloadTrack(targetTrack.id, effectiveOptions.quality, filename, {
-					signal: effectiveOptions.signal ?? controller.signal,
+				await this.executors.client.execute({
+					track: targetTrack,
+					quality: effectiveOptions.quality,
+					filename,
+					storage: effectiveOptions.storage,
 					convertAacToMp3: effectiveConvertAacToMp3,
 					downloadCoverSeperately: effectiveOptions.downloadCoversSeperately,
+					signal: effectiveOptions.signal ?? controller.signal,
 					ffmpegAutoTriggered: effectiveOptions.ffmpegAutoTriggered ?? false,
-					onProgress: (progress: TrackDownloadProgress) => {
-						if (progress.stage === 'downloading') {
-							downloadUiStore.updateTrackProgress(taskId!, progress.receivedBytes, progress.totalBytes);
-						} else if (progress.stage === 'embedding') {
-							downloadUiStore.updateTrackStage(taskId!, progress.progress);
-						}
-					},
+					onProgress: progressTracker,
 					onFfmpegCountdown: ({ totalBytes, autoTriggered }) => {
 						if (typeof totalBytes === 'number') {
-							downloadUiStore.startFfmpegCountdown(totalBytes, { autoTriggered });
+							this.ui.startFfmpegCountdown(totalBytes, { autoTriggered });
 						} else {
-							downloadUiStore.startFfmpegCountdown(0, { autoTriggered });
+							this.ui.startFfmpegCountdown(0, { autoTriggered });
 						}
 					},
 					onFfmpegStart: () => {
-						downloadUiStore.startFfmpegLoading();
+						this.ui.startFfmpegLoading();
 					},
 					onFfmpegProgress: (progress: number) => {
-						downloadUiStore.updateFfmpegProgress(progress);
+						this.ui.updateFfmpegProgress(progress);
 					},
 					onFfmpegComplete: () => {
-						downloadUiStore.completeFfmpeg();
+						this.ui.completeFfmpeg();
 					},
 					onFfmpegError: (error: unknown) => {
 						const message = error instanceof Error ? error.message : 'FFmpeg conversion failed';
-						downloadUiStore.errorFfmpeg(message);
+						this.ui.errorFfmpeg(message);
 					}
 				});
 			}
 
 			// Download completed successfully
-			downloadUiStore.completeTrackDownload(taskId!);
+			this.ui.completeTrackDownload(taskId!);
 			const successMessage =
 				effectiveOptions.storage === 'server'
 					? `Saved to server: ${filename}`
@@ -284,7 +314,7 @@ export class DownloadOrchestrator {
 		} catch (error) {
 			// Handle cancellation vs errors
 			if (error instanceof DOMException && error.name === 'AbortError') {
-				downloadUiStore.completeTrackDownload(taskId!);
+				this.ui.completeTrackDownload(taskId!);
 				return {
 					success: false,
 					error: {
@@ -297,17 +327,17 @@ export class DownloadOrchestrator {
 			}
 
 			// Handle other errors
-			const errorMessage = error instanceof Error ? error.message : 'Unexpected download error';
-			downloadUiStore.errorTrackDownload(taskId, errorMessage);
-			this.showNotification('error', errorMessage, effectiveOptions.notificationMode);
+			const mappedError = isMappedDownloadError(error) ? error : mapDownloadError(error);
+			this.ui.errorTrackDownload(taskId, mappedError.userMessage);
+			this.showNotification('error', mappedError.userMessage, effectiveOptions.notificationMode);
 
 			return {
 				success: false,
 				error: {
-					code: 'UNKNOWN_ERROR',
-					retry: false,
-					message: errorMessage,
-					originalError: error
+					code: mappedError.code,
+					retry: mappedError.retry,
+					message: mappedError.userMessage,
+					originalError: mappedError.originalError
 				},
 				taskId
 			};
@@ -345,7 +375,7 @@ export class DownloadOrchestrator {
 	 * @param taskId - Task ID to cancel
 	 */
 	cancelDownload(taskId: string): void {
-		downloadUiStore.cancelTrackDownload(taskId);
+		this.ui.cancelTrackDownload(taskId);
 	}
 
 	/**
@@ -363,19 +393,7 @@ export class DownloadOrchestrator {
 		const prefs = get(userPreferencesStore);
 		const downloadPrefs = get(downloadPreferencesStore);
 
-		return {
-			quality: options?.quality ?? 'LOSSLESS',
-			convertAacToMp3: options?.convertAacToMp3 ?? prefs.convertAacToMp3,
-			downloadCoversSeperately: options?.downloadCoversSeperately ?? prefs.downloadCoversSeperately,
-			autoConvertSonglink: options?.autoConvertSonglink ?? true,
-			notificationMode: options?.notificationMode ?? 'alert',
-			subtitle: options?.subtitle ?? '',
-			ffmpegAutoTriggered: options?.ffmpegAutoTriggered ?? false,
-			skipFfmpegCountdown: options?.skipFfmpegCountdown ?? false,
-			storage: options?.storage ?? downloadPrefs.storage,
-			conflictResolution: options?.conflictResolution ?? 'overwrite_if_different',
-			signal: options?.signal
-		};
+		return resolveDownloadOptions(options, prefs, downloadPrefs);
 	}
 
 	private storeAttempt(
@@ -407,27 +425,24 @@ export class DownloadOrchestrator {
 		message: string,
 		mode: 'alert' | 'toast' | 'silent'
 	): void {
+		const errorContext = {
+			component: 'download-orchestrator',
+			domain: 'download',
+			source: 'notification',
+			severity: 'medium'
+		};
+
 		switch (mode) {
 			case 'alert':
 				if (type === 'error') {
-					toasts.error(message);
-					trackError(new Error(message), {
-						component: 'download-orchestrator',
-						domain: 'download',
-						source: 'notification',
-						severity: 'medium'
-					});
+					this.notifier.notify('error', message);
+					this.notifier.trackError(new Error(message), errorContext);
 				}
 				break;
 			case 'toast':
-				toasts[type](message);
+				this.notifier.notify(type, message);
 				if (type === 'error') {
-					trackError(new Error(message), {
-						component: 'download-orchestrator',
-						domain: 'download',
-						source: 'notification',
-						severity: 'medium'
-					});
+					this.notifier.trackError(new Error(message), errorContext);
 				}
 				break;
 			case 'silent':

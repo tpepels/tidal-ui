@@ -17,47 +17,60 @@ const {
 	mockConvertSonglinkTrackToTidal,
 	mockLosslessDownloadTrack,
 	mockDownloadTrackToServer,
+	mockDownloadCoordinatorDownload,
+	mockCreateDownloadCoordinator,
+	mockCreateDownloadSource,
+	mockCreateDownloadSink,
 	mockToasts,
 	mockTrackError
-} = vi.hoisted(() => ({
-	mockDownloadUiStore: {
-		beginTrackDownload: vi.fn(),
-		updateTrackProgress: vi.fn(),
-		updateTrackStage: vi.fn(),
-		updateTrackPhase: vi.fn(),
-		completeTrackDownload: vi.fn(),
-		errorTrackDownload: vi.fn(),
-		cancelTrackDownload: vi.fn(),
-		startFfmpegCountdown: vi.fn(),
-		startFfmpegLoading: vi.fn(),
-		updateFfmpegProgress: vi.fn(),
-		completeFfmpeg: vi.fn(),
-		errorFfmpeg: vi.fn(),
-		skipFfmpegCountdown: vi.fn()
-	},
-	mockUserPreferencesStore: {
-		subscribe: vi.fn(),
-		convertAacToMp3: true,
-		downloadCoversSeperately: false
-	},
-	mockDownloadPreferencesStore: {
-		subscribe: vi.fn(),
-		storage: 'client'
-	},
-	mockDownloadLogStore: {
-		error: vi.fn(),
-		success: vi.fn()
-	},
-	mockDownloadService: vi.fn(),
-	mockConvertSonglinkTrackToTidal: vi.fn(),
-	mockLosslessDownloadTrack: vi.fn(),
-	mockDownloadTrackToServer: vi.fn(),
-	mockToasts: {
-		error: vi.fn(),
-		success: vi.fn()
-	},
-	mockTrackError: vi.fn()
-}));
+} = vi.hoisted(() => {
+	const mockDownloadCoordinatorDownload = vi.fn();
+	return {
+		mockDownloadUiStore: {
+			beginTrackDownload: vi.fn(),
+			updateTrackProgress: vi.fn(),
+			updateTrackStage: vi.fn(),
+			updateTrackPhase: vi.fn(),
+			completeTrackDownload: vi.fn(),
+			errorTrackDownload: vi.fn(),
+			cancelTrackDownload: vi.fn(),
+			startFfmpegCountdown: vi.fn(),
+			startFfmpegLoading: vi.fn(),
+			updateFfmpegProgress: vi.fn(),
+			completeFfmpeg: vi.fn(),
+			errorFfmpeg: vi.fn(),
+			skipFfmpegCountdown: vi.fn()
+		},
+		mockUserPreferencesStore: {
+			subscribe: vi.fn(),
+			convertAacToMp3: true,
+			downloadCoversSeperately: false
+		},
+		mockDownloadPreferencesStore: {
+			subscribe: vi.fn(),
+			storage: 'client'
+		},
+		mockDownloadLogStore: {
+			error: vi.fn(),
+			success: vi.fn()
+		},
+		mockDownloadService: vi.fn(),
+		mockConvertSonglinkTrackToTidal: vi.fn(),
+		mockLosslessDownloadTrack: vi.fn(),
+		mockDownloadTrackToServer: vi.fn(),
+		mockDownloadCoordinatorDownload,
+		mockCreateDownloadCoordinator: vi.fn(() => ({
+			download: mockDownloadCoordinatorDownload
+		})),
+		mockCreateDownloadSource: vi.fn(() => ({})),
+		mockCreateDownloadSink: vi.fn(() => ({})),
+		mockToasts: {
+			error: vi.fn(),
+			success: vi.fn()
+		},
+		mockTrackError: vi.fn()
+	};
+});
 
 // Mock modules
 vi.mock('$lib/stores/downloadUi', () => ({
@@ -101,6 +114,15 @@ vi.mock('$lib/api', () => ({
 
 vi.mock('$lib/downloads', () => ({
 	downloadTrackToServer: (...args: unknown[]) => mockDownloadTrackToServer(...args)
+}));
+
+vi.mock('$lib/download-domain/coordinator', () => ({
+	createDownloadCoordinator: (...args: unknown[]) => mockCreateDownloadCoordinator(...args)
+}));
+
+vi.mock('$lib/download-adapters', () => ({
+	createDownloadSource: (...args: unknown[]) => mockCreateDownloadSource(...args),
+	createDownloadSink: (...args: unknown[]) => mockCreateDownloadSink(...args)
 }));
 
 vi.mock('$lib/stores/toasts', () => ({
@@ -174,6 +196,9 @@ describe('DownloadOrchestrator', () => {
 		orchestrator = new DownloadOrchestrator();
 		vi.clearAllMocks();
 		mockDownloadPreferencesStore.storage = 'client';
+		mockCreateDownloadCoordinator.mockReturnValue({
+			download: mockDownloadCoordinatorDownload
+		});
 
 		// Default mock behavior
 		mockDownloadUiStore.beginTrackDownload.mockReturnValue({
@@ -212,6 +237,42 @@ describe('DownloadOrchestrator', () => {
 					signal: expect.any(AbortSignal),
 					onProgress: expect.any(Function)
 				})
+			);
+		});
+
+		it('uses coordinator path when enabled', async () => {
+			mockDownloadCoordinatorDownload.mockResolvedValue({
+				success: true,
+				filename: 'test-track.flac'
+			});
+
+			const result = await orchestrator.downloadTrack(mockTrack, { useCoordinator: true });
+
+			expect(result.success).toBe(true);
+			expect(mockDownloadCoordinatorDownload).toHaveBeenCalled();
+			expect(mockLosslessDownloadTrack).not.toHaveBeenCalled();
+			expect(mockDownloadTrackToServer).not.toHaveBeenCalled();
+		});
+
+		it('maps coordinator errors to user-friendly messages', async () => {
+			mockDownloadCoordinatorDownload.mockResolvedValue({
+				success: false,
+				error: 'Network failure'
+			});
+
+			const result = await orchestrator.downloadTrack(mockTrack, { useCoordinator: true });
+
+			expect(result.success).toBe(false);
+			if (!result.success) {
+				expect(result.error.code).toBe('NETWORK_ERROR');
+			}
+
+			expect(mockDownloadUiStore.errorTrackDownload).toHaveBeenCalledWith(
+				'task-123',
+				'Network error while downloading. Please try again.'
+			);
+			expect(mockToasts.error).toHaveBeenCalledWith(
+				'Network error while downloading. Please try again.'
 			);
 		});
 
@@ -333,7 +394,7 @@ describe('DownloadOrchestrator', () => {
 
 			expect(result.success).toBe(false);
 			if (!result.success) {
-				expect(result.error.code).toBe('UNKNOWN_ERROR');
+				expect(result.error.code).toBe('NETWORK_ERROR');
 				expect(result.taskId).toBe('task-123');
 			}
 		});
