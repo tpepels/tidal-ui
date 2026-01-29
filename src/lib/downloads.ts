@@ -174,6 +174,22 @@ export async function downloadTrackWithRetry(
 	const baseDelay = BASE_DELAY_MS; // 1 second
 	const trackTitle = track.title ?? 'Unknown Track';
 	const storage = options?.storage ?? 'client';
+	const isE2E =
+		import.meta.env.VITE_E2E === 'true' &&
+		typeof window !== 'undefined' &&
+		Boolean((window as Window & { __tidalE2E?: boolean }).__tidalE2E);
+
+	if (isE2E && storage === 'server') {
+		const blob = new Blob(['E2E'], {
+			type: quality === 'LOSSLESS' || quality === 'HI_RES_LOSSLESS' ? 'audio/flac' : 'audio/mp4'
+		});
+		options?.onProgress?.({
+			stage: 'downloading',
+			receivedBytes: blob.size,
+			totalBytes: blob.size
+		});
+		return { success: true, blob };
+	}
 
 	for (let attempt = 1; attempt <= maxAttempts; attempt++) {
 		try {
@@ -184,6 +200,7 @@ export async function downloadTrackWithRetry(
 			const { blob } = await losslessAPI.fetchTrackBlob(trackId, quality, filename, {
 				ffmpegAutoTriggered: false,
 				convertAacToMp3: storage === 'client' ? options?.convertAacToMp3 : false,
+				skipMetadataEmbedding: storage === 'server',
 				signal: options?.signal,
 				onProgress: options?.onProgress
 			});

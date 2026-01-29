@@ -310,7 +310,8 @@
 		}
 
 		mediaSessionController.updatePositionState();
-		if ($playerStore.isPlaying) {
+		const machineState = playbackMachine.state;
+		if ($playerStore.isPlaying && machineState !== 'playing') {
 			playbackMachine.actions.play();
 		}
 	}

@@ -79,7 +79,7 @@ describe('playbackFallbackController integration', () => {
 		const event = { currentTarget: { error: mediaError } } as unknown as Event;
 		const didFallback = controller.handleAudioError(event);
 
-		expect(didFallback).toBe(true);
+		expect(didFallback).toEqual({ quality: 'HIGH', reason: 'lossless-playback' });
 		expect(machineState.state).toBe('loading');
 		expect(machineState.context.quality).toBe('HIGH');
 		expect(machineState.context.loadRequestId).toBe(prevRequestId + 1);
@@ -166,6 +166,6 @@ describe('playbackFallbackController integration', () => {
 		const didFallback = controller.handleAudioError(event);
 
 		expect(loadStandardTrack).toHaveBeenCalledTimes(1);
-		expect(didFallback).toBe(false);
+		expect(didFallback).toBeNull();
 	});
 });

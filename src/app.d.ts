@@ -36,6 +36,10 @@ declare global {
 		__tidalRehydratePlayback?: () => void;
 		__tidalSetPlaybackQuality?: (quality: import('$lib/types').AudioQuality) => void;
 		__tidalPlaybackMachineState?: () => PlaybackMachineSnapshot;
+		__tidalNext?: () => void;
+		__tidalPrevious?: () => void;
+		__playSrcs?: string[];
+		__playingEvents?: number;
 	}
 }
 

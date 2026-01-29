@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { downloadLogStore } from '$lib/stores/downloadLog';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
+	import { getSessionHeaders } from '$lib/core/session';
 	import { X, Copy, Trash2, Heart } from 'lucide-svelte';
 	import { tick } from 'svelte';
 
@@ -57,7 +58,9 @@
 	async function fetchHealth() {
 		loadingHealth = true;
 		try {
-			const res = await fetch('/api/download-track/health');
+			const res = await fetch('/api/download-track/health', {
+				headers: getSessionHeaders()
+			});
 			if (res.ok) {
 				healthData = await res.json();
 			} else {
@@ -74,7 +77,7 @@
 		try {
 			const res = await fetch('/api/download-track/health', {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
+				headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
 				body: JSON.stringify({ action: 'cleanup' })
 			});
 			if (res.ok) {

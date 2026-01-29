@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
+import { getSessionStorageKey } from '$lib/core/session';
 
 export interface DownloadLogEntry {
 	id: string;
@@ -13,12 +14,33 @@ interface DownloadLogState {
 	isVisible: boolean;
 }
 
-const STORAGE_KEY = 'tidal-ui.downloadLog';
+const STORAGE_KEY = 'downloadLog';
+const LEGACY_STORAGE_KEY = 'tidal-ui.downloadLog';
+
+const getScopedStorageKey = (): string => getSessionStorageKey(STORAGE_KEY);
+
+const migrateLegacyLog = (scopedKey: string): string | null => {
+	try {
+		const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+		if (legacy) {
+			localStorage.setItem(scopedKey, legacy);
+			localStorage.removeItem(LEGACY_STORAGE_KEY);
+			return legacy;
+		}
+	} catch {
+		// Ignore migration failures.
+	}
+	return null;
+};
 
 function readInitialEntries(): DownloadLogEntry[] {
 	if (!browser) return [];
 	try {
-		const raw = localStorage.getItem(STORAGE_KEY);
+		const scopedKey = getScopedStorageKey();
+		let raw = localStorage.getItem(scopedKey);
+		if (!raw) {
+			raw = migrateLegacyLog(scopedKey);
+		}
 		if (!raw) return [];
 		const parsed = JSON.parse(raw);
 		if (Array.isArray(parsed)) {
@@ -59,7 +81,7 @@ export function createDownloadLogStore() {
 			// Persist to localStorage
 			if (browser) {
 				try {
-					localStorage.setItem(STORAGE_KEY, JSON.stringify(newEntries));
+					localStorage.setItem(getScopedStorageKey(), JSON.stringify(newEntries));
 				} catch (error) {
 					console.warn('Failed to persist download log entries', error);
 				}
@@ -100,7 +122,7 @@ export function createDownloadLogStore() {
 		clear: () => {
 			if (browser) {
 				try {
-					localStorage.removeItem(STORAGE_KEY);
+				localStorage.removeItem(getScopedStorageKey());
 				} catch (error) {
 					console.warn('Failed to clear download log from storage', error);
 				}

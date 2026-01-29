@@ -1,3 +1,5 @@
+import { getSessionStorageKey } from './session';
+
 export type RetryEvent = {
 	id: string;
 	timestamp: number;
@@ -15,14 +17,36 @@ export type RetrySummary = {
 };
 
 const MAX_EVENTS = 200;
-const STORAGE_KEY = 'tidal-ui.retry-events';
+
+const STORAGE_KEY = 'retry-events';
+const LEGACY_STORAGE_KEY = 'tidal-ui.retry-events';
+const getScopedStorageKey = (): string => getSessionStorageKey(STORAGE_KEY);
+
+const migrateLegacyRetries = (scopedKey: string): string | null => {
+	if (typeof window === 'undefined') return null;
+	try {
+		const legacy = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+		if (legacy) {
+			window.localStorage.setItem(scopedKey, legacy);
+			window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+			return legacy;
+		}
+	} catch {
+		// Ignore migration failures.
+	}
+	return null;
+};
 
 let events: RetryEvent[] = [];
 
 const loadPersisted = () => {
 	if (typeof window === 'undefined') return;
 	try {
-		const raw = window.localStorage.getItem(STORAGE_KEY);
+		const scopedKey = getScopedStorageKey();
+		let raw = window.localStorage.getItem(scopedKey);
+		if (!raw) {
+			raw = migrateLegacyRetries(scopedKey);
+		}
 		if (!raw) return;
 		const parsed = JSON.parse(raw) as RetryEvent[];
 		if (Array.isArray(parsed)) {
@@ -36,7 +60,7 @@ const loadPersisted = () => {
 const persist = () => {
 	if (typeof window === 'undefined') return;
 	try {
-		window.localStorage.setItem(STORAGE_KEY, JSON.stringify(events.slice(-MAX_EVENTS)));
+		window.localStorage.setItem(getScopedStorageKey(), JSON.stringify(events.slice(-MAX_EVENTS)));
 	} catch {
 		// Ignore persistence errors.
 	}

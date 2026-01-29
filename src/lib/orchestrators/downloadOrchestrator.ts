@@ -98,7 +98,7 @@ export type DownloadOrchestratorResult =
  */
 export type DownloadOrchestratorError =
 	| TrackResolutionError
-	| { code: 'SERVER_ERROR'; retry: true; message: string; originalError?: unknown }
+	| MappedDownloadError
 	| DownloadError;
 
 /**
@@ -333,12 +333,7 @@ export class DownloadOrchestrator {
 
 			return {
 				success: false,
-				error: {
-					code: mappedError.code,
-					retry: mappedError.retry,
-					message: mappedError.userMessage,
-					originalError: mappedError.originalError
-				},
+				error: mappedError,
 				taskId
 			};
 		}

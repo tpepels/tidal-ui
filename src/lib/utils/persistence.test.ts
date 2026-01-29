@@ -14,6 +14,18 @@ Object.defineProperty(global, 'localStorage', {
 	writable: true
 });
 
+const sessionStorageMock = {
+	getItem: vi.fn(() => 'session-test'),
+	setItem: vi.fn(),
+	removeItem: vi.fn(),
+	clear: vi.fn()
+};
+
+Object.defineProperty(global, 'sessionStorage', {
+	value: sessionStorageMock,
+	writable: true
+});
+
 // Mock browser
 vi.mock('$app/environment', () => ({
 	browser: true
@@ -30,11 +42,11 @@ describe('Persistence Utils', () => {
 			saveToStorage('testKey', data);
 
 			expect(localStorageMock.setItem).toHaveBeenCalledWith(
-				'tidal-ui:testKey',
+				'tidal-ui:session-test:testKey',
 				expect.stringContaining('"version":1')
 			);
 			expect(localStorageMock.setItem).toHaveBeenCalledWith(
-				'tidal-ui:testKey',
+				'tidal-ui:session-test:testKey',
 				expect.stringContaining('"data":{"test":"value"}')
 			);
 		});
@@ -132,7 +144,7 @@ describe('Persistence Utils', () => {
 
 			expect(localStorageMock.setItem).toHaveBeenCalledTimes(1);
 			expect(localStorageMock.setItem).toHaveBeenCalledWith(
-				'tidal-ui:testKey',
+				'tidal-ui:session-test:testKey',
 				expect.stringContaining('"data":{"data":"updated"}')
 			);
 

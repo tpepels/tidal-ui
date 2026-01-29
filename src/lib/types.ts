@@ -145,29 +145,50 @@ export interface SearchResponse<T> {
 }
 
 export interface CoverImage {
-	id: number;
-	name: string;
-	'1280': string;
-	'640': string;
-	'80': string;
+	url: string;
+	width?: number;
+	height?: number;
+	type?: string;
+	id?: number;
+	name?: string;
+	'1280'?: string;
+	'640'?: string;
+	'80'?: string;
 }
 
 export interface Lyrics {
 	trackId: number;
-	lyricsProvider: string;
-	providerCommontrackId: string;
-	providerLyricsId: string;
 	lyrics: string;
-	subtitles: string;
-	isRightToLeft: boolean;
+	syncType?: string;
+	provider?: string;
+	lyricsProvider?: string;
+	providerCommontrackId?: string;
+	providerLyricsId?: string;
+	subtitles?: string;
+	isRightToLeft?: boolean;
 }
 
 export type AudioQuality = 'HI_RES_LOSSLESS' | 'LOSSLESS' | 'HIGH' | 'LOW';
 
 export interface StreamData {
-	originalTrack: string;
-	trackInfo: TrackInfo;
-	songInfo: Track;
+	url: string;
+	replayGain?: number | null;
+	sampleRate?: number | null;
+	bitDepth?: number | null;
+	trackId?: number;
+	audioQuality?: string;
+	audioMode?: string;
+	manifest?: string;
+	manifestMimeType?: string;
+	manifestHash?: string;
+	assetPresentation?: string;
+	albumReplayGain?: number;
+	albumPeakAmplitude?: number;
+	trackReplayGain?: number;
+	trackPeakAmplitude?: number;
+	originalTrack?: string;
+	trackInfo?: TrackInfo;
+	songInfo?: Track;
 }
 
 export interface TrackLookup {

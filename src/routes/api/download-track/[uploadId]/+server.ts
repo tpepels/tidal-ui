@@ -137,9 +137,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				message:
 					action === 'rename'
 						? `File renamed and saved to ${artistDir}/${albumDir}/${path.basename(finalPath)}`
-						: action === 'skip'
-							? `File already exists, skipped: ${artistDir}/${albumDir}/${path.basename(finalPath)}`
-							: `File saved to ${artistDir}/${albumDir}/${path.basename(finalPath)}`
+						: `File saved to ${artistDir}/${albumDir}/${path.basename(finalPath)}`
 							+ (coverDownloaded ? ' (with cover)' : '')
 			},
 			{ status: 201 }

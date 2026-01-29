@@ -54,6 +54,10 @@ export class Logger {
 		this.correlationId = id;
 	}
 
+	public getCorrelationId(): string | null {
+		return this.correlationId;
+	}
+
 	public generateCorrelationId(): string {
 		return `log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 	}

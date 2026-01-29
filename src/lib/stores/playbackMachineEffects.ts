@@ -242,7 +242,6 @@ export class PlaybackMachineSideEffectHandler {
 			},
 			onFallbackRequested: (quality, reason) => {
 				this.notifyFallback(quality, reason);
-				this.dispatch?.({ type: 'FALLBACK_REQUESTED', quality, reason });
 			}
 		});
 	}
@@ -338,7 +337,7 @@ export class PlaybackMachineSideEffectHandler {
 								domain: 'playback',
 								source: 'play-audio'
 							});
-							dispatch({ type: 'AUDIO_ERROR', error });
+							dispatch({ type: 'AUDIO_WAITING' });
 						});
 					}
 				}
@@ -365,9 +364,12 @@ export class PlaybackMachineSideEffectHandler {
 			}
 
 			case 'HANDLE_AUDIO_ERROR': {
-				const didFallback =
-					this.playbackFallbackController?.handleAudioError(effect.error) ?? false;
-				if (!didFallback) {
+				if (!this.playbackFallbackController && this.audioElement) {
+					await this.ensureLoadControllers();
+				}
+				const fallback =
+					this.playbackFallbackController?.handleAudioError(effect.error) ?? null;
+				if (!fallback) {
 					const element = (effect.error as Event)?.currentTarget as HTMLMediaElement | null;
 					const mediaError = element?.error ?? null;
 					const code = mediaError?.code;
@@ -377,6 +379,13 @@ export class PlaybackMachineSideEffectHandler {
 						type: 'LOAD_ERROR',
 						error: new Error(`Audio playback error${details}`)
 					});
+				} else {
+					this.dispatch?.({
+						type: 'FALLBACK_REQUESTED',
+						quality: fallback.quality,
+						reason: fallback.reason
+					});
+					dispatch({ type: 'AUDIO_WAITING' });
 				}
 				break;
 			}

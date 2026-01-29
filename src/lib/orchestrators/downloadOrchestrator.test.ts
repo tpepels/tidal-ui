@@ -117,12 +117,12 @@ vi.mock('$lib/downloads', () => ({
 }));
 
 vi.mock('$lib/download-domain/coordinator', () => ({
-	createDownloadCoordinator: (...args: unknown[]) => mockCreateDownloadCoordinator(...args)
+	createDownloadCoordinator: mockCreateDownloadCoordinator
 }));
 
 vi.mock('$lib/download-adapters', () => ({
-	createDownloadSource: (...args: unknown[]) => mockCreateDownloadSource(...args),
-	createDownloadSink: (...args: unknown[]) => mockCreateDownloadSink(...args)
+	createDownloadSource: mockCreateDownloadSource,
+	createDownloadSink: mockCreateDownloadSink
 }));
 
 vi.mock('$lib/stores/toasts', () => ({

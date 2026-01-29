@@ -83,6 +83,7 @@ export interface DownloadTrackOptions {
 	ffmpegAutoTriggered?: boolean;
 	convertAacToMp3?: boolean;
 	downloadCoverSeperately?: boolean;
+	skipMetadataEmbedding?: boolean;
 }
 
 class LosslessAPI {
@@ -1861,7 +1862,7 @@ class LosslessAPI {
 				const totalHeader = Number(response.headers.get('Content-Length') ?? '0');
 				totalBytes = Number.isFinite(totalHeader) && totalHeader > 0 ? totalHeader : undefined;
 
-				if (!response.body) {
+				if (!response.body || typeof response.body.getReader !== 'function') {
 					downloadBlob = await response.blob();
 					receivedBytes = downloadBlob.size;
 					if (!totalBytes && receivedBytes > 0) {
@@ -1910,15 +1911,17 @@ class LosslessAPI {
 
 			const shouldConvertToMp3 =
 				options?.convertAacToMp3 === true && (quality === 'HIGH' || quality === 'LOW');
-			const processedBlob = await this.embedMetadataIntoBlob(
-				downloadBlob,
-				metadataLookup,
-				filename,
-				contentType,
-				options,
-				quality,
-				shouldConvertToMp3
-			);
+			const processedBlob = options?.skipMetadataEmbedding
+				? null
+				: await this.embedMetadataIntoBlob(
+						downloadBlob,
+						metadataLookup,
+						filename,
+						contentType,
+						options,
+						quality,
+						shouldConvertToMp3
+					);
 			const finalBlob = processedBlob ?? downloadBlob;
 			return { blob: finalBlob, mimeType: contentType ?? undefined };
 		} catch (error) {

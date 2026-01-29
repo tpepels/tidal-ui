@@ -28,10 +28,17 @@ const loadQueue = (tracks: PlayableTrack[], startIndex = 0) => {
 };
 
 const play = () => {
-	if (!playerStore.getSnapshot().currentTrack) {
-		return;
+	const snapshot = playerStore.getSnapshot();
+	if (!snapshot.currentTrack && snapshot.queue.length > 0) {
+		const fallbackTrack = snapshot.queue[snapshot.queueIndex] ?? snapshot.queue[0];
+		if (fallbackTrack) {
+			playerStore.setTrack(fallbackTrack);
+			playbackMachine.actions.loadTrack(fallbackTrack);
+		}
 	}
-	playerStore.play();
+	if (snapshot.currentTrack || snapshot.queue.length > 0) {
+		playerStore.play();
+	}
 	playbackMachine.actions.play();
 };
 
@@ -113,6 +120,8 @@ if (typeof window !== 'undefined' && isTestHookEnabled) {
 		window as typeof window & {
 			__tidalSetQueue?: (tracks: PlayableTrack[], startIndex?: number) => void;
 			__tidalShuffleQueue?: () => void;
+			__tidalNext?: () => void;
+			__tidalPrevious?: () => void;
 		}
 	).__tidalSetQueue = (tracks: PlayableTrack[], startIndex = 0) => {
 		playbackFacade.loadQueue(tracks, startIndex);
@@ -121,8 +130,26 @@ if (typeof window !== 'undefined' && isTestHookEnabled) {
 		window as typeof window & {
 			__tidalSetQueue?: (tracks: PlayableTrack[], startIndex?: number) => void;
 			__tidalShuffleQueue?: () => void;
+			__tidalNext?: () => void;
+			__tidalPrevious?: () => void;
 		}
 	).__tidalShuffleQueue = () => {
 		playbackFacade.shuffleQueue();
+	};
+	(
+		window as typeof window & {
+			__tidalNext?: () => void;
+			__tidalPrevious?: () => void;
+		}
+	).__tidalNext = () => {
+		playbackFacade.next();
+	};
+	(
+		window as typeof window & {
+			__tidalNext?: () => void;
+			__tidalPrevious?: () => void;
+		}
+	).__tidalPrevious = () => {
+		playbackFacade.previous();
 	};
 }

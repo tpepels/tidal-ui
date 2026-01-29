@@ -2,6 +2,7 @@ import type { AudioQuality, Track } from '$lib/types';
 import { downloadLogStore } from '$lib/stores/downloadLog';
 import { retryFetch } from '$lib/errors';
 import { toasts } from '$lib/stores/toasts';
+import { getSessionHeaders } from '$lib/core/session';
 
 /**
  * Calculate a simple checksum for a blob (first 1MB or entire blob if smaller)
@@ -94,7 +95,8 @@ const uploadInChunks = async (
 			headers: {
 				'Content-Type': 'application/octet-stream',
 				'x-chunk-index': i.toString(),
-				'x-total-chunks': totalChunks.toString()
+				'x-total-chunks': totalChunks.toString(),
+				...getSessionHeaders()
 			},
 			body: chunk,
 			timeout: 30000, // Longer for uploads
@@ -267,7 +269,7 @@ export const downloadTrackServerSide = async (
 
 		const response = await retryFetch('/api/download-track', {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
+			headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
 			body: JSON.stringify({
 				trackId,
 				quality,
@@ -324,7 +326,7 @@ export const downloadTrackServerSide = async (
 
 			const uploadResponse = await fetch('/api/download-track', {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
+				headers: { 'Content-Type': 'application/json', ...getSessionHeaders() },
 				body: JSON.stringify({
 					uploadId,
 					trackId,

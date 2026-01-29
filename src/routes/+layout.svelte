@@ -40,6 +40,8 @@
 		getPersistedErrorSummary,
 		type ErrorReport
 	} from '$lib/core/errorTracker';
+	import { logger } from '$lib/core/logger';
+	import { getSessionId } from '$lib/core/session';
 	import { getRetrySummary, type RetrySummary } from '$lib/core/retryTracker';
 	import {
 		Archive,
@@ -599,6 +601,10 @@
 
 	onMount(() => {
 		try {
+			logger.setCorrelationId(getSessionId());
+			if (import.meta.env.VITE_E2E === 'true') {
+				(window as Window & { __tidalE2E?: boolean }).__tidalE2E = true;
+			}
 			// Subscribe to performance level and update data attribute
 			const unsubPerf = effectivePerformanceLevel.subscribe((level) => {
 				try {

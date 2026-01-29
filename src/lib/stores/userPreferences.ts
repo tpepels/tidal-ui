@@ -2,6 +2,7 @@ import { browser } from '$app/environment';
 import { writable } from 'svelte/store';
 import type { AudioQuality } from '../types';
 import { type PerformanceLevel } from '../utils/performance';
+import { getSessionStorageKey } from '$lib/core/session';
 import { debouncedSave, loadFromStorage } from '../utils/persistence';
 
 export type PerformanceMode = 'medium' | 'low';
@@ -50,8 +51,10 @@ const createUserPreferencesStore = () => {
 			}
 		});
 
+		const scopedKey = getSessionStorageKey(STORAGE_KEY);
+		const legacyKey = `tidal-ui:${STORAGE_KEY}`;
 		window.addEventListener('storage', (event) => {
-			if (event.key === `${'tidal-ui:'}${STORAGE_KEY}`) {
+			if (event.key === scopedKey || event.key === legacyKey) {
 				const stored = loadFromStorage(STORAGE_KEY, DEFAULT_STATE) as UserPreferencesState;
 				set(stored);
 				return;

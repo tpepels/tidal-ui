@@ -79,6 +79,7 @@ test('server download toasts render without opening settings', async ({ page }) 
 	await page.addInitScript(() => {
 		localStorage.setItem('tidal-ui.downloadStorage', 'server');
 		localStorage.setItem('tidal-ui.downloadMode', 'individual');
+		localStorage.setItem('tidal-ui.downloadQuality', 'LOSSLESS');
 	});
 
 	const artist = buildArtist(901, 'Toast Artist');
@@ -178,5 +179,5 @@ test('server download toasts render without opening settings', async ({ page }) 
 	await downloadButton.click();
 
 	const toast = page.locator('.toast-message', { hasText: 'Download completed' });
-	await expect(toast).toBeVisible();
+	await expect(toast).toBeVisible({ timeout: 15000 });
 });

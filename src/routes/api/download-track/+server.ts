@@ -162,8 +162,6 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				}
 				if (action === 'rename')
 					message = `File renamed and saved to ${artistDir}/${albumDir}/${finalFilename}`;
-				else if (action === 'skip')
-					message = `File already exists, skipped: ${artistDir}/${albumDir}/${finalFilename}`;
 				if (bodyUploadId) {
 					endUpload(bodyUploadId);
 				}
@@ -416,7 +414,6 @@ export const POST: RequestHandler = async ({ request, url }) => {
 			const finalFilename = path.basename(finalPath);
 			let message = `File saved to ${artistDir}/${albumDir}/${finalFilename}`;
 			if (action === 'rename') message = `File renamed`;
-			else if (action === 'skip') message = `File skipped`;
 			return json(
 				{ success: true, filepath: finalPath, filename: finalFilename, action, message },
 				{ status: 201 }

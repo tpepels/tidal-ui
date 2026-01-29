@@ -87,11 +87,19 @@ export class PerformanceMonitor {
 	}
 
 	public recordMetric(name: string, value: number, tags: Record<string, string> = {}): void {
+		const providedCorrelationId = tags.correlationId ?? undefined;
+		const resolvedCorrelationId = providedCorrelationId ?? logger.getCorrelationId() ?? 'missing';
+		const missingCorrelationId = resolvedCorrelationId === 'missing';
+		const metricTags =
+			providedCorrelationId || resolvedCorrelationId === 'missing'
+				? { ...tags, correlationId: resolvedCorrelationId }
+				: tags;
+
 		const metric: PerformanceMetric = {
 			name,
 			value,
 			timestamp: Date.now(),
-			tags
+			tags: metricTags
 		};
 
 		this.metrics.push(metric);
@@ -110,7 +118,9 @@ export class PerformanceMonitor {
 				component: 'performance',
 				metric: name,
 				value,
-				tags,
+				tags: metricTags,
+				correlationId: resolvedCorrelationId,
+				missingCorrelationId,
 				thresholdExceeded: this.isThresholdExceeded(metric)
 			});
 		}

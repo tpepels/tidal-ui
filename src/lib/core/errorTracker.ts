@@ -2,7 +2,7 @@
 // Collects errors from various sources and provides reporting capabilities
 
 import { logger } from './logger';
-import { getSessionId } from './session';
+import { getSessionId, getSessionStorageKey } from './session';
 
 export interface ErrorReport {
 	id: string;
@@ -343,11 +343,22 @@ export class ErrorTracker {
 			return null;
 		}
 		try {
-			const raw = window.localStorage.getItem('tidal-ui.error-summary');
+			const scopedKey = getSessionStorageKey('error-summary');
+			let raw = window.localStorage.getItem(scopedKey);
 			if (!raw) {
-				return null;
+				const legacyKey = 'tidal-ui.error-summary';
+				const legacy = window.localStorage.getItem(legacyKey);
+				if (legacy) {
+					try {
+						window.localStorage.setItem(scopedKey, legacy);
+						window.localStorage.removeItem(legacyKey);
+					} catch {
+						// Ignore migration failures.
+					}
+					raw = legacy;
+				}
 			}
-			return JSON.parse(raw) as ErrorSummarySnapshot;
+			return raw ? (JSON.parse(raw) as ErrorSummarySnapshot) : null;
 		} catch {
 			return null;
 		}
@@ -384,7 +395,10 @@ export class ErrorTracker {
 				summary: this.getErrorSummary(),
 				domainCounts: this.getDomainSummary()
 			};
-			window.localStorage.setItem('tidal-ui.error-summary', JSON.stringify(snapshot));
+			window.localStorage.setItem(
+				getSessionStorageKey('error-summary'),
+				JSON.stringify(snapshot)
+			);
 		} catch {
 			// Ignore localStorage failures.
 		}

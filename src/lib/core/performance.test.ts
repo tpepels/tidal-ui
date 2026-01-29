@@ -35,6 +35,6 @@ describe('PerformanceMonitor correlation id', () => {
 		unsubscribe();
 		const entry = getLatestPerformanceEntry(entries);
 		expect(entry?.context?.correlationId).toBe('corr-123');
-		expect(entry?.context?.missingCorrelationId).toBeUndefined();
+		expect(entry?.context?.missingCorrelationId).toBe(false);
 	});
 });

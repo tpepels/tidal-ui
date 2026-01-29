@@ -26,6 +26,7 @@ vi.mock('./stores/downloadUi', () => ({
 	downloadUiStore: {
 		beginTrackDownload: vi.fn(),
 		updateTrackProgress: vi.fn(),
+		updateTrackPhase: vi.fn(),
 		updateTrackStage: vi.fn(),
 		completeTrackDownload: vi.fn(),
 		errorTrackDownload: vi.fn()
@@ -47,6 +48,7 @@ describe('downloadAlbum server progress', () => {
 			id: 1,
 			title: 'Progress Album',
 			cover: 'cover',
+			videoCover: null,
 			releaseDate: '2024-01-01',
 			numberOfTracks: 1,
 			numberOfVolumes: 1,
@@ -78,6 +80,7 @@ describe('downloadAlbum server progress', () => {
 			version: null,
 			popularity: 1,
 			url: 'https://example.com',
+			editable: false,
 			artist: { id: 1, name: 'Progress Artist', type: 'MAIN' },
 			artists: [{ id: 1, name: 'Progress Artist', type: 'MAIN' }],
 			album,

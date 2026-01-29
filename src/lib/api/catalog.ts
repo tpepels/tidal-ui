@@ -63,7 +63,7 @@ export async function getAlbum(
 					throw new Error('Album response validation failed');
 				}
 
-				return finalValidation.data;
+				return result;
 			}
 		}
 	}
@@ -124,7 +124,7 @@ export async function getAlbum(
 		throw new Error('Album response validation failed');
 	}
 
-	return finalValidation.data;
+	return result;
 }
 
 export async function getPlaylist(
@@ -157,7 +157,7 @@ export async function getPlaylist(
 		throw new Error('Playlist response validation failed');
 	}
 
-	return validationResult.data;
+	return result;
 }
 
 export type ArtistFetchProgress = {

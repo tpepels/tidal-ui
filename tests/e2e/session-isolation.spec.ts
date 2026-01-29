@@ -47,13 +47,13 @@ test('sessions do not share persisted player state across tabs', async ({ contex
 		}
 	};
 
-	await context.addInitScript((state) => {
-		localStorage.setItem('tidal-ui:player', JSON.stringify(state));
-	}, persisted);
-
 	const page1 = await context.newPage();
 	await page1.goto('/');
 	await page1.waitForSelector('input[placeholder*="Search"]');
+	await page1.evaluate((state) => {
+		localStorage.setItem('tidal-ui:player', JSON.stringify(state));
+	}, persisted);
+	await page1.reload();
 	await expect(page1.getByRole('heading', { name: /Session Track/i }).first()).toBeVisible();
 
 	const page2 = await context.newPage();

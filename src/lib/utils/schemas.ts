@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { getSessionId } from '$lib/core/session';
+import { logger } from '$lib/core/logger';
 
 const ArtistRoleEntrySchema = z.union([
 	z.string(),
@@ -348,7 +349,8 @@ export function safeValidateApiResponse<T>(
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : 'Unknown validation error';
 		const endpoint = context?.endpoint ?? 'unknown';
-		const correlationId = context?.correlationId ?? getSessionId() ?? 'missing';
+		const correlationId =
+			context?.correlationId ?? logger.getCorrelationId() ?? getSessionId() ?? 'missing';
 		const key = getValidationKey(endpoint, correlationId);
 		if (!validationWarned.has(key)) {
 			validationWarned.add(key);

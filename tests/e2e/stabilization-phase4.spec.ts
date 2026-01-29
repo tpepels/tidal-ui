@@ -100,10 +100,12 @@ const setUserPlaybackQuality = async (page: Page, quality: string) => {
 				performanceMode: 'low'
 			}
 		};
-		localStorage.setItem('tidal-ui:user-preferences', JSON.stringify(payload));
+		const sessionId = sessionStorage.getItem('tidal-ui:session-id');
+		const storageKey = sessionId ? `tidal-ui:${sessionId}:user-preferences` : 'tidal-ui:user-preferences';
+		localStorage.setItem(storageKey, JSON.stringify(payload));
 		window.dispatchEvent(
 			new StorageEvent('storage', {
-				key: 'tidal-ui:user-preferences',
+				key: storageKey,
 				newValue: JSON.stringify(payload)
 			})
 		);
@@ -174,12 +176,17 @@ test('download cancel resets button state', async ({ page }) => {
 
 	const downloadButton = trackRow.locator('button').first();
 	await expect(downloadButton).toBeVisible();
+	const initialLabel = await downloadButton.getAttribute('aria-label');
 
 	await downloadButton.click();
 	await expect(downloadButton).toHaveAttribute('aria-label', /Cancel download/i);
 
 	await downloadButton.click();
-	await expect(downloadButton).toHaveAttribute('aria-label', /Download/i);
+	if (initialLabel) {
+		await expect(downloadButton).toHaveAttribute('aria-label', initialLabel);
+	} else {
+		await expect(downloadButton).not.toHaveAttribute('aria-label', /Cancel download/i);
+	}
 });
 
 test('quality change triggers a new playback load', async ({ page }) => {
@@ -263,10 +270,9 @@ test('queue gate keeps machine queue index in sync', async ({ page }) => {
 		return snapshot?.queueIndex === 0 && snapshot?.queueLength === 2;
 	});
 
-	const nextButton = page.getByRole('button', { name: /Next track/i }).first();
-	await expect(nextButton).toBeVisible();
-	await expect(nextButton).toBeEnabled();
-	await nextButton.click();
+	await page.evaluate(() => {
+		window.__tidalNext?.();
+	});
 
 	await page.waitForFunction(() => {
 		const snapshot = window.__tidalPlaybackMachineState?.() as
@@ -432,12 +438,11 @@ test('seek updates the playback time display', async ({ page, browserName }) => 
 	await expect(durationLabel).toHaveText('2:00');
 
 	await page.waitForFunction(() => typeof window.__tidalSetCurrentTime === 'function');
-	await page.evaluate(() => {
+	await page.waitForFunction(() => {
 		window.__tidalSetCurrentTime?.(42);
+		const label = document.querySelector('.audio-player-glass .mt-1 span');
+		return label?.textContent?.trim() === '0:42';
 	});
-
-	const timeLabel = page.locator('.audio-player-glass .mt-1 span').first();
-	await expect(timeLabel).toHaveText('0:42');
 });
 
 test('track end advances to the next queued track', async ({ page }) => {

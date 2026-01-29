@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PlaybackMachineSideEffectHandler } from './playbackMachineEffects';
 import type { SideEffect, PlaybackEvent } from '$lib/machines/playbackMachine';
-import type { Track } from '$lib/types';
+import type { AudioQuality, Track } from '$lib/types';
 const {
 	mockLoadTrack,
 	mockDestroy,
@@ -11,10 +11,13 @@ const {
 } = vi.hoisted(() => {
 	const loadTrack = vi.fn<[Track], Promise<void>>();
 	const destroy = vi.fn<[], Promise<void>>().mockResolvedValue(undefined);
-	const handleAudioError = vi.fn<[Event], boolean>();
+	const handleAudioError = vi.fn<[Event], { quality: AudioQuality; reason: string } | null>();
 	const resetForTrack = vi.fn<[number | string], void>();
 	const createTrackLoadController = vi.fn(
-		(options: { onLoadComplete?: (streamUrl: string | null, quality: string) => void }) => {
+		(options: {
+			onLoadComplete?: (streamUrl: string | null, quality: string) => void;
+			onFallbackRequested?: (quality: AudioQuality, reason: string) => void;
+		}) => {
 			loadTrack.mockImplementation(async () => {
 				options.onLoadComplete?.('https://example.com/stream.m4a', 'HIGH');
 			});
@@ -183,7 +186,7 @@ describe('PlaybackMachineSideEffectHandler', () => {
 	});
 
 	it('dispatches load error when fallback controller does not recover', async () => {
-		mockHandleAudioError.mockReturnValueOnce(false);
+		mockHandleAudioError.mockReturnValueOnce(null);
 		const handler = new PlaybackMachineSideEffectHandler();
 		const dispatch = vi.fn<[PlaybackEvent], void>();
 
@@ -221,7 +224,7 @@ describe('PlaybackMachineSideEffectHandler', () => {
 
 	it('shows a toast when fallback is requested', async () => {
 		mockCreateTrackLoadController.mockImplementationOnce((options) => {
-			const loadTrack = vi.fn(async () => {
+			const loadTrack = vi.fn<[Track], Promise<void>>(async () => {
 				options.onFallbackRequested?.('LOW', 'lossless-unsupported');
 				options.onLoadComplete?.('https://example.com/stream.m4a', 'LOW');
 			});

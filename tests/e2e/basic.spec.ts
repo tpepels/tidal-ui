@@ -1,5 +1,15 @@
 import { test, expect } from '@playwright/test';
 
+const getProxiedUrl = (requestUrl: string): URL | null => {
+	try {
+		const url = new URL(requestUrl);
+		const proxied = url.searchParams.get('url');
+		return proxied ? new URL(proxied) : null;
+	} catch {
+		return null;
+	}
+};
+
 test('homepage loads', async ({ page }) => {
 	await page.goto('/');
 	await expect(page).toHaveTitle(/BiniLossless/);
@@ -22,6 +32,29 @@ test('navigation to artist page', async ({ page }) => {
 });
 
 test('navigation to playlist page', async ({ page }) => {
+	await page.route('**/api/proxy**', async (route) => {
+		const proxied = getProxiedUrl(route.request().url());
+		if (proxied?.pathname.toLowerCase().includes('/playlist')) {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					playlist: {
+						id: 'test-uuid',
+						uuid: 'test-uuid',
+						title: 'Test Playlist',
+						description: 'Mock playlist',
+						numberOfTracks: 0,
+						duration: 0,
+						creator: { id: 1, name: 'Tester', picture: null }
+					},
+					items: []
+				})
+			});
+			return;
+		}
+		await route.continue();
+	});
 	await page.goto('/playlist/test-uuid');
 	await expect(page.locator('h1')).toBeVisible();
 });

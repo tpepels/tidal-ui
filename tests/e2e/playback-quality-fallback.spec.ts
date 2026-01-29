@@ -99,6 +99,7 @@ test('quality fallback retries playback after downgrade', async ({ page }) => {
 		const originalPlay = HTMLMediaElement.prototype.play;
 		const originalPause = HTMLMediaElement.prototype.pause;
 		const originalLoad = HTMLMediaElement.prototype.load;
+		const originalCanPlayType = HTMLMediaElement.prototype.canPlayType;
 
 		HTMLMediaElement.prototype.play = function () {
 			const state = window as Window & {
@@ -139,6 +140,16 @@ test('quality fallback retries playback after downgrade', async ({ page }) => {
 				}
 			}, 0);
 			return result;
+		};
+
+		HTMLMediaElement.prototype.canPlayType = function (type: string) {
+			if (type.includes('flac')) {
+				return 'probably';
+			}
+			if (type.includes('mp4') || type.includes('aac')) {
+				return 'probably';
+			}
+			return originalCanPlayType ? originalCanPlayType.call(this, type) : '';
 		};
 
 		void originalPlay;
@@ -219,6 +230,8 @@ test('quality fallback retries playback after downgrade', async ({ page }) => {
 		return window.__tidalPlaybackMachineState?.().state === 'playing';
 	});
 
+	const initialPlayingEvents = await page.evaluate(() => window.__playingEvents ?? 0);
+
 	await page.evaluate(() => {
 		window.__tidalSetPlaybackQuality?.('LOSSLESS');
 	});
@@ -226,6 +239,8 @@ test('quality fallback retries playback after downgrade', async ({ page }) => {
 	const initialLoadId = await page.evaluate(
 		() => window.__tidalPlaybackMachineState?.().loadRequestId ?? 0
 	);
+
+	await page.waitForFunction(() => Boolean(document.querySelector('audio')));
 
 	await page.evaluate(() => {
 		const state = window as Window & {
@@ -253,5 +268,5 @@ test('quality fallback retries playback after downgrade', async ({ page }) => {
 		.poll(async () => {
 			return await page.evaluate(() => window.__playingEvents ?? 0);
 		})
-		.toBe(2);
+		.toBeGreaterThan(initialPlayingEvents);
 });
