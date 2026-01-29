@@ -671,6 +671,7 @@ export async function downloadAlbum(
 					);
 
 					if (result.success && result.blob) {
+						downloadUiStore.updateTrackPhase(taskId, 'uploading');
 						const serverTrackTitle = track.title
 							? track.version
 								? `${track.title} (${track.version})`
@@ -690,7 +691,11 @@ export async function downloadAlbum(
 								coverUrl:
 									downloadCoverSeperately && canonicalAlbum.cover
 										? losslessAPI.getCoverUrl(canonicalAlbum.cover, '1280')
-										: undefined
+										: undefined,
+								onProgress: (progress) => {
+									downloadUiStore.updateTrackPhase(taskId, 'uploading');
+									downloadUiStore.updateTrackProgress(taskId, progress.uploaded, progress.total);
+								}
 							}
 						);
 						if (serverResult.success) {

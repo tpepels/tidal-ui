@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
 import {
 	TrackSchema,
@@ -16,6 +16,7 @@ import {
 	CoverImageSchema,
 	LyricsSchema,
 	StreamDataSchema,
+	ApiV2ContainerSchema,
 	validateApiResponse,
 	assertInvariant,
 	safeValidateApiResponse,
@@ -445,6 +446,49 @@ describe('Schemas', () => {
 
 				const result = safeValidateApiResponse(mixedArray, TrackSearchResponseSchema);
 				expect(result.success).toBe(false); // Should fail due to invalid track in array
+			});
+		});
+
+		describe('ApiV2ContainerSchema normalization', () => {
+			it('accepts missing version and normalizes to default', () => {
+				const payload = { data: { items: [] } };
+				const result = safeValidateApiResponse(payload, ApiV2ContainerSchema);
+				expect(result.success).toBe(true);
+				if (result.success) {
+					expect(result.data.version).toBe('2.0');
+				}
+			});
+
+			it('normalizes numeric versions to strings', () => {
+				const payload = { version: 2, data: { items: [] } };
+				const result = safeValidateApiResponse(payload, ApiV2ContainerSchema);
+				expect(result.success).toBe(true);
+				if (result.success) {
+					expect(result.data.version).toBe('2');
+				}
+			});
+		});
+
+		describe('safeValidateApiResponse logging', () => {
+			it('deduplicates warnings per endpoint and correlationId', () => {
+				const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+				const invalid = { bad: true };
+
+				safeValidateApiResponse(invalid, TrackSchema, {
+					endpoint: 'album',
+					correlationId: 'corr-1'
+				});
+				safeValidateApiResponse(invalid, TrackSchema, {
+					endpoint: 'album',
+					correlationId: 'corr-1'
+				});
+				safeValidateApiResponse(invalid, TrackSchema, {
+					endpoint: 'album',
+					correlationId: 'corr-2'
+				});
+
+				expect(warnSpy).toHaveBeenCalledTimes(2);
+				warnSpy.mockRestore();
 			});
 		});
 	});

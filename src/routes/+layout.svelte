@@ -5,7 +5,6 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import LyricsPopup from '$lib/components/LyricsPopup.svelte';
 	import DownloadLog from '$lib/components/DownloadLog.svelte';
-	import DownloadProgress from '$lib/components/DownloadProgress.svelte';
 	import DiagnosticsOverlay from '$lib/components/DiagnosticsOverlay.svelte';
 
 
@@ -35,7 +34,12 @@
 	import { navigating, page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { dev } from '$app/environment';
-	import { errorTracker, getErrorSummary, getPersistedErrorSummary } from '$lib/core/errorTracker';
+	import {
+		errorTracker,
+		getErrorSummary,
+		getPersistedErrorSummary,
+		type ErrorReport
+	} from '$lib/core/errorTracker';
 	import { getRetrySummary, type RetrySummary } from '$lib/core/retryTracker';
 	import {
 		Archive,
@@ -91,6 +95,7 @@
 	);
 	let diagnosticsPersisted = $state<ReturnType<typeof getPersistedErrorSummary> | null>(null);
 	let diagnosticsRetries = $state<RetrySummary | null>(null);
+	let diagnosticsErrors = $state<ErrorReport[] | null>(null);
 
 	$effect(() => {
 		const current = $playerStore.currentTrack;
@@ -223,6 +228,7 @@
 		diagnosticsDomains = errorTracker.getDomainSummary();
 		diagnosticsPersisted = getPersistedErrorSummary();
 		diagnosticsRetries = getRetrySummary();
+		diagnosticsErrors = errorTracker.getErrors({ limit: 50 });
 		try {
 			const res = await fetch('/api/health');
 			diagnosticsHealth = (await res.json()) as typeof diagnosticsHealth;
@@ -994,10 +1000,6 @@
 										</section>
 		</div>
 	</div>
-
-	<LyricsPopup />
-	<ToastContainer />
-	<DownloadLog />
 {/if}
 			</div>
 
@@ -1024,7 +1026,7 @@
 
 	<LyricsPopup />
 	<ToastContainer />
-	<DownloadProgress />
+	<DownloadLog />
 	{#if diagnosticsEnabled && !isEmbed}
 		<button class="diagnostics-toggle" type="button" onclick={toggleDiagnostics}>
 			Diagnostics
@@ -1037,6 +1039,7 @@
 			health={diagnosticsHealth}
 			persisted={diagnosticsPersisted}
 			retries={diagnosticsRetries}
+			errors={diagnosticsErrors}
 			onClose={() => {
 				diagnosticsOpen = false;
 			}}

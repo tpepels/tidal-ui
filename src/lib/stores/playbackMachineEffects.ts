@@ -99,6 +99,7 @@ export class PlaybackMachineSideEffectHandler {
 	private resumeAfterFallback = false;
 	private lastFallbackToastKey: string | null = null;
 	private lastFallbackToastAt = 0;
+	private pendingLoad: { track: Track; quality: AudioQuality } | null = null;
 
 	constructor(options?: { syncPlayerTrack?: (track: Track) => void }) {
 		this.syncPlayerTrack = options?.syncPlayerTrack ?? null;
@@ -113,6 +114,26 @@ export class PlaybackMachineSideEffectHandler {
 			this.playbackFallbackController = null;
 		}
 		this.audioElement = element;
+		if (element && this.pendingLoad) {
+			const pending = this.pendingLoad;
+			this.pendingLoad = null;
+			void this.ensureLoadControllers()
+				.then(async () => {
+					this.playbackFallbackController?.resetForTrack(pending.track.id);
+					await this.trackLoadController?.loadTrack(pending.track);
+				})
+				.catch((error) => {
+					const failure = error instanceof Error ? error : new Error('Failed to load track');
+					trackError(failure, {
+						component: 'playback-effects',
+						domain: 'playback',
+						source: 'pending-load',
+						trackId: pending.track.id,
+						quality: pending.quality
+					});
+					this.dispatch?.({ type: 'LOAD_ERROR', error: failure });
+				});
+		}
 	}
 
 	setLoadUiCallbacks(callbacks: PlaybackLoadUiCallbacks) {
@@ -271,9 +292,13 @@ export class PlaybackMachineSideEffectHandler {
 			}
 
 			case 'LOAD_STREAM': {
-				await this.ensureLoadControllers();
 				this.requestedQuality = effect.quality;
 				this.currentTrackId = effect.track.id;
+				if (!this.audioElement) {
+					this.pendingLoad = { track: effect.track, quality: effect.quality };
+					break;
+				}
+				await this.ensureLoadControllers();
 				this.playbackFallbackController?.resetForTrack(effect.track.id);
 				if (this.trackLoadController) {
 					try {

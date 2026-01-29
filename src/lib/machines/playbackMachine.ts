@@ -102,12 +102,17 @@ export function transition(
 		}
 
 		case 'SET_QUEUE': {
+			const nextTrack =
+				event.queueIndex >= 0 && event.queueIndex < event.queue.length
+					? event.queue[event.queueIndex] ?? null
+					: null;
 			return {
 				state,
 				context: {
 					...context,
 					queue: event.queue,
-					queueIndex: event.queueIndex
+					queueIndex: event.queueIndex,
+					currentTrack: nextTrack ?? null
 				}
 			};
 		}
@@ -393,6 +398,8 @@ export function deriveSideEffects(
 	const effects: SideEffect[] = [];
 
 	// State entry effects
+	const loadCompleteWithUrl = event.type === 'LOAD_COMPLETE' && Boolean(event.streamUrl);
+
 	if (prev.state !== next.state) {
 		switch (next.state) {
 			case 'converting':
@@ -417,13 +424,15 @@ export function deriveSideEffects(
 				break;
 
 			case 'ready':
-				if (next.context.streamUrl) {
+				if (!loadCompleteWithUrl && next.context.streamUrl) {
 					effects.push({ type: 'SET_AUDIO_SRC', url: next.context.streamUrl });
 				}
 				break;
 
 			case 'playing':
-				effects.push({ type: 'PLAY_AUDIO' });
+				if (!loadCompleteWithUrl) {
+					effects.push({ type: 'PLAY_AUDIO' });
+				}
 				break;
 
 			case 'paused':
@@ -442,8 +451,11 @@ export function deriveSideEffects(
 	if (event.type === 'CONVERSION_COMPLETE') {
 		effects.push({ type: 'SYNC_PLAYER_TRACK', track: event.track });
 	}
-	if (event.type === 'LOAD_COMPLETE' && event.streamUrl && next.state !== 'ready') {
+	if (event.type === 'LOAD_COMPLETE' && event.streamUrl) {
 		effects.push({ type: 'SET_AUDIO_SRC', url: event.streamUrl });
+		if (next.state === 'playing' || next.state === 'buffering') {
+			effects.push({ type: 'PLAY_AUDIO' });
+		}
 	}
 	if (event.type === 'SEEK') {
 		effects.push({ type: 'SEEK_AUDIO', position: event.position });

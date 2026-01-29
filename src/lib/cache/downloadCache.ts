@@ -1,4 +1,5 @@
 import { browser } from '$app/environment';
+import { getSessionStorageKey } from '$lib/core/session';
 import type { TrackDownloadStatus, TrackDownloadTask } from '$lib/stores/downloadState';
 import type { DownloadStorage } from '$lib/stores/downloadPreferences';
 
@@ -27,7 +28,7 @@ interface DownloadCacheOptions {
 }
 
 const STORAGE_VERSION = 1;
-const DEFAULT_STORAGE_KEY = 'tidal-ui.downloadCache';
+const DEFAULT_STORAGE_KEY = 'downloadCache';
 const DEFAULT_MAX_ENTRIES = 100;
 const DEFAULT_MAX_ENTRY_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -107,7 +108,7 @@ const readState = (storageKey: string, maxEntryAgeMs: number): DownloadCacheStat
 };
 
 export const createDownloadCache = (options?: DownloadCacheOptions) => {
-	const storageKey = options?.storageKey ?? DEFAULT_STORAGE_KEY;
+	const storageKey = options?.storageKey ?? getSessionStorageKey(DEFAULT_STORAGE_KEY);
 	const maxEntries = options?.maxEntries ?? DEFAULT_MAX_ENTRIES;
 	const maxEntryAgeMs = options?.maxEntryAgeMs ?? DEFAULT_MAX_ENTRY_AGE_MS;
 	let state = readState(storageKey, maxEntryAgeMs);

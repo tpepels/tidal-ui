@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { ErrorSummary, ErrorSummarySnapshot } from '$lib/core/errorTracker';
+	import type { ErrorReport, ErrorSummary, ErrorSummarySnapshot } from '$lib/core/errorTracker';
 
 	export let open = false;
 	export let loading = false;
@@ -8,7 +8,45 @@
 	export let domainCounts: Record<string, number> | null = null;
 	export let health: { status?: string; responseTime?: number; issues?: string[] } | null = null;
 	export let retries: { total: number; recent: { attempt: number; delayMs: number }[] } | null = null;
+	export let errors: ErrorReport[] | null = null;
 	export let onClose: (() => void) | undefined;
+
+	const resolveDomain = (report: ErrorReport): string => {
+		const domain = report.context?.domain;
+		return typeof domain === 'string' && domain.length > 0 ? domain : 'other';
+	};
+
+	let selectedDomain = 'all';
+	let selectedCorrelation = 'all';
+
+	$: domainOptions = Array.from(new Set((errors ?? []).map(resolveDomain))).sort();
+	$: correlationOptions = Array.from(
+		new Set(
+			(errors ?? [])
+				.map((report) => report.context?.correlationId)
+				.filter((value): value is string => typeof value === 'string' && value.length > 0)
+		)
+	).sort();
+
+	$: if (selectedDomain !== 'all' && !domainOptions.includes(selectedDomain)) {
+		selectedDomain = 'all';
+	}
+
+	$: if (selectedCorrelation !== 'all' && !correlationOptions.includes(selectedCorrelation)) {
+		selectedCorrelation = 'all';
+	}
+
+	$: filteredErrors = (errors ?? [])
+		.filter((report) =>
+			selectedDomain === 'all' ? true : resolveDomain(report) === selectedDomain
+		)
+		.filter((report) =>
+			selectedCorrelation === 'all'
+				? true
+				: report.context?.correlationId === selectedCorrelation
+		)
+		.slice(-50)
+		.reverse();
 </script>
 
 {#if open}
@@ -49,6 +87,60 @@
 					</div>
 				{:else}
 					<p class="diagnostics-muted">No summary available yet.</p>
+				{/if}
+			</section>
+
+			<section class="diagnostics-section">
+				<h3>Error Drilldown</h3>
+				<div class="diagnostics-filters">
+					<label class="diagnostics-filter">
+						<span>Type</span>
+						<select aria-label="Type" bind:value={selectedDomain}>
+							<option value="all">All</option>
+							{#each domainOptions as option (option)}
+								<option value={option}>{option}</option>
+							{/each}
+						</select>
+					</label>
+					<label class="diagnostics-filter">
+						<span>Correlation</span>
+						<select aria-label="Correlation" bind:value={selectedCorrelation}>
+							<option value="all">All</option>
+							{#each correlationOptions as option (option)}
+								<option value={option}>{option}</option>
+							{/each}
+						</select>
+					</label>
+				</div>
+				{#if filteredErrors.length > 0}
+					<ul class="diagnostics-error-list">
+						{#each filteredErrors as errorReport (errorReport.id)}
+							<li>
+								<div class="diagnostics-error-header">
+									<span class="diagnostics-error-domain">
+										{resolveDomain(errorReport)}
+									</span>
+									<span class="diagnostics-error-time">
+										{new Date(errorReport.timestamp).toLocaleTimeString()}
+									</span>
+									<span class="diagnostics-error-severity">{errorReport.severity}</span>
+								</div>
+								<p class="diagnostics-error-message">{errorReport.error.message}</p>
+								<div class="diagnostics-error-meta">
+									<span>
+										correlation: {errorReport.context?.correlationId ?? 'missing'}
+									</span>
+									<span>
+										{errorReport.context?.component
+											? `component: ${String(errorReport.context.component)}`
+											: 'component: unknown'}
+									</span>
+								</div>
+							</li>
+						{/each}
+					</ul>
+				{:else}
+					<p class="diagnostics-muted">No errors match the current filters.</p>
 				{/if}
 			</section>
 
@@ -224,5 +316,82 @@
 		padding: 0;
 		font-size: 0.85rem;
 		color: rgba(248, 113, 113, 0.9);
+	}
+
+	.diagnostics-filters {
+		display: flex;
+		gap: 0.75rem;
+		flex-wrap: wrap;
+		margin-bottom: 0.75rem;
+	}
+
+	.diagnostics-filter {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+		font-size: 0.8rem;
+		color: rgba(226, 232, 240, 0.75);
+	}
+
+	.diagnostics-filter select {
+		background: rgba(15, 23, 42, 0.7);
+		border: 1px solid rgba(148, 163, 184, 0.25);
+		color: inherit;
+		border-radius: 8px;
+		padding: 0.35rem 0.6rem;
+		font-size: 0.85rem;
+	}
+
+	.diagnostics-error-list {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		max-height: 280px;
+		overflow-y: auto;
+	}
+
+	.diagnostics-error-list li {
+		background: rgba(15, 23, 42, 0.7);
+		border-radius: 12px;
+		padding: 0.6rem 0.75rem;
+		border: 1px solid rgba(148, 163, 184, 0.18);
+	}
+
+	.diagnostics-error-header {
+		display: flex;
+		gap: 0.6rem;
+		align-items: center;
+		font-size: 0.75rem;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: rgba(148, 163, 184, 0.85);
+	}
+
+	.diagnostics-error-domain {
+		font-weight: 600;
+		color: #38bdf8;
+	}
+
+	.diagnostics-error-severity {
+		margin-left: auto;
+		font-weight: 600;
+		color: rgba(248, 113, 113, 0.9);
+	}
+
+	.diagnostics-error-message {
+		margin: 0.35rem 0 0.25rem;
+		font-size: 0.9rem;
+		color: #f8fafc;
+	}
+
+	.diagnostics-error-meta {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.75rem;
+		font-size: 0.75rem;
+		color: rgba(148, 163, 184, 0.8);
 	}
 </style>

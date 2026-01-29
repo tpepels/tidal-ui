@@ -922,15 +922,12 @@ class LosslessAPI {
 		const data = await response.json();
 
 		// Validate the stream data
-		const validationResult = safeValidateApiResponse(data, StreamDataSchema);
-		if (!validationResult.success) {
-			console.warn(
-				'Song stream data validation failed, proceeding with unvalidated data:',
-				validationResult.error
-			);
-		}
+		const validationResult = safeValidateApiResponse(data, StreamDataSchema, {
+			endpoint: 'song.stream',
+			allowUnvalidated: true
+		});
 
-		return data;
+		return validationResult.success ? validationResult.data : data;
 	}
 
 	/**
@@ -1012,12 +1009,12 @@ class LosslessAPI {
 					bitDepth: z.number().nullable()
 				});
 
-				const validationResult = safeValidateApiResponse(result, StreamDataResultSchema);
-				if (!validationResult.success) {
-					console.warn('Hi-res stream data validation failed:', validationResult.error);
-				}
+				const validationResult = safeValidateApiResponse(result, StreamDataResultSchema, {
+					endpoint: 'stream.hires',
+					allowUnvalidated: true
+				});
 
-				return result;
+				return validationResult.success ? validationResult.data : result;
 			} catch (error) {
 				console.warn('Failed to resolve hi-res stream via DASH manifest', error);
 				quality = 'LOSSLESS';
@@ -1044,12 +1041,12 @@ class LosslessAPI {
 						bitDepth: z.number().nullable()
 					});
 
-					const validationResult = safeValidateApiResponse(result, StreamDataResultSchema);
-					if (!validationResult.success) {
-						console.warn('Stream data validation failed:', validationResult.error);
-					}
+					const validationResult = safeValidateApiResponse(result, StreamDataResultSchema, {
+						endpoint: 'stream.standard.original',
+						allowUnvalidated: true
+					});
 
-					return result;
+					return validationResult.success ? validationResult.data : result;
 				}
 
 				if (isDev) {
@@ -1077,12 +1074,12 @@ class LosslessAPI {
 						bitDepth: z.number().nullable()
 					});
 
-					const validationResult = safeValidateApiResponse(result, StreamDataResultSchema);
-					if (!validationResult.success) {
-						console.warn('Stream data validation failed:', validationResult.error);
-					}
+					const validationResult = safeValidateApiResponse(result, StreamDataResultSchema, {
+						endpoint: 'stream.standard.manifest',
+						allowUnvalidated: true
+					});
 
-					return result;
+					return validationResult.success ? validationResult.data : result;
 				}
 
 				lastError = new Error('Unable to resolve stream URL for track');

@@ -2,6 +2,7 @@
 // Collects errors from various sources and provides reporting capabilities
 
 import { logger } from './logger';
+import { getSessionId } from './session';
 
 export interface ErrorReport {
 	id: string;
@@ -49,6 +50,7 @@ export type ErrorContext = Record<string, unknown> & {
 	url?: string;
 	userId?: string;
 	sessionId?: string;
+	correlationId?: string;
 	domain?: string;
 };
 
@@ -100,6 +102,9 @@ export class ErrorTracker {
 	public trackError(error: Error, context: ErrorContext = {}): string {
 		const errorId = this.generateErrorId();
 		const now = Date.now();
+		const sessionId = context.sessionId ?? getSessionId();
+		const correlationId = context.correlationId ?? logger.getCorrelationId() ?? sessionId;
+		const domain = context.domain ?? this.getDomainFromContext(context);
 
 		// Determine severity based on error type and context
 		const severity = this.determineSeverity(error, context);
@@ -108,12 +113,17 @@ export class ErrorTracker {
 			id: errorId,
 			timestamp: now,
 			error,
-			context,
+			context: {
+				...context,
+				sessionId,
+				correlationId,
+				domain
+			},
 			stack: error.stack,
 			userAgent: context.userAgent,
 			url: context.url,
 			userId: context.userId,
-			sessionId: context.sessionId,
+			sessionId,
 			severity,
 			frequency: 1,
 			firstSeen: now,
@@ -153,6 +163,9 @@ export class ErrorTracker {
 			severity,
 			frequency: errorReport.frequency,
 			source: context.source || 'unknown',
+			correlationId,
+			sessionId,
+			domain,
 			...context
 		});
 
@@ -284,9 +297,36 @@ export class ErrorTracker {
 		return counts;
 	}
 
-	public getErrors(timeRangeMs: number = 3600000): ErrorReport[] {
+	public getErrors(
+		options: number | {
+			timeRangeMs?: number;
+			limit?: number;
+			domain?: string;
+			correlationId?: string;
+		} = 3600000
+	): ErrorReport[] {
+		const resolved =
+			typeof options === 'number'
+				? { timeRangeMs: options }
+				: options ?? {};
+		const timeRangeMs = resolved.timeRangeMs ?? 3600000;
 		const startTime = Date.now() - timeRangeMs;
-		return this.errors.filter((e) => e.timestamp >= startTime);
+		let filtered = this.errors.filter((e) => e.timestamp >= startTime);
+		if (resolved.domain) {
+			filtered = filtered.filter((error) => {
+				const domain = error.context.domain ?? this.getDomainFromContext(error.context);
+				return domain === resolved.domain;
+			});
+		}
+		if (resolved.correlationId) {
+			filtered = filtered.filter(
+				(error) => error.context.correlationId === resolved.correlationId
+			);
+		}
+		if (typeof resolved.limit === 'number') {
+			filtered = filtered.slice(-resolved.limit);
+		}
+		return filtered;
 	}
 
 	public getErrorById(id: string): ErrorReport | null {

@@ -1,3 +1,5 @@
+import { getSessionStorageKey } from '$lib/core/session';
+
 // Browser check for compatibility - will be mocked in tests
 const browser = typeof window !== 'undefined';
 
@@ -10,10 +12,13 @@ export interface PersistedState {
 const STORAGE_PREFIX = 'tidal-ui:';
 const CURRENT_VERSION = 1;
 
+const getLegacyStorageKey = (key: string): string => `${STORAGE_PREFIX}${key}`;
+
 export const saveToStorage = (key: string, data: unknown): void => {
 	if (!browser) return;
 	try {
-		const existing = localStorage.getItem(`${STORAGE_PREFIX}${key}`);
+		const storageKey = getSessionStorageKey(key);
+		const existing = localStorage.getItem(storageKey);
 
 		const state: PersistedState = {
 			version: CURRENT_VERSION,
@@ -22,13 +27,13 @@ export const saveToStorage = (key: string, data: unknown): void => {
 		};
 
 		// Double-check that no other tab modified the data since we read it
-		const current = localStorage.getItem(`${STORAGE_PREFIX}${key}`);
+		const current = localStorage.getItem(storageKey);
 		if (current !== existing) {
 			console.warn(`Concurrent storage modification detected for ${key}, skipping save`);
 			return;
 		}
 
-		localStorage.setItem(`${STORAGE_PREFIX}${key}`, JSON.stringify(state));
+		localStorage.setItem(storageKey, JSON.stringify(state));
 		console.log(`Saved ${key} state to storage`);
 	} catch (e) {
 		console.error(`Failed to save ${key} to storage:`, e);
@@ -38,7 +43,21 @@ export const saveToStorage = (key: string, data: unknown): void => {
 export const loadFromStorage = (key: string, defaultValue: unknown): unknown => {
 	if (!browser) return defaultValue;
 	try {
-		const stored = localStorage.getItem(`${STORAGE_PREFIX}${key}`);
+		const storageKey = getSessionStorageKey(key);
+		let stored = localStorage.getItem(storageKey);
+		if (!stored) {
+			const legacyKey = getLegacyStorageKey(key);
+			const legacy = localStorage.getItem(legacyKey);
+			if (legacy) {
+				try {
+					localStorage.setItem(storageKey, legacy);
+					localStorage.removeItem(legacyKey);
+				} catch {
+					// Ignore migration failures and continue with legacy value
+				}
+				stored = legacy;
+			}
+		}
 		if (!stored) return defaultValue;
 
 		const state: PersistedState = JSON.parse(stored);

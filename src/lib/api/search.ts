@@ -61,15 +61,10 @@ export async function searchTracks(
 		const data = await response.json();
 		const normalized = normalizeSearchResponse<Track>(data, 'tracks');
 
-		const validationResult = safeValidateApiResponse(normalized, TrackSearchResponseSchema);
-		if (!validationResult.success) {
-			logger.warn('Track search response validation failed, proceeding with unvalidated data', {
-				component: 'api',
-				operation: 'searchTracks',
-				validationError: validationResult.error,
-				query
-			});
-		}
+		safeValidateApiResponse(normalized, TrackSearchResponseSchema, {
+			endpoint: 'search.tracks',
+			allowUnvalidated: true
+		});
 
 		const result = {
 			...normalized,
@@ -97,13 +92,10 @@ export async function searchArtists(
 	const data = await response.json();
 	const normalized = normalizeSearchResponse<Artist>(data, 'artists');
 
-	const validationResult = safeValidateApiResponse(normalized, ArtistSearchResponseSchema);
-	if (!validationResult.success) {
-		console.warn(
-			'Artist search response validation failed, proceeding with unvalidated data:',
-			validationResult.error
-		);
-	}
+	safeValidateApiResponse(normalized, ArtistSearchResponseSchema, {
+		endpoint: 'search.artists',
+		allowUnvalidated: true
+	});
 
 	return {
 		...normalized,
@@ -124,13 +116,10 @@ export async function searchAlbums(
 	const data = await response.json();
 	const normalized = normalizeSearchResponse<Album>(data, 'albums');
 
-	const validationResult = safeValidateApiResponse(normalized, AlbumSearchResponseSchema);
-	if (!validationResult.success) {
-		console.warn(
-			'Album search response validation failed, proceeding with unvalidated data:',
-			validationResult.error
-		);
-	}
+	safeValidateApiResponse(normalized, AlbumSearchResponseSchema, {
+		endpoint: 'search.albums',
+		allowUnvalidated: true
+	});
 
 	return {
 		...normalized,
@@ -151,13 +140,10 @@ export async function searchPlaylists(
 	const data = await response.json();
 	const normalized = normalizeSearchResponse<Playlist>(data, 'playlists');
 
-	const validationResult = safeValidateApiResponse(normalized, PlaylistSearchResponseSchema);
-	if (!validationResult.success) {
-		console.warn(
-			'Playlist search response validation failed, proceeding with unvalidated data:',
-			validationResult.error
-		);
-	}
+	safeValidateApiResponse(normalized, PlaylistSearchResponseSchema, {
+		endpoint: 'search.playlists',
+		allowUnvalidated: true
+	});
 
 	return normalized;
 }

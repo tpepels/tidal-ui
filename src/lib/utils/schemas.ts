@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { getSessionId } from '$lib/core/session';
 
 const ArtistRoleEntrySchema = z.union([
 	z.string(),
@@ -208,13 +209,19 @@ export const PlaylistSearchResponseSchema = SearchResponseSchema.extend({
 	items: z.array(PlaylistSchema)
 });
 
+const ApiVersionSchema = z.preprocess((value) => {
+	if (value === undefined || value === null) {
+		return '2.0';
+	}
+	if (typeof value === 'number') {
+		return String(value);
+	}
+	return value;
+}, z.string().regex(/^2(\.\d+)?$/));
+
 // API v2 container schema
 export const ApiV2ContainerSchema = z.object({
-	version: z.union([
-		z.literal('2.0'),
-		z.string().regex(/^2(\.\d+)?$/),
-		z.number().refine((value) => value >= 2 && value < 3)
-	]),
+	version: ApiVersionSchema,
 	data: z.unknown()
 });
 
@@ -319,16 +326,49 @@ export function validateApiResponse<T>(data: unknown, schema: z.ZodSchema<T>): T
 	}
 }
 
+type ValidationContext = {
+	endpoint?: string;
+	correlationId?: string;
+	allowUnvalidated?: boolean;
+};
+
+const validationWarned = new Set<string>();
+
+const getValidationKey = (endpoint?: string, correlationId?: string): string =>
+	`${endpoint ?? 'unknown'}:${correlationId ?? 'missing'}`;
+
 export function safeValidateApiResponse<T>(
 	data: unknown,
-	schema: z.ZodSchema<T>
+	schema: z.ZodSchema<T>,
+	context?: ValidationContext
 ): { success: true; data: T } | { success: false; error: string; originalError: unknown } {
 	try {
 		const validatedData = schema.parse(data);
 		return { success: true, data: validatedData };
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : 'Unknown validation error';
-		console.warn('API response validation failed (safe mode):', error);
+		const endpoint = context?.endpoint ?? 'unknown';
+		const correlationId = context?.correlationId ?? getSessionId() ?? 'missing';
+		const key = getValidationKey(endpoint, correlationId);
+		if (!validationWarned.has(key)) {
+			validationWarned.add(key);
+			const issues =
+				error && typeof error === 'object' && 'issues' in error
+					? (error as { issues?: Array<{ path?: unknown; message?: string }> }).issues
+							?.slice(0, 3)
+							?.map((issue) => ({
+								path: Array.isArray(issue.path) ? issue.path.join('.') : issue.path,
+								message: issue.message
+							}))
+					: undefined;
+			console.warn('API response validation failed (safe mode):', {
+				endpoint,
+				correlationId,
+				allowUnvalidated: context?.allowUnvalidated ?? false,
+				error: errorMessage,
+				issues
+			});
+		}
 		return { success: false, error: errorMessage, originalError: error };
 	}
 }
@@ -343,7 +383,7 @@ export function validateApiResponseGracefully<T>(
 	context: string,
 	fallbackValue?: T
 ): T {
-	const validation = safeValidateApiResponse(data, schema);
+	const validation = safeValidateApiResponse(data, schema, { endpoint: context });
 
 	if (validation.success) {
 		return validation.data;
@@ -375,9 +415,9 @@ export function validateApiResponseGracefully<T>(
 		return fallbackValue;
 	}
 
-	// If no fallback provided, return the original data (unsafe but allows continuation)
-	console.warn(`Proceeding with unvalidated data for ${context} - this may cause issues`);
-	return data as T;
+	// If no fallback provided, stop rather than continue with unvalidated data
+	const userMessage = getUserFriendlyValidationError(context, validation.error);
+	throw new Error(`Unable to process ${context}: ${userMessage}`);
 }
 
 /**

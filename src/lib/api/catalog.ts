@@ -25,13 +25,10 @@ export async function getAlbum(
 	if (!response.ok) throw new Error('Failed to get album');
 	const data = await response.json();
 
-	const validationResult = safeValidateApiResponse({ data }, ApiV2ContainerSchema);
-	if (!validationResult.success) {
-		console.warn(
-			'Album API response validation failed, proceeding with unvalidated data:',
-			validationResult.error
-		);
-	}
+	safeValidateApiResponse({ data }, ApiV2ContainerSchema, {
+		endpoint: 'catalog.album.container',
+		allowUnvalidated: true
+	});
 
 	if (data && typeof data === 'object' && 'data' in data && 'items' in data.data) {
 		const items = data.data.items;
@@ -59,12 +56,14 @@ export async function getAlbum(
 
 				const result = { album: albumEntry, tracks };
 
-				const finalValidation = safeValidateApiResponse(result, AlbumWithTracksSchema);
+				const finalValidation = safeValidateApiResponse(result, AlbumWithTracksSchema, {
+					endpoint: 'catalog.album'
+				});
 				if (!finalValidation.success) {
-					console.warn('Album with tracks validation failed:', finalValidation.error);
+					throw new Error('Album response validation failed');
 				}
 
-				return result;
+				return finalValidation.data;
 			}
 		}
 	}
@@ -118,12 +117,14 @@ export async function getAlbum(
 
 	const result = { album: albumEntry, tracks };
 
-	const finalValidation = safeValidateApiResponse(result, AlbumWithTracksSchema);
+	const finalValidation = safeValidateApiResponse(result, AlbumWithTracksSchema, {
+		endpoint: 'catalog.album'
+	});
 	if (!finalValidation.success) {
-		console.warn('Album with tracks validation failed:', finalValidation.error);
+		throw new Error('Album response validation failed');
 	}
 
-	return result;
+	return finalValidation.data;
 }
 
 export async function getPlaylist(
@@ -149,12 +150,14 @@ export async function getPlaylist(
 		};
 	}
 
-	const validationResult = safeValidateApiResponse(result, PlaylistWithTracksSchema);
+	const validationResult = safeValidateApiResponse(result, PlaylistWithTracksSchema, {
+		endpoint: 'catalog.playlist'
+	});
 	if (!validationResult.success) {
-		console.warn('Playlist with tracks validation failed:', validationResult.error);
+		throw new Error('Playlist response validation failed');
 	}
 
-	return result;
+	return validationResult.data;
 }
 
 export type ArtistFetchProgress = {
@@ -489,15 +492,11 @@ export async function getCover(
 	if (!response.ok) throw new Error('Failed to get cover');
 	const data = await response.json();
 
-	const validationResult = safeValidateApiResponse(data, z.array(CoverImageSchema));
-	if (!validationResult.success) {
-		console.warn(
-			'Cover images validation failed, proceeding with unvalidated data:',
-			validationResult.error
-		);
-	}
-
-	return data;
+	const validationResult = safeValidateApiResponse(data, z.array(CoverImageSchema), {
+		endpoint: 'catalog.cover',
+		allowUnvalidated: true
+	});
+	return validationResult.success ? validationResult.data : data;
 }
 
 export async function getLyrics(context: CatalogApiContext, id: number): Promise<Lyrics> {
@@ -507,13 +506,9 @@ export async function getLyrics(context: CatalogApiContext, id: number): Promise
 	const data = await response.json();
 	const lyrics = Array.isArray(data) ? data[0] : data;
 
-	const validationResult = safeValidateApiResponse(lyrics, LyricsSchema);
-	if (!validationResult.success) {
-		console.warn(
-			'Lyrics validation failed, proceeding with unvalidated data:',
-			validationResult.error
-		);
-	}
-
-	return lyrics;
+	const validationResult = safeValidateApiResponse(lyrics, LyricsSchema, {
+		endpoint: 'catalog.lyrics',
+		allowUnvalidated: true
+	});
+	return validationResult.success ? validationResult.data : lyrics;
 }
