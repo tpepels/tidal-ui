@@ -118,3 +118,14 @@ const createUserPreferencesStore = () => {
 };
 
 export const userPreferencesStore = createUserPreferencesStore();
+
+const isTestHookEnabled = import.meta.env.DEV || import.meta.env.VITE_E2E === 'true';
+if (browser && isTestHookEnabled) {
+	(
+		window as typeof window & {
+			__tidalSetUserPlaybackQuality?: (quality: AudioQuality) => void;
+		}
+	).__tidalSetUserPlaybackQuality = (quality: AudioQuality) => {
+		userPreferencesStore.setPlaybackQuality(quality);
+	};
+}

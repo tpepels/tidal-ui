@@ -35,6 +35,7 @@ declare global {
 		__tidalShuffleQueue?: () => void;
 		__tidalRehydratePlayback?: () => void;
 		__tidalSetPlaybackQuality?: (quality: import('$lib/types').AudioQuality) => void;
+		__tidalSetUserPlaybackQuality?: (quality: import('$lib/types').AudioQuality) => void;
 		__tidalPlaybackMachineState?: () => PlaybackMachineSnapshot;
 		__tidalNext?: () => void;
 		__tidalPrevious?: () => void;

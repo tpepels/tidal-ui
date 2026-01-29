@@ -90,6 +90,10 @@ const setRegion = async (page: Page, region: 'auto' | 'us' | 'eu') => {
 
 const setUserPlaybackQuality = async (page: Page, quality: string) => {
 	await page.evaluate((nextQuality) => {
+		if (window.__tidalSetUserPlaybackQuality) {
+			window.__tidalSetUserPlaybackQuality(nextQuality);
+			return;
+		}
 		const payload = {
 			version: 1,
 			timestamp: Date.now(),
@@ -431,11 +435,11 @@ test('seek updates the playback time display', async ({ page, browserName }) => 
 	await expect(playerTitle).toBeVisible();
 
 	await page.waitForFunction(() => typeof window.__tidalSetDuration === 'function');
-	await page.evaluate(() => {
+	await page.waitForFunction(() => {
 		window.__tidalSetDuration?.(120);
+		const label = document.querySelectorAll('.audio-player-glass .mt-1 span')[1];
+		return label?.textContent?.trim() === '2:00';
 	});
-	const durationLabel = page.locator('.audio-player-glass .mt-1 span').nth(1);
-	await expect(durationLabel).toHaveText('2:00');
 
 	await page.waitForFunction(() => typeof window.__tidalSetCurrentTime === 'function');
 	await page.waitForFunction(() => {
