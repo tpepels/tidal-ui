@@ -6,24 +6,20 @@
 	import type { Album, ArtistDetails, AudioQuality } from '$lib/types';
 	import TopTracksGrid from '$lib/components/TopTracksGrid.svelte';
 	import ShareButton from '$lib/components/ShareButton.svelte';
-import { ArrowLeft, User, Download, LoaderCircle } from 'lucide-svelte';
+	import { ArrowLeft, User, Download, LoaderCircle } from 'lucide-svelte';
 
-import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
-import { userPreferencesStore } from '$lib/stores/userPreferences';
-import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
+	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
+	import { userPreferencesStore } from '$lib/stores/userPreferences';
+	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
+	import { artistCacheStore } from '$lib/stores/artistCache';
 
-let artist = $state<ArtistDetails | null>(null);
-let artistImage = $state<string | null>(null);
-let isLoading = $state(true);
-let error = $state<string | null>(null);
-let loadReceivedBytes = $state(0);
-let loadTotalBytes = $state<number | null>(null);
-
+	let artist = $state<ArtistDetails | null>(null);
+	let artistImage = $state<string | null>(null);
+	let isLoading = $state(true);
+	let error = $state<string | null>(null);
 	const artistId = $derived($page.params.id);
 	const topTracks = $derived(artist?.tracks ?? []);
 	const discography = $derived(artist?.albums ?? []);
-	const hasLoadTotal = $derived(loadTotalBytes !== null && loadTotalBytes > 0);
-	const totalBytesNumber = $derived(loadTotalBytes ?? 0);
 	const downloadQuality = $derived($downloadPreferencesStore.downloadQuality as AudioQuality);
 	const downloadMode = $derived($downloadPreferencesStore.mode);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
@@ -40,8 +36,8 @@ let loadTotalBytes = $state<number | null>(null);
 	let isDownloadingDiscography = $state(false);
 	let discographyProgress = $state({ completed: 0, total: 0 });
 	let discographyError = $state<string | null>(null);
-let albumDownloadStates = $state<Record<number, AlbumDownloadState>>({});
-let activeRequestToken = 0;
+	let albumDownloadStates = $state<Record<number, AlbumDownloadState>>({});
+	let activeRequestToken = 0;
 
 	$effect(() => {
 		const id = Number(artistId);
@@ -71,14 +67,6 @@ let activeRequestToken = 0;
 	function displayTrackTotal(total?: number | null): number {
 		if (!Number.isFinite(total)) return 0;
 		return total && total > 0 ? total + 1 : (total ?? 0);
-	}
-
-	function formatBytes(bytes: number): string {
-		if (bytes <= 0) return '0 B';
-		const k = 1024;
-		const sizes = ['B', 'KB', 'MB', 'GB'];
-		const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1);
-		return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 	}
 
 	function patchAlbumDownloadState(albumId: number, patch: Partial<AlbumDownloadState>) {
@@ -229,30 +217,38 @@ let activeRequestToken = 0;
 		isDownloadingDiscography = false;
 	}
 
-async function loadArtist(id: number) {
+	async function loadArtist(id: number) {
 		const requestToken = ++activeRequestToken;
+		const cachedArtist = artistCacheStore.get(id);
+
+		error = null;
+		isDownloadingDiscography = false;
+		discographyProgress = { completed: 0, total: 0 };
+		discographyError = null;
+		albumDownloadStates = {};
+
+		if (cachedArtist) {
+			artist = cachedArtist;
+			artistImage = cachedArtist.picture
+				? losslessAPI.getArtistPictureUrl(cachedArtist.picture)
+				: null;
+			isLoading = false;
+			breadcrumbStore.setBreadcrumbs([
+				{ label: cachedArtist.name, href: `/artist/${cachedArtist.id}` }
+			]);
+			return;
+		}
+
 		try {
 			isLoading = true;
-			error = null;
-			isDownloadingDiscography = false;
-			discographyProgress = { completed: 0, total: 0 };
-			discographyError = null;
-			albumDownloadStates = {};
 			artist = null;
 			artistImage = null;
-			loadReceivedBytes = 0;
-			loadTotalBytes = null;
-			const data = await losslessAPI.getArtist(id, {
-				onProgress: (progress) => {
-					if (requestToken !== activeRequestToken) return;
-					loadReceivedBytes = progress.receivedBytes;
-					loadTotalBytes = progress.totalBytes ?? null;
-				}
-			});
+			const data = await losslessAPI.getArtist(id);
 			if (requestToken !== activeRequestToken) {
 				return;
 			}
 			artist = data;
+			artistCacheStore.set(data);
 
 			// Set breadcrumbs
 			breadcrumbStore.setBreadcrumbs([
@@ -312,26 +308,13 @@ async function loadArtist(id: number) {
 	<div class="mx-auto flex w-full max-w-xl flex-col gap-4 py-16">
 		<div class="rounded-2xl border border-gray-800 bg-gray-900/40 p-6">
 			<div class="mb-3 text-sm font-semibold text-gray-300">Loading artist data</div>
-			<div class="h-2 w-full overflow-hidden rounded-full bg-gray-800">
-				{#if hasLoadTotal}
-					<div
-						class="h-full rounded-full bg-blue-500 transition-all"
-						style="width: {Math.min(100, (loadReceivedBytes / totalBytesNumber) * 100)}%"
-					></div>
-				{:else}
-					<div
-						class="h-full w-1/3 rounded-full bg-blue-500 animate-[indeterminate_1.5s_ease-in-out_infinite]"
-					></div>
-				{/if}
-			</div>
-			<div class="mt-3 text-xs text-gray-400">
-				{#if hasLoadTotal}
-					{formatBytes(loadReceivedBytes)} / {formatBytes(totalBytesNumber)} ({Math.min(100, Math.round((loadReceivedBytes / totalBytesNumber) * 100))}%)
-				{:else if loadReceivedBytes > 0}
-					{formatBytes(loadReceivedBytes)} received...
-				{:else}
-					Loading artist data...
-				{/if}
+			<div
+				class="flex items-center gap-3 text-sm text-gray-400"
+				data-testid="artist-loading-spinner"
+				role="status"
+			>
+				<LoaderCircle size={18} class="animate-spin text-blue-400" />
+				<span>Fetching artist details…</span>
 			</div>
 		</div>
 	</div>
@@ -567,14 +550,3 @@ async function loadArtist(id: number) {
 		{/if}
 	</div>
 {/if}
-
-<style>
-	@keyframes indeterminate {
-		0% {
-			transform: translateX(-100%);
-		}
-		100% {
-			transform: translateX(400%);
-		}
-	}
-</style>

@@ -17,7 +17,6 @@
 		Download,
 		Shuffle,
 		LoaderCircle,
-
 	} from 'lucide-svelte';
 	import { playerStore } from '$lib/stores/player';
 	import { playbackFacade } from '$lib/controllers/playbackFacade';
@@ -34,7 +33,12 @@
 	let isDownloadingAll = $state(false);
 	let downloadedCount = $state(0);
 
-	let isPlayingThisAlbum = $derived($playerStore.queue.length === tracks.length && $playerStore.queue.every((t, i) => t?.id === tracks[i]?.id));
+	const isAlbumQueue = $derived(
+		tracks.length > 0 &&
+			$playerStore.queue.length === tracks.length &&
+			$playerStore.queue.every((t, i) => t?.id === tracks[i]?.id)
+	);
+	const isAlbumPlaying = $derived(isAlbumQueue && $playerStore.isPlaying);
 	let downloadError = $state<string | null>(null);
 	const albumDownloadMode = $derived($downloadPreferencesStore.mode);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
@@ -82,13 +86,36 @@
 			return;
 		}
 
-			try {
-				playbackFacade.loadQueue(tracks, 0);
-				playbackFacade.play();
-			} catch (error) {
+		try {
+			playbackFacade.loadQueue(tracks, 0);
+			playbackFacade.play();
+		} catch (error) {
 			console.error('Failed to play album:', error);
 			// Could show error toast here
 		}
+	}
+
+	function handleAlbumPlaybackToggle() {
+		if (!Array.isArray(tracks) || tracks.length === 0) {
+			console.warn('No tracks available to play');
+			return;
+		}
+
+		if (isAlbumPlaying) {
+			playbackFacade.pause();
+			return;
+		}
+
+		if (isAlbumQueue) {
+			const firstTrackId = tracks[0]?.id;
+			if ($playerStore.currentTrack?.id !== firstTrackId) {
+				playbackFacade.loadQueue(tracks, 0);
+			}
+			playbackFacade.play();
+			return;
+		}
+
+		handlePlayAll();
 	}
 
 	function shuffleTracks(list: Track[]): Track[] {
@@ -125,12 +152,12 @@
 		goto('/');
 	}
 
-		function handleShufflePlay() {
-			if (tracks.length === 0) return;
-			const shuffled = shuffleTracks(tracks);
-			playbackFacade.loadQueue(shuffled, 0);
-			playbackFacade.play();
-		}
+	function handleShufflePlay() {
+		if (tracks.length === 0) return;
+		const shuffled = shuffleTracks(tracks);
+		playbackFacade.loadQueue(shuffled, 0);
+		playbackFacade.play();
+	}
 
 	async function handleDownloadAll() {
 		if (!album || tracks.length === 0 || isDownloadingAll) {
@@ -301,11 +328,11 @@
 				{#if tracks.length > 0}
 					<div class="flex flex-wrap items-center gap-3">
 						<button
-							onclick={isPlayingThisAlbum ? () => playbackFacade.pause() : handlePlayAll}
+							onclick={handleAlbumPlaybackToggle}
 							class="flex items-center gap-2 rounded-full bg-blue-600 px-8 py-3 font-semibold transition-colors hover:bg-blue-700"
-							aria-label={isPlayingThisAlbum ? 'Pause album' : 'Play album'}
+							aria-label={isAlbumPlaying ? 'Pause album' : 'Play album'}
 						>
-							{#if isPlayingThisAlbum}
+							{#if isAlbumPlaying}
 								<Pause size={20} fill="currentColor" />
 								Pause
 							{:else}

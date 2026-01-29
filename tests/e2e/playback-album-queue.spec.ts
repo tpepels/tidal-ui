@@ -230,3 +230,128 @@ test('playing an album resets queue and plays the album track', async ({ page })
 		})
 		.toEqual(expect.arrayContaining([expect.stringContaining('audio-album-1.mp3')]));
 });
+
+test('album play button reflects player state and restarts from first track', async ({ page }) => {
+	await page.addInitScript(() => {
+		(window as Window & { __playingEvents?: number }).__playingEvents = 0;
+		const originalPlay = HTMLMediaElement.prototype.play;
+		HTMLMediaElement.prototype.play = function () {
+			const state = window as Window & { __playingEvents?: number };
+			state.__playingEvents = (state.__playingEvents ?? 0) + 1;
+			try {
+				this.dispatchEvent(new Event('playing'));
+			} catch {
+				// ignore
+			}
+			return Promise.resolve();
+		};
+		void originalPlay;
+	});
+
+	const artist = buildArtist(201, 'State Artist');
+	const album = buildAlbum(301, 'State Album', artist);
+	const albumTrack1 = buildTrack(501, 'State Track 1', artist, album);
+	const albumTrack2 = buildTrack(502, 'State Track 2', artist, album);
+	const urlMap = new Map<number, string>([
+		[albumTrack1.id, 'https://example.com/audio-state-1.mp3'],
+		[albumTrack2.id, 'https://example.com/audio-state-2.mp3']
+	]);
+
+	await page.route('**/api/proxy**', async (route) => {
+		const requestUrl = new URL(route.request().url());
+		const proxiedUrl = requestUrl.searchParams.get('url');
+		if (!proxiedUrl) {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ items: [] })
+			});
+			return;
+		}
+		const decoded = new URL(proxiedUrl);
+		const path = decoded.pathname.toLowerCase();
+
+		if (path.includes('/album/')) {
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					version: '2.0',
+					data: {
+						items: [{ item: albumTrack1 }, { item: albumTrack2 }]
+					}
+				})
+			});
+			return;
+		}
+
+		if (path.includes('/track/')) {
+			const id = Number.parseInt(decoded.searchParams.get('id') || '0', 10);
+			const track = id === albumTrack2.id ? albumTrack2 : albumTrack1;
+			const url = urlMap.get(track.id) ?? 'https://example.com/audio-default.mp3';
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify(buildTrackLookup(track, 'LOSSLESS', url))
+			});
+			return;
+		}
+
+		if (path.includes('/url/')) {
+			const id = Number.parseInt(decoded.searchParams.get('id') || '0', 10);
+			const url = urlMap.get(id) ?? 'https://example.com/audio-default.mp3';
+			await route.fulfill({
+				status: 200,
+				contentType: 'application/json',
+				body: JSON.stringify({ url })
+			});
+			return;
+		}
+
+		if (decoded.hostname === 'example.com' && decoded.pathname.startsWith('/audio')) {
+			await route.fulfill({
+				status: 200,
+				contentType: 'audio/wav',
+				body: 'RIFF'
+			});
+			return;
+		}
+
+		await route.continue();
+	});
+
+	await page.goto(`/album/${album.id}`);
+	const playAlbumButton = page.getByRole('button', { name: 'Play album', exact: true });
+	await expect(playAlbumButton).toBeVisible();
+	await playAlbumButton.click();
+
+	const pauseAlbumButton = page.getByRole('button', { name: 'Pause album', exact: true });
+	await expect(pauseAlbumButton).toBeVisible();
+
+	await page.waitForFunction(() => typeof window.__tidalNext === 'function');
+	await page.evaluate(() => {
+		window.__tidalNext?.();
+	});
+	await page.waitForFunction(() => {
+		const snapshot = window.__tidalPlaybackMachineState?.();
+		return snapshot?.currentTrackId === 502;
+	});
+
+	const playerPauseButton = page.getByRole('button', { name: 'Pause', exact: true }).first();
+	await playerPauseButton.click();
+
+	await expect(playAlbumButton).toBeVisible();
+
+	await playAlbumButton.click();
+
+	await page.waitForFunction(() => {
+		const snapshot = window.__tidalPlaybackMachineState?.();
+		return snapshot?.currentTrackId === 501;
+	});
+
+	await expect
+		.poll(async () => {
+			return await page.evaluate(() => window.__playingEvents ?? 0);
+		})
+		.toBeGreaterThan(1);
+});

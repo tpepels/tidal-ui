@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import type { PlayableTrack } from '$lib/types';
+import type { AudioQuality, PlayableTrack } from '$lib/types';
 
 type TrackPayload = {
 	id: number;
@@ -88,8 +88,8 @@ const setRegion = async (page: Page, region: 'auto' | 'us' | 'eu') => {
 	);
 };
 
-const setUserPlaybackQuality = async (page: Page, quality: string) => {
-	await page.evaluate((nextQuality) => {
+const setUserPlaybackQuality = async (page: Page, quality: AudioQuality) => {
+	await page.evaluate((nextQuality: AudioQuality) => {
 		if (window.__tidalSetUserPlaybackQuality) {
 			window.__tidalSetUserPlaybackQuality(nextQuality);
 			return;

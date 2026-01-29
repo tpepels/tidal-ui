@@ -83,18 +83,11 @@ test('quality fallback retries playback after downgrade', async ({ page }) => {
 		(window as Window & {
 			__playCalls?: number;
 			__playingEvents?: number;
-			__suppressNextPlayingEvent?: boolean;
 		}).__playCalls = 0;
 		(window as Window & {
 			__playCalls?: number;
 			__playingEvents?: number;
-			__suppressNextPlayingEvent?: boolean;
 		}).__playingEvents = 0;
-		(window as Window & {
-			__playCalls?: number;
-			__playingEvents?: number;
-			__suppressNextPlayingEvent?: boolean;
-		}).__suppressNextPlayingEvent = false;
 
 		const originalPlay = HTMLMediaElement.prototype.play;
 		const originalPause = HTMLMediaElement.prototype.pause;
@@ -105,13 +98,8 @@ test('quality fallback retries playback after downgrade', async ({ page }) => {
 			const state = window as Window & {
 				__playCalls?: number;
 				__playingEvents?: number;
-				__suppressNextPlayingEvent?: boolean;
 			};
 			state.__playCalls = (state.__playCalls ?? 0) + 1;
-			if (state.__suppressNextPlayingEvent) {
-				state.__suppressNextPlayingEvent = false;
-				return Promise.resolve();
-			}
 			state.__playingEvents = (state.__playingEvents ?? 0) + 1;
 			try {
 				this.dispatchEvent(new Event('playing'));
@@ -243,10 +231,6 @@ test('quality fallback retries playback after downgrade', async ({ page }) => {
 	await page.waitForFunction(() => Boolean(document.querySelector('audio')));
 
 	await page.evaluate(() => {
-		const state = window as Window & {
-			__suppressNextPlayingEvent?: boolean;
-		};
-		state.__suppressNextPlayingEvent = true;
 		const audio = document.querySelector('audio');
 		if (!audio) return;
 		const error = {

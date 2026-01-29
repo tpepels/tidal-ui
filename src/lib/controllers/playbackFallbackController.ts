@@ -51,6 +51,7 @@ export const createPlaybackFallbackController = (
 		if (!track) {
 			return;
 		}
+		options.setResumeAfterFallback(true);
 		if (dashFallbackAttemptedTrackId === track.id) {
 			return;
 		}
@@ -86,7 +87,7 @@ export const createPlaybackFallbackController = (
 		}
 		losslessFallbackAttemptedTrackId = track.id;
 		losslessFallbackInFlight = true;
-		options.setResumeAfterFallback(options.getIsPlaying());
+		options.setResumeAfterFallback(true);
 		const sequence = options.createSequence();
 		try {
 			options.setLoading(true);

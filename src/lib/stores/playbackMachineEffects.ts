@@ -199,10 +199,28 @@ export class PlaybackMachineSideEffectHandler {
 				this.loadUiCallbacks.getStreamingFallbackQuality?.() ??
 				(this.loadUiCallbacks.isFirefox?.() ? 'LOW' : 'HIGH'),
 			onLoadComplete: (url, quality) => {
+				const shouldResume = this.resumeAfterFallback;
 				if (this.resumeAfterFallback) {
 					this.resumeAfterFallback = false;
 				}
 				this.dispatch?.({ type: 'LOAD_COMPLETE', streamUrl: url ?? null, quality });
+				if (shouldResume) {
+					this.dispatch?.({ type: 'PLAY' });
+					if (this.audioElement) {
+						const promise = this.audioElement.play();
+						if (promise) {
+							promise.catch((error) => {
+								console.error('[PlaybackMachine] Play failed after fallback:', error);
+								trackError(error instanceof Error ? error : new Error('Play failed'), {
+									component: 'playback-effects',
+									domain: 'playback',
+									source: 'play-after-fallback'
+								});
+								this.dispatch?.({ type: 'AUDIO_WAITING' });
+							});
+						}
+					}
+				}
 			},
 			onLoadError: (error) => {
 				this.dispatch?.({
