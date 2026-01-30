@@ -1,5 +1,6 @@
 import { browser } from '$app/environment';
 import { writable } from 'svelte/store';
+import { areTestHooksEnabled } from '$lib/utils/testHooks';
 
 export type RegionOption = 'auto' | 'us' | 'eu';
 
@@ -9,7 +10,7 @@ const TEST_QUERY_KEY = 'testRegion';
 const isRegionOption = (value: string | null): value is RegionOption =>
 	value === 'us' || value === 'eu' || value === 'auto';
 
-const isTestHookEnabled = import.meta.env.DEV || import.meta.env.VITE_E2E === 'true';
+const isTestHookEnabled = areTestHooksEnabled();
 
 const readTestRegion = (): RegionOption | null => {
 	if (!browser || !isTestHookEnabled) {

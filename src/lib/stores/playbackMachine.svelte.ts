@@ -15,6 +15,7 @@ import {
 import type { PlayableTrack, AudioQuality } from '$lib/types';
 import { isSonglinkTrack } from '$lib/types';
 import { playerStore } from '$lib/stores/player';
+import { areTestHooksEnabled } from '$lib/utils/testHooks';
 import { syncPlayerStoreFromMachine } from '$lib/stores/playbackMachineSync';
 import { PlaybackMachineSideEffectHandler } from '$lib/stores/playbackMachineEffects';
 import { get } from 'svelte/store';
@@ -228,8 +229,8 @@ export function createPlaybackMachineStore(initialQuality: AudioQuality = 'HIGH'
  */
 export const playbackMachine = createPlaybackMachineStore();
 
-const isTestHookEnabled = import.meta.env.DEV || import.meta.env.VITE_E2E === 'true';
-if (typeof window !== 'undefined' && isTestHookEnabled) {
+const testHooksEnabled = areTestHooksEnabled();
+if (typeof window !== 'undefined' && testHooksEnabled) {
 	(
 		window as typeof window & {
 			__tidalPlaybackMachineState?: () => {

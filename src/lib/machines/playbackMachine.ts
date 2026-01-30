@@ -232,7 +232,7 @@ export function transition(
 		case 'AUDIO_READY': {
 			if (state === 'loading') {
 				return {
-					state: 'ready',
+					state: context.autoPlay ? 'playing' : 'ready',
 					context
 				};
 			}

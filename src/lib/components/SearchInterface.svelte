@@ -11,6 +11,7 @@ import TrackDownloadButton from '$lib/components/TrackDownloadButton.svelte';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { regionStore, type RegionOption } from '$lib/stores/region';
 	import { isTidalUrl } from '$lib/utils/urlParser';
+	import { areTestHooksEnabled } from '$lib/utils/testHooks';
 	import { isSupportedStreamingUrl, isSpotifyPlaylistUrl as isSpotifyPlaylistUrlUtil, getPlatformName } from '$lib/utils/songlink';
 	// Orchestrators
 	import { searchOrchestrator, downloadOrchestrator } from '$lib/orchestrators';
@@ -123,8 +124,7 @@ import {
 	};
 
 	const ensureSupportedRegion = (value: RegionOption): RegionOption => {
-		const isTestHookEnabled = import.meta.env.DEV || import.meta.env.VITE_E2E === 'true';
-		if (isTestHookEnabled) {
+		if (areTestHooksEnabled()) {
 			return value;
 		}
 		if (value !== 'auto' && !regionAvailability[value]) {

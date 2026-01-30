@@ -4,6 +4,7 @@ import type { DownloadStorage } from './downloadPreferences';
 import { isSonglinkTrack } from '../types';
 import { formatArtists } from '../utils/formatters';
 import { downloadCache } from '../cache/downloadCache';
+import { areTestHooksEnabled } from '$lib/utils/testHooks';
 import {
 	applyCancelTrackDownload,
 	applyCompleteFfmpeg,
@@ -38,7 +39,7 @@ export type {
 	TrackDownloadTask
 } from './downloadState';
 
-const isTestHookEnabled = import.meta.env.DEV || import.meta.env.VITE_E2E === 'true';
+const isTestHookEnabled = areTestHooksEnabled();
 
 const initialState = createInitialDownloadState();
 const store = writable(initialState);

@@ -6,6 +6,7 @@ import { deriveTrackQuality } from '../utils/audioQuality';
 import { userPreferencesStore } from './userPreferences';
 import { loadFromStorage, debouncedSave } from '../utils/persistence';
 import { assertPlaybackState, validatePlaybackState } from '../core/playbackInvariants';
+import { areTestHooksEnabled } from '../utils/testHooks';
 
 interface PlayerState {
 	currentTrack: PlayableTrack | null;
@@ -515,7 +516,7 @@ function createPlayerStore() {
 
 export const playerStore = createPlayerStore();
 
-const isTestHookEnabled = import.meta.env.DEV || import.meta.env.VITE_E2E === 'true';
+const isTestHookEnabled = areTestHooksEnabled();
 if (browser && isTestHookEnabled) {
 	(
 		window as typeof window & {

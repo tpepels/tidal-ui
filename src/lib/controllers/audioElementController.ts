@@ -62,9 +62,12 @@ export const createAudioElementController = (options: ControllerOptions): AudioE
 	const handleTimeUpdate = () => {
 		const audioElement = options.getAudioElement();
 		if (!audioElement) return;
+		if (!Number.isFinite(audioElement.currentTime)) {
+			return;
+		}
 		const storeState = get(options.playerStore);
 		const duration = audioElement.duration;
-		if (storeState.currentTrack && storeState.currentTime > 0 && audioElement.currentTime === 0) {
+		if (storeState.currentTime > 0 && audioElement.currentTime === 0) {
 			return;
 		}
 		if (storeState.currentTrack && audioElement.currentTime === 0) {

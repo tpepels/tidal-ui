@@ -2,6 +2,7 @@ import type { PlayableTrack } from '$lib/types';
 import { playbackMachine } from '$lib/stores/playbackMachine.svelte';
 import { playerStore } from '$lib/stores/player';
 import { playbackQueueCoordinator } from '$lib/controllers/playbackQueueCoordinator';
+import { areTestHooksEnabled } from '$lib/utils/testHooks';
 
 type PlaybackFacade = {
 	loadQueue: (tracks: PlayableTrack[], startIndex?: number) => void;
@@ -114,8 +115,8 @@ export const playbackFacade: PlaybackFacade = {
 	shuffleQueue
 };
 
-const isTestHookEnabled = import.meta.env.DEV || import.meta.env.VITE_E2E === 'true';
-if (typeof window !== 'undefined' && isTestHookEnabled) {
+const testHooksEnabled = areTestHooksEnabled();
+if (typeof window !== 'undefined' && testHooksEnabled) {
 	(
 		window as typeof window & {
 			__tidalSetQueue?: (tracks: PlayableTrack[], startIndex?: number) => void;

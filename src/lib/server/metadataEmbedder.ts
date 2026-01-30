@@ -1,6 +1,7 @@
 import type { TrackLookup } from '../types';
 // @ts-expect-error - ffmetadata has no TypeScript definitions
 import ffmetadata from 'ffmetadata';
+import { spawnSync } from 'node:child_process';
 import { formatArtistsForMetadata } from '../utils/formatters';
 
 export interface ServerMetadataOptions {
@@ -9,28 +10,110 @@ export interface ServerMetadataOptions {
 	convertToMp3?: boolean;
 }
 
+let ffmpegAvailable: boolean | null = null;
+let warnedMissingFfmpeg = false;
+
+const checkFfmpegAvailable = (): boolean => {
+	if (ffmpegAvailable !== null) {
+		return ffmpegAvailable;
+	}
+	try {
+		const result = spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' });
+		// Check both for successful status AND absence of spawn errors
+		ffmpegAvailable = !result.error && result.status === 0;
+	} catch {
+		ffmpegAvailable = false;
+	}
+	if (!ffmpegAvailable && !warnedMissingFfmpeg) {
+		warnedMissingFfmpeg = true;
+		console.warn('[Server Metadata] ffmpeg not available; skipping metadata embedding.');
+	}
+	return ffmpegAvailable;
+};
+
 /**
  * Embed metadata into audio files server-side using FFmpeg/ffmetadata
+ *
+ * This function is defensive against crashes in the ffmetadata library.
+ * The ffmetadata library has a bug where it can crash with "Cannot read properties
+ * of undefined (reading 'toString')" when ffmpeg is not available or fails.
  */
 export async function embedMetadataToFile(filePath: string, lookup: TrackLookup): Promise<void> {
-	try {
-		const metadata = buildMetadataObject(lookup);
+	// Early return if ffmpeg is not available
+	if (!checkFfmpegAvailable()) {
+		return;
+	}
 
-		// Use ffmetadata to write metadata to the file
+	const metadata = buildMetadataObject(lookup);
+
+	// Set up a safety handler to catch crashes from ffmetadata library's buggy error handling
+	let uncaughtExceptionHandler: ((err: Error) => void) | null = null;
+	let handlerActive = false;
+
+	try {
+		// Create a promise that wraps the ffmetadata call with crash protection
 		await new Promise<void>((resolve, reject) => {
-			ffmetadata.write(filePath, metadata, (err?: Error) => {
-				if (err) {
-					reject(err);
-				} else {
-					resolve();
+			let settled = false;
+
+			// Install temporary uncaught exception handler for ffmetadata crashes
+			uncaughtExceptionHandler = (err: Error) => {
+				if (!settled && err.message?.includes('Cannot read properties of undefined')) {
+					// This is the ffmetadata library bug - treat as a regular error
+					settled = true;
+					handlerActive = false;
+					console.warn('[Server Metadata] Caught ffmetadata library crash, treating as error');
+					reject(new Error('FFmpeg metadata library encountered an internal error'));
 				}
-			});
+			};
+			process.once('uncaughtException', uncaughtExceptionHandler);
+			handlerActive = true;
+
+			// Set a timeout to prevent hanging
+			const timeout = setTimeout(() => {
+				if (!settled) {
+					settled = true;
+					reject(new Error('Metadata embedding timeout after 30s'));
+				}
+			}, 30000);
+
+			try {
+				ffmetadata.write(filePath, metadata, (err?: Error) => {
+					clearTimeout(timeout);
+					if (!settled) {
+						settled = true;
+						// Small delay to catch any async crashes from ffmetadata
+						setTimeout(() => {
+							if (handlerActive && uncaughtExceptionHandler) {
+								process.removeListener('uncaughtException', uncaughtExceptionHandler);
+								handlerActive = false;
+							}
+						}, 100);
+
+						if (err) {
+							reject(err);
+						} else {
+							resolve();
+						}
+					}
+				});
+			} catch (error) {
+				clearTimeout(timeout);
+				if (!settled) {
+					settled = true;
+					reject(error);
+				}
+			}
 		});
 
 		console.log('[Server Metadata] Successfully embedded metadata into:', filePath);
 	} catch (error) {
 		console.warn('[Server Metadata] Failed to embed metadata into file:', filePath, error);
 		throw error;
+	} finally {
+		// Clean up the exception handler if still active
+		if (handlerActive && uncaughtExceptionHandler) {
+			process.removeListener('uncaughtException', uncaughtExceptionHandler);
+		}
 	}
 }
 

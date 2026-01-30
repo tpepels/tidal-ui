@@ -4,6 +4,7 @@ import type { AudioQuality } from '../types';
 import { type PerformanceLevel } from '../utils/performance';
 import { getSessionStorageKey } from '$lib/core/session';
 import { debouncedSave, loadFromStorage } from '../utils/persistence';
+import { areTestHooksEnabled } from '$lib/utils/testHooks';
 
 export type PerformanceMode = 'medium' | 'low';
 
@@ -119,7 +120,7 @@ const createUserPreferencesStore = () => {
 
 export const userPreferencesStore = createUserPreferencesStore();
 
-const isTestHookEnabled = import.meta.env.DEV || import.meta.env.VITE_E2E === 'true';
+const isTestHookEnabled = areTestHooksEnabled();
 if (browser && isTestHookEnabled) {
 	(
 		window as typeof window & {

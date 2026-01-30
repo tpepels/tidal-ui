@@ -199,7 +199,8 @@ export class PlaybackMachineSideEffectHandler {
 				this.loadUiCallbacks.getStreamingFallbackQuality?.() ??
 				(this.loadUiCallbacks.isFirefox?.() ? 'LOW' : 'HIGH'),
 			onLoadComplete: (url, quality) => {
-				const shouldResume = this.resumeAfterFallback;
+				const shouldResume =
+					this.resumeAfterFallback || playerStore.getSnapshot().isPlaying;
 				if (this.resumeAfterFallback) {
 					this.resumeAfterFallback = false;
 				}
@@ -398,6 +399,7 @@ export class PlaybackMachineSideEffectHandler {
 						error: new Error(`Audio playback error${details}`)
 					});
 				} else {
+					this.resumeAfterFallback = true;
 					this.dispatch?.({
 						type: 'FALLBACK_REQUESTED',
 						quality: fallback.quality,
