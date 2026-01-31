@@ -446,7 +446,12 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			);
 		}
 
-		if (uploadId) endUpload(uploadId);
+		// IMPORTANT: Do NOT call endUpload here for recoverable errors!
+		// Calling endUpload deletes the session, causing subsequent retries to get 404 "session expired"
+		// Only delete session for non-recoverable errors (disk full, permission denied)
+		if (uploadId && !downloadError.recoverable) {
+			endUpload(uploadId);
+		}
 		return json({ error: downloadError }, { status: 500 });
 	}
 };

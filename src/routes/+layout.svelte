@@ -633,9 +633,16 @@
 		};
 		document.addEventListener('click', handleDocumentClick);
 
+		// Check if we're in a local/dev environment where SW should be disabled
+		const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
 		const isLocalPreview =
-			typeof window !== 'undefined' &&
-			(window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost');
+			hostname === '127.0.0.1' ||
+			hostname === 'localhost' ||
+			// LAN IP ranges where self-signed certs may cause SW registration to fail
+			/^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
+			/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
+			/^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/.test(hostname);
+
 		const shouldUseServiceWorker =
 			!dev && !isLocalPreview && import.meta.env.VITE_E2E !== 'true';
 		if ('serviceWorker' in navigator && !shouldUseServiceWorker) {
@@ -674,7 +681,24 @@
 						});
 					});
 				} catch (error) {
-					console.error('Service worker registration failed', error);
+					// Handle SSL/Security errors gracefully - these occur on LAN IPs with self-signed certs
+					const isSecurityError =
+						error instanceof Error &&
+						(error.name === 'SecurityError' ||
+							error.message.includes('SSL') ||
+							error.message.includes('certificate') ||
+							error.message.includes('secure context'));
+
+					if (isSecurityError) {
+						console.warn(
+							'[ServiceWorker] Registration failed due to SSL/security issue (likely self-signed cert on LAN IP). ' +
+								'Offline caching disabled. App will continue to work without offline support.',
+							error
+						);
+						// Don't show a toast for this - it's expected on dev LAN setups
+					} else {
+						console.error('Service worker registration failed', error);
+					}
 				}
 			};
 

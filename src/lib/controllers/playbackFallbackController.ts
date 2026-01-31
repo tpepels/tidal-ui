@@ -40,11 +40,29 @@ export const createPlaybackFallbackController = (
 		options.setResumeAfterFallback(false);
 	};
 
+	/**
+	 * Check if a DASH fallback can be started for the current track.
+	 * Returns false if a fallback is already in progress or has been attempted.
+	 */
+	const canStartDashFallback = (): boolean => {
+		if (dashFallbackInFlight) {
+			return false;
+		}
+		const track = options.getCurrentTrack();
+		if (!track) {
+			return false;
+		}
+		if (dashFallbackAttemptedTrackId === track.id) {
+			return false;
+		}
+		return true;
+	};
+
 	const fallbackToLosslessAfterDashError = async (
 		reason: string,
 		fallbackQuality: AudioQuality
 	) => {
-		if (dashFallbackInFlight) {
+		if (!canStartDashFallback()) {
 			return;
 		}
 		const track = options.getCurrentTrack();
@@ -52,9 +70,6 @@ export const createPlaybackFallbackController = (
 			return;
 		}
 		options.setResumeAfterFallback(true);
-		if (dashFallbackAttemptedTrackId === track.id) {
-			return;
-		}
 		dashFallbackInFlight = true;
 		dashFallbackAttemptedTrackId = track.id;
 		const sequence = options.createSequence();
@@ -72,17 +87,32 @@ export const createPlaybackFallbackController = (
 		}
 	};
 
+	/**
+	 * Check if a lossless fallback can be started for the current track.
+	 * Returns false if a fallback is already in progress or has been attempted.
+	 */
+	const canStartLosslessFallback = (): boolean => {
+		if (losslessFallbackInFlight) {
+			return false;
+		}
+		const track = options.getCurrentTrack();
+		if (!track) {
+			return false;
+		}
+		if (losslessFallbackAttemptedTrackId === track.id) {
+			return false;
+		}
+		return true;
+	};
+
 	const fallbackToStreamingAfterLosslessError = async (
 		fallbackQuality: AudioQuality
 	) => {
-		if (losslessFallbackInFlight) {
+		if (!canStartLosslessFallback()) {
 			return;
 		}
 		const track = options.getCurrentTrack();
 		if (!track) {
-			return;
-		}
-		if (losslessFallbackAttemptedTrackId === track.id) {
 			return;
 		}
 		losslessFallbackAttemptedTrackId = track.id;
@@ -117,6 +147,11 @@ export const createPlaybackFallbackController = (
 			if (!isDecodeError && !code) {
 				return null;
 			}
+			// Only return a fallback result if we can actually start a fallback
+			if (!canStartDashFallback()) {
+				console.debug('[AudioPlayer] DASH fallback already in progress or attempted, ignoring error');
+				return null;
+			}
 			const reason = isDecodeError ? 'decode error' : code ? `code ${code}` : 'unknown error';
 			console.warn('[AudioPlayer] DASH playback error detected; attempting lossless fallback:', reason);
 			const supportsLossless = options.getSupportsLosslessPlayback?.() ?? true;
@@ -145,6 +180,12 @@ export const createPlaybackFallbackController = (
 			((typeof decodeConstant === 'number' && codeNumber === decodeConstant) ||
 				(typeof srcUnsupported === 'number' && codeNumber === srcUnsupported));
 		if (shouldFallbackToStreaming) {
+			// Only return a fallback result if we can actually start a fallback
+			// This prevents multiple FALLBACK_REQUESTED events and state transitions
+			if (!canStartLosslessFallback()) {
+				console.debug('[AudioPlayer] Lossless fallback already in progress or attempted, ignoring error');
+				return null;
+			}
 			const reason =
 				codeNumber === srcUnsupported
 					? 'source not supported'

@@ -1,171 +1,215 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createPlaybackFallbackController } from './playbackFallbackController';
-import { createInitialState, transition } from '$lib/machines/playbackMachine';
-import type { AudioQuality, Track } from '$lib/types';
+import type { AudioQuality, PlayableTrack } from '$lib/types';
 
-const buildTrack = (id = 123): Track => ({
-	id,
-	title: 'Test Track',
-	duration: 180,
-	version: null,
-	popularity: 0,
-	editable: false,
-	explicit: false,
-	trackNumber: 1,
-	volumeNumber: 1,
-	isrc: 'TEST123',
-	copyright: 'Test',
-	url: 'https://example.com',
-	artists: [],
-	artist: { id: 1, name: 'Test Artist', type: 'MAIN', url: '', picture: '' },
-	album: {
-		id: 1,
-		title: 'Test Album',
-		numberOfTracks: 10,
-		numberOfVolumes: 1,
-		releaseDate: '2024-01-01',
-		duration: 1800,
-		cover: '',
-		videoCover: null
-	},
-	allowStreaming: true,
-	streamReady: true,
-	audioQuality: 'LOSSLESS',
-	audioModes: ['STEREO'],
-	mediaMetadata: { tags: [] },
-	peak: 0.95,
-	premiumStreamingOnly: false
-});
+// Minimal mock track - using type assertion since we only need id for testing
+const createMockTrack = (id: number): PlayableTrack =>
+	({
+		id,
+		title: 'Test Track',
+		duration: 180
+	}) as PlayableTrack;
 
-describe('playbackFallbackController integration', () => {
-	it('requests streaming fallback and updates machine state', () => {
-		const track = buildTrack();
-		let machineState = transition(createInitialState(), { type: 'LOAD_TRACK', track });
-		machineState = transition(machineState, {
-			type: 'LOAD_COMPLETE',
-			streamUrl: 'https://example.com/stream.m4a',
-			quality: 'LOSSLESS'
-		});
-		machineState = transition(machineState, { type: 'PLAY' });
-		const prevRequestId = machineState.context.loadRequestId;
-
-		const controller = createPlaybackFallbackController({
-			getCurrentTrack: () => track,
-			getPlayerQuality: () => 'LOSSLESS',
-			getCurrentPlaybackQuality: () => 'LOSSLESS',
-			getIsPlaying: () => true,
-			isFirefox: () => false,
-			getDashPlaybackActive: () => false,
-			setDashPlaybackActive: vi.fn(),
-			setLoading: vi.fn(),
-			loadStandardTrack: vi.fn().mockResolvedValue(undefined),
-			createSequence: () => 1,
-			setResumeAfterFallback: vi.fn(),
-			onFallbackRequested: (quality, reason) => {
-				machineState = transition(machineState, {
-					type: 'FALLBACK_REQUESTED',
-					quality,
-					reason
-				});
-			}
-		});
-
-		const mediaError = {
-			code: 3,
-			MEDIA_ERR_DECODE: 3,
-			MEDIA_ERR_ABORTED: 1,
-			MEDIA_ERR_SRC_NOT_SUPPORTED: 4
-		};
-		const event = { currentTarget: { error: mediaError } } as unknown as Event;
-		const didFallback = controller.handleAudioError(event);
-
-		expect(didFallback).toEqual({ quality: 'HIGH', reason: 'lossless-playback' });
-		expect(machineState.state).toBe('loading');
-		expect(machineState.context.quality).toBe('HIGH');
-		expect(machineState.context.loadRequestId).toBe(prevRequestId + 1);
+describe('playbackFallbackController', () => {
+	const createMockOptions = () => ({
+		getCurrentTrack: vi.fn(() => createMockTrack(123)),
+		getPlayerQuality: vi.fn(() => 'LOSSLESS' as AudioQuality),
+		getCurrentPlaybackQuality: vi.fn(() => 'LOSSLESS' as AudioQuality),
+		getIsPlaying: vi.fn(() => true),
+		getSupportsLosslessPlayback: vi.fn(() => true),
+		getStreamingFallbackQuality: vi.fn(() => 'HIGH' as AudioQuality),
+		isFirefox: vi.fn(() => false),
+		getDashPlaybackActive: vi.fn(() => false),
+		setDashPlaybackActive: vi.fn(),
+		setLoading: vi.fn(),
+		loadStandardTrack: vi.fn().mockResolvedValue(undefined),
+		createSequence: vi.fn(() => 1),
+		setResumeAfterFallback: vi.fn(),
+		onFallbackRequested: vi.fn()
 	});
 
-	it('allows fallback after a rapid track switch', () => {
-		const trackA = buildTrack(101);
-		const trackB = buildTrack(202);
-		let currentTrack: Track = trackA;
+	describe('lossless fallback guards', () => {
+		it('should return fallback result on first lossless error', () => {
+			const options = createMockOptions();
+			const controller = createPlaybackFallbackController(options);
 
-		const loadStandardTrack = vi.fn().mockResolvedValue(undefined);
-		const onFallbackRequested = vi.fn();
-		let sequence = 0;
+			// Create a mock error event with MEDIA_ERR_SRC_NOT_SUPPORTED
+			const mockAudioElement = {
+				error: {
+					code: 4,
+					MEDIA_ERR_ABORTED: 1,
+					MEDIA_ERR_NETWORK: 2,
+					MEDIA_ERR_DECODE: 3,
+					MEDIA_ERR_SRC_NOT_SUPPORTED: 4
+				}
+			};
+			const mockEvent = {
+				currentTarget: mockAudioElement
+			} as unknown as Event;
 
-		const controller = createPlaybackFallbackController({
-			getCurrentTrack: () => currentTrack,
-			getPlayerQuality: () => 'LOSSLESS',
-			getCurrentPlaybackQuality: () => 'LOSSLESS',
-			getIsPlaying: () => true,
-			isFirefox: () => false,
-			getDashPlaybackActive: () => false,
-			setDashPlaybackActive: vi.fn(),
-			setLoading: vi.fn(),
-			loadStandardTrack,
-			createSequence: () => ++sequence,
-			setResumeAfterFallback: vi.fn(),
-			onFallbackRequested
+			const result = controller.handleAudioError(mockEvent);
+
+			expect(result).not.toBeNull();
+			expect(result?.quality).toBe('HIGH');
+			expect(result?.reason).toBe('lossless-playback');
 		});
 
-		const mediaError = {
-			code: 3,
-			MEDIA_ERR_DECODE: 3,
-			MEDIA_ERR_ABORTED: 1,
-			MEDIA_ERR_SRC_NOT_SUPPORTED: 4
-		};
-		const event = { currentTarget: { error: mediaError } } as unknown as Event;
+		it('should return null on second lossless error for same track', () => {
+			const options = createMockOptions();
+			const controller = createPlaybackFallbackController(options);
 
-		controller.handleAudioError(event);
-		currentTrack = trackB;
-		controller.resetForTrack(trackB.id);
-		controller.handleAudioError(event);
+			const mockAudioElement = {
+				error: {
+					code: 4,
+					MEDIA_ERR_ABORTED: 1,
+					MEDIA_ERR_NETWORK: 2,
+					MEDIA_ERR_DECODE: 3,
+					MEDIA_ERR_SRC_NOT_SUPPORTED: 4
+				}
+			};
+			const mockEvent = {
+				currentTarget: mockAudioElement
+			} as unknown as Event;
 
-		expect(loadStandardTrack).toHaveBeenCalledTimes(2);
-		expect(loadStandardTrack.mock.calls[0]?.[0]).toBe(trackA);
-		expect(loadStandardTrack.mock.calls[1]?.[0]).toBe(trackB);
-		expect(onFallbackRequested).toHaveBeenCalledTimes(2);
+			// First error triggers fallback
+			const firstResult = controller.handleAudioError(mockEvent);
+			expect(firstResult).not.toBeNull();
+
+			// Second error should be ignored
+			const secondResult = controller.handleAudioError(mockEvent);
+			expect(secondResult).toBeNull();
+		});
+
+		it('should allow fallback for a different track after reset', () => {
+			const options = createMockOptions();
+			const controller = createPlaybackFallbackController(options);
+
+			const mockAudioElement = {
+				error: {
+					code: 4,
+					MEDIA_ERR_ABORTED: 1,
+					MEDIA_ERR_NETWORK: 2,
+					MEDIA_ERR_DECODE: 3,
+					MEDIA_ERR_SRC_NOT_SUPPORTED: 4
+				}
+			};
+			const mockEvent = {
+				currentTarget: mockAudioElement
+			} as unknown as Event;
+
+			// First track error triggers fallback
+			const firstResult = controller.handleAudioError(mockEvent);
+			expect(firstResult).not.toBeNull();
+
+			// Reset for new track
+			controller.resetForTrack(456);
+
+			// New track error should trigger fallback
+			options.getCurrentTrack.mockReturnValue(createMockTrack(456));
+			const thirdResult = controller.handleAudioError(mockEvent);
+			expect(thirdResult).not.toBeNull();
+		});
 	});
 
-	it('skips fallback once quality switches away from lossless', () => {
-		const track = buildTrack(303);
-		let playerQuality: AudioQuality = 'LOSSLESS';
-		let playbackQuality: AudioQuality | null = 'LOSSLESS';
-		const loadStandardTrack = vi.fn().mockResolvedValue(undefined);
+	describe('DASH fallback guards', () => {
+		it('should return fallback result on first DASH error', () => {
+			const options = createMockOptions();
+			options.getDashPlaybackActive.mockReturnValue(true);
+			const controller = createPlaybackFallbackController(options);
 
-		const controller = createPlaybackFallbackController({
-			getCurrentTrack: () => track,
-			getPlayerQuality: () => playerQuality,
-			getCurrentPlaybackQuality: () => playbackQuality,
-			getIsPlaying: () => true,
-			isFirefox: () => false,
-			getDashPlaybackActive: () => false,
-			setDashPlaybackActive: vi.fn(),
-			setLoading: vi.fn(),
-			loadStandardTrack,
-			createSequence: (() => {
-				let seq = 0;
-				return () => ++seq;
-			})(),
-			setResumeAfterFallback: vi.fn()
+			const mockAudioElement = {
+				error: {
+					code: 3,
+					MEDIA_ERR_ABORTED: 1,
+					MEDIA_ERR_NETWORK: 2,
+					MEDIA_ERR_DECODE: 3,
+					MEDIA_ERR_SRC_NOT_SUPPORTED: 4
+				}
+			};
+			const mockEvent = {
+				currentTarget: mockAudioElement
+			} as unknown as Event;
+
+			const result = controller.handleAudioError(mockEvent);
+
+			expect(result).not.toBeNull();
+			expect(result?.quality).toBe('LOSSLESS');
+			expect(result?.reason).toContain('dash-playback');
 		});
 
-		const mediaError = {
-			code: 3,
-			MEDIA_ERR_DECODE: 3,
-			MEDIA_ERR_ABORTED: 1,
-			MEDIA_ERR_SRC_NOT_SUPPORTED: 4
-		};
-		const event = { currentTarget: { error: mediaError } } as unknown as Event;
+		it('should return null on second DASH error for same track', () => {
+			const options = createMockOptions();
+			options.getDashPlaybackActive.mockReturnValue(true);
+			const controller = createPlaybackFallbackController(options);
 
-		controller.handleAudioError(event);
-		playerQuality = 'HIGH';
-		playbackQuality = 'HIGH';
-		controller.resetForTrack(track.id);
-		const didFallback = controller.handleAudioError(event);
+			const mockAudioElement = {
+				error: {
+					code: 3,
+					MEDIA_ERR_ABORTED: 1,
+					MEDIA_ERR_NETWORK: 2,
+					MEDIA_ERR_DECODE: 3,
+					MEDIA_ERR_SRC_NOT_SUPPORTED: 4
+				}
+			};
+			const mockEvent = {
+				currentTarget: mockAudioElement
+			} as unknown as Event;
 
-		expect(loadStandardTrack).toHaveBeenCalledTimes(1);
-		expect(didFallback).toBeNull();
+			// First error triggers fallback
+			const firstResult = controller.handleAudioError(mockEvent);
+			expect(firstResult).not.toBeNull();
+
+			// Second error should be ignored
+			const secondResult = controller.handleAudioError(mockEvent);
+			expect(secondResult).toBeNull();
+		});
+	});
+
+	describe('no fallback for non-lossless qualities', () => {
+		it('should not fallback when playing streaming quality', () => {
+			const options = createMockOptions();
+			options.getPlayerQuality.mockReturnValue('HIGH');
+			options.getCurrentPlaybackQuality.mockReturnValue('HIGH');
+			const controller = createPlaybackFallbackController(options);
+
+			const mockAudioElement = {
+				error: {
+					code: 4,
+					MEDIA_ERR_ABORTED: 1,
+					MEDIA_ERR_NETWORK: 2,
+					MEDIA_ERR_DECODE: 3,
+					MEDIA_ERR_SRC_NOT_SUPPORTED: 4
+				}
+			};
+			const mockEvent = {
+				currentTarget: mockAudioElement
+			} as unknown as Event;
+
+			const result = controller.handleAudioError(mockEvent);
+			expect(result).toBeNull();
+		});
+	});
+
+	describe('aborted errors are ignored', () => {
+		it('should not fallback on MEDIA_ERR_ABORTED', () => {
+			const options = createMockOptions();
+			const controller = createPlaybackFallbackController(options);
+
+			const mockAudioElement = {
+				error: {
+					code: 1,
+					MEDIA_ERR_ABORTED: 1,
+					MEDIA_ERR_NETWORK: 2,
+					MEDIA_ERR_DECODE: 3,
+					MEDIA_ERR_SRC_NOT_SUPPORTED: 4
+				}
+			};
+			const mockEvent = {
+				currentTarget: mockAudioElement
+			} as unknown as Event;
+
+			const result = controller.handleAudioError(mockEvent);
+			expect(result).toBeNull();
+		});
 	});
 });

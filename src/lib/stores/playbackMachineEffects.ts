@@ -18,6 +18,18 @@ const QUALITY_LABELS: Record<AudioQuality, string> = {
 	LOW: 'Low'
 };
 
+/**
+ * Check if an error is an AbortError from play() being interrupted by a new load.
+ * This is expected behavior during fallback and should not be treated as a real error.
+ */
+const isPlayAbortError = (error: unknown): boolean => {
+	if (!(error instanceof Error)) return false;
+	return (
+		error.name === 'AbortError' &&
+		error.message.includes('interrupted by a new load request')
+	);
+};
+
 const formatQualityLabel = (quality: AudioQuality): string => QUALITY_LABELS[quality] ?? quality;
 
 const formatFallbackToast = (
@@ -211,6 +223,11 @@ export class PlaybackMachineSideEffectHandler {
 						const promise = this.audioElement.play();
 						if (promise) {
 							promise.catch((error) => {
+								// AbortError is expected when a new load interrupts play() during fallback
+								if (isPlayAbortError(error)) {
+									console.debug('[PlaybackMachine] Play interrupted by new load (expected during fallback)');
+									return;
+								}
 								console.error('[PlaybackMachine] Play failed after fallback:', error);
 								trackError(error instanceof Error ? error : new Error('Play failed'), {
 									component: 'playback-effects',
@@ -350,6 +367,11 @@ export class PlaybackMachineSideEffectHandler {
 					const promise = this.audioElement.play();
 					if (promise) {
 						promise.catch((error) => {
+							// AbortError is expected when a new load interrupts play() during fallback
+							if (isPlayAbortError(error)) {
+								console.debug('[PlaybackMachine] Play interrupted by new load (expected during fallback)');
+								return;
+							}
 							console.error('[PlaybackMachine] Play failed:', error);
 							trackError(error instanceof Error ? error : new Error('Play failed'), {
 								component: 'playback-effects',
