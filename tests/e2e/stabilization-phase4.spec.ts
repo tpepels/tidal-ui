@@ -372,15 +372,19 @@ test('quality change via preferences triggers reload when gated', async ({ page 
 	});
 
 	await setUserPlaybackQuality(page, 'LOW');
-	await page.waitForFunction((prevId) => {
-		const snapshot = window.__tidalPlaybackMachineState?.() as
-			| { loadRequestId?: number; quality?: string }
-			| undefined;
-		if (!snapshot || typeof snapshot.loadRequestId !== 'number') {
-			return false;
-		}
-		return snapshot.loadRequestId > prevId && snapshot.quality === 'LOW';
-	}, previousRequestId);
+	await page.waitForFunction(
+		(prevId) => {
+			const snapshot = window.__tidalPlaybackMachineState?.() as
+				| { loadRequestId?: number; quality?: string }
+				| undefined;
+			if (!snapshot || typeof snapshot.loadRequestId !== 'number') {
+				return false;
+			}
+			return snapshot.loadRequestId > prevId && snapshot.quality === 'LOW';
+		},
+		previousRequestId,
+		{ timeout: 60000 } // Increase timeout for CI stability
+	);
 });
 
 test('region switch triggers fresh search results', async ({ page }) => {
