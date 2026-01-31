@@ -11,22 +11,26 @@ const createMockTrack = (id: number): PlayableTrack =>
 	}) as PlayableTrack;
 
 describe('playbackFallbackController', () => {
-	const createMockOptions = () => ({
-		getCurrentTrack: vi.fn(() => createMockTrack(123)),
-		getPlayerQuality: vi.fn(() => 'LOSSLESS' as AudioQuality),
-		getCurrentPlaybackQuality: vi.fn(() => 'LOSSLESS' as AudioQuality),
-		getIsPlaying: vi.fn(() => true),
-		getSupportsLosslessPlayback: vi.fn(() => true),
-		getStreamingFallbackQuality: vi.fn(() => 'HIGH' as AudioQuality),
-		isFirefox: vi.fn(() => false),
-		getDashPlaybackActive: vi.fn(() => false),
-		setDashPlaybackActive: vi.fn(),
-		setLoading: vi.fn(),
-		loadStandardTrack: vi.fn().mockResolvedValue(undefined),
-		createSequence: vi.fn(() => 1),
-		setResumeAfterFallback: vi.fn(),
-		onFallbackRequested: vi.fn()
-	});
+	const createMockOptions = () => {
+		let sequence = 1;
+		return {
+			getCurrentTrack: vi.fn(() => createMockTrack(123)),
+			getPlayerQuality: vi.fn(() => 'LOSSLESS' as AudioQuality),
+			getCurrentPlaybackQuality: vi.fn(() => 'LOSSLESS' as AudioQuality),
+			getIsPlaying: vi.fn(() => true),
+			getSupportsLosslessPlayback: vi.fn(() => true),
+			getStreamingFallbackQuality: vi.fn(() => 'HIGH' as AudioQuality),
+			isFirefox: vi.fn(() => false),
+			getDashPlaybackActive: vi.fn(() => false),
+			setDashPlaybackActive: vi.fn(),
+			setLoading: vi.fn(),
+			loadStandardTrack: vi.fn().mockResolvedValue(undefined),
+			createSequence: vi.fn(() => ++sequence),
+			getSequence: vi.fn(() => sequence),
+			setResumeAfterFallback: vi.fn(),
+			onFallbackRequested: vi.fn()
+		};
+	};
 
 	describe('lossless fallback guards', () => {
 		it('should return fallback result on first lossless error', () => {

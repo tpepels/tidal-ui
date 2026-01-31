@@ -23,7 +23,10 @@ const loadQueue = (tracks: PlayableTrack[], startIndex = 0) => {
 	const snapshot = playbackQueueCoordinator.setQueue(tracks, startIndex);
 	const nextTrack = snapshot.currentTrack ?? null;
 	if (nextTrack) {
-		playbackMachine.actions.changeQuality(playerStore.getSnapshot().quality);
+		// NOTE: Do NOT call changeQuality here - it triggers reload of the CURRENT track,
+		// not the new track. loadTrack will use the correct quality from playerStore.
+		// Calling changeQuality before loadTrack caused a race condition where the old
+		// track would continue loading/playing after switching to a new track.
 		playbackMachine.actions.loadTrack(nextTrack);
 	}
 };

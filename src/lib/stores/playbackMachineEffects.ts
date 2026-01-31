@@ -273,6 +273,7 @@ export class PlaybackMachineSideEffectHandler {
 				await this.trackLoadController?.loadStandardTrack(track, quality, sequence);
 			},
 			createSequence: () => ++this.loadSequence,
+			getSequence: () => this.loadSequence,
 			setResumeAfterFallback: (value) => {
 				this.resumeAfterFallback = value;
 			},

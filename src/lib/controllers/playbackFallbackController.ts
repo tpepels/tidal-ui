@@ -13,6 +13,7 @@ type ControllerOptions = {
 	setLoading: (value: boolean) => void;
 	loadStandardTrack: (track: Track, quality: AudioQuality, sequence: number) => Promise<void>;
 	createSequence: () => number;
+	getSequence: () => number;
 	setResumeAfterFallback: (value: boolean) => void;
 	onFallbackRequested?: (quality: AudioQuality, reason: string) => void;
 };
@@ -69,16 +70,37 @@ export const createPlaybackFallbackController = (
 		if (!track) {
 			return;
 		}
+		// Capture the track ID and current sequence BEFORE any async work.
+		// If a new track starts loading, the sequence will change and we should abort.
+		const originalTrackId = track.id;
+		const sequenceAtStart = options.getSequence();
+
 		options.setResumeAfterFallback(true);
 		dashFallbackInFlight = true;
 		dashFallbackAttemptedTrackId = track.id;
-		const sequence = options.createSequence();
+		// IMPORTANT: Use the existing sequence instead of creating a new one.
+		// Creating a new sequence would make this fallback supersede the load of a new track
+		// that was requested while the old track was erroring out.
+		const sequence = sequenceAtStart;
 		console.warn(`Attempting lossless fallback after DASH playback error (${reason}).`);
 		options.onFallbackRequested?.(fallbackQuality, `dash-playback-${reason}`);
 		try {
 			options.setDashPlaybackActive(false);
 			options.setLoading(true);
+
+			// Check if track changed before proceeding - a new track load would have changed the sequence
+			if (options.getSequence() !== sequence) {
+				console.info('[AudioPlayer] Aborting DASH fallback - track changed during fallback setup');
+				return;
+			}
+
 			await options.loadStandardTrack(track as Track, fallbackQuality, sequence);
+
+			// Verify track didn't change during async load
+			const currentTrack = options.getCurrentTrack();
+			if (currentTrack?.id !== originalTrackId) {
+				console.info('[AudioPlayer] Fallback completed but track changed, ignoring result');
+			}
 		} catch (fallbackError) {
 			console.error('Lossless fallback after DASH playback error failed', fallbackError);
 		} finally {
@@ -115,15 +137,37 @@ export const createPlaybackFallbackController = (
 		if (!track) {
 			return;
 		}
+		// Capture the track ID and current sequence BEFORE any async work.
+		// If a new track starts loading, the sequence will change and we should abort.
+		const originalTrackId = track.id;
+		const sequenceAtStart = options.getSequence();
+
 		losslessFallbackAttemptedTrackId = track.id;
 		losslessFallbackInFlight = true;
 		options.setResumeAfterFallback(true);
-		const sequence = options.createSequence();
+		// IMPORTANT: Use the existing sequence instead of creating a new one.
+		// Creating a new sequence would make this fallback supersede the load of a new track
+		// that was requested while the old track was erroring out.
+		const sequence = sequenceAtStart;
 		try {
 			options.setLoading(true);
 			options.onFallbackRequested?.(fallbackQuality, 'lossless-playback');
+
+			// Check if track changed before proceeding - a new track load would have changed the sequence
+			if (options.getSequence() !== sequence) {
+				console.info('[AudioPlayer] Aborting lossless fallback - track changed during fallback setup');
+				return;
+			}
+
 			await options.loadStandardTrack(track as Track, fallbackQuality, sequence);
-			console.info('[AudioPlayer] Streaming fallback loaded for track', track.id);
+
+			// Verify track didn't change during async load
+			const currentTrack = options.getCurrentTrack();
+			if (currentTrack?.id !== originalTrackId) {
+				console.info('[AudioPlayer] Fallback completed but track changed, ignoring result');
+			} else {
+				console.info('[AudioPlayer] Streaming fallback loaded for track', track.id);
+			}
 		} catch (fallbackError) {
 			console.error('Streaming fallback after lossless playback error failed', fallbackError);
 			options.setResumeAfterFallback(false);

@@ -35,12 +35,14 @@ describe('playbackFacade', () => {
 	it('loads queue and dispatches machine load', () => {
 		const tracks = [makeTrack(1), makeTrack(2)];
 		const setQueueSpy = vi.spyOn(playerStore, 'setQueue');
-		const quality = playerStore.getSnapshot().quality;
 
 		playbackFacade.loadQueue(tracks, 1);
 
 		expect(setQueueSpy).toHaveBeenCalledWith(tracks, 1);
-		expect(playbackActions.changeQuality).toHaveBeenCalledWith(quality);
+		// NOTE: changeQuality is intentionally NOT called here to avoid race conditions.
+		// Calling changeQuality before loadTrack would cause the OLD track to reload,
+		// then loadTrack would load the new track, resulting in two concurrent loads.
+		expect(playbackActions.changeQuality).not.toHaveBeenCalled();
 		expect(playbackActions.loadTrack).toHaveBeenCalledWith(tracks[1]);
 	});
 

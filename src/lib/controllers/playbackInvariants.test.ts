@@ -36,22 +36,26 @@ const createMockTrack = (id: number): PlayableTrack =>
 
 describe('Playback System Invariants', () => {
 	describe('Fallback Guard Invariants', () => {
-		const createMockOptions = () => ({
-			getCurrentTrack: vi.fn(() => createMockTrack(123)),
-			getPlayerQuality: vi.fn(() => 'LOSSLESS' as AudioQuality),
-			getCurrentPlaybackQuality: vi.fn(() => 'LOSSLESS' as AudioQuality),
-			getIsPlaying: vi.fn(() => true),
-			getSupportsLosslessPlayback: vi.fn(() => true),
-			getStreamingFallbackQuality: vi.fn(() => 'HIGH' as AudioQuality),
-			isFirefox: vi.fn(() => false),
-			getDashPlaybackActive: vi.fn(() => false),
-			setDashPlaybackActive: vi.fn(),
-			setLoading: vi.fn(),
-			loadStandardTrack: vi.fn().mockResolvedValue(undefined),
-			createSequence: vi.fn(() => 1),
-			setResumeAfterFallback: vi.fn(),
-			onFallbackRequested: vi.fn()
-		});
+		const createMockOptions = () => {
+			let sequence = 1;
+			return {
+				getCurrentTrack: vi.fn(() => createMockTrack(123)),
+				getPlayerQuality: vi.fn(() => 'LOSSLESS' as AudioQuality),
+				getCurrentPlaybackQuality: vi.fn(() => 'LOSSLESS' as AudioQuality),
+				getIsPlaying: vi.fn(() => true),
+				getSupportsLosslessPlayback: vi.fn(() => true),
+				getStreamingFallbackQuality: vi.fn(() => 'HIGH' as AudioQuality),
+				isFirefox: vi.fn(() => false),
+				getDashPlaybackActive: vi.fn(() => false),
+				setDashPlaybackActive: vi.fn(),
+				setLoading: vi.fn(),
+				loadStandardTrack: vi.fn().mockResolvedValue(undefined),
+				createSequence: vi.fn(() => ++sequence),
+				getSequence: vi.fn(() => sequence),
+				setResumeAfterFallback: vi.fn(),
+				onFallbackRequested: vi.fn()
+			};
+		};
 
 		const createMediaError = (code: number) => ({
 			error: {
@@ -223,6 +227,7 @@ describe('Playback System Invariants', () => {
 		 * This ensures the state machine receives exactly one FALLBACK_REQUESTED event.
 		 */
 		it('INVARIANT: onFallbackRequested called exactly once per fallback', () => {
+			let sequence = 1;
 			const options = {
 				getCurrentTrack: vi.fn(() => createMockTrack(123)),
 				getPlayerQuality: vi.fn(() => 'LOSSLESS' as AudioQuality),
@@ -235,7 +240,8 @@ describe('Playback System Invariants', () => {
 				setDashPlaybackActive: vi.fn(),
 				setLoading: vi.fn(),
 				loadStandardTrack: vi.fn().mockResolvedValue(undefined),
-				createSequence: vi.fn(() => 1),
+				createSequence: vi.fn(() => ++sequence),
+				getSequence: vi.fn(() => sequence),
 				setResumeAfterFallback: vi.fn(),
 				onFallbackRequested: vi.fn()
 			};
@@ -267,6 +273,7 @@ describe('Playback System Invariants', () => {
 		 * Duplicate load calls cause race conditions.
 		 */
 		it('INVARIANT: loadStandardTrack called exactly once per fallback', async () => {
+			let sequence = 1;
 			const options = {
 				getCurrentTrack: vi.fn(() => createMockTrack(123)),
 				getPlayerQuality: vi.fn(() => 'LOSSLESS' as AudioQuality),
@@ -279,7 +286,8 @@ describe('Playback System Invariants', () => {
 				setDashPlaybackActive: vi.fn(),
 				setLoading: vi.fn(),
 				loadStandardTrack: vi.fn().mockResolvedValue(undefined),
-				createSequence: vi.fn(() => 1),
+				createSequence: vi.fn(() => ++sequence),
+				getSequence: vi.fn(() => sequence),
 				setResumeAfterFallback: vi.fn(),
 				onFallbackRequested: vi.fn()
 			};
