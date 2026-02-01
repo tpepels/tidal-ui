@@ -21,25 +21,39 @@ import {
 	touchUploadTimestamp
 } from '../../_shared';
 import { embedMetadataToFile } from '$lib/server/metadataEmbedder';
+import {
+	createDownloadOperationLogger,
+	getDownloadOperationLogger,
+	downloadLogger
+} from '$lib/server/observability';
 
 export const POST: RequestHandler = async ({ request, params }) => {
 	const uploadId = params.uploadId;
 	const chunkIndex = parseInt(request.headers.get('x-chunk-index') || '0');
 	const totalChunks = parseInt(request.headers.get('x-total-chunks') || '0');
 
+	// Get or create operation logger for this upload
+	const opLogger = uploadId
+		? getDownloadOperationLogger(uploadId) ||
+			createDownloadOperationLogger(uploadId, { phase: 'chunk' })
+		: null;
+
 	try {
 		if (!uploadId) {
+			downloadLogger.warn('Chunk upload attempted without uploadId', { phase: 'chunk' });
 			return json({ error: 'uploadId is required' }, { status: 400 });
 		}
 
 		// Validate headers
 		if (isNaN(chunkIndex) || chunkIndex < 0) {
+			opLogger?.warn('Invalid chunk index header', { chunkIndex, phase: 'chunk' });
 			return json(
 				{ error: 'Invalid x-chunk-index header: must be a non-negative integer' },
 				{ status: 400 }
 			);
 		}
 		if (isNaN(totalChunks) || totalChunks <= 0) {
+			opLogger?.warn('Invalid total chunks header', { totalChunks, phase: 'chunk' });
 			return json(
 				{ error: 'Invalid x-total-chunks header: must be a positive integer' },
 				{ status: 400 }
@@ -48,6 +62,10 @@ export const POST: RequestHandler = async ({ request, params }) => {
 
 		const chunkState = chunkUploads.get(uploadId);
 		if (!chunkState) {
+			opLogger?.error('Session not found', {
+				phase: 'chunk',
+				errorCode: ERROR_CODES.SESSION_EXPIRED
+			});
 			const error = createDownloadError(
 				ERROR_CODES.SESSION_EXPIRED,
 				'Chunk upload session not found or expired',
@@ -87,11 +105,15 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		}
 
 		const finalizeUpload = async () => {
+			opLogger?.startPhase('finalize', 'Starting file finalization');
 			let stats: { size: number };
 			try {
 				stats = await fs.stat(chunkState.tempFilePath);
 			} catch (err) {
-				console.error('Temp file missing during finalize:', err);
+				opLogger?.error('Temp file missing during finalize', {
+					phase: 'finalize',
+					error: err instanceof Error ? err.message : String(err)
+				});
 				endUpload(uploadId);
 				return json({ error: 'Temporary file missing' }, { status: 500 });
 			}
@@ -191,9 +213,17 @@ export const POST: RequestHandler = async ({ request, params }) => {
 
 			try {
 				await moveFile(chunkState.tempFilePath, finalPath);
+				opLogger?.debug('File moved to final location', {
+					phase: 'finalize',
+					action: 'overwrite'
+				});
 			} catch (err: unknown) {
-				console.error('File move error:', err);
 				const error = err as NodeJS.ErrnoException;
+				opLogger?.error('File move failed', {
+					phase: 'finalize',
+					error: error.message,
+					errorCode: error.code
+				});
 				await fs.unlink(finalPath).catch(() => {});
 				if (error.code === 'ENOSPC' || error.message?.includes('disk full')) {
 					await fs.unlink(chunkState.tempFilePath).catch(() => {});
@@ -237,12 +267,12 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			if (uploadData.trackMetadata) {
 				try {
 					await embedMetadataToFile(finalPath, uploadData.trackMetadata);
-					console.log('[Server Download] Metadata embedded successfully');
+					opLogger?.debug('Metadata embedded successfully', { phase: 'finalize' });
 				} catch (metadataError) {
-					console.warn(
-						'[Server Download] Metadata embedding failed, continuing with raw file:',
-						metadataError
-					);
+					opLogger?.warn('Metadata embedding failed, continuing with raw file', {
+						phase: 'finalize',
+						error: metadataError instanceof Error ? metadataError.message : String(metadataError)
+					});
 				}
 			}
 
@@ -261,6 +291,16 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			if (coverDownloaded) {
 				message += ' (with cover)';
 			}
+
+			opLogger?.complete({
+				phase: 'finalize',
+				action,
+				trackId,
+				quality,
+				artistName,
+				albumTitle,
+				trackTitle
+			});
 
 			return json(
 				{
@@ -348,8 +388,14 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		try {
 			await retryFs(() => fs.appendFile(chunkState.tempFilePath, chunkBuffer));
 		} catch (err: unknown) {
-			console.error('Chunk append error:', err);
 			const error = err as NodeJS.ErrnoException;
+			opLogger?.error('Chunk append failed', {
+				phase: 'chunk',
+				chunkIndex,
+				totalChunks: chunkState.totalChunks,
+				error: error.message,
+				errorCode: error.code
+			});
 			let downloadError;
 			if (error.code === 'ENOSPC' || (error.message && error.message.includes('disk full'))) {
 				downloadError = createDownloadError(
@@ -389,6 +435,14 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		chunkState.chunkIndex = chunkIndex + 1;
 		touchUploadTimestamp(uploadId);
 
+		// Log chunk progress
+		opLogger?.chunkProgress(
+			chunkState.chunkIndex,
+			chunkState.totalChunks,
+			chunkState.chunkIndex * chunkState.chunkSize,
+			chunkState.totalSize
+		);
+
 		// Check if upload is complete
 		if (chunkState.chunkIndex >= chunkState.totalChunks) {
 			return await finalizeUpload();
@@ -405,7 +459,11 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		}
 	} catch (error) {
 		const errorMsg = error instanceof Error ? error.message : String(error);
-		console.error(`[Chunk Upload] Error: ${errorMsg}`, error);
+		opLogger?.fail(error instanceof Error ? error : errorMsg, {
+			phase: 'error',
+			chunkIndex,
+			totalChunks
+		});
 
 		let downloadError;
 		if (errorMsg.includes('ENOSPC') || errorMsg.includes('disk full')) {

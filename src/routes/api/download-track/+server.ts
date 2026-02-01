@@ -24,6 +24,7 @@ import {
 	retryFs
 } from './_shared';
 import { embedMetadataToFile } from '$lib/server/metadataEmbedder';
+import { createDownloadOperationLogger, downloadLogger } from '$lib/server/observability';
 
 // Start the cleanup interval when the module loads
 startCleanupInterval();
@@ -127,8 +128,14 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				try {
 					await retryFs(() => fs.writeFile(finalPath, buffer));
 				} catch (err: unknown) {
-					console.error('Direct blob write error:', err);
 					const error = err as NodeJS.ErrnoException;
+					downloadLogger.error('Direct blob write error', {
+						phase: 'finalize',
+						uploadId: bodyUploadId,
+						trackId: body.trackId,
+						error: error.message,
+						errorCode: error.code
+					});
 					if (error.code === 'ENOSPC')
 						return json({ error: 'Not enough disk space' }, { status: 507 });
 					if (error.code === 'EACCES') return json({ error: 'Permission denied' }, { status: 403 });
@@ -140,12 +147,18 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				if (trackMetadata) {
 					try {
 						await embedMetadataToFile(finalPath, trackMetadata);
-						console.log('[Server Download] Metadata embedded successfully');
+						downloadLogger.debug('Metadata embedded successfully', {
+							phase: 'finalize',
+							uploadId: bodyUploadId,
+							trackId: body.trackId
+						});
 					} catch (metadataError) {
-						console.warn(
-							'[Server Download] Metadata embedding failed, continuing with raw file:',
-							metadataError
-						);
+						downloadLogger.warn('Metadata embedding failed, continuing with raw file', {
+							phase: 'finalize',
+							uploadId: bodyUploadId,
+							trackId: body.trackId,
+							error: metadataError instanceof Error ? metadataError.message : String(metadataError)
+						});
 						// Continue with raw file - better than no download
 					}
 				}
@@ -291,10 +304,38 @@ export const POST: RequestHandler = async ({ request, url }) => {
 
 				const newUploadId = randomBytes(16).toString('hex');
 				await cleanupExpiredUploads(); // Aggressive cleanup before starting
-				if (!canStartUpload()) return json({ error: 'Too many uploads' }, { status: 429 });
-				if (!startUpload(newUploadId))
+				if (!canStartUpload()) {
+					downloadLogger.warn('Upload rejected: too many concurrent uploads', {
+						phase: 'init',
+						trackId
+					});
 					return json({ error: 'Too many uploads' }, { status: 429 });
+				}
+				if (!startUpload(newUploadId)) {
+					downloadLogger.warn('Upload rejected: failed to start', {
+						phase: 'init',
+						uploadId: newUploadId,
+						trackId
+					});
+					return json({ error: 'Too many uploads' }, { status: 429 });
+				}
 				startedUploadId = newUploadId;
+
+				// Create operation logger for this upload
+				const opLogger = createDownloadOperationLogger(newUploadId, {
+					trackId,
+					quality,
+					artistName,
+					albumTitle,
+					trackTitle,
+					phase: 'init'
+				});
+				opLogger.info('Upload session created', {
+					totalSize: blobSize,
+					useChunks,
+					chunkSize
+				});
+
 				pendingUploads.set(newUploadId, {
 					trackId,
 					quality,
@@ -403,8 +444,14 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				try {
 					await retryFs(() => fs.writeFile(finalPath, buffer));
 				} catch (err: unknown) {
-				console.error('Blob upload write error:', err);
 				const error = err as NodeJS.ErrnoException;
+				downloadLogger.error('Blob upload write error', {
+					uploadId,
+					trackId,
+					phase: 'finalize',
+					error: error.message,
+					errorCode: error.code
+				});
 				if (error.code === 'ENOSPC')
 					return json({ error: 'Not enough disk space' }, { status: 507 });
 				if (error.code === 'EACCES') return json({ error: 'Permission denied' }, { status: 403 });
@@ -420,7 +467,12 @@ export const POST: RequestHandler = async ({ request, url }) => {
 			);
 		}
 	} catch (error) {
-		console.error('Download error:', error);
+		const errorMsg = error instanceof Error ? error.message : String(error);
+		downloadLogger.error('Download error', {
+			uploadId: uploadId || startedUploadId,
+			phase: 'error',
+			error: errorMsg
+		});
 		if (uploadId) endUpload(uploadId);
 		else if (startedUploadId) endUpload(startedUploadId);
 		return json({ error: 'Server error' }, { status: 500 });

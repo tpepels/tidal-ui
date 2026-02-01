@@ -10,6 +10,11 @@ import {
 	createPlaybackFallbackController,
 	type PlaybackFallbackController
 } from '$lib/controllers/playbackFallbackController';
+import {
+	startPlaybackOperation,
+	getCurrentPlaybackOperation,
+	type PlaybackOperationLogger
+} from '$lib/core/playbackObservability';
 
 const QUALITY_LABELS: Record<AudioQuality, string> = {
 	HI_RES_LOSSLESS: 'Hi-Res',
@@ -112,6 +117,7 @@ export class PlaybackMachineSideEffectHandler {
 	private lastFallbackToastKey: string | null = null;
 	private lastFallbackToastAt = 0;
 	private pendingLoad: { track: Track; quality: AudioQuality } | null = null;
+	private playbackOpLogger: PlaybackOperationLogger | null = null;
 
 	constructor(options?: { syncPlayerTrack?: (track: Track) => void }) {
 		this.syncPlayerTrack = options?.syncPlayerTrack ?? null;
@@ -213,9 +219,18 @@ export class PlaybackMachineSideEffectHandler {
 			onLoadComplete: (url, quality) => {
 				const shouldResume =
 					this.resumeAfterFallback || playerStore.getSnapshot().isPlaying;
+				const wasFallback = this.resumeAfterFallback;
 				if (this.resumeAfterFallback) {
 					this.resumeAfterFallback = false;
 				}
+
+				// Log load completion
+				if (wasFallback) {
+					this.playbackOpLogger?.fallbackComplete(quality, true);
+				} else {
+					this.playbackOpLogger?.loadComplete(quality, url ?? undefined);
+				}
+
 				this.dispatch?.({ type: 'LOAD_COMPLETE', streamUrl: url ?? null, quality });
 				if (shouldResume) {
 					this.dispatch?.({ type: 'PLAY' });
@@ -225,10 +240,14 @@ export class PlaybackMachineSideEffectHandler {
 							promise.catch((error) => {
 								// AbortError is expected when a new load interrupts play() during fallback
 								if (isPlayAbortError(error)) {
-									console.debug('[PlaybackMachine] Play interrupted by new load (expected during fallback)');
+									this.playbackOpLogger?.debug('Play interrupted by new load (expected during fallback)', {
+										phase: 'playing'
+									});
 									return;
 								}
-								console.error('[PlaybackMachine] Play failed after fallback:', error);
+								this.playbackOpLogger?.error('Play failed after fallback', error instanceof Error ? error : undefined, {
+									phase: 'error'
+								});
 								trackError(error instanceof Error ? error : new Error('Play failed'), {
 									component: 'playback-effects',
 									domain: 'playback',
@@ -241,12 +260,19 @@ export class PlaybackMachineSideEffectHandler {
 				}
 			},
 			onLoadError: (error) => {
+				const err = error instanceof Error ? error : new Error('Failed to load track');
+				this.playbackOpLogger?.error('Track load error', err, { phase: 'error' });
 				this.dispatch?.({
 					type: 'LOAD_ERROR',
-					error: error instanceof Error ? error : new Error('Failed to load track')
+					error: err
 				});
 			},
 			onFallbackRequested: (quality, reason) => {
+				this.playbackOpLogger?.fallbackStarted(
+					this.requestedQuality || 'unknown',
+					quality,
+					reason
+				);
 				this.notifyFallback(quality, reason);
 				this.dispatch?.({ type: 'FALLBACK_REQUESTED', quality, reason });
 			}
@@ -330,7 +356,19 @@ export class PlaybackMachineSideEffectHandler {
 			case 'LOAD_STREAM': {
 				this.requestedQuality = effect.quality;
 				this.currentTrackId = effect.track.id;
+
+				// Start new playback operation for observability
+				this.playbackOpLogger = startPlaybackOperation(effect.track.id, {
+					trackTitle: effect.track.title,
+					artistName: effect.track.artist?.name,
+					requestedQuality: effect.quality,
+					quality: effect.quality
+				});
+
 				if (!this.audioElement) {
+					this.playbackOpLogger.debug('Audio element not ready, queuing load', {
+						phase: 'load_start'
+					});
 					this.pendingLoad = { track: effect.track, quality: effect.quality };
 					break;
 				}
@@ -342,6 +380,9 @@ export class PlaybackMachineSideEffectHandler {
 					} catch (error) {
 						const failure =
 							error instanceof Error ? error : new Error('Failed to load track');
+						this.playbackOpLogger.error('Track load failed', failure, {
+							phase: 'error'
+						});
 						trackError(failure, {
 							component: 'playback-effects',
 							domain: 'playback',
@@ -365,15 +406,20 @@ export class PlaybackMachineSideEffectHandler {
 
 			case 'PLAY_AUDIO': {
 				if (this.audioElement) {
+					this.playbackOpLogger?.playing();
 					const promise = this.audioElement.play();
 					if (promise) {
 						promise.catch((error) => {
 							// AbortError is expected when a new load interrupts play() during fallback
 							if (isPlayAbortError(error)) {
-								console.debug('[PlaybackMachine] Play interrupted by new load (expected during fallback)');
+								this.playbackOpLogger?.debug('Play interrupted by new load (expected during fallback)', {
+									phase: 'playing'
+								});
 								return;
 							}
-							console.error('[PlaybackMachine] Play failed:', error);
+							this.playbackOpLogger?.error('Play failed', error instanceof Error ? error : undefined, {
+								phase: 'error'
+							});
 							trackError(error instanceof Error ? error : new Error('Play failed'), {
 								component: 'playback-effects',
 								domain: 'playback',
@@ -388,6 +434,7 @@ export class PlaybackMachineSideEffectHandler {
 
 			case 'PAUSE_AUDIO': {
 				if (this.audioElement) {
+					this.playbackOpLogger?.paused();
 					this.audioElement.pause();
 				}
 				break;
@@ -395,6 +442,7 @@ export class PlaybackMachineSideEffectHandler {
 
 			case 'SEEK_AUDIO': {
 				if (this.audioElement) {
+					this.playbackOpLogger?.seeked(effect.position);
 					this.audioElement.currentTime = effect.position;
 				}
 				break;
@@ -417,11 +465,34 @@ export class PlaybackMachineSideEffectHandler {
 					const code = mediaError?.code;
 					const details =
 						typeof code === 'number' ? ` (code ${code})` : '';
+
+					// Log non-recoverable audio error
+					this.playbackOpLogger?.audioError(
+						typeof code === 'number' ? code : -1,
+						`Audio playback error${details}`,
+						false
+					);
+
 					dispatch({
 						type: 'LOAD_ERROR',
 						error: new Error(`Audio playback error${details}`)
 					});
 				} else {
+					// Log recoverable audio error triggering fallback
+					const element = (effect.error as Event)?.currentTarget as HTMLMediaElement | null;
+					const mediaError = element?.error ?? null;
+					const code = mediaError?.code;
+					this.playbackOpLogger?.audioError(
+						typeof code === 'number' ? code : -1,
+						`Audio error triggering fallback: ${fallback.reason}`,
+						true
+					);
+					this.playbackOpLogger?.fallbackStarted(
+						this.requestedQuality || 'unknown',
+						fallback.quality,
+						fallback.reason
+					);
+
 					this.resumeAfterFallback = true;
 					this.dispatch?.({
 						type: 'FALLBACK_REQUESTED',

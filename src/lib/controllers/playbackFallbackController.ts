@@ -1,4 +1,5 @@
 import type { AudioQuality, PlayableTrack, Track } from '$lib/types';
+import { getCurrentPlaybackOperation, playbackLogger } from '$lib/core/playbackObservability';
 
 type ControllerOptions = {
 	getCurrentTrack: () => PlayableTrack | null;
@@ -82,7 +83,18 @@ export const createPlaybackFallbackController = (
 		// Creating a new sequence would make this fallback supersede the load of a new track
 		// that was requested while the old track was erroring out.
 		const sequence = sequenceAtStart;
-		console.warn(`Attempting lossless fallback after DASH playback error (${reason}).`);
+		const opLogger = getCurrentPlaybackOperation();
+		opLogger?.warn(`Attempting lossless fallback after DASH playback error (${reason})`, {
+			trackId: track.id,
+			fallbackQuality,
+			fallbackReason: `dash-playback-${reason}`,
+			phase: 'fallback_start'
+		});
+		playbackLogger.warn(`Attempting lossless fallback after DASH playback error (${reason})`, {
+			trackId: track.id,
+			fallbackQuality,
+			fallbackReason: `dash-playback-${reason}`
+		});
 		options.onFallbackRequested?.(fallbackQuality, `dash-playback-${reason}`);
 		try {
 			options.setDashPlaybackActive(false);
@@ -90,7 +102,9 @@ export const createPlaybackFallbackController = (
 
 			// Check if track changed before proceeding - a new track load would have changed the sequence
 			if (options.getSequence() !== sequence) {
-				console.info('[AudioPlayer] Aborting DASH fallback - track changed during fallback setup');
+				opLogger?.info('Aborting DASH fallback - track changed during fallback setup', {
+					phase: 'fallback_loading'
+				});
 				return;
 			}
 
@@ -99,10 +113,19 @@ export const createPlaybackFallbackController = (
 			// Verify track didn't change during async load
 			const currentTrack = options.getCurrentTrack();
 			if (currentTrack?.id !== originalTrackId) {
-				console.info('[AudioPlayer] Fallback completed but track changed, ignoring result');
+				opLogger?.info('Fallback completed but track changed, ignoring result', {
+					phase: 'fallback_complete'
+				});
 			}
 		} catch (fallbackError) {
-			console.error('Lossless fallback after DASH playback error failed', fallbackError);
+			opLogger?.error('Lossless fallback after DASH playback error failed',
+				fallbackError instanceof Error ? fallbackError : undefined,
+				{ phase: 'fallback_failed' }
+			);
+			playbackLogger.error('Lossless fallback after DASH playback error failed',
+				fallbackError instanceof Error ? fallbackError : undefined,
+				{ trackId: track.id, fallbackQuality }
+			);
 		} finally {
 			dashFallbackInFlight = false;
 			options.setLoading(false);
@@ -149,13 +172,24 @@ export const createPlaybackFallbackController = (
 		// Creating a new sequence would make this fallback supersede the load of a new track
 		// that was requested while the old track was erroring out.
 		const sequence = sequenceAtStart;
+		const opLogger = getCurrentPlaybackOperation();
+
+		opLogger?.warn('Attempting streaming fallback after lossless error', {
+			trackId: track.id,
+			fallbackQuality,
+			fallbackReason: 'lossless-playback',
+			phase: 'fallback_start'
+		});
+
 		try {
 			options.setLoading(true);
 			options.onFallbackRequested?.(fallbackQuality, 'lossless-playback');
 
 			// Check if track changed before proceeding - a new track load would have changed the sequence
 			if (options.getSequence() !== sequence) {
-				console.info('[AudioPlayer] Aborting lossless fallback - track changed during fallback setup');
+				opLogger?.info('Aborting lossless fallback - track changed during fallback setup', {
+					phase: 'fallback_loading'
+				});
 				return;
 			}
 
@@ -164,12 +198,24 @@ export const createPlaybackFallbackController = (
 			// Verify track didn't change during async load
 			const currentTrack = options.getCurrentTrack();
 			if (currentTrack?.id !== originalTrackId) {
-				console.info('[AudioPlayer] Fallback completed but track changed, ignoring result');
+				opLogger?.info('Fallback completed but track changed, ignoring result', {
+					phase: 'fallback_complete'
+				});
 			} else {
-				console.info('[AudioPlayer] Streaming fallback loaded for track', track.id);
+				opLogger?.info(`Streaming fallback loaded successfully for track ${track.id}`, {
+					phase: 'fallback_complete',
+					actualQuality: fallbackQuality
+				});
 			}
 		} catch (fallbackError) {
-			console.error('Streaming fallback after lossless playback error failed', fallbackError);
+			opLogger?.error('Streaming fallback after lossless playback error failed',
+				fallbackError instanceof Error ? fallbackError : undefined,
+				{ phase: 'fallback_failed' }
+			);
+			playbackLogger.error('Streaming fallback after lossless playback error failed',
+				fallbackError instanceof Error ? fallbackError : undefined,
+				{ trackId: track.id, fallbackQuality }
+			);
 			options.setResumeAfterFallback(false);
 		} finally {
 			options.setLoading(false);
@@ -179,10 +225,17 @@ export const createPlaybackFallbackController = (
 
 	const handleAudioError = (event: Event) => {
 		let fallbackResult: { quality: AudioQuality; reason: string } | null = null;
-		console.warn('[AudioPlayer] Audio element reported an error state:', event);
+		const opLogger = getCurrentPlaybackOperation();
 		const element = event.currentTarget as HTMLAudioElement | null;
 		const mediaError = element?.error ?? null;
 		const code = mediaError?.code;
+
+		opLogger?.warn('Audio element reported an error state', {
+			phase: 'error',
+			errorCode: typeof code === 'number' ? code : undefined,
+			errorMessage: mediaError?.message
+		});
+
 		const decodeConstant =
 			mediaError && 'MEDIA_ERR_DECODE' in mediaError ? mediaError.MEDIA_ERR_DECODE : undefined;
 		const isDecodeError =
@@ -193,11 +246,17 @@ export const createPlaybackFallbackController = (
 			}
 			// Only return a fallback result if we can actually start a fallback
 			if (!canStartDashFallback()) {
-				console.debug('[AudioPlayer] DASH fallback already in progress or attempted, ignoring error');
+				opLogger?.debug('DASH fallback already in progress or attempted, ignoring error', {
+					phase: 'error'
+				});
 				return null;
 			}
 			const reason = isDecodeError ? 'decode error' : code ? `code ${code}` : 'unknown error';
-			console.warn('[AudioPlayer] DASH playback error detected; attempting lossless fallback:', reason);
+			opLogger?.warn(`DASH playback error detected; attempting lossless fallback: ${reason}`, {
+				phase: 'error',
+				isDashPlayback: true,
+				errorCode: typeof code === 'number' ? code : undefined
+			});
 			const supportsLossless = options.getSupportsLosslessPlayback?.() ?? true;
 			const streamingFallback =
 				options.getStreamingFallbackQuality?.() ?? (options.isFirefox() ? 'LOW' : 'HIGH');
@@ -227,7 +286,9 @@ export const createPlaybackFallbackController = (
 			// Only return a fallback result if we can actually start a fallback
 			// This prevents multiple FALLBACK_REQUESTED events and state transitions
 			if (!canStartLosslessFallback()) {
-				console.debug('[AudioPlayer] Lossless fallback already in progress or attempted, ignoring error');
+				opLogger?.debug('Lossless fallback already in progress or attempted, ignoring error', {
+					phase: 'error'
+				});
 				return null;
 			}
 			const reason =
@@ -236,9 +297,11 @@ export const createPlaybackFallbackController = (
 					: isDecodeError
 						? 'decode error'
 						: 'unknown';
-			console.warn(
-				`[AudioPlayer] Lossless playback error (${reason}). Falling back to streaming quality for current track.`
-			);
+			opLogger?.warn(`Lossless playback error (${reason}). Falling back to streaming quality.`, {
+				phase: 'error',
+				errorCode: codeNumber ?? undefined,
+				fallbackReason: reason
+			});
 			const fallbackQuality: AudioQuality =
 				options.getStreamingFallbackQuality?.() ?? (options.isFirefox() ? 'LOW' : 'HIGH');
 			void fallbackToStreamingAfterLosslessError(fallbackQuality);
