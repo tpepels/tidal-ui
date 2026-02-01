@@ -35,10 +35,14 @@ export const syncPlayerStoreFromMachine = (
 		}
 	}
 	const isLoading = next.state === 'loading' || next.state === 'converting';
+	// Determine if we should show "playing" state in UI
+	// Key insight: During error recovery (fallback), we're loading but NOT playing yet
+	// The audio element is errored/stopped - don't show "playing" until we're actually playing
 	const isPlaying =
 		next.state === 'playing' ||
 		next.state === 'buffering' ||
-		(next.state === 'loading' && next.context.autoPlay);
+		// Only show "playing" during loading if autoPlay is set AND we're not recovering from error
+		(next.state === 'loading' && next.context.autoPlay && !next.context.isRecovering);
 
 	if (playerState.isLoading !== isLoading) {
 		store.setLoading(isLoading);

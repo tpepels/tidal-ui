@@ -17,7 +17,8 @@ import {
 	validateFileChecksum,
 	downloadCoverToDir,
 	moveFile,
-	retryFs
+	retryFs,
+	touchUploadTimestamp
 } from '../../_shared';
 import { embedMetadataToFile } from '$lib/server/metadataEmbedder';
 
@@ -220,11 +221,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 					);
 					return json({ error: downloadError }, { status: 403 });
 				}
-				chunkState.timestamp = Date.now();
-				const pending = pendingUploads.get(uploadId);
-				if (pending) {
-					pending.timestamp = Date.now();
-				}
+				// Atomically refresh timestamps for retry to prevent cleanup race conditions
+				touchUploadTimestamp(uploadId);
 				const downloadError = createDownloadError(
 					ERROR_CODES.UNKNOWN_ERROR,
 					'Failed to move file to final location: ' + (error.message || 'Unknown error'),
@@ -298,11 +296,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		}
 
 		if (chunkIndex < chunkState.chunkIndex) {
-			chunkState.timestamp = Date.now();
-			const pending = pendingUploads.get(uploadId);
-			if (pending) {
-				pending.timestamp = Date.now();
-			}
+			// Atomically update both timestamps to prevent cleanup race conditions
+			touchUploadTimestamp(uploadId);
 			if (chunkState.chunkIndex >= chunkState.totalChunks && !chunkState.completed) {
 				return await finalizeUpload();
 			}
@@ -390,13 +385,9 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			return json({ error: downloadError }, { status: 500 });
 		}
 
-		// Update chunk state
+		// Update chunk state and atomically refresh timestamps to prevent cleanup race conditions
 		chunkState.chunkIndex = chunkIndex + 1;
-		chunkState.timestamp = Date.now();
-		const pending = pendingUploads.get(uploadId);
-		if (pending) {
-			pending.timestamp = Date.now();
-		}
+		touchUploadTimestamp(uploadId);
 
 		// Check if upload is complete
 		if (chunkState.chunkIndex >= chunkState.totalChunks) {

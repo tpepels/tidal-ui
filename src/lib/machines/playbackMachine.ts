@@ -68,6 +68,11 @@ export interface PlaybackContext {
 	error: Error | null;
 	loadRequestId: number; // Request token for loads
 	autoPlay: boolean;
+	/**
+	 * True when loading due to fallback recovery after an error.
+	 * Used by UI sync to avoid showing "playing" during error recovery.
+	 */
+	isRecovering: boolean;
 }
 
 export interface PlaybackMachineState {
@@ -96,7 +101,9 @@ export function transition(
 					streamUrl: null,
 					error: null,
 					loadRequestId: context.loadRequestId + 1,
-					autoPlay: context.autoPlay || state === 'playing' || state === 'buffering'
+					autoPlay: context.autoPlay || state === 'playing' || state === 'buffering',
+					// Clear recovery flag on new track load
+					isRecovering: false
 				}
 			};
 		}
@@ -144,7 +151,9 @@ export function transition(
 				...context,
 				streamUrl: event.streamUrl,
 				quality: event.quality,
-				error: null
+				error: null,
+				// Clear recovery flag - load succeeded, playback can proceed normally
+				isRecovering: false
 			};
 			if (state === 'loading') {
 				return {
@@ -179,7 +188,8 @@ export function transition(
 					state: 'playing',
 					context: {
 						...context,
-						autoPlay: true
+						autoPlay: true,
+						isRecovering: false
 					}
 				};
 			}
@@ -200,7 +210,9 @@ export function transition(
 						streamUrl: null,
 						error: null,
 						loadRequestId: context.loadRequestId + 1,
-						autoPlay: true
+						autoPlay: true,
+						// Mark as recovering when retrying from error state
+						isRecovering: true
 					}
 				};
 			}
@@ -329,7 +341,9 @@ export function transition(
 					streamUrl: null,
 					error: null,
 					loadRequestId: context.loadRequestId + 1,
-					autoPlay: true
+					autoPlay: true,
+					// Mark as recovering so UI doesn't show "playing" during fallback load
+					isRecovering: true
 				}
 			};
 		}
@@ -367,7 +381,8 @@ export function createInitialState(quality: AudioQuality = 'HIGH'): PlaybackMach
 			isMuted: false,
 			error: null,
 			loadRequestId: 0,
-			autoPlay: false
+			autoPlay: false,
+			isRecovering: false
 		}
 	};
 }

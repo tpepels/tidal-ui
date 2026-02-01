@@ -598,4 +598,123 @@ describe('playbackMachine', () => {
 			expect(changeToHiRes.context.loadRequestId).toBe(3);
 		});
 	});
+
+	describe('recovery state management', () => {
+		/**
+		 * REGRESSION TEST: UI state desync during fallback
+		 *
+		 * Previously, when a lossless decode error triggered a fallback:
+		 * 1. AUDIO_ERROR → error state
+		 * 2. FALLBACK_REQUESTED → loading state with autoPlay: true
+		 * 3. syncPlayerStore sees loading + autoPlay → sets isPlaying = true
+		 * 4. UI shows "playing" but audio is actually loading fallback
+		 *
+		 * Fix: isRecovering flag prevents showing "playing" during fallback load
+		 */
+		it('should set isRecovering when fallback requested', () => {
+			const initial = createInitialState();
+			const loading = transition(initial, { type: 'LOAD_TRACK', track: mockTidalTrack });
+			const ready = transition(loading, {
+				type: 'LOAD_COMPLETE',
+				streamUrl: 'https://example.com/stream.flac',
+				quality: 'LOSSLESS'
+			});
+			const playing = transition(ready, { type: 'PLAY' });
+
+			// Simulate lossless decode error followed by fallback
+			const errored = transition(playing, { type: 'AUDIO_ERROR', error: new Event('error') });
+			expect(errored.state).toBe('error');
+			expect(errored.context.isRecovering).toBe(false);
+
+			const fallback = transition(errored, {
+				type: 'FALLBACK_REQUESTED',
+				quality: 'HIGH',
+				reason: 'decode error'
+			});
+
+			expect(fallback.state).toBe('loading');
+			expect(fallback.context.autoPlay).toBe(true);
+			expect(fallback.context.isRecovering).toBe(true);
+		});
+
+		it('should set isRecovering when retrying from error state via PLAY', () => {
+			const initial = createInitialState();
+			const loading = transition(initial, { type: 'LOAD_TRACK', track: mockTidalTrack });
+			const errored = transition(loading, { type: 'LOAD_ERROR', error: new Error('Network error') });
+
+			expect(errored.state).toBe('error');
+			expect(errored.context.isRecovering).toBe(false);
+
+			const retry = transition(errored, { type: 'PLAY' });
+
+			expect(retry.state).toBe('loading');
+			expect(retry.context.autoPlay).toBe(true);
+			expect(retry.context.isRecovering).toBe(true);
+		});
+
+		it('should clear isRecovering on successful load completion', () => {
+			const initial = createInitialState();
+			const loading = transition(initial, { type: 'LOAD_TRACK', track: mockTidalTrack });
+			const ready = transition(loading, {
+				type: 'LOAD_COMPLETE',
+				streamUrl: 'https://example.com/stream.flac',
+				quality: 'LOSSLESS'
+			});
+			const playing = transition(ready, { type: 'PLAY' });
+			const errored = transition(playing, { type: 'AUDIO_ERROR', error: new Event('error') });
+			const fallback = transition(errored, {
+				type: 'FALLBACK_REQUESTED',
+				quality: 'HIGH',
+				reason: 'decode error'
+			});
+
+			expect(fallback.context.isRecovering).toBe(true);
+
+			const recovered = transition(fallback, {
+				type: 'LOAD_COMPLETE',
+				streamUrl: 'https://example.com/stream.m4a',
+				quality: 'HIGH'
+			});
+
+			expect(recovered.state).toBe('playing'); // autoPlay was true
+			expect(recovered.context.isRecovering).toBe(false);
+		});
+
+		it('should clear isRecovering on new track load', () => {
+			const initial = createInitialState();
+			const loading = transition(initial, { type: 'LOAD_TRACK', track: mockTidalTrack });
+			const errored = transition(loading, { type: 'LOAD_ERROR', error: new Error('Network error') });
+			const retry = transition(errored, { type: 'PLAY' });
+
+			expect(retry.context.isRecovering).toBe(true);
+
+			const newTrack = transition(retry, {
+				type: 'LOAD_TRACK',
+				track: { ...mockTidalTrack, id: 456 }
+			});
+
+			expect(newTrack.context.isRecovering).toBe(false);
+		});
+
+		it('should not set isRecovering on normal track load', () => {
+			const initial = createInitialState();
+			const loading = transition(initial, { type: 'LOAD_TRACK', track: mockTidalTrack });
+
+			expect(loading.context.isRecovering).toBe(false);
+		});
+
+		it('should clear isRecovering when entering playing state via PLAY', () => {
+			const initial = createInitialState();
+			const loading = transition(initial, { type: 'LOAD_TRACK', track: mockTidalTrack });
+			const ready = transition(loading, {
+				type: 'LOAD_COMPLETE',
+				streamUrl: 'https://example.com/stream.m4a',
+				quality: 'HIGH'
+			});
+			const playing = transition(ready, { type: 'PLAY' });
+
+			expect(playing.state).toBe('playing');
+			expect(playing.context.isRecovering).toBe(false);
+		});
+	});
 });

@@ -643,8 +643,16 @@
 			/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
 			/^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/.test(hostname);
 
+		// Additional check: if we're on HTTPS but not on a trusted domain, SSL issues likely
+		const isUntrustedHttps =
+			typeof window !== 'undefined' &&
+			window.location.protocol === 'https:' &&
+			isLocalPreview;
+
 		const shouldUseServiceWorker =
-			!dev && !isLocalPreview && import.meta.env.VITE_E2E !== 'true';
+			!dev && !isLocalPreview && !isUntrustedHttps && import.meta.env.VITE_E2E !== 'true';
+
+		// Proactively unregister any existing service workers if we shouldn't use them
 		if ('serviceWorker' in navigator && !shouldUseServiceWorker) {
 			navigator.serviceWorker
 				.getRegistrations()
@@ -652,11 +660,16 @@
 					registrations.forEach((registration) => {
 						void registration.unregister();
 					});
+					if (registrations.length > 0) {
+						console.info('[ServiceWorker] Unregistered existing service workers (local/LAN environment)');
+					}
 				})
 				.catch((error) => {
 					console.warn('Failed to unregister service workers', error);
 				});
 		}
+
+		// Only attempt registration on trusted environments
 		if ('serviceWorker' in navigator && shouldUseServiceWorker) {
 			const registerServiceWorker = async () => {
 				try {

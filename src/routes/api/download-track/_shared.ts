@@ -349,33 +349,93 @@ export const cleanupTempFiles = async () => {
 	}
 };
 
-// Clean up expired uploads
+/**
+ * Update timestamps for both pending and chunk upload entries atomically.
+ * This prevents race conditions where cleanup sees stale pending timestamps
+ * while chunk timestamps are fresh.
+ */
+export const touchUploadTimestamp = (uploadId: string): void => {
+	const now = Date.now();
+	const pending = pendingUploads.get(uploadId);
+	const chunk = chunkUploads.get(uploadId);
+
+	if (pending) {
+		pending.timestamp = now;
+	}
+	if (chunk) {
+		chunk.timestamp = now;
+	}
+};
+
+/**
+ * Clean up expired uploads.
+ *
+ * IMPORTANT: This function must handle the case where pendingUploads and chunkUploads
+ * have different timestamps. The fix is to use the MOST RECENT timestamp between
+ * the two entries when determining expiration, preventing race conditions where
+ * one entry is deleted while the other is still valid.
+ */
 export const cleanupExpiredUploads = async () => {
 	const now = Date.now();
-	for (const [uploadId, data] of pendingUploads.entries()) {
-		if (now - data.timestamp > UPLOAD_TTL) {
-			pendingUploads.delete(uploadId);
-			activeUploads.delete(uploadId); // Also clean up from active uploads
+	const idsToCleanup = new Set<string>();
+
+	// First pass: identify uploads to clean up using the most recent timestamp
+	// from either pendingUploads or chunkUploads
+	for (const [uploadId, pendingData] of pendingUploads.entries()) {
+		const chunkData = chunkUploads.get(uploadId);
+		// Use the most recent timestamp between pending and chunk entries
+		const mostRecentTimestamp = chunkData
+			? Math.max(pendingData.timestamp, chunkData.timestamp)
+			: pendingData.timestamp;
+
+		if (now - mostRecentTimestamp > UPLOAD_TTL) {
+			idsToCleanup.add(uploadId);
 		}
 	}
-	for (const [uploadId, data] of chunkUploads.entries()) {
-		const isExpired = now - data.timestamp > UPLOAD_TTL;
-		const missingPending = !pendingUploads.has(uploadId);
-		if (isExpired || data.completed || missingPending) {
-			// Clean up temp files
+
+	// Also check chunk entries that might not have pending entries
+	for (const [uploadId, chunkData] of chunkUploads.entries()) {
+		if (chunkData.completed) {
+			idsToCleanup.add(uploadId);
+			continue;
+		}
+
+		const pendingData = pendingUploads.get(uploadId);
+		if (!pendingData) {
+			// Chunk entry without pending entry - check if chunk entry itself is expired
+			// Give it extra grace period since it's actively processing
+			const isExpired = now - chunkData.timestamp > UPLOAD_TTL;
+			if (isExpired) {
+				idsToCleanup.add(uploadId);
+			}
+		}
+	}
+
+	// Second pass: atomically clean up all identified uploads
+	for (const uploadId of idsToCleanup) {
+		const chunkData = chunkUploads.get(uploadId);
+		if (chunkData) {
 			try {
-				await fs.unlink(data.tempFilePath).catch(() => {});
+				await fs.unlink(chunkData.tempFilePath).catch(() => {});
 			} catch {
 				// Ignore cleanup errors
 			}
-			chunkUploads.delete(uploadId);
-			activeUploads.delete(uploadId);
 		}
+		// Delete from all maps together to prevent race conditions
+		pendingUploads.delete(uploadId);
+		chunkUploads.delete(uploadId);
+		activeUploads.delete(uploadId);
 	}
+
+	// Clean up orphaned active uploads
 	for (const uploadId of activeUploads) {
 		if (!pendingUploads.has(uploadId) && !chunkUploads.has(uploadId)) {
 			activeUploads.delete(uploadId);
 		}
+	}
+
+	if (idsToCleanup.size > 0) {
+		console.log(`[Cleanup] Removed ${idsToCleanup.size} expired upload session(s)`);
 	}
 	await saveState();
 };
