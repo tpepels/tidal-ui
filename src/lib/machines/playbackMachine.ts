@@ -55,18 +55,41 @@ export type PlaybackEvent =
 	| { type: 'FALLBACK_REQUESTED'; quality: AudioQuality; reason: string }
 	| { type: 'SEEK'; position: number };
 
+/**
+ * Generate a unique attempt ID for correlation and stale event detection.
+ * Format: "att-{timestamp}-{random}"
+ */
+const generateAttemptId = (): string =>
+	`att-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
 export interface PlaybackContext {
 	currentTrack: PlayableTrack | null;
 	queue: PlayableTrack[];
 	queueIndex: number;
 	streamUrl: string | null;
+	/**
+	 * The user's requested/preferred quality setting.
+	 * This is what the user selected in preferences.
+	 */
 	quality: AudioQuality;
+	/**
+	 * The actual quality currently being played.
+	 * May differ from `quality` after fallback (e.g., LOSSLESS → HIGH).
+	 * Null when not actively playing a stream.
+	 */
+	effectiveQuality: AudioQuality | null;
 	currentTime: number;
 	duration: number;
 	volume: number;
 	isMuted: boolean;
 	error: Error | null;
 	loadRequestId: number; // Request token for loads
+	/**
+	 * Unique identifier for the current playback attempt.
+	 * Used to detect and ignore stale async events from previous attempts.
+	 * Generated fresh on each LOAD_TRACK or FALLBACK_REQUESTED event.
+	 */
+	attemptId: string;
 	autoPlay: boolean;
 	/**
 	 * True when loading due to fallback recovery after an error.
@@ -93,14 +116,19 @@ export function transition(
 	switch (event.type) {
 		case 'LOAD_TRACK': {
 			// Always allow loading a new track
+			// Generate new attemptId to invalidate any in-flight async operations from previous track
+			const newAttemptId = generateAttemptId();
 			return {
 				state: isSonglinkTrack(event.track) ? 'converting' : 'loading',
 				context: {
 					...context,
 					currentTrack: event.track,
 					streamUrl: null,
+					// Reset effectiveQuality until new stream loads
+					effectiveQuality: null,
 					error: null,
 					loadRequestId: context.loadRequestId + 1,
+					attemptId: newAttemptId,
 					autoPlay: context.autoPlay || state === 'playing' || state === 'buffering',
 					// Clear recovery flag on new track load
 					isRecovering: false
@@ -150,7 +178,8 @@ export function transition(
 			const nextContext = {
 				...context,
 				streamUrl: event.streamUrl,
-				quality: event.quality,
+				// effectiveQuality is what's actually playing (may differ from user preference after fallback)
+				effectiveQuality: event.quality,
 				error: null,
 				// Clear recovery flag - load succeeded, playback can proceed normally
 				isRecovering: false
@@ -203,13 +232,18 @@ export function transition(
 				};
 			}
 			if (state === 'error' && context.currentTrack) {
+				// Generate new attemptId for retry attempt
+				const retryAttemptId = generateAttemptId();
 				return {
 					state: 'loading',
 					context: {
 						...context,
 						streamUrl: null,
+						// Reset effectiveQuality until retry loads
+						effectiveQuality: null,
 						error: null,
 						loadRequestId: context.loadRequestId + 1,
+						attemptId: retryAttemptId,
 						autoPlay: true,
 						// Mark as recovering when retrying from error state
 						isRecovering: true
@@ -307,19 +341,21 @@ export function transition(
 		}
 
 		case 'CHANGE_QUALITY': {
-			// Quality change triggers reload if track is loaded
+			// User explicitly changes quality preference - update both quality and reset effectiveQuality
 			if (context.currentTrack && state !== 'idle') {
 				return {
 					state: 'loading',
 					context: {
 						...context,
 						quality: event.quality,
+						// Reset effectiveQuality until new stream loads
+						effectiveQuality: null,
 						streamUrl: null,
 						loadRequestId: context.loadRequestId + 1
 					}
 				};
 			}
-			// Just update context if no track
+			// Just update preference if no track loaded
 			return {
 				state,
 				context: {
@@ -333,14 +369,20 @@ export function transition(
 			if (!context.currentTrack) {
 				return current;
 			}
+			// Generate new attemptId to invalidate any in-flight async operations from previous quality attempt
+			const fallbackAttemptId = generateAttemptId();
+			// NOTE: Do NOT change `quality` here - that's the user's preference.
+			// The fallback quality will be set as `effectiveQuality` when LOAD_COMPLETE fires.
 			return {
 				state: 'loading',
 				context: {
 					...context,
-					quality: event.quality,
+					// Reset effectiveQuality until fallback stream loads
+					effectiveQuality: null,
 					streamUrl: null,
 					error: null,
 					loadRequestId: context.loadRequestId + 1,
+					attemptId: fallbackAttemptId,
 					autoPlay: true,
 					// Mark as recovering so UI doesn't show "playing" during fallback load
 					isRecovering: true
@@ -375,12 +417,14 @@ export function createInitialState(quality: AudioQuality = 'HIGH'): PlaybackMach
 			queueIndex: -1,
 			streamUrl: null,
 			quality,
+			effectiveQuality: null,
 			currentTime: 0,
 			duration: 0,
 			volume: 0.8,
 			isMuted: false,
 			error: null,
 			loadRequestId: 0,
+			attemptId: generateAttemptId(),
 			autoPlay: false,
 			isRecovering: false
 		}
@@ -392,15 +436,15 @@ export function createInitialState(quality: AudioQuality = 'HIGH'): PlaybackMach
  * Maps state transitions to side effects (API calls, audio element control, etc.)
  */
 export type SideEffect =
-	| { type: 'CONVERT_SONGLINK'; track: PlayableTrack }
-	| { type: 'LOAD_STREAM'; track: Track; quality: AudioQuality; requestId: number }
-	| { type: 'SET_AUDIO_SRC'; url: string }
+	| { type: 'CONVERT_SONGLINK'; track: PlayableTrack; attemptId: string }
+	| { type: 'LOAD_STREAM'; track: Track; quality: AudioQuality; requestId: number; attemptId: string }
+	| { type: 'SET_AUDIO_SRC'; url: string; attemptId: string }
 	| { type: 'PLAY_AUDIO' }
 	| { type: 'PAUSE_AUDIO' }
 	| { type: 'SEEK_AUDIO'; position: number }
 	| { type: 'SHOW_ERROR'; error: Error }
 	| { type: 'SYNC_PLAYER_TRACK'; track: Track }
-	| { type: 'HANDLE_AUDIO_ERROR'; error: Event };
+	| { type: 'HANDLE_AUDIO_ERROR'; error: Event; attemptId: string };
 
 /**
  * Derives side effects from state transitions
@@ -419,7 +463,11 @@ export function deriveSideEffects(
 		switch (next.state) {
 			case 'converting':
 				if (next.context.currentTrack && isSonglinkTrack(next.context.currentTrack)) {
-					effects.push({ type: 'CONVERT_SONGLINK', track: next.context.currentTrack });
+					effects.push({
+						type: 'CONVERT_SONGLINK',
+						track: next.context.currentTrack,
+						attemptId: next.context.attemptId
+					});
 				}
 				break;
 
@@ -433,14 +481,19 @@ export function deriveSideEffects(
 						type: 'LOAD_STREAM',
 						track: next.context.currentTrack,
 						quality: next.context.quality,
-						requestId: next.context.loadRequestId
+						requestId: next.context.loadRequestId,
+						attemptId: next.context.attemptId
 					});
 				}
 				break;
 
 			case 'ready':
 				if (!loadCompleteWithUrl && next.context.streamUrl) {
-					effects.push({ type: 'SET_AUDIO_SRC', url: next.context.streamUrl });
+					effects.push({
+						type: 'SET_AUDIO_SRC',
+						url: next.context.streamUrl,
+						attemptId: next.context.attemptId
+					});
 				}
 				break;
 
@@ -467,7 +520,11 @@ export function deriveSideEffects(
 		effects.push({ type: 'SYNC_PLAYER_TRACK', track: event.track });
 	}
 	if (event.type === 'LOAD_COMPLETE' && event.streamUrl) {
-		effects.push({ type: 'SET_AUDIO_SRC', url: event.streamUrl });
+		effects.push({
+			type: 'SET_AUDIO_SRC',
+			url: event.streamUrl,
+			attemptId: next.context.attemptId
+		});
 		if (next.state === 'playing' || next.state === 'buffering') {
 			effects.push({ type: 'PLAY_AUDIO' });
 		}
@@ -476,7 +533,11 @@ export function deriveSideEffects(
 		effects.push({ type: 'SEEK_AUDIO', position: event.position });
 	}
 	if (event.type === 'AUDIO_ERROR') {
-		effects.push({ type: 'HANDLE_AUDIO_ERROR', error: event.error });
+		effects.push({
+			type: 'HANDLE_AUDIO_ERROR',
+			error: event.error,
+			attemptId: next.context.attemptId
+		});
 	}
 
 	return effects;

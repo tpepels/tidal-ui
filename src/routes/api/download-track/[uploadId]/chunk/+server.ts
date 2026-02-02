@@ -62,19 +62,31 @@ export const POST: RequestHandler = async ({ request, params }) => {
 
 		const chunkState = chunkUploads.get(uploadId);
 		if (!chunkState) {
-			opLogger?.error('Session not found', {
+			// Check if we have pending upload data (session was partially created)
+			const pendingData = pendingUploads.get(uploadId);
+			const errorCode = pendingData ? ERROR_CODES.SESSION_EXPIRED : ERROR_CODES.UPLOAD_NOT_FOUND;
+			const errorMessage = pendingData
+				? 'Chunk upload session expired during transfer'
+				: 'Chunk upload session not found';
+			const suggestion = pendingData
+				? 'The upload session timed out. Please restart the download.'
+				: 'This upload session does not exist. Please start a new download.';
+			opLogger?.error(errorMessage, {
 				phase: 'chunk',
-				errorCode: ERROR_CODES.SESSION_EXPIRED
+				errorCode,
+				hadPendingData: !!pendingData
 			});
 			const error = createDownloadError(
-				ERROR_CODES.SESSION_EXPIRED,
-				'Chunk upload session not found or expired',
+				errorCode,
+				errorMessage,
 				true,
-				{ uploadId },
+				{ uploadId, hadPendingData: !!pendingData },
 				30,
-				'The upload session has expired. Please restart the download.'
+				suggestion
 			);
-			return json({ error }, { status: 404 });
+			// Use 410 Gone for expired sessions (client should not retry with same ID)
+			// Use 404 Not Found for sessions that never existed
+			return json({ error }, { status: pendingData ? 410 : 404 });
 		}
 		if (
 			!Number.isFinite(chunkState.totalSize) ||

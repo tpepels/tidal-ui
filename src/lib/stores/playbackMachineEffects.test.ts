@@ -148,7 +148,7 @@ describe('PlaybackMachineSideEffectHandler', () => {
 		const dispatch = vi.fn<[PlaybackEvent], void>();
 		return handler
 			.execute(
-				{ type: 'LOAD_STREAM', track, quality: 'HIGH', requestId: 1 } satisfies SideEffect,
+				{ type: 'LOAD_STREAM', track, quality: 'HIGH', requestId: 1, attemptId: 'test-attempt-destroy' } satisfies SideEffect,
 				dispatch as (event: PlaybackEvent) => void
 			)
 			.then(() => {
@@ -172,7 +172,8 @@ describe('PlaybackMachineSideEffectHandler', () => {
 				type: 'LOAD_STREAM',
 				track,
 				quality: 'HIGH',
-				requestId: 1
+				requestId: 1,
+				attemptId: 'test-attempt-load'
 			} satisfies SideEffect,
 			dispatch as (event: PlaybackEvent) => void
 		);
@@ -191,7 +192,7 @@ describe('PlaybackMachineSideEffectHandler', () => {
 		const dispatch = vi.fn<[PlaybackEvent], void>();
 
 		await handler.execute(
-			{ type: 'HANDLE_AUDIO_ERROR', error: new Event('error') } satisfies SideEffect,
+			{ type: 'HANDLE_AUDIO_ERROR', error: new Event('error'), attemptId: 'test-attempt-error' } satisfies SideEffect,
 			dispatch as (event: PlaybackEvent) => void
 		);
 
@@ -214,7 +215,8 @@ describe('PlaybackMachineSideEffectHandler', () => {
 				type: 'LOAD_STREAM',
 				track,
 				quality: 'HIGH',
-				requestId: 1
+				requestId: 1,
+				attemptId: 'test-attempt-1'
 			} satisfies SideEffect,
 			dispatch as (event: PlaybackEvent) => void
 		);
@@ -248,7 +250,8 @@ describe('PlaybackMachineSideEffectHandler', () => {
 				type: 'LOAD_STREAM',
 				track,
 				quality: 'LOSSLESS',
-				requestId: 1
+				requestId: 1,
+				attemptId: 'test-attempt-2'
 			} satisfies SideEffect,
 			dispatch as (event: PlaybackEvent) => void
 		);

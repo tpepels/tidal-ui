@@ -402,7 +402,8 @@ describe('playbackMachine', () => {
 			});
 
 			expect(effects).toHaveLength(1);
-			expect(effects[0]).toEqual({ type: 'CONVERT_SONGLINK', track: mockSonglinkTrack });
+			expect(effects[0]).toMatchObject({ type: 'CONVERT_SONGLINK', track: mockSonglinkTrack });
+			expect(effects[0]).toHaveProperty('attemptId');
 		});
 
 		it('should derive SYNC_PLAYER_TRACK effect on conversion complete', () => {
@@ -494,10 +495,12 @@ describe('playbackMachine', () => {
 				quality: 'HIGH'
 			});
 
-			expect(effects).toContainEqual({
-				type: 'SET_AUDIO_SRC',
-				url: 'https://example.com/stream.m4a'
-			});
+			expect(effects).toContainEqual(
+				expect.objectContaining({
+					type: 'SET_AUDIO_SRC',
+					url: 'https://example.com/stream.m4a'
+				})
+			);
 		});
 
 		it('should derive PLAY_AUDIO effect when entering playing state', () => {

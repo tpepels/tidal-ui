@@ -199,8 +199,19 @@ export function createPlaybackMachineStore(initialQuality: AudioQuality = 'HIGH'
 		get streamUrl() {
 			return machineState.context.streamUrl;
 		},
+		/**
+		 * User's requested/preferred quality setting.
+		 */
 		get quality() {
 			return machineState.context.quality;
+		},
+		/**
+		 * The actual quality currently being played.
+		 * May differ from `quality` after fallback (e.g., LOSSLESS → HIGH).
+		 * Null when not actively playing a stream.
+		 */
+		get effectiveQuality() {
+			return machineState.context.effectiveQuality;
 		},
 		get isPlaying() {
 			return machineState.state === 'playing';
@@ -239,6 +250,7 @@ if (typeof window !== 'undefined' && testHooksEnabled) {
 				isLoading: boolean;
 				currentTrackId: number | string | null;
 				quality: AudioQuality;
+				effectiveQuality: AudioQuality | null;
 				loadRequestId: number;
 				queueIndex: number;
 				queueLength: number;
@@ -251,6 +263,7 @@ if (typeof window !== 'undefined' && testHooksEnabled) {
 		isLoading: playbackMachine.isLoading,
 		currentTrackId: playbackMachine.currentTrack?.id ?? null,
 		quality: playbackMachine.quality,
+		effectiveQuality: playbackMachine.effectiveQuality,
 		loadRequestId: playbackMachine.context.loadRequestId,
 		queueIndex: playbackMachine.context.queueIndex,
 		queueLength: playbackMachine.context.queue.length

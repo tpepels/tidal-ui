@@ -24,6 +24,7 @@ import {
 	ERROR_CODES,
 	cleanupExpiredUploads,
 	touchUploadTimestamp,
+	UPLOAD_TTL,
 	type ChunkUploadState,
 	type PendingUpload
 } from './_shared';
@@ -295,11 +296,11 @@ describe('Chunk Upload Error Handling', () => {
 	 * when determining expiration.
 	 */
 	describe('Cleanup Race Condition Prevention', () => {
-		const UPLOAD_TTL = 5 * 60 * 1000; // 5 minutes (from _shared.ts)
+		// UPLOAD_TTL imported from _shared.ts
 
 		it('should NOT delete chunk session when only pendingUploads timestamp is stale', async () => {
 			const now = Date.now();
-			const staleTimestamp = now - UPLOAD_TTL - 1000; // 5 minutes + 1 second ago
+			const staleTimestamp = now - UPLOAD_TTL - 1000; // Older than TTL
 			const freshTimestamp = now - 1000; // 1 second ago
 
 			// Setup: pendingUploads has stale timestamp, chunkUploads has fresh timestamp
@@ -334,7 +335,7 @@ describe('Chunk Upload Error Handling', () => {
 
 		it('should delete session when BOTH timestamps are stale', async () => {
 			const now = Date.now();
-			const staleTimestamp = now - UPLOAD_TTL - 1000; // 5 minutes + 1 second ago
+			const staleTimestamp = now - UPLOAD_TTL - 1000; // Older than TTL
 
 			// Setup: both have stale timestamps
 			pendingUploads.set(testUploadId, {

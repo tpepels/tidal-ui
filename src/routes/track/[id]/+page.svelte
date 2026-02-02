@@ -4,8 +4,8 @@
 	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
 	import type { Track } from '$lib/types';
 	import { onMount } from 'svelte';
-	import { playerStore } from '$lib/stores/player';
 	import { playbackFacade } from '$lib/controllers/playbackFacade';
+	import { browseState } from '$lib/stores/browseState';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
@@ -57,14 +57,11 @@
 				]);
 			}
 
-			// Automatically play the track if it's not already playing
-				if (track) {
-					const current = $playerStore.currentTrack;
-					if (!current || current.id !== track.id) {
-						playbackFacade.loadQueue([track], 0);
-						playbackFacade.play();
-					}
-				}
+			// Update browse state to track what we're viewing
+			// This does NOT affect playback - only UI display context
+			if (track) {
+				browseState.setViewingTrack(track);
+			}
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load track';
 			console.error('Failed to load track:', err);

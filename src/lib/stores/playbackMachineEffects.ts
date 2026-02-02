@@ -12,7 +12,6 @@ import {
 } from '$lib/controllers/playbackFallbackController';
 import {
 	startPlaybackOperation,
-	getCurrentPlaybackOperation,
 	type PlaybackOperationLogger
 } from '$lib/core/playbackObservability';
 
@@ -116,11 +115,37 @@ export class PlaybackMachineSideEffectHandler {
 	private resumeAfterFallback = false;
 	private lastFallbackToastKey: string | null = null;
 	private lastFallbackToastAt = 0;
-	private pendingLoad: { track: Track; quality: AudioQuality } | null = null;
+	private pendingLoad: { track: Track; quality: AudioQuality; attemptId: string } | null = null;
 	private playbackOpLogger: PlaybackOperationLogger | null = null;
+	/**
+	 * Current attemptId for stale event detection.
+	 * Async callbacks should check this before mutating state.
+	 */
+	private currentAttemptId: string | null = null;
 
 	constructor(options?: { syncPlayerTrack?: (track: Track) => void }) {
 		this.syncPlayerTrack = options?.syncPlayerTrack ?? null;
+	}
+
+	/**
+	 * Check if an attemptId is stale (no longer the current attempt).
+	 * Used to ignore async callbacks from previous playback attempts.
+	 */
+	private isStaleAttempt(attemptId: string): boolean {
+		const isStale = this.currentAttemptId !== null && this.currentAttemptId !== attemptId;
+		if (isStale) {
+			this.playbackOpLogger?.debug(`Ignoring stale attempt [${attemptId}], current is [${this.currentAttemptId}]`, {
+				phase: 'load_start'
+			});
+		}
+		return isStale;
+	}
+
+	/**
+	 * Get the current attemptId for passing to async operations.
+	 */
+	getCurrentAttemptId(): string | null {
+		return this.currentAttemptId;
 	}
 
 	setAudioElement(element: HTMLAudioElement | null) {
@@ -137,17 +162,26 @@ export class PlaybackMachineSideEffectHandler {
 			this.pendingLoad = null;
 			void this.ensureLoadControllers()
 				.then(async () => {
+					// Validate attemptId before processing queued load
+					if (this.isStaleAttempt(pending.attemptId)) {
+						return;
+					}
 					this.playbackFallbackController?.resetForTrack(pending.track.id);
 					await this.trackLoadController?.loadTrack(pending.track);
 				})
 				.catch((error) => {
+					// Validate attemptId before dispatching error
+					if (this.isStaleAttempt(pending.attemptId)) {
+						return;
+					}
 					const failure = error instanceof Error ? error : new Error('Failed to load track');
 					trackError(failure, {
 						component: 'playback-effects',
 						domain: 'playback',
 						source: 'pending-load',
 						trackId: pending.track.id,
-						quality: pending.quality
+						quality: pending.quality,
+						attemptId: pending.attemptId
 					});
 					this.dispatch?.({ type: 'LOAD_ERROR', error: failure });
 				});
@@ -268,8 +302,10 @@ export class PlaybackMachineSideEffectHandler {
 				});
 			},
 			onFallbackRequested: (quality, reason) => {
+				// Use currentPlaybackQuality if available, otherwise fall back to requestedQuality
+				const fromQuality = this.currentPlaybackQuality || this.requestedQuality || 'unknown';
 				this.playbackOpLogger?.fallbackStarted(
-					this.requestedQuality || 'unknown',
+					fromQuality,
 					quality,
 					reason
 				);
@@ -304,6 +340,9 @@ export class PlaybackMachineSideEffectHandler {
 				this.resumeAfterFallback = value;
 			},
 			onFallbackRequested: (quality, reason) => {
+				// Use currentPlaybackQuality if available for accurate logging
+				const fromQuality = this.currentPlaybackQuality || this.requestedQuality || 'unknown';
+				this.playbackOpLogger?.fallbackStarted(fromQuality, quality, reason);
 				this.notifyFallback(quality, reason);
 			}
 		});
@@ -334,6 +373,10 @@ export class PlaybackMachineSideEffectHandler {
 		this.dispatch = dispatch;
 		switch (effect.type) {
 			case 'CONVERT_SONGLINK': {
+				// Store attemptId for this conversion
+				this.currentAttemptId = effect.attemptId;
+				const conversionAttemptId = effect.attemptId;
+
 				if (!isSonglinkTrack(effect.track)) {
 					dispatch({
 						type: 'CONVERSION_ERROR',
@@ -342,6 +385,10 @@ export class PlaybackMachineSideEffectHandler {
 					break;
 				}
 				const conversion = await convertSonglinkTrackToTidal(effect.track);
+				// Validate attemptId before dispatching result
+				if (this.isStaleAttempt(conversionAttemptId)) {
+					break;
+				}
 				if (conversion.success && conversion.track) {
 					dispatch({ type: 'CONVERSION_COMPLETE', track: conversion.track });
 				} else {
@@ -356,20 +403,23 @@ export class PlaybackMachineSideEffectHandler {
 			case 'LOAD_STREAM': {
 				this.requestedQuality = effect.quality;
 				this.currentTrackId = effect.track.id;
+				this.currentAttemptId = effect.attemptId;
 
 				// Start new playback operation for observability
 				this.playbackOpLogger = startPlaybackOperation(effect.track.id, {
 					trackTitle: effect.track.title,
 					artistName: effect.track.artist?.name,
 					requestedQuality: effect.quality,
-					quality: effect.quality
+					quality: effect.quality,
+					attemptId: effect.attemptId
 				});
 
 				if (!this.audioElement) {
 					this.playbackOpLogger.debug('Audio element not ready, queuing load', {
-						phase: 'load_start'
+						phase: 'load_start',
+						attemptId: effect.attemptId
 					});
-					this.pendingLoad = { track: effect.track, quality: effect.quality };
+					this.pendingLoad = { track: effect.track, quality: effect.quality, attemptId: effect.attemptId };
 					break;
 				}
 				await this.ensureLoadControllers();
@@ -397,6 +447,14 @@ export class PlaybackMachineSideEffectHandler {
 			}
 
 			case 'SET_AUDIO_SRC': {
+				// Validate attemptId before setting audio source
+				if (this.isStaleAttempt(effect.attemptId)) {
+					this.playbackOpLogger?.debug('Ignoring SET_AUDIO_SRC from stale attempt', {
+						phase: 'load_start',
+						attemptId: effect.attemptId
+					});
+					break;
+				}
 				if (this.audioElement) {
 					this.audioElement.src = effect.url;
 					this.audioElement.load();
@@ -454,6 +512,15 @@ export class PlaybackMachineSideEffectHandler {
 			}
 
 			case 'HANDLE_AUDIO_ERROR': {
+				// Validate attemptId before processing audio error
+				if (this.isStaleAttempt(effect.attemptId)) {
+					this.playbackOpLogger?.debug('Ignoring audio error from stale attempt', {
+						phase: 'error',
+						attemptId: effect.attemptId
+					});
+					break;
+				}
+
 				if (!this.playbackFallbackController && this.audioElement) {
 					await this.ensureLoadControllers();
 				}
@@ -487,8 +554,10 @@ export class PlaybackMachineSideEffectHandler {
 						`Audio error triggering fallback: ${fallback.reason}`,
 						true
 					);
+					// Use currentPlaybackQuality if available for accurate logging
+					const fromQuality = this.currentPlaybackQuality || this.requestedQuality || 'unknown';
 					this.playbackOpLogger?.fallbackStarted(
-						this.requestedQuality || 'unknown',
+						fromQuality,
 						fallback.quality,
 						fallback.reason
 					);

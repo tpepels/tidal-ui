@@ -271,11 +271,16 @@ export const createPlaybackFallbackController = (
 		const srcUnsupported = mediaError?.MEDIA_ERR_SRC_NOT_SUPPORTED;
 		const currentPlayback = options.getCurrentPlaybackQuality();
 		const playerQuality = options.getPlayerQuality();
+		// Only check what's actually playing, not user preference
+		// If currentPlayback is unknown (null), fall back to checking playerQuality
+		// but only for lossless qualities - this prevents "HIGH to HIGH" fallbacks
 		const losslessActive =
 			currentPlayback === 'LOSSLESS' ||
 			currentPlayback === 'HI_RES_LOSSLESS' ||
-			playerQuality === 'LOSSLESS' ||
-			playerQuality === 'HI_RES_LOSSLESS';
+			(currentPlayback === null && (
+				playerQuality === 'LOSSLESS' ||
+				playerQuality === 'HI_RES_LOSSLESS'
+			));
 		const shouldFallbackToStreaming =
 			losslessActive &&
 			codeNumber !== null &&
@@ -291,6 +296,15 @@ export const createPlaybackFallbackController = (
 				});
 				return null;
 			}
+			const fallbackQuality: AudioQuality =
+				options.getStreamingFallbackQuality?.() ?? (options.isFirefox() ? 'LOW' : 'HIGH');
+			// Prevent same-quality fallback (e.g., HIGH to HIGH)
+			if (currentPlayback === fallbackQuality) {
+				opLogger?.debug(`Skipping fallback - already playing at ${fallbackQuality}`, {
+					phase: 'error'
+				});
+				return null;
+			}
 			const reason =
 				codeNumber === srcUnsupported
 					? 'source not supported'
@@ -302,8 +316,6 @@ export const createPlaybackFallbackController = (
 				errorCode: codeNumber ?? undefined,
 				fallbackReason: reason
 			});
-			const fallbackQuality: AudioQuality =
-				options.getStreamingFallbackQuality?.() ?? (options.isFirefox() ? 'LOW' : 'HIGH');
 			void fallbackToStreamingAfterLosslessError(fallbackQuality);
 			fallbackResult = { quality: fallbackQuality, reason: 'lossless-playback' };
 		}

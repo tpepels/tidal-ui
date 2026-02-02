@@ -23,6 +23,7 @@
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
+	import { browseState } from '$lib/stores/browseState';
 
 	import { downloadAlbum } from '$lib/downloads';
 
@@ -59,6 +60,10 @@
 			const { album: albumData, tracks: albumTracks } = await losslessAPI.getAlbum(id);
 			album = albumData;
 			tracks = albumTracks;
+
+			// Update browse state to track what we're viewing
+			// This does NOT affect playback - only UI display context
+			browseState.setViewingAlbum(albumData);
 
 			// Set breadcrumbs
 			if (albumData.artist) {

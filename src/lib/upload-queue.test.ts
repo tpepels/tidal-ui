@@ -6,7 +6,8 @@ import {
 	startUpload,
 	endUpload,
 	cleanupExpiredUploads,
-	forceCleanupAllUploads
+	forceCleanupAllUploads,
+	UPLOAD_TTL
 } from '../routes/api/download-track/_shared';
 
 describe('Upload Queue Management', () => {
@@ -57,8 +58,7 @@ describe('Upload Queue Management', () => {
 		it('should handle expired upload cleanup', async () => {
 			const uploadId = 'expired-upload-123';
 
-			// Add an expired upload
-			const UPLOAD_TTL = 5 * 60 * 1000; // 5 minutes
+			// Add an expired upload (UPLOAD_TTL imported from _shared.ts)
 			const expiredTimestamp = Date.now() - UPLOAD_TTL - 1000; // Definitely expired
 			pendingUploads.set(uploadId, {
 				trackId: 123,
