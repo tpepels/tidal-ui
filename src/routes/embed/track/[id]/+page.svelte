@@ -3,7 +3,12 @@
 	import { losslessAPI } from '$lib/api';
 	import type { Track, TrackInfo } from '$lib/types';
 	import { onMount } from 'svelte';
-	import { playerStore } from '$lib/stores/player';
+	import {
+		machineCurrentTrack,
+		machineIsPlaying,
+		machineCurrentTime,
+		machineDuration
+	} from '$lib/stores/playerDerived';
 	import { playbackFacade } from '$lib/controllers/playbackFacade';
 	import { LoaderCircle, Play, Pause, ExternalLink } from 'lucide-svelte';
 	import { formatArtists } from '$lib/utils/formatters';
@@ -15,11 +20,11 @@
 	let error = $state<string | null>(null);
 
 	const trackId = $derived($page.params.id);
-    const isPlaying = $derived($playerStore.isPlaying && $playerStore.currentTrack?.id === track?.id);
-    const isCurrentTrack = $derived($playerStore.currentTrack?.id === track?.id);
+    const isPlaying = $derived($machineIsPlaying && $machineCurrentTrack?.id === track?.id);
+    const isCurrentTrack = $derived($machineCurrentTrack?.id === track?.id);
     const progress = $derived(
         isCurrentTrack
-            ? ($playerStore.currentTime / ($playerStore.duration || 1)) * 100 
+            ? ($machineCurrentTime / ($machineDuration || 1)) * 100 
             : 0
     );
 
@@ -77,7 +82,7 @@
         if (isPlaying) {
             playbackFacade.pause();
         } else {
-            if ($playerStore.currentTrack?.id !== track.id) {
+            if ($machineCurrentTrack?.id !== track.id) {
                 playbackFacade.loadQueue([track], 0);
             }
             playbackFacade.play();

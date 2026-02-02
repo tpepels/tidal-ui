@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { onDestroy } from 'svelte';
-	import { currentTime, playerStore } from '$lib/stores/player';
+	import { machineCurrentTime, machineIsPlaying } from '$lib/stores/playerDerived';
 	import { playbackFacade } from '$lib/controllers/playbackFacade';
 	import { lyricsStore } from '$lib/stores/lyrics';
 	import { formatArtists } from '$lib/utils/formatters';
@@ -46,8 +46,8 @@
 	let lastRefreshedTrackId = $state<number | string | null>(null);
 
 	$effect(() => {
-		const seconds = $currentTime ?? 0;
-		const playing = $playerStore.isPlaying;
+		const seconds = $machineCurrentTime ?? 0;
+		const playing = $machineIsPlaying;
 		const nextMs = Number.isFinite(seconds) ? Math.max(0, seconds * 1000) : 0;
 		baseTimeMs = nextMs;
 		if (browser) {
@@ -398,7 +398,7 @@
 			return;
 		}
 
-		if (!$playerStore.isPlaying) {
+		if (!$machineIsPlaying) {
 			stopAnimation();
 			amLyricsElement.currentTime = baseTimeMs;
 			return;

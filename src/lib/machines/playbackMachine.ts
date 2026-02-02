@@ -53,7 +53,11 @@ export type PlaybackEvent =
 	| { type: 'TRACK_END' }
 	| { type: 'CHANGE_QUALITY'; quality: AudioQuality }
 	| { type: 'FALLBACK_REQUESTED'; quality: AudioQuality; reason: string }
-	| { type: 'SEEK'; position: number };
+	| { type: 'SEEK'; position: number }
+	| { type: 'TIME_UPDATE'; position: number }
+	| { type: 'DURATION_UPDATE'; duration: number }
+	| { type: 'VOLUME_UPDATE'; volume: number }
+	| { type: 'MUTE_UPDATE'; isMuted: boolean };
 
 /**
  * Generate a unique attempt ID for correlation and stale event detection.
@@ -123,6 +127,8 @@ export function transition(
 				context: {
 					...context,
 					currentTrack: event.track,
+					currentTime: 0,
+					duration: event.track.duration ?? 0,
 					streamUrl: null,
 					// Reset effectiveQuality until new stream loads
 					effectiveQuality: null,
@@ -141,13 +147,21 @@ export function transition(
 				event.queueIndex >= 0 && event.queueIndex < event.queue.length
 					? event.queue[event.queueIndex] ?? null
 					: null;
+			const trackChanged = (() => {
+				if (!nextTrack && !context.currentTrack) return false;
+				if (!nextTrack || !context.currentTrack) return true;
+				if (nextTrack.id !== context.currentTrack.id) return true;
+				return isSonglinkTrack(nextTrack) !== isSonglinkTrack(context.currentTrack);
+			})();
 			return {
 				state,
 				context: {
 					...context,
 					queue: event.queue,
 					queueIndex: event.queueIndex,
-					currentTrack: nextTrack ?? null
+					currentTrack: nextTrack ?? null,
+					currentTime: trackChanged ? 0 : context.currentTime,
+					duration: trackChanged ? nextTrack?.duration ?? 0 : context.duration
 				}
 			};
 		}
@@ -158,7 +172,9 @@ export function transition(
 				state: 'loading',
 				context: {
 					...context,
-					currentTrack: event.track
+					currentTrack: event.track,
+					currentTime: 0,
+					duration: event.track.duration ?? 0
 				}
 			};
 		}
@@ -396,6 +412,61 @@ export function transition(
 				context: {
 					...context,
 					currentTime: event.position
+				}
+			};
+		}
+
+		case 'TIME_UPDATE': {
+			const nextTime = Math.max(0, event.position);
+			if (context.currentTime === nextTime) {
+				return current;
+			}
+			return {
+				state,
+				context: {
+					...context,
+					currentTime: nextTime
+				}
+			};
+		}
+
+		case 'DURATION_UPDATE': {
+			const nextDuration = Math.max(0, event.duration);
+			if (context.duration === nextDuration) {
+				return current;
+			}
+			return {
+				state,
+				context: {
+					...context,
+					duration: nextDuration
+				}
+			};
+		}
+
+		case 'VOLUME_UPDATE': {
+			const nextVolume = Math.max(0, Math.min(1, event.volume));
+			if (context.volume === nextVolume) {
+				return current;
+			}
+			return {
+				state,
+				context: {
+					...context,
+					volume: nextVolume
+				}
+			};
+		}
+
+		case 'MUTE_UPDATE': {
+			if (context.isMuted === event.isMuted) {
+				return current;
+			}
+			return {
+				state,
+				context: {
+					...context,
+					isMuted: event.isMuted
 				}
 			};
 		}

@@ -2,7 +2,7 @@
 	import type { Track } from '$lib/types';
 	import { losslessAPI } from '$lib/api';
 	import { onMount } from 'svelte';
-	import { playerStore } from '$lib/stores/player';
+	import { machineCurrentTrack, machineIsPlaying } from '$lib/stores/playerDerived';
 	import { playbackFacade } from '$lib/controllers/playbackFacade';
 	import { createTrackDownloadUi } from '$lib/controllers/trackDownloadUi';
 	import ShareButton from '$lib/components/ShareButton.svelte';
@@ -94,11 +94,11 @@
 	}
 
 	function isCurrentTrack(track: Track): boolean {
-		return $playerStore.currentTrack?.id === track.id;
+		return $machineCurrentTrack?.id === track.id;
 	}
 
 	function isPlaying(track: Track): boolean {
-		return isCurrentTrack(track) && $playerStore.isPlaying;
+		return isCurrentTrack(track) && $machineIsPlaying;
 	}
 
 	function handleRowActivation(event: Event, track: Track, index: number) {

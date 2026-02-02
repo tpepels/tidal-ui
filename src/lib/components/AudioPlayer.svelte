@@ -7,6 +7,16 @@
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
 	import { playerStore } from '$lib/stores/player';
+	import {
+		machineCurrentTrack,
+		machineIsPlaying,
+		machineCurrentTime,
+		machineDuration,
+		machineVolume,
+		machineQueue,
+		machineQueueIndex,
+		machineIsMuted
+	} from '$lib/stores/playerDerived';
 	import { lyricsStore } from '$lib/stores/lyrics';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
@@ -54,7 +64,6 @@
 
 	let audioElement: HTMLAudioElement;
 	let streamUrl = $state('');
-	let isMuted = $state(false);
 	let bufferedPercent = $state(0);
 	let currentPlaybackQuality = $state<AudioQuality | null>(null);
 	let isDownloadingCurrentTrack = $state(false);
@@ -127,8 +136,8 @@
 	const audioElementController = createAudioElementController({
 		playerStore,
 		getAudioElement: () => audioElement,
-		onSetCurrentTime: (time) => playbackTransitions.seekTo(time),
-		onSetDuration: (duration) => playerUiProjection.setDuration(duration),
+		onSetCurrentTime: (time) => playbackMachine.actions.updateTime(time),
+		onSetDuration: (duration) => playbackMachine.actions.updateDuration(duration),
 		onNextTrack: () => playbackFacade.next(),
 		onBufferedPercentChange: (value) => {
 			bufferedPercent = value;
@@ -150,10 +159,10 @@
 	}
 
 	function togglePlayback() {
-		if (!$playerStore.currentTrack) {
+		if (!$machineCurrentTrack) {
 			return;
 		}
-		if ($playerStore.isPlaying) {
+		if ($machineIsPlaying) {
 			requestPause();
 		} else {
 			requestPlay();
@@ -177,9 +186,9 @@
 		$downloadPreferencesStore.storage === 'server' ? 'Save to server' : 'Download'
 	);
 
-  const hasTrack = $derived(Boolean($playerStore.currentTrack));
-  const currentTrackDownloadTask = $derived(activeDownloads.find(task => task.trackId === $playerStore.currentTrack?.id));
-  const currentTrackErrorTask = $derived(erroredDownloads.find(task => task.trackId === $playerStore.currentTrack?.id));
+  const hasTrack = $derived(Boolean($machineCurrentTrack));
+  const currentTrackDownloadTask = $derived(activeDownloads.find(task => task.trackId === $machineCurrentTrack?.id));
+  const currentTrackErrorTask = $derived(erroredDownloads.find(task => task.trackId === $machineCurrentTrack?.id));
   const hasOverlays = $derived(activeDownloads.length > 0 || ffmpegBannerState);
 
 	// Show player when:
@@ -220,19 +229,19 @@
 	// Playback is controlled via playbackMachine; playerStore mirrors machine state for UI.
 
 	$effect(() => {
-		if (showQueuePanel && $playerStore.queue.length === 0) {
+		if (showQueuePanel && $machineQueue.length === 0) {
 			showQueuePanel = false;
 		}
 	});
 
 	$effect(() => {
-		mediaSessionController.updateMetadata($playerStore.currentTrack);
+		mediaSessionController.updateMetadata($machineCurrentTrack);
 	});
 
 	$effect(() => {
-		const hasTrack = Boolean($playerStore.currentTrack);
+		const hasTrack = Boolean($machineCurrentTrack);
 		mediaSessionController.updatePlaybackState(
-			hasTrack ? ($playerStore.isPlaying ? 'playing' : 'paused') : 'none'
+			hasTrack ? ($machineIsPlaying ? 'playing' : 'paused') : 'none'
 		);
 	});
 
@@ -246,7 +255,7 @@
 
 	function playFromQueue(index: number) {
 		console.info('[AudioPlayer] playFromQueue called for index', index);
-		playbackFacade.loadQueue($playerStore.queue, index);
+		playbackFacade.loadQueue($machineQueue, index);
 		playbackFacade.play();
 	}
 
@@ -267,7 +276,7 @@
 
 	$effect(() => {
 		if (audioElement) {
-			const baseVolume = $playerStore.volume;
+			const baseVolume = $machineVolume;
 			const replayGain = $playerStore.replayGain;
 
 			if (replayGain !== null && typeof replayGain === 'number') {
@@ -304,14 +313,14 @@
 		updateBufferedPercent();
 		playbackMachine.actions.onAudioReady();
 
-		const state = get(playerStore);
-		if (audioElement && state.currentTime > 0 && Math.abs(audioElement.currentTime - state.currentTime) > 1) {
-			audioElement.currentTime = state.currentTime;
+		const currentTime = get(machineCurrentTime);
+		if (audioElement && currentTime > 0 && Math.abs(audioElement.currentTime - currentTime) > 1) {
+			audioElement.currentTime = currentTime;
 		}
 
 		mediaSessionController.updatePositionState();
 		const machineState = playbackMachine.state;
-		if ($playerStore.isPlaying && machineState !== 'playing') {
+		if ($machineIsPlaying && machineState !== 'playing') {
 			playbackMachine.actions.play();
 		}
 	}
@@ -337,11 +346,12 @@
 
 	function handlePrevious() {
 		if (!audioElement) return;
-		const state = $playerStore;
+		const currentTime = $machineCurrentTime;
+		const queueIndex = $machineQueueIndex;
 		handlePreviousTrackService(audioElement, {
-			currentTime: state.currentTime,
-			queueIndex: state.queueIndex,
-			onSetCurrentTime: (time) => playerStore.setCurrentTime(time),
+			currentTime,
+			queueIndex,
+			onSetCurrentTime: (time) => playbackMachine.actions.updateTime(time),
 			onPrevious: () => playbackFacade.previous()
 		});
 		mediaSessionController.updatePositionState();
@@ -358,7 +368,7 @@
 		const rect = seekBarElement.getBoundingClientRect();
 		const clientX = 'touches' in event ? event.touches[0].clientX : event.clientX;
 		const percent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-		const newTime = percent * $playerStore.duration;
+		const newTime = percent * $machineDuration;
 
 		playbackMachine.actions.seek(newTime);
 		mediaSessionController.updatePositionState();
@@ -392,9 +402,10 @@
 	function handleVolumeChange(event: Event) {
 		const target = event.target as HTMLInputElement;
 		const newVolume = parseFloat(target.value);
-		setVolumeService(newVolume);
-		if (newVolume > 0 && isMuted) {
-			isMuted = false;
+		const clamped = setVolumeService(newVolume);
+		playbackMachine.actions.updateVolume(clamped);
+		if (clamped > 0 && $machineIsMuted) {
+			playbackMachine.actions.updateMuted(false);
 		}
 	}
 
@@ -405,7 +416,7 @@
 			return;
 		}
 
-		const shouldResume = !$playerStore.isPlaying;
+		const shouldResume = !$machineIsPlaying;
 		playbackMachine.actions.seek(targetSeconds);
 		if (shouldResume) {
 			playbackMachine.actions.play();
@@ -414,7 +425,7 @@
 	}
 
 	async function handleDownloadCurrentTrack() {
-		const track = $playerStore.currentTrack;
+		const track = $machineCurrentTrack;
 		if (!track || isDownloadingCurrentTrack) {
 			return;
 		}
@@ -440,9 +451,9 @@
 	}
 
 	function toggleMuteHandler() {
-		const result = toggleMuteService($playerStore.volume, isMuted);
-		playerUiProjection.setVolume(result.volume);
-		isMuted = result.isMuted;
+		const result = toggleMuteService($machineVolume, $machineIsMuted);
+		playbackMachine.actions.updateVolume(result.volume);
+		playbackMachine.actions.updateMuted(result.isMuted);
 	}
 
 	function formatTime(seconds: number): string {
@@ -518,7 +529,7 @@
 		});
 
 		if (audioElement) {
-			audioElement.volume = $playerStore.volume;
+			audioElement.volume = $machineVolume;
 			playbackMachine.setAudioElement(audioElement);
 		}
 
@@ -544,14 +555,14 @@
 				supportsLosslessPlayback
 			);
 			if (previousSupport && !supportsLosslessPlayback) {
-				const state = get(playerStore);
-				if (state.currentTrack) {
+				const track = get(machineCurrentTrack);
+				if (track) {
 					console.info(
 						'[AudioPlayer] Re-loading current track with streaming quality due to unsupported FLAC playback.'
 					);
 					// loadTrack() will automatically select a streaming quality when FLAC is not supported
 					// without changing the UI quality setting
-					playbackMachine.actions.loadTrack(state.currentTrack);
+					playbackMachine.actions.loadTrack(track);
 				}
 			}
 		}
@@ -566,11 +577,10 @@
 
 		mediaSessionController.registerHandlers();
 		{
-			const state = get(playerStore);
-			mediaSessionController.updateMetadata(state.currentTrack);
-			mediaSessionController.updatePlaybackState(
-				state.currentTrack ? (state.isPlaying ? 'playing' : 'paused') : 'none'
-			);
+			const track = get(machineCurrentTrack);
+			const isPlaying = get(machineIsPlaying);
+			mediaSessionController.updateMetadata(track);
+			mediaSessionController.updatePlaybackState(track ? (isPlaying ? 'playing' : 'paused') : 'none');
 			mediaSessionController.updatePositionState();
 		}
 
@@ -642,7 +652,7 @@
 						<X size={16} />
 					</button>
 
-					{#if $playerStore.currentTrack}
+					{#if $machineCurrentTrack}
 						<div class="mb-3">
 							<button
 								bind:this={seekBarElement}
@@ -659,63 +669,63 @@
 								></div>
 								<div
 									class="pointer-events-none absolute inset-y-0 left-0 bg-blue-500 transition-all"
-									style="width: {getPercent($playerStore.currentTime, $playerStore.duration)}%"
+									style="width: {getPercent($machineCurrentTime, $machineDuration)}%"
 									aria-hidden="true"
 								></div>
 								<div
 									class="pointer-events-none absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-blue-500 opacity-0 transition-opacity group-hover:opacity-100"
-									style="left: {getPercent($playerStore.currentTime, $playerStore.duration)}%"
+									style="left: {getPercent($machineCurrentTime, $machineDuration)}%"
 									aria-hidden="true"
 								></div>
 							</button>
 							<div class="mt-1 flex justify-between text-xs text-gray-400">
-								<span>{formatTime($playerStore.currentTime)}</span>
-								<span>{formatTime($playerStore.duration)}</span>
+								<span>{formatTime($machineCurrentTime)}</span>
+								<span>{formatTime($machineDuration)}</span>
 							</div>
 						</div>
 
 						<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-							{#if $playerStore.currentTrack}
+							{#if $machineCurrentTrack}
 								<div class="flex min-w-0 items-center gap-2 sm:gap-3 sm:flex-1">
-									{#if !isSonglinkTrack($playerStore.currentTrack)}
-										{#if asTrack($playerStore.currentTrack).album.videoCover}
+									{#if !isSonglinkTrack($machineCurrentTrack)}
+										{#if asTrack($machineCurrentTrack).album.videoCover}
 											<video
-												src={losslessAPI.getCoverUrl(asTrack($playerStore.currentTrack).album.videoCover!, '640')}
+												src={losslessAPI.getCoverUrl(asTrack($machineCurrentTrack).album.videoCover!, '640')}
 												autoplay
 												loop
 												muted
 												playsinline
 												class="h-12 w-12 sm:h-16 sm:w-16 flex-shrink-0 rounded-md object-cover"
 											></video>
-										{:else if asTrack($playerStore.currentTrack).album.cover}
+										{:else if asTrack($machineCurrentTrack).album.cover}
 											<LazyImage
-												src={losslessAPI.getCoverUrl(asTrack($playerStore.currentTrack).album.cover!, '640')}
-												alt={$playerStore.currentTrack.title}
+												src={losslessAPI.getCoverUrl(asTrack($machineCurrentTrack).album.cover!, '640')}
+												alt={$machineCurrentTrack.title}
 												class="h-12 w-12 sm:h-16 sm:w-16 flex-shrink-0 rounded-md object-cover"
 											/>
 										{/if}
 									{/if}
 									<div class="min-w-0 flex-1">
 										<h3 class="truncate font-semibold text-white text-sm sm:text-base">
-											{$playerStore.currentTrack.title}{!isSonglinkTrack($playerStore.currentTrack) && asTrack($playerStore.currentTrack).version ? ` (${asTrack($playerStore.currentTrack).version})` : ''}
+											{$machineCurrentTrack.title}{!isSonglinkTrack($machineCurrentTrack) && asTrack($machineCurrentTrack).version ? ` (${asTrack($machineCurrentTrack).version})` : ''}
 										</h3>
-										{#if isSonglinkTrack($playerStore.currentTrack)}
-											<p class="truncate text-xs sm:text-sm text-gray-400">{$playerStore.currentTrack.artistName}</p>
+										{#if isSonglinkTrack($machineCurrentTrack)}
+											<p class="truncate text-xs sm:text-sm text-gray-400">{$machineCurrentTrack.artistName}</p>
 										{:else}
 											<a
-												href={`/artist/${asTrack($playerStore.currentTrack).artist.id}`}
+												href={`/artist/${asTrack($machineCurrentTrack).artist.id}`}
 												class="truncate text-xs sm:text-sm text-gray-400 hover:text-blue-400 hover:underline inline-block"
 												data-sveltekit-preload-data
 											>
-												{formatArtists(asTrack($playerStore.currentTrack).artists)}
+												{formatArtists(asTrack($machineCurrentTrack).artists)}
 											</a>
 											<p class="text-xs text-gray-500">
 												<a
-													href={`/album/${asTrack($playerStore.currentTrack).album.id}`}
+													href={`/album/${asTrack($machineCurrentTrack).album.id}`}
 													class="hover:text-blue-400 hover:underline"
 													data-sveltekit-preload-data
 												>
-													{asTrack($playerStore.currentTrack).album.title}
+													{asTrack($machineCurrentTrack).album.title}
 												</a>
 												{#if currentPlaybackQuality}
 													<span class="mx-0.5 sm:mx-1" aria-hidden="true">•</span>
@@ -749,10 +759,10 @@
 									<button
 										onclick={togglePlayback}
 										class="rounded-full bg-white p-3 sm:p-2.5 md:p-3 text-gray-900 transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-60"
-										aria-label={$playerStore.isPlaying ? 'Pause' : 'Play'}
-										disabled={!$playerStore.currentTrack}
+										aria-label={$machineIsPlaying ? 'Pause' : 'Play'}
+										disabled={!$machineCurrentTrack}
 									>
-										{#if $playerStore.isPlaying}
+										{#if $machineIsPlaying}
 											<Pause size={20} class="sm:w-5 sm:h-5 md:w-6 md:h-6" fill="currentColor" />
 										{:else}
 											<Play size={20} class="sm:w-5 sm:h-5 md:w-6 md:h-6" fill="currentColor" />
@@ -762,7 +772,7 @@
 									<button
 										onclick={() => playbackFacade.next()}
 										class="p-2 sm:p-1.5 md:p-2 text-gray-400 transition-colors hover:text-white disabled:opacity-50"
-										disabled={$playerStore.queueIndex >= $playerStore.queue.length - 1}
+										disabled={$machineQueueIndex >= $machineQueue.length - 1}
 										aria-label="Next track"
 									>
 										<SkipForward size={20} class="sm:w-4 sm:h-4 md:w-5 md:h-5" />
@@ -773,10 +783,10 @@
 									<button
 										onclick={toggleMuteHandler}
 										class="player-toggle-button p-2 sm:hidden"
-										aria-label={isMuted ? 'Unmute' : 'Mute'}
+										aria-label={$machineIsMuted ? 'Unmute' : 'Mute'}
 										type="button"
 									>
-										{#if isMuted || $playerStore.volume === 0}
+										{#if $machineIsMuted || $machineVolume === 0}
 											<VolumeX size={14} />
 										{:else}
 											<Volume2 size={14} />
@@ -787,7 +797,7 @@
 										class="player-toggle-button p-2 sm:p-1.5 md:p-2"
 										aria-label={`${downloadActionLabel} current track`}
 										type="button"
-										disabled={!$playerStore.currentTrack || isDownloadingCurrentTrack}
+										disabled={!$machineCurrentTrack || isDownloadingCurrentTrack}
 									>
 										{#if isDownloadingCurrentTrack}
 											<LoaderCircle size={16} class="sm:w-4 sm:h-4 md:w-[18px] md:h-[18px] animate-spin" />
@@ -814,7 +824,7 @@
 										type="button"
 									>
 										<ListMusic size={16} class="sm:w-4 sm:h-4 md:w-[18px] md:h-[18px]" />
-										<span class="hidden md:inline">Queue ({$playerStore.queue.length})</span>
+										<span class="hidden md:inline">Queue ({$machineQueue.length})</span>
 									</button>
 								</div>
 
@@ -822,9 +832,9 @@
 									<button
 										onclick={toggleMuteHandler}
 										class="p-2 sm:p-2 md:p-2 text-gray-400 transition-colors hover:text-white"
-										aria-label={isMuted ? 'Unmute' : 'Mute'}
+										aria-label={$machineIsMuted ? 'Unmute' : 'Mute'}
 									>
-										{#if isMuted || $playerStore.volume === 0}
+										{#if $machineIsMuted || $machineVolume === 0}
 											<VolumeX size={20} />
 										{:else}
 											<Volume2 size={20} />
@@ -835,7 +845,7 @@
 										min="0"
 										max="1"
 										step="0.01"
-										value={$playerStore.volume}
+										value={$machineVolume}
 										oninput={handleVolumeChange}
 										class="h-1 w-24 cursor-pointer appearance-none rounded-lg bg-gray-700 accent-white"
 										aria-label="Volume"
@@ -890,7 +900,7 @@
 										<ListMusic size={18} />
 										<span class="font-medium">Playback Queue</span>
 										<span class="rounded-full bg-gray-800 px-2 py-0.5 text-xs text-gray-400">
-											{$playerStore.queue.length}
+											{$machineQueue.length}
 										</span>
 									</div>
 									<div class="flex items-center gap-2">
@@ -898,7 +908,7 @@
 											onclick={handleShuffleQueue}
 											class="flex items-center gap-1 rounded-full border border-transparent px-3 py-1 text-xs tracking-wide text-gray-400 uppercase transition-colors hover:border-blue-500 hover:text-blue-200 disabled:opacity-40"
 											type="button"
-											disabled={$playerStore.queue.length <= 1}
+											disabled={$machineQueue.length <= 1}
 											aria-label="Shuffle queue"
 										>
 											<Shuffle size={14} />
@@ -908,7 +918,7 @@
 											onclick={clearQueue}
 											class="flex items-center gap-1 rounded-full border border-transparent px-3 py-1 text-xs tracking-wide text-gray-400 uppercase transition-colors hover:border-red-500 hover:text-red-400"
 											type="button"
-											disabled={$playerStore.queue.length === 0}
+											disabled={$machineQueue.length === 0}
 											aria-label="Clear queue"
 										>
 											<Trash2 size={14} />
@@ -924,9 +934,9 @@
 									</div>
 								</div>
 
-								{#if $playerStore.queue.length > 0}
+								{#if $machineQueue.length > 0}
 									<ul class="max-h-60 space-y-2 overflow-y-auto pr-1">
-										{#each $playerStore.queue as queuedTrack, index (queuedTrack.id)}
+										{#each $machineQueue as queuedTrack, index (queuedTrack.id)}
 											<li>
 												<div
 													onclick={() => playFromQueue(index)}
@@ -938,7 +948,7 @@
 													}}
 													tabindex="0"
 													role="button"
-													class="group flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors {index === $playerStore.queueIndex ? 'bg-blue-500/10 text-white' : 'text-gray-200 hover:bg-gray-800/70'}"
+													class="group flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors {index === $machineQueueIndex ? 'bg-blue-500/10 text-white' : 'text-gray-200 hover:bg-gray-800/70'}"
 												>
 													<span class="w-6 text-xs font-semibold text-gray-500 group-hover:text-gray-300">
 														{index + 1}
@@ -992,7 +1002,7 @@
 
 {#if !headless && playerDismissed && hasTrack}
 	<button class="playback-indicator" type="button" onclick={restorePlayer} aria-label="Show player - music is playing">
-		{#if $playerStore.isPlaying}
+		{#if $machineIsPlaying}
 			<div class="playback-indicator-pulse"></div>
 		{/if}
 		<Music size={16} />

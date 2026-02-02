@@ -2,13 +2,9 @@ import type { PlayableTrack } from '$lib/types';
 import { playerStore } from '$lib/stores/player';
 import { playbackMachine } from '$lib/stores/playbackMachine.svelte';
 
-const isQueueGateEnabled = () => import.meta.env.VITE_PLAYBACK_MACHINE_QUEUE_SOT === 'true';
-
 const syncQueue = () => {
 	const snapshot = playerStore.getSnapshot();
-	if (isQueueGateEnabled()) {
-		playbackMachine.actions.setQueue(snapshot.queue, snapshot.queueIndex);
-	}
+	playbackMachine.actions.setQueue(snapshot.queue, snapshot.queueIndex);
 	return snapshot;
 };
 

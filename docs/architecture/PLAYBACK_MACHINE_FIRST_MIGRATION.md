@@ -28,7 +28,7 @@ playbackFacade.previous();
 5. Remove direct `playerStore.play/pause/setQueue` usage.
 6. Consolidate loading + fallback side effects inside the playback machine.
 7. AudioPlayer owns only UI callbacks and audio element wiring; no direct load/fallback controllers.
-8. Gate queue sync (`VITE_PLAYBACK_MACHINE_QUEUE_SOT`) and dual-write from facade.
+8. Sync queue into the playback machine (gate no longer required).
 9. Route embed controls + streaming URL playback through the facade.
 10. Route playbackTransitions play/pause/queue mutations through the facade.
 11. Rollback: revert the removal commit if regressions appear.

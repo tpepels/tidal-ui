@@ -28,7 +28,24 @@ import { get } from 'svelte/store';
  * Creates a playback machine store
  */
 export function createPlaybackMachineStore(initialQuality: AudioQuality = 'HIGH') {
-	let machineState = $state<PlaybackMachineState>(createInitialState(initialQuality));
+	const initialSnapshot = playerStore.getSnapshot();
+	let machineState = $state<PlaybackMachineState>(
+		createInitialState(initialSnapshot.quality ?? initialQuality)
+	);
+	machineState = {
+		...machineState,
+		context: {
+			...machineState.context,
+			currentTrack: initialSnapshot.currentTrack,
+			queue: initialSnapshot.queue,
+			queueIndex: initialSnapshot.queueIndex,
+			currentTime: initialSnapshot.currentTime,
+			duration: initialSnapshot.duration,
+			volume: initialSnapshot.volume,
+			isMuted: initialSnapshot.volume === 0
+		}
+	};
+	const subscribers = new Set<(state: PlaybackMachineState) => void>();
 	let pendingSyncState: PlaybackMachineState | null = null;
 	let syncScheduled = false;
 	const qualitySyncEnabled = import.meta.env.VITE_PLAYBACK_MACHINE_QUALITY_SOT === 'true';
@@ -53,6 +70,9 @@ export function createPlaybackMachineStore(initialQuality: AudioQuality = 'HIGH'
 		// Update state
 		machineState = nextState;
 		schedulePlayerSync(nextState);
+		for (const subscriber of subscribers) {
+			subscriber(nextState);
+		}
 
 		// Execute side effects
 		const effects = deriveSideEffects(prevState, nextState, event);
@@ -150,6 +170,18 @@ export function createPlaybackMachineStore(initialQuality: AudioQuality = 'HIGH'
 		seek(position: number) {
 			dispatch({ type: 'SEEK', position });
 		},
+		updateTime(position: number) {
+			dispatch({ type: 'TIME_UPDATE', position });
+		},
+		updateDuration(duration: number) {
+			dispatch({ type: 'DURATION_UPDATE', duration });
+		},
+		updateVolume(volume: number) {
+			dispatch({ type: 'VOLUME_UPDATE', volume });
+		},
+		updateMuted(isMuted: boolean) {
+			dispatch({ type: 'MUTE_UPDATE', isMuted });
+		},
 
 		changeQuality(quality: AudioQuality) {
 			dispatch({ type: 'CHANGE_QUALITY', quality });
@@ -199,6 +231,18 @@ export function createPlaybackMachineStore(initialQuality: AudioQuality = 'HIGH'
 		get streamUrl() {
 			return machineState.context.streamUrl;
 		},
+		get currentTime() {
+			return machineState.context.currentTime;
+		},
+		get duration() {
+			return machineState.context.duration;
+		},
+		get volume() {
+			return machineState.context.volume;
+		},
+		get isMuted() {
+			return machineState.context.isMuted;
+		},
 		/**
 		 * User's requested/preferred quality setting.
 		 */
@@ -228,6 +272,15 @@ export function createPlaybackMachineStore(initialQuality: AudioQuality = 'HIGH'
 
 		// Methods
 		dispatch,
+		subscribe(
+			run: (state: PlaybackMachineState) => void
+		) {
+			run(machineState);
+			subscribers.add(run);
+			return () => {
+				subscribers.delete(run);
+			};
+		},
 		setAudioElement,
 		setLoadUiCallbacks,
 		maybePreloadNextTrack,

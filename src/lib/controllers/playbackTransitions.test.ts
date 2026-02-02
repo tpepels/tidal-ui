@@ -5,7 +5,10 @@ const playbackMachineActions = vi.hoisted(() => ({
 	play: vi.fn(),
 	pause: vi.fn(),
 	changeQuality: vi.fn(),
-	loadTrack: vi.fn()
+	loadTrack: vi.fn(),
+	updateTime: vi.fn(),
+	updateDuration: vi.fn(),
+	updateVolume: vi.fn()
 }));
 
 vi.mock('$lib/stores/playbackMachine.svelte', () => ({
@@ -31,6 +34,9 @@ describe('playbackTransitions', () => {
 	beforeEach(() => {
 		vi.unstubAllEnvs();
 		playbackMachineActions.setQueue.mockClear();
+		playbackMachineActions.updateTime.mockClear();
+		playbackMachineActions.updateDuration.mockClear();
+		playbackMachineActions.updateVolume.mockClear();
 		playerStore.reset();
 		transitions = createPlaybackTransitions(playerStore);
 	});
@@ -51,7 +57,7 @@ describe('playbackTransitions', () => {
 		transitions.setTrack(track);
 		playerStore.setDuration(90);
 		transitions.seekTo(120);
-		expect(get(playerStore).currentTime).toBe(90);
+		expect(playbackMachineActions.updateTime).toHaveBeenCalledWith(90);
 	});
 
 	it('plays from queue index', () => {
@@ -61,9 +67,7 @@ describe('playbackTransitions', () => {
 		expect(get(playerStore).currentTrack?.id).toBe(2);
 	});
 
-	it('syncs queue index on next/previous when gate enabled', () => {
-		vi.stubEnv('VITE_PLAYBACK_MACHINE_QUEUE_SOT', 'true');
-		transitions = createPlaybackTransitions(playerStore);
+	it('syncs queue index on next/previous', () => {
 		const tracks = [makeTrack(1), makeTrack(2), makeTrack(3)];
 		transitions.setQueue(tracks, 0);
 		playbackMachineActions.setQueue.mockClear();

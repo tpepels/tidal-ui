@@ -4,7 +4,13 @@
 	import type { Album, Track } from '$lib/types';
 	import { onMount } from 'svelte';
 	import { slide } from 'svelte/transition';
-	import { playerStore } from '$lib/stores/player';
+	import {
+		machineCurrentTrack,
+		machineIsPlaying,
+		machineCurrentTime,
+		machineDuration,
+		machineQuality
+	} from '$lib/stores/playerDerived';
 	import { playbackFacade } from '$lib/controllers/playbackFacade';
 	import { LoaderCircle, Play, Pause, ExternalLink } from 'lucide-svelte';
 
@@ -20,11 +26,11 @@
 
 	const albumId = $derived($page.params.id);
     // Check if current playing track is from this album
-    const isPlaying = $derived($playerStore.isPlaying && tracks.some(t => t.id === $playerStore.currentTrack?.id));
-    const isCurrentContext = $derived(tracks.some(t => t.id === $playerStore.currentTrack?.id));
+    const isPlaying = $derived($machineIsPlaying && tracks.some(t => t.id === $machineCurrentTrack?.id));
+    const isCurrentContext = $derived(tracks.some(t => t.id === $machineCurrentTrack?.id));
     const progress = $derived(
         isCurrentContext
-            ? ($playerStore.currentTime / ($playerStore.duration || 1)) * 100 
+            ? ($machineCurrentTime / ($machineDuration || 1)) * 100 
             : 0
     );
 
@@ -79,7 +85,7 @@
             playbackFacade.pause();
         } else {
             // If not playing this album, start from beginning
-            if (!tracks.some(t => t.id === $playerStore.currentTrack?.id)) {
+            if (!tracks.some(t => t.id === $machineCurrentTrack?.id)) {
                 playbackFacade.loadQueue(tracks, 0);
             }
             playbackFacade.play();
@@ -131,7 +137,7 @@
 
         <div class="track-list">
             {#each tracks as track, i (track.id)}
-                <button class="track-item" onclick={() => playTrack(track, i)} class:active={$playerStore.currentTrack?.id === track.id}>
+                <button class="track-item" onclick={() => playTrack(track, i)} class:active={$machineCurrentTrack?.id === track.id}>
                     <span class="track-number">{track.trackNumber}</span>
                     <div class="track-meta">
                         <span class="track-title">{track.title}</span>
@@ -151,24 +157,24 @@
             </div>
         {/if}
 
-        {#if $playerStore.currentTrack && !isSonglinkTrack($playerStore.currentTrack) && $playerStore.currentTrack.album}
+        {#if $machineCurrentTrack && !isSonglinkTrack($machineCurrentTrack) && $machineCurrentTrack.album}
             <div class="now-playing-bar" transition:slide={{ axis: 'y', duration: 200 }}>
                 <img
-                    src={losslessAPI.getCoverUrl($playerStore.currentTrack.album.cover, '80')}
-                    alt={$playerStore.currentTrack.title}
+                    src={losslessAPI.getCoverUrl($machineCurrentTrack.album.cover, '80')}
+                    alt={$machineCurrentTrack.title}
                     class="np-cover"
                 />
                 <div class="np-info">
-                    <div class="np-title">{$playerStore.currentTrack.title}</div>
+                    <div class="np-title">{$machineCurrentTrack.title}</div>
                     <div class="np-meta">
                         <span class="np-quality">
-                            {$playerStore.quality === 'HI_RES_LOSSLESS' ? 'Hi-Res' : 
-                             $playerStore.quality === 'LOSSLESS' ? 'CD' : $playerStore.quality}
+                            {$machineQuality === 'HI_RES_LOSSLESS' ? 'Hi-Res' : 
+                             $machineQuality === 'LOSSLESS' ? 'CD' : $machineQuality}
                         </span>
                     </div>
                 </div>
 				<button class="np-play-button" onclick={() => playbackFacade.toggle()}>
-                    {#if $playerStore.isPlaying}
+                    {#if $machineIsPlaying}
                         <Pause size={20} fill="currentColor" />
                     {:else}
                         <Play size={20} fill="currentColor" />

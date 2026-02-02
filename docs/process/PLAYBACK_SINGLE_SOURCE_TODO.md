@@ -16,8 +16,8 @@ Make playbackMachine the single source of truth for playback state, with playerS
   then assert machine `loadRequestId` increments and `quality` updates when gate is enabled.
 - Unit: rely on playback machine transition tests for `CHANGE_QUALITY` effects (rune store not unit-testable).
 
-## Phase B: Queue Ownership (Gated)
-- [x] Introduce `VITE_PLAYBACK_MACHINE_QUEUE_SOT` flag.
+## Phase B: Queue Ownership
+- [x] Introduce `VITE_PLAYBACK_MACHINE_QUEUE_SOT` flag (queue sync now default-on).
 - [x] Move queue mutation into playbackMachine context (SET_QUEUE event).
 - [x] Update playbackFacade to mutate machine queue when flag enabled.
 - [x] Add regression tests for queue index + next/previous behavior.

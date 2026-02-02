@@ -10,6 +10,9 @@ export type PlaybackSyncStore = {
 	setLoading: (value: boolean) => void;
 	play: () => void;
 	pause: () => void;
+	setCurrentTime: (time: number) => void;
+	setDuration: (duration: number) => void;
+	setVolume: (volume: number) => void;
 } & Readable<PlayerState>;
 
 export const syncPlayerStoreFromMachine = (
@@ -53,5 +56,14 @@ export const syncPlayerStoreFromMachine = (
 		} else {
 			store.pause();
 		}
+	}
+	if (playerState.currentTime !== next.context.currentTime) {
+		store.setCurrentTime(next.context.currentTime);
+	}
+	if (playerState.duration !== next.context.duration) {
+		store.setDuration(next.context.duration);
+	}
+	if (playerState.volume !== next.context.volume) {
+		store.setVolume(next.context.volume);
 	}
 };

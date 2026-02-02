@@ -46,14 +46,12 @@ describe('playbackFacade', () => {
 		expect(playbackActions.loadTrack).toHaveBeenCalledWith(tracks[1]);
 	});
 
-	it('syncs queue into machine when gate enabled', () => {
-		vi.stubEnv('VITE_PLAYBACK_MACHINE_QUEUE_SOT', 'true');
+	it('syncs queue into machine', () => {
 		const tracks = [makeTrack(10), makeTrack(11)];
 
 		playbackFacade.loadQueue(tracks, 0);
 
 		expect(playbackActions.setQueue).toHaveBeenCalledWith(tracks, 0);
-		vi.unstubAllEnvs();
 	});
 
 	it('routes play and pause through store and machine', () => {
@@ -89,8 +87,7 @@ describe('playbackFacade', () => {
 		expect(playbackActions.loadTrack).toHaveBeenCalledWith(tracks[0]);
 	});
 
-	it('syncs queue index on next/previous when gate enabled', () => {
-		vi.stubEnv('VITE_PLAYBACK_MACHINE_QUEUE_SOT', 'true');
+	it('syncs queue index on next/previous', () => {
 		const tracks = [makeTrack(21), makeTrack(22), makeTrack(23)];
 		playerStore.setQueue(tracks, 0);
 		playbackActions.setQueue.mockClear();
@@ -101,11 +98,9 @@ describe('playbackFacade', () => {
 		playbackActions.setQueue.mockClear();
 		playbackFacade.previous();
 		expect(playbackActions.setQueue).toHaveBeenCalledWith(tracks, 0);
-		vi.unstubAllEnvs();
 	});
 
-	it('syncs queue mutations when gate enabled', () => {
-		vi.stubEnv('VITE_PLAYBACK_MACHINE_QUEUE_SOT', 'true');
+	it('syncs queue mutations', () => {
 		const tracks = [makeTrack(31), makeTrack(32)];
 		playerStore.setQueue(tracks, 0);
 		playbackActions.setQueue.mockClear();
@@ -141,6 +136,5 @@ describe('playbackFacade', () => {
 			shuffledSnapshot.queueIndex
 		);
 		expect(playbackActions.loadTrack).toHaveBeenCalledWith(shuffledSnapshot.currentTrack);
-		vi.unstubAllEnvs();
 	});
 });
