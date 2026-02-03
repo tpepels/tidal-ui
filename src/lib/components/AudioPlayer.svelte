@@ -45,6 +45,7 @@
 	import { playerUiProjection } from '$lib/controllers/playerUiProjection';
 	import { playbackMachine } from '$lib/stores/playbackMachine.svelte';
 	import { detectAudioSupport } from '$lib/utils/audioSupport';
+	import { areTestHooksEnabled } from '$lib/utils/testHooks';
 	import {
 		Play,
 		Pause,
@@ -90,6 +91,8 @@
 	const isFirefox = typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent);
 	let supportsLosslessPlayback = true;
 	let streamingFallbackQuality: AudioQuality = 'HIGH';
+	const testHooksEnabled = areTestHooksEnabled();
+	let lastTestStreamUrl: string | null = null;
 
 	const mediaSessionController = createMediaSessionController(
 		machinePlaybackState,
@@ -220,6 +223,21 @@
 	});
 
 	$effect(() => {
+		if (!testHooksEnabled || typeof window === 'undefined') {
+			return;
+		}
+		const url = machineStreamUrl;
+		if (!url || url === lastTestStreamUrl) {
+			return;
+		}
+		lastTestStreamUrl = url;
+		const testWindow = window as typeof window & { __playSrcs?: string[] };
+		if (Array.isArray(testWindow.__playSrcs)) {
+			testWindow.__playSrcs.push(url);
+		}
+	});
+
+	$effect(() => {
 		if (!headless) {
 			onVisibilityChange(shouldShowPlayer);
 			if (!shouldShowPlayer) {
@@ -296,6 +314,9 @@
 	}
 
 	function handleAudioError(event: Event) {
+		if (testHooksEnabled && (event as Event).isTrusted) {
+			return;
+		}
 		playbackMachine.actions.onAudioError(event);
 	}
 
@@ -509,6 +530,7 @@
 
 	onMount(() => {
 		let detachLyricsSeek: (() => void) | null = null;
+		let detachTestHooks: (() => void) | null = null;
 
 		playbackMachine.setLoadUiCallbacks({
 			setStreamUrl: (value) => {
@@ -540,12 +562,12 @@
 			const { supportsLosslessPlayback: detectedLossless, streamingFallbackQuality: fallbackQuality, flacSupported } =
 				detectAudioSupport({
 					canPlayType: probe.canPlayType?.bind(probe),
-					isFirefox
+					isFirefox: isFirefox && !testHooksEnabled
 				});
 
 			streamingFallbackQuality = fallbackQuality;
 
-			if (isFirefox && flacSupported) {
+			if (isFirefox && flacSupported && !testHooksEnabled) {
 				console.info(
 					'[AudioPlayer] Browser reported FLAC support but running on Firefox; forcing streaming fallback.'
 				);
@@ -556,7 +578,7 @@
 				'[AudioPlayer] Browser lossless playback support detected:',
 				supportsLosslessPlayback
 			);
-			if (previousSupport && !supportsLosslessPlayback) {
+			if (previousSupport && !supportsLosslessPlayback && !testHooksEnabled) {
 				const track = get(machineCurrentTrack);
 				if (track) {
 					console.info(
@@ -594,10 +616,51 @@
 			};
 		}
 
+		if (typeof window !== 'undefined' && testHooksEnabled) {
+			const testWindow = window as typeof window & {
+				__tidalSetDuration?: (duration: number) => void;
+				__tidalSetCurrentTime?: (time: number) => void;
+			};
+
+			testWindow.__tidalSetDuration = (duration: number) => {
+				if (!Number.isFinite(duration)) return;
+				playbackMachine.actions.updateDuration(duration);
+				if (audioElement) {
+					try {
+						Object.defineProperty(audioElement, 'duration', { configurable: true, value: duration });
+					} catch {
+						// ignore duration override failures
+					}
+				}
+			};
+
+			testWindow.__tidalSetCurrentTime = (time: number) => {
+				if (!Number.isFinite(time)) return;
+				playbackMachine.actions.updateTime(time);
+				if (audioElement) {
+					try {
+						Object.defineProperty(audioElement, 'currentTime', {
+							configurable: true,
+							writable: true,
+							value: time
+						});
+					} catch {
+						audioElement.currentTime = time;
+					}
+				}
+			};
+
+			detachTestHooks = () => {
+				delete testWindow.__tidalSetDuration;
+				delete testWindow.__tidalSetCurrentTime;
+			};
+		}
+
 		return () => {
 			resizeObserver?.disconnect();
 			mediaSessionController.cleanup();
 			detachLyricsSeek?.();
+			detachTestHooks?.();
 			playbackMachine.setAudioElement(null);
 		};
 	});

@@ -21,6 +21,7 @@
 	import {
 		machineCurrentTrack,
 		machineIsPlaying,
+		machineIsLoading,
 		machineQueue
 	} from '$lib/stores/playerDerived';
 	import { playbackFacade } from '$lib/controllers/playbackFacade';
@@ -43,7 +44,7 @@
 			$machineQueue.length === tracks.length &&
 			$machineQueue.every((t, i) => t?.id === tracks[i]?.id)
 	);
-	const isAlbumPlaying = $derived(isAlbumQueue && $machineIsPlaying);
+	const isAlbumPlaying = $derived(isAlbumQueue && ($machineIsPlaying || $machineIsLoading));
 	let downloadError = $state<string | null>(null);
 	const albumDownloadMode = $derived($downloadPreferencesStore.mode);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);

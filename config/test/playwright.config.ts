@@ -3,6 +3,10 @@ import { resolve, dirname } from 'node:path';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+if (process.env.NO_COLOR) {
+	delete process.env.NO_COLOR;
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const requestedBrowsers = (process.env.PLAYWRIGHT_BROWSERS ?? 'chromium,firefox')

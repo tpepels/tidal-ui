@@ -461,6 +461,7 @@ if (typeof window !== 'undefined' && testHooksEnabled) {
 				queueLength: number;
 			};
 			__tidalSetPlaybackQuality?: (quality: AudioQuality) => void;
+			__tidalRehydratePlayback?: () => void;
 		}
 	).__tidalPlaybackMachineState = () => ({
 		state: playbackMachine.state,
@@ -482,9 +483,33 @@ if (typeof window !== 'undefined' && testHooksEnabled) {
 				currentTrackId: number | string | null;
 			};
 			__tidalSetPlaybackQuality?: (quality: AudioQuality) => void;
+			__tidalRehydratePlayback?: () => void;
 		}
 	).__tidalSetPlaybackQuality = (quality: AudioQuality) => {
 		userPreferencesStore.setPlaybackQuality(quality);
 		playbackMachine.actions.changeQuality(quality);
+	};
+	(
+		window as typeof window & {
+			__tidalRehydratePlayback?: () => void;
+		}
+	).__tidalRehydratePlayback = () => {
+		const persisted = loadFromStorage('player', {}) as Partial<PersistedPlaybackState>;
+		const hydrated = hydratePersistedPlaybackState(persisted);
+		const queue =
+			hydrated.queue.length > 0
+				? hydrated.queue
+				: hydrated.currentTrack
+					? [hydrated.currentTrack]
+					: [];
+		const queueIndex =
+			queue.length > 0
+				? Math.min(Math.max(hydrated.queueIndex, 0), queue.length - 1)
+				: -1;
+		playbackMachine.actions.setQueue(queue, queueIndex);
+		playbackMachine.actions.updateDuration(hydrated.duration);
+		playbackMachine.actions.updateTime(hydrated.currentTime);
+		playbackMachine.actions.updateVolume(hydrated.volume);
+		playbackMachine.actions.updateMuted(hydrated.isMuted);
 	};
 }

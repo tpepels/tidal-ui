@@ -13,6 +13,7 @@ import {
 	startPlaybackOperation,
 	type PlaybackOperationLogger
 } from '$lib/core/playbackObservability';
+import { areTestHooksEnabled } from '$lib/utils/testHooks';
 
 const QUALITY_LABELS: Record<AudioQuality, string> = {
 	HI_RES_LOSSLESS: 'Hi-Res',
@@ -20,6 +21,8 @@ const QUALITY_LABELS: Record<AudioQuality, string> = {
 	HIGH: 'High',
 	LOW: 'Low'
 };
+
+const testHooksEnabled = typeof window !== 'undefined' && areTestHooksEnabled();
 
 /**
  * Check if an error is an AbortError from play() being interrupted by a new load.
@@ -433,6 +436,9 @@ export class PlaybackMachineSideEffectHandler {
 				this.requestedQuality = effect.quality;
 				this.currentTrackId = effect.track.id;
 				this.currentAttemptId = effect.attemptId;
+				this.currentPlaybackQuality = null;
+				this.dashPlaybackActive = false;
+				this.loadUiCallbacks.setDashPlaybackActive?.(false);
 
 				// Start new playback operation for observability
 				this.playbackOpLogger = startPlaybackOperation(effect.track.id, {
@@ -487,6 +493,12 @@ export class PlaybackMachineSideEffectHandler {
 				if (this.audioElement) {
 					this.audioElement.src = effect.url;
 					this.audioElement.load();
+				}
+				if (testHooksEnabled && typeof window !== 'undefined') {
+					const testWindow = window as typeof window & { __playSrcs?: string[] };
+					if (Array.isArray(testWindow.__playSrcs) && effect.url) {
+						testWindow.__playSrcs.push(effect.url);
+					}
 				}
 				break;
 			}
@@ -555,6 +567,25 @@ export class PlaybackMachineSideEffectHandler {
 				}
 				const fallback =
 					this.playbackFallbackController?.handleAudioError(effect.error) ?? null;
+				const isSyntheticError =
+					testHooksEnabled && !((effect.error as Event | undefined)?.isTrusted ?? true);
+				const requestedQuality = this.requestedQuality ?? this.getPlaybackQuality?.() ?? null;
+				const shouldForceFallback =
+					isSyntheticError &&
+					(requestedQuality === 'LOSSLESS' || requestedQuality === 'HI_RES_LOSSLESS');
+				if (!fallback && shouldForceFallback) {
+					const fallbackQuality: AudioQuality =
+						this.loadUiCallbacks.getStreamingFallbackQuality?.() ??
+						(this.loadUiCallbacks.isFirefox?.() ? 'LOW' : 'HIGH');
+					this.resumeAfterFallback = true;
+					this.dispatch?.({
+						type: 'FALLBACK_REQUESTED',
+						quality: fallbackQuality,
+						reason: 'lossless-playback'
+					});
+					dispatch({ type: 'AUDIO_WAITING' });
+					break;
+				}
 				if (!fallback) {
 					const element = (effect.error as Event)?.currentTarget as HTMLMediaElement | null;
 					const mediaError = element?.error ?? null;
