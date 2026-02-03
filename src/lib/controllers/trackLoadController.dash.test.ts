@@ -98,13 +98,12 @@ it('uses direct stream resolver for standard quality and skips DASH manifest', a
 			setSampleRate: vi.fn(),
 			setBitDepth: vi.fn(),
 			setReplayGain: vi.fn(),
-			createSequence: () => 1,
-			getSequence: () => 1,
+			isAttemptCurrent: () => true,
 			isHiResQuality: () => false,
 			preloadThresholdSeconds: 5
 		});
 
-	await controller.loadTrack(makeTrack(1));
+	await controller.loadTrack(makeTrack(1), 'attempt-standard');
 
 	expect(mockGetStreamData).toHaveBeenCalledWith(1, 'HIGH');
 	expect(mockGetDashManifestWithMetadata).not.toHaveBeenCalled();

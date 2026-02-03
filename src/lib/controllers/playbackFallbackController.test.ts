@@ -12,7 +12,6 @@ const createMockTrack = (id: number): PlayableTrack =>
 
 describe('playbackFallbackController', () => {
 	const createMockOptions = () => {
-		let sequence = 1;
 		return {
 			getCurrentTrack: vi.fn(() => createMockTrack(123)),
 			getPlayerQuality: vi.fn(() => 'LOSSLESS' as AudioQuality),
@@ -25,8 +24,8 @@ describe('playbackFallbackController', () => {
 			setDashPlaybackActive: vi.fn(),
 			setLoading: vi.fn(),
 			loadStandardTrack: vi.fn().mockResolvedValue(undefined),
-			createSequence: vi.fn(() => ++sequence),
-			getSequence: vi.fn(() => sequence),
+			getAttemptId: vi.fn(() => 'attempt-1'),
+			isAttemptCurrent: vi.fn(() => true),
 			setResumeAfterFallback: vi.fn(),
 			onFallbackRequested: vi.fn()
 		};
@@ -51,7 +50,7 @@ describe('playbackFallbackController', () => {
 				currentTarget: mockAudioElement
 			} as unknown as Event;
 
-			const result = controller.handleAudioError(mockEvent);
+			const result = controller.planFallback(mockEvent);
 
 			expect(result).not.toBeNull();
 			expect(result?.quality).toBe('HIGH');
@@ -76,11 +75,11 @@ describe('playbackFallbackController', () => {
 			} as unknown as Event;
 
 			// First error triggers fallback
-			const firstResult = controller.handleAudioError(mockEvent);
+			const firstResult = controller.planFallback(mockEvent);
 			expect(firstResult).not.toBeNull();
 
 			// Second error should be ignored
-			const secondResult = controller.handleAudioError(mockEvent);
+			const secondResult = controller.planFallback(mockEvent);
 			expect(secondResult).toBeNull();
 		});
 
@@ -102,7 +101,7 @@ describe('playbackFallbackController', () => {
 			} as unknown as Event;
 
 			// First track error triggers fallback
-			const firstResult = controller.handleAudioError(mockEvent);
+			const firstResult = controller.planFallback(mockEvent);
 			expect(firstResult).not.toBeNull();
 
 			// Reset for new track
@@ -110,7 +109,7 @@ describe('playbackFallbackController', () => {
 
 			// New track error should trigger fallback
 			options.getCurrentTrack.mockReturnValue(createMockTrack(456));
-			const thirdResult = controller.handleAudioError(mockEvent);
+			const thirdResult = controller.planFallback(mockEvent);
 			expect(thirdResult).not.toBeNull();
 		});
 	});
@@ -134,7 +133,7 @@ describe('playbackFallbackController', () => {
 				currentTarget: mockAudioElement
 			} as unknown as Event;
 
-			const result = controller.handleAudioError(mockEvent);
+			const result = controller.planFallback(mockEvent);
 
 			expect(result).not.toBeNull();
 			expect(result?.quality).toBe('LOSSLESS');
@@ -160,11 +159,11 @@ describe('playbackFallbackController', () => {
 			} as unknown as Event;
 
 			// First error triggers fallback
-			const firstResult = controller.handleAudioError(mockEvent);
+			const firstResult = controller.planFallback(mockEvent);
 			expect(firstResult).not.toBeNull();
 
 			// Second error should be ignored
-			const secondResult = controller.handleAudioError(mockEvent);
+			const secondResult = controller.planFallback(mockEvent);
 			expect(secondResult).toBeNull();
 		});
 	});
@@ -189,7 +188,7 @@ describe('playbackFallbackController', () => {
 				currentTarget: mockAudioElement
 			} as unknown as Event;
 
-			const result = controller.handleAudioError(mockEvent);
+			const result = controller.planFallback(mockEvent);
 			expect(result).toBeNull();
 		});
 	});
@@ -212,7 +211,7 @@ describe('playbackFallbackController', () => {
 				currentTarget: mockAudioElement
 			} as unknown as Event;
 
-			const result = controller.handleAudioError(mockEvent);
+			const result = controller.planFallback(mockEvent);
 			expect(result).toBeNull();
 		});
 	});

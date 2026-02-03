@@ -73,7 +73,7 @@ describe('trackLoadController', () => {
 		return { promise, resolve };
 	};
 
-	it('ignores stale sequence updates for loadTrack', async () => {
+	it('ignores stale attempt updates for loadTrack', async () => {
 		const store = writable({
 			currentTrack: null,
 			queue: [],
@@ -81,7 +81,6 @@ describe('trackLoadController', () => {
 			quality: 'LOSSLESS' as AudioQuality
 		});
 
-		let sequence = 0;
 		const setStreamUrl = vi.fn();
 		const setLoading = vi.fn();
 
@@ -98,22 +97,18 @@ describe('trackLoadController', () => {
 			setSampleRate: vi.fn(),
 			setBitDepth: vi.fn(),
 			setReplayGain: vi.fn(),
-			createSequence: () => {
-				sequence += 1;
-				return sequence;
-			},
-			getSequence: () => sequence + 1,
+			isAttemptCurrent: () => false,
 			isHiResQuality: () => false,
 			preloadThresholdSeconds: 5
 		});
 
-		await controller.loadTrack(makeTrack(1));
+		await controller.loadTrack(makeTrack(1), 'stale-attempt');
 
 		expect(setStreamUrl).not.toHaveBeenCalled();
-		expect(setLoading).toHaveBeenCalledWith(true);
+		expect(setLoading).not.toHaveBeenCalled();
 	});
 
-	it('applies stream updates when sequence matches', async () => {
+	it('applies stream updates when attempt is current', async () => {
 		const store = writable({
 			currentTrack: null,
 			queue: [],
@@ -121,7 +116,6 @@ describe('trackLoadController', () => {
 			quality: 'LOSSLESS' as AudioQuality
 		});
 
-		let sequence = 0;
 		const setStreamUrl = vi.fn();
 		const setLoading = vi.fn();
 
@@ -138,16 +132,12 @@ describe('trackLoadController', () => {
 			setSampleRate: vi.fn(),
 			setBitDepth: vi.fn(),
 			setReplayGain: vi.fn(),
-			createSequence: () => {
-				sequence += 1;
-				return sequence;
-			},
-			getSequence: () => sequence,
+			isAttemptCurrent: () => true,
 			isHiResQuality: () => false,
 			preloadThresholdSeconds: 5
 		});
 
-		await controller.loadTrack(makeTrack(2));
+		await controller.loadTrack(makeTrack(2), 'attempt-current');
 
 		expect(setStreamUrl).toHaveBeenCalledWith('https://example.com/stream');
 		expect(setLoading).toHaveBeenCalledWith(true);
@@ -161,7 +151,6 @@ describe('trackLoadController', () => {
 			quality: 'LOW' as AudioQuality
 		});
 
-		let sequence = 0;
 		const setStreamUrl = vi.fn();
 
 		const controller = createTrackLoadController({
@@ -177,19 +166,15 @@ describe('trackLoadController', () => {
 			setSampleRate: vi.fn(),
 			setBitDepth: vi.fn(),
 			setReplayGain: vi.fn(),
-			createSequence: () => {
-				sequence += 1;
-				return sequence;
-			},
-			getSequence: () => sequence,
+			isAttemptCurrent: () => true,
 			isHiResQuality: () => false,
 			preloadThresholdSeconds: 5
 		});
 
-		await controller.loadTrack(makeTrack(3));
+		await controller.loadTrack(makeTrack(3), 'attempt-1');
 
 		store.update((state) => ({ ...state, quality: 'HIGH' }));
-		await controller.loadTrack(makeTrack(3));
+		await controller.loadTrack(makeTrack(3), 'attempt-2');
 
 		expect(mockGetStreamData).toHaveBeenCalledWith(3, 'LOW');
 		expect(mockGetStreamData).toHaveBeenCalledWith(3, 'HIGH');
@@ -204,8 +189,8 @@ describe('trackLoadController', () => {
 			quality: 'LOSSLESS' as AudioQuality
 		});
 
-		let sequence = 0;
 		const setStreamUrl = vi.fn();
+		let currentAttempt = 'attempt-1';
 
 		const deferredFirst = createDeferred<{
 			url: string;
@@ -237,17 +222,14 @@ describe('trackLoadController', () => {
 			setSampleRate: vi.fn(),
 			setBitDepth: vi.fn(),
 			setReplayGain: vi.fn(),
-			createSequence: () => {
-				sequence += 1;
-				return sequence;
-			},
-			getSequence: () => sequence,
+			isAttemptCurrent: (attemptId) => attemptId === currentAttempt,
 			isHiResQuality: () => false,
 			preloadThresholdSeconds: 5
 		});
 
-		const firstLoad = controller.loadTrack(makeTrack(1));
-		const secondLoad = controller.loadTrack(makeTrack(2));
+		const firstLoad = controller.loadTrack(makeTrack(1), 'attempt-1');
+		currentAttempt = 'attempt-2';
+		const secondLoad = controller.loadTrack(makeTrack(2), 'attempt-2');
 
 		deferredSecond.resolve({
 			url: 'https://example.com/stream-2',
@@ -294,14 +276,13 @@ describe('trackLoadController', () => {
 			setSampleRate: vi.fn(),
 			setBitDepth: vi.fn(),
 			setReplayGain: vi.fn(),
-			createSequence: () => 1,
-			getSequence: () => 1,
+			isAttemptCurrent: () => true,
 			isHiResQuality: () => false,
 			preloadThresholdSeconds: 5,
 			onFallbackRequested
 		});
 
-		await controller.loadTrack(makeTrack(4));
+		await controller.loadTrack(makeTrack(4), 'attempt-lossless');
 
 		expect(mockGetStreamData).toHaveBeenCalledWith(4, 'HIGH');
 		expect(onFallbackRequested).toHaveBeenCalledWith('HIGH', 'lossless-unsupported');

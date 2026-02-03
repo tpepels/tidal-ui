@@ -319,6 +319,23 @@ describe('playbackMachine', () => {
 			expect(next.state).toBe('idle'); // No transition
 		});
 
+		it('should start loading current track when play is requested from idle', () => {
+			const initial = createInitialState();
+			const withQueue = transition(initial, {
+				type: 'SET_QUEUE',
+				queue: [mockTidalTrack],
+				queueIndex: 0
+			});
+			expect(withQueue.context.currentTrack).toBe(mockTidalTrack);
+
+			const next = transition(withQueue, { type: 'PLAY' });
+
+			expect(next.state).toBe('loading');
+			expect(next.context.currentTrack).toBe(mockTidalTrack);
+			expect(next.context.autoPlay).toBe(true);
+			expect(next.context.loadRequestId).toBe(withQueue.context.loadRequestId + 1);
+		});
+
 		it('should not allow play from loading state', () => {
 			const initial = createInitialState();
 			const loading = transition(initial, { type: 'LOAD_TRACK', track: mockTidalTrack });

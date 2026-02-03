@@ -32,8 +32,7 @@ type TrackLoadControllerOptions = {
 	setReplayGain: (value: number | null) => void;
 	getPlaybackQuality?: () => AudioQuality;
 	getStreamingFallbackQuality?: () => AudioQuality;
-	createSequence: () => number;
-	getSequence: () => number;
+	isAttemptCurrent: (attemptId: string) => boolean;
 	isHiResQuality: (quality: AudioQuality | undefined) => boolean;
 	preloadThresholdSeconds: number;
 	onDASHUnavailable?: (trackId: number) => void;
@@ -69,8 +68,8 @@ const SHAKA_CDN_URL =
 	'https://cdn.jsdelivr.net/npm/shaka-player@4.11.7/dist/shaka-player.compiled.js';
 
 export type TrackLoadController = {
-	loadTrack: (track: PlayableTrack) => Promise<void>;
-	loadStandardTrack: (track: Track, quality: AudioQuality, sequence: number) => Promise<void>;
+	loadTrack: (track: PlayableTrack, attemptId: string) => Promise<void>;
+	loadStandardTrack: (track: Track, quality: AudioQuality, attemptId: string) => Promise<void>;
 	maybePreloadNextTrack: (remainingSeconds: number) => void;
 	destroy: () => Promise<void>;
 };
@@ -93,20 +92,19 @@ export const createTrackLoadController = (
 	const getCacheKey = (trackId: number, quality: AudioQuality) => `${trackId}:${quality}`;
 
 	/**
-	 * Helper to check if a sequence is still valid before and after an async operation.
-	 * Returns true if the sequence is still current, false if it was invalidated.
+	 * Helper to check if an attempt is still current before and after an async operation.
+	 * Returns true if the attempt is still current, false if it was invalidated.
 	 */
-	const isSequenceValid = (sequence: number): boolean => sequence === options.getSequence();
+	const isAttemptCurrent = (attemptId: string): boolean => options.isAttemptCurrent(attemptId);
 
 	/**
-	 * Executes state updates only if the sequence is still valid.
+	 * Executes state updates only if the attempt is still current.
 	 * Prevents partial state updates from stale operations.
 	 */
-	const withSequenceCheck = <T>(sequence: number, updates: () => T): T | null => {
-		if (!isSequenceValid(sequence)) {
-			console.debug('[TrackLoadController] Skipping update for stale sequence', {
-				sequence,
-				current: options.getSequence()
+	const withAttemptGuard = <T>(attemptId: string, updates: () => T): T | null => {
+		if (!isAttemptCurrent(attemptId)) {
+			console.debug('[TrackLoadController] Skipping update for stale attempt', {
+				attemptId
 			});
 			return null;
 		}
@@ -342,14 +340,17 @@ export const createTrackLoadController = (
 		void preloadNextTrack(nextTrack);
 	};
 
-	const loadStandardTrack = async (track: Track, quality: AudioQuality, sequence: number) => {
+	const loadStandardTrack = async (track: Track, quality: AudioQuality, attemptId: string) => {
+		if (!isAttemptCurrent(attemptId)) {
+			return;
+		}
 		try {
 			await destroy();
 			options.setDashPlaybackActive(false);
 			const { url, replayGain, sampleRate, bitDepth } = await resolveStream(track, quality);
 
-			// Use sequence check to prevent partial state updates from stale operations
-			const updated = withSequenceCheck(sequence, () => {
+			// Use attempt guard to prevent partial state updates from stale operations
+			const updated = withAttemptGuard(attemptId, () => {
 				options.setStreamUrl(url);
 				options.setCurrentPlaybackQuality(quality);
 				options.setReplayGain(replayGain);
@@ -362,8 +363,7 @@ export const createTrackLoadController = (
 			if (!updated) {
 				console.info('[AudioPlayer] Ignoring stale stream load', {
 					trackId: track.id,
-					sequence,
-					current: options.getSequence()
+					attemptId
 				});
 				return;
 			}
@@ -375,11 +375,13 @@ export const createTrackLoadController = (
 				audioElement.crossOrigin = 'anonymous';
 				audioElement.load();
 			}
-			options.setLoading(false);
+			if (isAttemptCurrent(attemptId)) {
+				options.setLoading(false);
+			}
 		} catch (error) {
 			console.error('[AudioPlayer] Failed to load standard track:', error);
 			options.onLoadError?.(error instanceof Error ? error : new Error('Failed to load track'));
-			if (isSequenceValid(sequence)) {
+			if (isAttemptCurrent(attemptId)) {
 				options.setLoading(false);
 			}
 		}
@@ -388,7 +390,7 @@ export const createTrackLoadController = (
 	const loadDashTrack = async (
 		track: Track,
 		quality: AudioQuality,
-		sequence: number
+		attemptId: string
 	): Promise<DashManifestWithMetadata> => {
 		const cacheKey = getCacheKey(track.id, quality);
 		let cached = dashManifestCache.get(cacheKey);
@@ -409,9 +411,9 @@ export const createTrackLoadController = (
 		hiResObjectUrl = URL.createObjectURL(blob);
 		const player = await ensureShakaPlayer();
 
-		// Check sequence validity before continuing with playback setup
-		if (!isSequenceValid(sequence)) {
-			console.debug('[TrackLoadController] Aborting DASH load for stale sequence');
+		// Check attempt validity before continuing with playback setup
+		if (!isAttemptCurrent(attemptId)) {
+			console.debug('[TrackLoadController] Aborting DASH load for stale attempt', { attemptId });
 			return cached;
 		}
 
@@ -424,8 +426,8 @@ export const createTrackLoadController = (
 		await player.unload();
 		await player.load(hiResObjectUrl);
 
-		// Use sequence check to apply all state updates atomically
-		withSequenceCheck(sequence, () => {
+		// Use attempt guard to apply all state updates atomically
+		withAttemptGuard(attemptId, () => {
 			options.setDashPlaybackActive(true);
 			options.setStreamUrl('');
 			options.setCurrentPlaybackQuality('HI_RES_LOSSLESS');
@@ -444,7 +446,7 @@ export const createTrackLoadController = (
 		return cached;
 	};
 
-	const loadTrack = async (track: PlayableTrack) => {
+	const loadTrack = async (track: PlayableTrack, attemptId: string) => {
 		if (!track) {
 			console.error('loadTrack called with null/undefined track');
 			return;
@@ -471,9 +473,12 @@ export const createTrackLoadController = (
 			return;
 		}
 
+		if (!isAttemptCurrent(attemptId)) {
+			return;
+		}
+
 		options.setBufferedPercent(0);
 		options.setCurrentPlaybackQuality(null);
-		const sequence = options.createSequence();
 		options.setLoading(true);
 		const supportsLosslessPlayback = options.getSupportsLosslessPlayback();
 		const streamingFallbackQuality = options.getStreamingFallbackQuality?.() ?? 'HIGH';
@@ -507,7 +512,7 @@ export const createTrackLoadController = (
 			if (options.isHiResQuality(requestedQuality)) {
 				try {
 					const hiResQuality: AudioQuality = 'HI_RES_LOSSLESS';
-					const dashResult = await loadDashTrack(tidalTrack, hiResQuality, sequence);
+					const dashResult = await loadDashTrack(tidalTrack, hiResQuality, attemptId);
 					if (dashResult.result.kind === 'dash') {
 						return;
 					}
@@ -523,39 +528,35 @@ export const createTrackLoadController = (
 					? 'LOSSLESS'
 					: streamingFallbackQuality;
 				options.onFallbackRequested?.(dashFallbackQuality, 'dash-fallback');
-				await loadStandardTrack(tidalTrack, dashFallbackQuality, sequence);
+				await loadStandardTrack(tidalTrack, dashFallbackQuality, attemptId);
 				return;
 			}
 
 			// For standard qualities, go directly to stream resolution without DASH attempt
 			// This avoids unnecessary latency and simplifies the fallback chain
-			await loadStandardTrack(tidalTrack, requestedQuality, sequence);
+			await loadStandardTrack(tidalTrack, requestedQuality, attemptId);
 		} catch (error) {
 			console.error('Failed to load track:', error);
 			options.onLoadError?.(error instanceof Error ? error : new Error('Failed to load track'));
-			if (
-				sequence === options.getSequence() &&
-				requestedQuality !== 'LOSSLESS' &&
-				!options.isHiResQuality(requestedQuality)
-			) {
+			if (isAttemptCurrent(attemptId) && requestedQuality !== 'LOSSLESS' && !options.isHiResQuality(requestedQuality)) {
 				try {
 					const fallbackQuality: AudioQuality = supportsLosslessPlayback
 						? 'LOSSLESS'
 						: streamingFallbackQuality;
 					const reason = supportsLosslessPlayback ? 'retry-lossless' : 'lossless-unsupported';
 					options.onFallbackRequested?.(fallbackQuality, reason);
-					await loadStandardTrack(tidalTrack, fallbackQuality, sequence);
+					await loadStandardTrack(tidalTrack, fallbackQuality, attemptId);
 				} catch (fallbackError) {
 					console.error('Secondary lossless fallback failed:', fallbackError);
 				}
-			} else if (sequence === options.getSequence() && requestedQuality === 'LOSSLESS') {
+			} else if (isAttemptCurrent(attemptId) && requestedQuality === 'LOSSLESS') {
 				console.warn(
 					'[AudioPlayer] Lossless load failed; attempting streaming fallback for track',
 					tidalTrack.id
 				);
 				try {
 					options.onFallbackRequested?.(streamingFallbackQuality, 'lossless-fallback');
-					await loadStandardTrack(tidalTrack, streamingFallbackQuality, sequence);
+					await loadStandardTrack(tidalTrack, streamingFallbackQuality, attemptId);
 				} catch (fallbackError) {
 					console.error(
 						'[AudioPlayer] Streaming fallback after lossless load failure also failed',
@@ -564,7 +565,7 @@ export const createTrackLoadController = (
 				}
 			}
 		} finally {
-			if (sequence === options.getSequence()) {
+			if (isAttemptCurrent(attemptId)) {
 				options.setLoading(false);
 			}
 		}

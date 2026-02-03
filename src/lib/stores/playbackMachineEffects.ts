@@ -113,7 +113,6 @@ export class PlaybackMachineSideEffectHandler {
 	private trackLoadControllerInit: Promise<void> | null = null;
 	private playbackFallbackController: PlaybackFallbackController | null = null;
 	private dispatch: ((event: PlaybackEvent) => void) | null = null;
-	private loadSequence = 0;
 	private currentTrackId: number | null = null;
 	private currentPlaybackQuality: AudioQuality | null = null;
 	private dashPlaybackActive = false;
@@ -208,7 +207,7 @@ export class PlaybackMachineSideEffectHandler {
 						return;
 					}
 					this.playbackFallbackController?.resetForTrack(pending.track.id);
-					await this.trackLoadController?.loadTrack(pending.track);
+					await this.trackLoadController?.loadTrack(pending.track, pending.attemptId);
 				})
 				.catch((error) => {
 					// Validate attemptId before dispatching error
@@ -283,8 +282,7 @@ export class PlaybackMachineSideEffectHandler {
 			setSampleRate: (value) => this.loadUiCallbacks.setSampleRate?.(value),
 			setBitDepth: (value) => this.loadUiCallbacks.setBitDepth?.(value),
 			setReplayGain: (value) => this.loadUiCallbacks.setReplayGain?.(value),
-			createSequence: () => ++this.loadSequence,
-			getSequence: () => this.loadSequence,
+			isAttemptCurrent: (attemptId: string) => !this.isStaleAttempt(attemptId),
 			isHiResQuality: hiResCheck,
 			preloadThresholdSeconds: preloadThreshold,
 			getPlaybackQuality: () =>
@@ -293,8 +291,6 @@ export class PlaybackMachineSideEffectHandler {
 				this.loadUiCallbacks.getStreamingFallbackQuality?.() ??
 				(this.loadUiCallbacks.isFirefox?.() ? 'LOW' : 'HIGH'),
 			onLoadComplete: (url, quality) => {
-				const shouldResume =
-					this.resumeAfterFallback || (this.getIsPlaying?.() ?? false);
 				const wasFallback = this.resumeAfterFallback;
 				if (this.resumeAfterFallback) {
 					this.resumeAfterFallback = false;
@@ -308,32 +304,6 @@ export class PlaybackMachineSideEffectHandler {
 				}
 
 				this.dispatch?.({ type: 'LOAD_COMPLETE', streamUrl: url ?? null, quality });
-				if (shouldResume) {
-					this.dispatch?.({ type: 'PLAY' });
-					if (this.audioElement) {
-						const promise = this.audioElement.play();
-						if (promise) {
-							promise.catch((error) => {
-								// AbortError is expected when a new load interrupts play() during fallback
-								if (isPlayAbortError(error)) {
-									this.playbackOpLogger?.debug('Play interrupted by new load (expected during fallback)', {
-										phase: 'playing'
-									});
-									return;
-								}
-								this.playbackOpLogger?.error('Play failed after fallback', error instanceof Error ? error : undefined, {
-									phase: 'error'
-								});
-								trackError(error instanceof Error ? error : new Error('Play failed'), {
-									component: 'playback-effects',
-									domain: 'playback',
-									source: 'play-after-fallback'
-								});
-								this.dispatch?.({ type: 'AUDIO_WAITING' });
-							});
-						}
-					}
-				}
 			},
 			onLoadError: (error) => {
 				const err = error instanceof Error ? error : new Error('Failed to load track');
@@ -373,11 +343,11 @@ export class PlaybackMachineSideEffectHandler {
 				this.loadUiCallbacks.setDashPlaybackActive?.(value);
 			},
 			setLoading: () => {},
-			loadStandardTrack: async (track, quality, sequence) => {
-				await this.trackLoadController?.loadStandardTrack(track, quality, sequence);
+			loadStandardTrack: async (track, quality, attemptId) => {
+				await this.trackLoadController?.loadStandardTrack(track, quality, attemptId);
 			},
-			createSequence: () => ++this.loadSequence,
-			getSequence: () => this.loadSequence,
+			getAttemptId: () => this.currentAttemptId,
+			isAttemptCurrent: (attemptId: string) => !this.isStaleAttempt(attemptId),
 			setResumeAfterFallback: (value) => {
 				this.resumeAfterFallback = value;
 			},
@@ -415,8 +385,6 @@ export class PlaybackMachineSideEffectHandler {
 		this.dispatch = dispatch;
 		switch (effect.type) {
 			case 'CONVERT_SONGLINK': {
-				// Store attemptId for this conversion
-				this.currentAttemptId = effect.attemptId;
 				const conversionAttemptId = effect.attemptId;
 
 				if (!isSonglinkTrack(effect.track)) {
@@ -445,7 +413,6 @@ export class PlaybackMachineSideEffectHandler {
 			case 'LOAD_STREAM': {
 				this.requestedQuality = effect.quality;
 				this.currentTrackId = effect.track.id;
-				this.currentAttemptId = effect.attemptId;
 				this.currentPlaybackQuality = null;
 				this.dashPlaybackActive = false;
 				this.loadUiCallbacks.setDashPlaybackActive?.(false);
@@ -471,7 +438,7 @@ export class PlaybackMachineSideEffectHandler {
 				this.playbackFallbackController?.resetForTrack(effect.track.id);
 				if (this.trackLoadController) {
 					try {
-						await this.trackLoadController.loadTrack(effect.track);
+						await this.trackLoadController.loadTrack(effect.track, effect.attemptId);
 					} catch (error) {
 						const failure =
 							error instanceof Error ? error : new Error('Failed to load track');
@@ -575,28 +542,47 @@ export class PlaybackMachineSideEffectHandler {
 				if (!this.playbackFallbackController && this.audioElement) {
 					await this.ensureLoadControllers();
 				}
-				const fallback =
-					this.playbackFallbackController?.handleAudioError(effect.error) ?? null;
+				const fallbackPlan =
+					this.playbackFallbackController?.planFallback(effect.error) ?? null;
 				const isSyntheticError =
 					testHooksEnabled && !((effect.error as Event | undefined)?.isTrusted ?? true);
 				const requestedQuality = this.requestedQuality ?? this.getPlaybackQuality?.() ?? null;
 				const shouldForceFallback =
 					isSyntheticError &&
 					(requestedQuality === 'LOSSLESS' || requestedQuality === 'HI_RES_LOSSLESS');
-				if (!fallback && shouldForceFallback) {
+				if (!fallbackPlan && shouldForceFallback) {
 					const fallbackQuality: AudioQuality =
 						this.loadUiCallbacks.getStreamingFallbackQuality?.() ??
 						(this.loadUiCallbacks.isFirefox?.() ? 'LOW' : 'HIGH');
-					this.resumeAfterFallback = true;
-					this.dispatch?.({
-						type: 'FALLBACK_REQUESTED',
-						quality: fallbackQuality,
-						reason: 'lossless-playback'
-					});
-					dispatch({ type: 'AUDIO_WAITING' });
+					const currentTrack = this.getCurrentTrack?.() ?? null;
+					if (currentTrack && !isSonglinkTrack(currentTrack)) {
+						this.dispatch?.({
+							type: 'FALLBACK_REQUESTED',
+							quality: fallbackQuality,
+							reason: 'lossless-playback'
+						});
+						dispatch({ type: 'AUDIO_WAITING' });
+						const attemptId = this.currentAttemptId;
+						if (attemptId && this.playbackFallbackController) {
+							await this.playbackFallbackController.executeFallback(
+								{
+									track: currentTrack as Track,
+									quality: fallbackQuality,
+									reason: 'lossless-playback',
+									kind: 'lossless'
+								},
+								attemptId
+							);
+						}
+					} else {
+						dispatch({
+							type: 'LOAD_ERROR',
+							error: new Error('Audio playback error')
+						});
+					}
 					break;
 				}
-				if (!fallback) {
+				if (!fallbackPlan) {
 					const element = (effect.error as Event)?.currentTarget as HTMLMediaElement | null;
 					const mediaError = element?.error ?? null;
 					const code = mediaError?.code;
@@ -621,24 +607,19 @@ export class PlaybackMachineSideEffectHandler {
 					const code = mediaError?.code;
 					this.playbackOpLogger?.audioError(
 						typeof code === 'number' ? code : -1,
-						`Audio error triggering fallback: ${fallback.reason}`,
+						`Audio error triggering fallback: ${fallbackPlan.reason}`,
 						true
 					);
-					// Use currentPlaybackQuality if available for accurate logging
-					const fromQuality = this.currentPlaybackQuality || this.requestedQuality || 'unknown';
-					this.playbackOpLogger?.fallbackStarted(
-						fromQuality,
-						fallback.quality,
-						fallback.reason
-					);
-
-					this.resumeAfterFallback = true;
 					this.dispatch?.({
 						type: 'FALLBACK_REQUESTED',
-						quality: fallback.quality,
-						reason: fallback.reason
+						quality: fallbackPlan.quality,
+						reason: fallbackPlan.reason
 					});
 					dispatch({ type: 'AUDIO_WAITING' });
+					const attemptId = this.currentAttemptId;
+					if (attemptId && this.playbackFallbackController) {
+						await this.playbackFallbackController.executeFallback(fallbackPlan, attemptId);
+					}
 				}
 				break;
 			}

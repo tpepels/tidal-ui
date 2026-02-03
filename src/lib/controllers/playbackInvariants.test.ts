@@ -37,7 +37,6 @@ const createMockTrack = (id: number): PlayableTrack =>
 describe('Playback System Invariants', () => {
 	describe('Fallback Guard Invariants', () => {
 		const createMockOptions = () => {
-			let sequence = 1;
 			return {
 				getCurrentTrack: vi.fn(() => createMockTrack(123)),
 				getPlayerQuality: vi.fn(() => 'LOSSLESS' as AudioQuality),
@@ -50,8 +49,8 @@ describe('Playback System Invariants', () => {
 				setDashPlaybackActive: vi.fn(),
 				setLoading: vi.fn(),
 				loadStandardTrack: vi.fn().mockResolvedValue(undefined),
-				createSequence: vi.fn(() => ++sequence),
-				getSequence: vi.fn(() => sequence),
+				getAttemptId: vi.fn(() => 'attempt-1'),
+				isAttemptCurrent: vi.fn(() => true),
 				setResumeAfterFallback: vi.fn(),
 				onFallbackRequested: vi.fn()
 			};
@@ -79,13 +78,13 @@ describe('Playback System Invariants', () => {
 			} as unknown as Event;
 
 			// First error should trigger fallback
-			const result1 = controller.handleAudioError(mockEvent);
+			const result1 = controller.planFallback(mockEvent);
 			expect(result1).not.toBeNull();
 			expect(result1?.reason).toBe('lossless-playback');
 
 			// Second, third, fourth... errors should all be ignored
 			for (let i = 0; i < 10; i++) {
-				const result = controller.handleAudioError(mockEvent);
+				const result = controller.planFallback(mockEvent);
 				expect(result).toBeNull();
 			}
 		});
@@ -102,13 +101,13 @@ describe('Playback System Invariants', () => {
 			} as unknown as Event;
 
 			// First error should trigger fallback
-			const result1 = controller.handleAudioError(mockEvent);
+			const result1 = controller.planFallback(mockEvent);
 			expect(result1).not.toBeNull();
 			expect(result1?.reason).toContain('dash-playback');
 
 			// All subsequent errors should be ignored
 			for (let i = 0; i < 10; i++) {
-				const result = controller.handleAudioError(mockEvent);
+				const result = controller.planFallback(mockEvent);
 				expect(result).toBeNull();
 			}
 		});
@@ -125,18 +124,18 @@ describe('Playback System Invariants', () => {
 			} as unknown as Event;
 
 			// First track fails, fallback triggered
-			const result1 = controller.handleAudioError(mockEvent);
+			const result1 = controller.planFallback(mockEvent);
 			expect(result1).not.toBeNull();
 
 			// Second error on same track is ignored
-			expect(controller.handleAudioError(mockEvent)).toBeNull();
+			expect(controller.planFallback(mockEvent)).toBeNull();
 
 			// Switch to new track
 			controller.resetForTrack(456);
 			options.getCurrentTrack.mockReturnValue(createMockTrack(456));
 
 			// New track can trigger fallback
-			const result2 = controller.handleAudioError(mockEvent);
+			const result2 = controller.planFallback(mockEvent);
 			expect(result2).not.toBeNull();
 		});
 
@@ -154,7 +153,7 @@ describe('Playback System Invariants', () => {
 			} as unknown as Event;
 
 			// Error should NOT trigger fallback
-			const result = controller.handleAudioError(mockEvent);
+			const result = controller.planFallback(mockEvent);
 			expect(result).toBeNull();
 		});
 
@@ -169,7 +168,7 @@ describe('Playback System Invariants', () => {
 				currentTarget: createMediaError(1) // ABORTED
 			} as unknown as Event;
 
-			const result = controller.handleAudioError(mockEvent);
+			const result = controller.planFallback(mockEvent);
 			expect(result).toBeNull();
 		});
 	});
@@ -227,7 +226,6 @@ describe('Playback System Invariants', () => {
 		 * This ensures the state machine receives exactly one FALLBACK_REQUESTED event.
 		 */
 		it('INVARIANT: onFallbackRequested called exactly once per fallback', () => {
-			let sequence = 1;
 			const options = {
 				getCurrentTrack: vi.fn(() => createMockTrack(123)),
 				getPlayerQuality: vi.fn(() => 'LOSSLESS' as AudioQuality),
@@ -240,8 +238,8 @@ describe('Playback System Invariants', () => {
 				setDashPlaybackActive: vi.fn(),
 				setLoading: vi.fn(),
 				loadStandardTrack: vi.fn().mockResolvedValue(undefined),
-				createSequence: vi.fn(() => ++sequence),
-				getSequence: vi.fn(() => sequence),
+				getAttemptId: vi.fn(() => 'attempt-1'),
+				isAttemptCurrent: vi.fn(() => true),
 				setResumeAfterFallback: vi.fn(),
 				onFallbackRequested: vi.fn()
 			};
@@ -259,9 +257,19 @@ describe('Playback System Invariants', () => {
 			} as unknown as Event;
 
 			// Trigger multiple errors
-			controller.handleAudioError(mockEvent);
-			controller.handleAudioError(mockEvent);
-			controller.handleAudioError(mockEvent);
+			const plan1 = controller.planFallback(mockEvent);
+			const plan2 = controller.planFallback(mockEvent);
+			const plan3 = controller.planFallback(mockEvent);
+
+			if (plan1) {
+				void controller.executeFallback(plan1, 'attempt-1');
+			}
+			if (plan2) {
+				void controller.executeFallback(plan2, 'attempt-1');
+			}
+			if (plan3) {
+				void controller.executeFallback(plan3, 'attempt-1');
+			}
 
 			// Callback should only be called once
 			expect(options.onFallbackRequested).toHaveBeenCalledTimes(1);
@@ -273,7 +281,6 @@ describe('Playback System Invariants', () => {
 		 * Duplicate load calls cause race conditions.
 		 */
 		it('INVARIANT: loadStandardTrack called exactly once per fallback', async () => {
-			let sequence = 1;
 			const options = {
 				getCurrentTrack: vi.fn(() => createMockTrack(123)),
 				getPlayerQuality: vi.fn(() => 'LOSSLESS' as AudioQuality),
@@ -286,8 +293,8 @@ describe('Playback System Invariants', () => {
 				setDashPlaybackActive: vi.fn(),
 				setLoading: vi.fn(),
 				loadStandardTrack: vi.fn().mockResolvedValue(undefined),
-				createSequence: vi.fn(() => ++sequence),
-				getSequence: vi.fn(() => sequence),
+				getAttemptId: vi.fn(() => 'attempt-1'),
+				isAttemptCurrent: vi.fn(() => true),
 				setResumeAfterFallback: vi.fn(),
 				onFallbackRequested: vi.fn()
 			};
@@ -305,9 +312,19 @@ describe('Playback System Invariants', () => {
 			} as unknown as Event;
 
 			// Trigger multiple errors rapidly
-			controller.handleAudioError(mockEvent);
-			controller.handleAudioError(mockEvent);
-			controller.handleAudioError(mockEvent);
+			const plan1 = controller.planFallback(mockEvent);
+			const plan2 = controller.planFallback(mockEvent);
+			const plan3 = controller.planFallback(mockEvent);
+
+			if (plan1) {
+				void controller.executeFallback(plan1, 'attempt-1');
+			}
+			if (plan2) {
+				void controller.executeFallback(plan2, 'attempt-1');
+			}
+			if (plan3) {
+				void controller.executeFallback(plan3, 'attempt-1');
+			}
 
 			// Wait for async operations
 			await new Promise((resolve) => setTimeout(resolve, 10));

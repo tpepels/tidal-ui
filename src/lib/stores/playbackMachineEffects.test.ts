@@ -2,16 +2,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PlaybackMachineSideEffectHandler } from './playbackMachineEffects';
 import type { SideEffect, PlaybackEvent } from '$lib/machines/playbackMachine';
 import type { AudioQuality, Track } from '$lib/types';
+import type { PlaybackFallbackPlan } from '$lib/controllers/playbackFallbackController';
 const {
 	mockLoadTrack,
 	mockDestroy,
-	mockHandleAudioError,
+	mockPlanFallback,
+	mockExecuteFallback,
 	mockResetForTrack,
 	mockCreateTrackLoadController
 } = vi.hoisted(() => {
-	const loadTrack = vi.fn<[Track], Promise<void>>();
+	const loadTrack = vi.fn<[Track, string], Promise<void>>();
 	const destroy = vi.fn<[], Promise<void>>().mockResolvedValue(undefined);
-	const handleAudioError = vi.fn<[Event], { quality: AudioQuality; reason: string } | null>();
+	const planFallback = vi.fn<[Event], PlaybackFallbackPlan | null>();
+	const executeFallback = vi.fn<[PlaybackFallbackPlan, string], Promise<void>>().mockResolvedValue(undefined);
 	const resetForTrack = vi.fn<[number | string], void>();
 	const createTrackLoadController = vi.fn(
 		(options: {
@@ -33,7 +36,8 @@ const {
 	return {
 		mockLoadTrack: loadTrack,
 		mockDestroy: destroy,
-		mockHandleAudioError: handleAudioError,
+		mockPlanFallback: planFallback,
+		mockExecuteFallback: executeFallback,
 		mockResetForTrack: resetForTrack,
 		mockCreateTrackLoadController: createTrackLoadController
 	};
@@ -45,7 +49,8 @@ vi.mock('$lib/controllers/trackLoadController', () => ({
 
 vi.mock('$lib/controllers/playbackFallbackController', () => ({
 	createPlaybackFallbackController: vi.fn(() => ({
-		handleAudioError: mockHandleAudioError,
+		planFallback: mockPlanFallback,
+		executeFallback: mockExecuteFallback,
 		resetForTrack: mockResetForTrack
 	}))
 }));
@@ -111,7 +116,8 @@ describe('PlaybackMachineSideEffectHandler', () => {
 	beforeEach(() => {
 		mockLoadTrack.mockClear();
 		mockDestroy.mockClear();
-		mockHandleAudioError.mockClear();
+		mockPlanFallback.mockClear();
+		mockExecuteFallback.mockClear();
 		mockResetForTrack.mockClear();
 		mockCreateTrackLoadController.mockClear();
 		mockToasts.error.mockClear();
@@ -178,7 +184,7 @@ describe('PlaybackMachineSideEffectHandler', () => {
 			dispatch as (event: PlaybackEvent) => void
 		);
 
-		expect(mockLoadTrack).toHaveBeenCalledWith(track);
+		expect(mockLoadTrack).toHaveBeenCalledWith(track, 'test-attempt-load');
 		expect(dispatch).toHaveBeenCalledWith({
 			type: 'LOAD_COMPLETE',
 			streamUrl: expect.stringContaining('example.com/stream.m4a'),
@@ -187,7 +193,7 @@ describe('PlaybackMachineSideEffectHandler', () => {
 	});
 
 	it('dispatches load error when fallback controller does not recover', async () => {
-		mockHandleAudioError.mockReturnValueOnce(null);
+		mockPlanFallback.mockReturnValueOnce(null);
 		const handler = new PlaybackMachineSideEffectHandler();
 		const dispatch = vi.fn<[PlaybackEvent], void>();
 
@@ -226,7 +232,7 @@ describe('PlaybackMachineSideEffectHandler', () => {
 
 	it('shows a toast when fallback is requested', async () => {
 		mockCreateTrackLoadController.mockImplementationOnce((options) => {
-			const loadTrack = vi.fn<[Track], Promise<void>>(async () => {
+			const loadTrack = vi.fn<[Track, string], Promise<void>>(async () => {
 				options.onFallbackRequested?.('LOW', 'lossless-unsupported');
 				options.onLoadComplete?.('https://example.com/stream.m4a', 'LOW');
 			});
@@ -260,5 +266,32 @@ describe('PlaybackMachineSideEffectHandler', () => {
 			expect.stringContaining('Lossless playback'),
 			expect.objectContaining({ duration: 3500 })
 		);
+	});
+
+	it('applies SET_AUDIO_SRC and PLAY_AUDIO for the current attempt after fallback', async () => {
+		const audio = buildAudioElement();
+		const handler = new PlaybackMachineSideEffectHandler();
+		handler.setAudioElement(audio);
+
+		const dispatch = vi.fn<[PlaybackEvent], void>();
+
+		handler.setCurrentAttemptId('attempt-old');
+		handler.setCurrentAttemptId('attempt-new');
+
+		await handler.execute(
+			{
+				type: 'SET_AUDIO_SRC',
+				url: 'https://example.com/fallback.m4a',
+				attemptId: 'attempt-new'
+			} satisfies SideEffect,
+			dispatch as (event: PlaybackEvent) => void
+		);
+		await handler.execute(
+			{ type: 'PLAY_AUDIO' } satisfies SideEffect,
+			dispatch as (event: PlaybackEvent) => void
+		);
+
+		expect(audio.src).toBe('https://example.com/fallback.m4a');
+		expect(audio.play).toHaveBeenCalled();
 	});
 });

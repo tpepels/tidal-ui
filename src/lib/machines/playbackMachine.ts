@@ -250,6 +250,29 @@ export function transition(
 					}
 				};
 			}
+			if (state === 'idle' && context.currentTrack) {
+				// Start loading the current track if play is requested from idle.
+				const attemptId = generateAttemptId();
+				const nextState = isSonglinkTrack(context.currentTrack) ? 'converting' : 'loading';
+				return {
+					state: nextState,
+					context: {
+						...context,
+						currentTime: 0,
+						duration: context.currentTrack.duration ?? 0,
+						streamUrl: null,
+						effectiveQuality: null,
+						sampleRate: null,
+						bitDepth: null,
+						replayGain: null,
+						error: null,
+						loadRequestId: context.loadRequestId + 1,
+						attemptId,
+						autoPlay: true,
+						isRecovering: false
+					}
+				};
+			}
 			if (state === 'loading' || state === 'converting') {
 				return {
 					state,
@@ -397,8 +420,10 @@ export function transition(
 			if (!context.currentTrack) {
 				return current;
 			}
-			// Generate new attemptId to invalidate any in-flight async operations from previous quality attempt
-			const fallbackAttemptId = generateAttemptId();
+			// Only generate a new attemptId when fallback is triggered after playback starts.
+			// During initial load, keep the current attemptId so the ongoing load can complete.
+			const shouldRefreshAttempt = state !== 'loading' && state !== 'converting';
+			const fallbackAttemptId = shouldRefreshAttempt ? generateAttemptId() : context.attemptId;
 			// NOTE: Do NOT change `quality` here - that's the user's preference.
 			// The fallback quality will be set as `effectiveQuality` when LOAD_COMPLETE fires.
 			return {
