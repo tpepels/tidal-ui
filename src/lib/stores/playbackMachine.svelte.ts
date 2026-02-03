@@ -116,6 +116,7 @@ export function createPlaybackMachineStore(initialQuality: AudioQuality = 'HIGH'
 
 		// Update state
 		machineState = nextState;
+		effectHandler.setCurrentAttemptId(machineState.context.attemptId);
 		if (
 			prevState.context.queue !== nextState.context.queue ||
 			prevState.context.queueIndex !== nextState.context.queueIndex ||

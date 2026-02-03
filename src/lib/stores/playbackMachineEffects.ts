@@ -179,6 +179,16 @@ export class PlaybackMachineSideEffectHandler {
 		return this.currentAttemptId;
 	}
 
+	/**
+	 * Sync the current attemptId with the playback machine context.
+	 * Ensures fallback/retry attemptIds are treated as current.
+	 */
+	setCurrentAttemptId(attemptId: string | null) {
+		if (attemptId) {
+			this.currentAttemptId = attemptId;
+		}
+	}
+
 	setAudioElement(element: HTMLAudioElement | null) {
 		if (!element && this.trackLoadController) {
 			void this.trackLoadController.destroy().catch((error) => {
