@@ -97,8 +97,7 @@
 		}
 
 		try {
-			playbackFacade.loadQueue(tracks, 0);
-			playbackFacade.play();
+			playbackFacade.loadQueue(tracks, 0, { autoPlay: true });
 		} catch (error) {
 			console.error('Failed to play album:', error);
 			// Could show error toast here
@@ -119,9 +118,10 @@
 		if (isAlbumQueue) {
 			const firstTrackId = tracks[0]?.id;
 			if ($machineCurrentTrack?.id !== firstTrackId) {
-				playbackFacade.loadQueue(tracks, 0);
+				playbackFacade.loadQueue(tracks, 0, { autoPlay: true });
+			} else {
+				playbackFacade.play();
 			}
-			playbackFacade.play();
 			return;
 		}
 
@@ -165,8 +165,7 @@
 	function handleShufflePlay() {
 		if (tracks.length === 0) return;
 		const shuffled = shuffleTracks(tracks);
-		playbackFacade.loadQueue(shuffled, 0);
-		playbackFacade.play();
+		playbackFacade.loadQueue(shuffled, 0, { autoPlay: true });
 	}
 
 	async function handleDownloadAll() {

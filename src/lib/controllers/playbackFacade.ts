@@ -4,7 +4,11 @@ import { playbackQueueCoordinator } from '$lib/controllers/playbackQueueCoordina
 import { areTestHooksEnabled } from '$lib/utils/testHooks';
 
 type PlaybackFacade = {
-	loadQueue: (tracks: PlayableTrack[], startIndex?: number) => void;
+	loadQueue: (
+		tracks: PlayableTrack[],
+		startIndex?: number,
+		options?: { autoPlay?: boolean }
+	) => void;
 	play: () => void;
 	pause: () => void;
 	toggle: () => void;
@@ -18,7 +22,7 @@ type PlaybackFacade = {
 	shuffleQueue: () => void;
 };
 
-const loadQueue = (tracks: PlayableTrack[], startIndex = 0) => {
+const loadQueue = (tracks: PlayableTrack[], startIndex = 0, options?: { autoPlay?: boolean }) => {
 	const nextIndex = tracks.length > 0 ? Math.min(Math.max(startIndex, 0), tracks.length - 1) : -1;
 	const snapshot = playbackQueueCoordinator.setQueue(tracks, nextIndex);
 	const nextTrack = snapshot.currentTrack ?? null;
@@ -27,7 +31,11 @@ const loadQueue = (tracks: PlayableTrack[], startIndex = 0) => {
 		// not the new track. loadTrack will use the machine's requested quality.
 		// Calling changeQuality before loadTrack caused a race condition where the old
 		// track would continue loading/playing after switching to a new track.
-		playbackMachine.actions.loadTrack(nextTrack);
+		if (options?.autoPlay === undefined) {
+			playbackMachine.actions.loadTrack(nextTrack);
+		} else {
+			playbackMachine.actions.loadTrack(nextTrack, { autoPlay: options.autoPlay });
+		}
 	}
 };
 

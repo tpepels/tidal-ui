@@ -37,7 +37,7 @@ export type PlaybackState =
 	| 'error';
 
 export type PlaybackEvent =
-	| { type: 'LOAD_TRACK'; track: PlayableTrack }
+	| { type: 'LOAD_TRACK'; track: PlayableTrack; autoPlay?: boolean }
 	| { type: 'SET_QUEUE'; queue: PlayableTrack[]; queueIndex: number }
 	| { type: 'CONVERSION_COMPLETE'; track: Track }
 	| { type: 'CONVERSION_ERROR'; error: Error }
@@ -128,6 +128,10 @@ export function transition(
 			// Always allow loading a new track
 			// Generate new attemptId to invalidate any in-flight async operations from previous track
 			const newAttemptId = generateAttemptId();
+			const nextAutoPlay =
+				typeof event.autoPlay === 'boolean'
+					? event.autoPlay
+					: context.autoPlay || state === 'playing' || state === 'buffering';
 			return {
 				state: isSonglinkTrack(event.track) ? 'converting' : 'loading',
 				context: {
@@ -144,7 +148,7 @@ export function transition(
 					error: null,
 					loadRequestId: context.loadRequestId + 1,
 					attemptId: newAttemptId,
-					autoPlay: context.autoPlay || state === 'playing' || state === 'buffering',
+					autoPlay: nextAutoPlay,
 					// Clear recovery flag on new track load
 					isRecovering: false
 				}

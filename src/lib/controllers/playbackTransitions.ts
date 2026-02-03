@@ -58,8 +58,7 @@ export const createPlaybackTransitions = (playbackState: PlaybackStore): Playbac
 				'Queue index must be within bounds',
 				{ index, queueLength: state.queue.length }
 			);
-			playbackFacade.loadQueue(state.queue, index);
-			playbackFacade.play();
+			playbackFacade.loadQueue(state.queue, index, { autoPlay: true });
 		},
 		seekTo(time: number) {
 			const state = getState();

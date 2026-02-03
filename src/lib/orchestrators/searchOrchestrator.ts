@@ -334,8 +334,7 @@ export class SearchOrchestrator {
 					await precacheTrackStream(track.id, currentQuality);
 
 					// Play track immediately
-					playbackFacade.loadQueue([track], 0);
-					playbackFacade.play();
+					playbackFacade.loadQueue([track], 0, { autoPlay: true });
 
 					// Clear query
 					searchStoreActions.commit({ query: '', isLoading: false });

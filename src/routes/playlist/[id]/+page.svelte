@@ -39,8 +39,7 @@
 
 	function handlePlayAll() {
 		if (tracks.length > 0) {
-			playbackFacade.loadQueue(tracks, 0);
-			playbackFacade.play();
+			playbackFacade.loadQueue(tracks, 0, { autoPlay: true });
 		}
 	}
 

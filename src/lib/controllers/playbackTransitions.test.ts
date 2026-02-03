@@ -126,8 +126,8 @@ describe('playbackTransitions', () => {
 		const tracks = [makeTrack(1), makeTrack(2)];
 		resetStore({ queue: tracks, queueIndex: 0, currentTrack: tracks[0] });
 		transitions.playFromQueueIndex(1);
-		expect(playbackFacadeMock.loadQueue).toHaveBeenCalledWith(tracks, 1);
-		expect(playbackFacadeMock.play).toHaveBeenCalled();
+		expect(playbackFacadeMock.loadQueue).toHaveBeenCalledWith(tracks, 1, { autoPlay: true });
+		expect(playbackFacadeMock.play).not.toHaveBeenCalled();
 	});
 
 	it('routes next and previous through playbackFacade', () => {

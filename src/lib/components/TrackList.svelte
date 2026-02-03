@@ -79,8 +79,7 @@
 
 	function handlePlayTrack(track: Track, index: number) {
 		console.info('[TrackList] handlePlayTrack', { trackId: track.id, index });
-		playbackFacade.loadQueue(tracks, index);
-		playbackFacade.play();
+		playbackFacade.loadQueue(tracks, index, { autoPlay: true });
 	}
 
 	function handleAddToQueue(track: Track, event: MouseEvent) {

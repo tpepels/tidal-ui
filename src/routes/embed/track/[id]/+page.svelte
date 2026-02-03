@@ -83,9 +83,10 @@
             playbackFacade.pause();
         } else {
             if ($machineCurrentTrack?.id !== track.id) {
-                playbackFacade.loadQueue([track], 0);
+                playbackFacade.loadQueue([track], 0, { autoPlay: true });
+            } else {
+                playbackFacade.play();
             }
-            playbackFacade.play();
         }
     }
 </script>

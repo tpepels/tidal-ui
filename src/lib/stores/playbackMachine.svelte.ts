@@ -205,8 +205,8 @@ export function createPlaybackMachineStore(initialQuality: AudioQuality = 'HIGH'
 	 */
 
 	const actions = {
-		loadTrack(track: PlayableTrack) {
-			dispatch({ type: 'LOAD_TRACK', track });
+		loadTrack(track: PlayableTrack, options?: { autoPlay?: boolean }) {
+			dispatch({ type: 'LOAD_TRACK', track, autoPlay: options?.autoPlay });
 		},
 		setQueue(queue: PlayableTrack[], queueIndex: number) {
 			dispatch({ type: 'SET_QUEUE', queue, queueIndex });

@@ -83,15 +83,15 @@
         } else {
             // If not playing from this list, start from beginning
             if (!tracks.some(t => t.id === $machineCurrentTrack?.id)) {
-                playbackFacade.loadQueue(tracks, 0);
+                playbackFacade.loadQueue(tracks, 0, { autoPlay: true });
+            } else {
+                playbackFacade.play();
             }
-            playbackFacade.play();
         }
     }
 
     function playTrack(track: Track, index: number) {
-        playbackFacade.loadQueue(tracks, index);
-        playbackFacade.play();
+        playbackFacade.loadQueue(tracks, index, { autoPlay: true });
     }
 </script>
 

@@ -71,8 +71,7 @@
 
 	function handlePlayTrack(track: Track, index: number) {
 		console.info('[TopTracksGrid] handlePlayTrack', { trackId: track.id, index });
-		playbackFacade.loadQueue(displayedTracks, index);
-		playbackFacade.play();
+		playbackFacade.loadQueue(displayedTracks, index, { autoPlay: true });
 	}
 
 	function handleAddToQueue(track: Track, event: MouseEvent) {

@@ -29,8 +29,7 @@
 		}
 
 		try {
-			playbackFacade.loadQueue([track], 0);
-			playbackFacade.play();
+			playbackFacade.loadQueue([track], 0, { autoPlay: true });
 		} catch (error) {
 			console.error('Failed to play track:', error);
 			// Could show a toast notification here

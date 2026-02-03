@@ -275,8 +275,7 @@
 
 	function playFromQueue(index: number) {
 		console.info('[AudioPlayer] playFromQueue called for index', index);
-		playbackFacade.loadQueue($machineQueue, index);
-		playbackFacade.play();
+		playbackFacade.loadQueue($machineQueue, index, { autoPlay: true });
 	}
 
 	function removeFromQueue(index: number, event?: MouseEvent) {

@@ -280,8 +280,7 @@
 						<button
 							onclick={() => {
 								if (track) {
-									playbackFacade.loadQueue([track], 0);
-									playbackFacade.play();
+									playbackFacade.loadQueue([track], 0, { autoPlay: true });
 								}
 							}}
 						class="flex items-center gap-2 rounded-full bg-blue-600 px-8 py-3 font-semibold transition-colors hover:bg-blue-700"

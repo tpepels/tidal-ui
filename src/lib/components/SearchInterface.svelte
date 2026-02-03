@@ -372,8 +372,7 @@ import {
 	function handlePlayAll() {
 		const tracks = $searchStore.results?.tracks ?? [];
 		if (tracks.length > 0) {
-			playbackFacade.loadQueue(tracks, 0);
-			playbackFacade.play();
+			playbackFacade.loadQueue(tracks, 0, { autoPlay: true });
 		}
 	}
 
@@ -382,8 +381,7 @@ import {
 		if (tracks.length > 0) {
 			// Shuffle the tracks
 			const shuffled = [...tracks].sort(() => Math.random() - 0.5);
-			playbackFacade.loadQueue(shuffled, 0);
-			playbackFacade.play();
+			playbackFacade.loadQueue(shuffled, 0, { autoPlay: true });
 		}
 	}
 
