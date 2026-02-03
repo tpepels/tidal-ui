@@ -1,6 +1,4 @@
-import { get } from 'svelte/store';
 import { tick } from 'svelte';
-import type { Readable } from 'svelte/store';
 import {
 	losslessAPI,
 	type DashManifestResult,
@@ -20,7 +18,7 @@ type PlayerState = {
 };
 
 type TrackLoadControllerOptions = {
-	playerStore: Readable<PlayerState>;
+	getPlaybackState: () => PlayerState;
 	getAudioElement: () => HTMLAudioElement | null;
 	getCurrentTrackId: () => number | null;
 	getSupportsLosslessPlayback: () => boolean;
@@ -196,11 +194,11 @@ export const createTrackLoadController = (
 	const pruneDashManifestCache = () => {
 		const keepKeys = new Set<string>();
 		const dashQuality: AudioQuality = 'HI_RES_LOSSLESS';
-		const current = get(options.playerStore).currentTrack;
+		const current = options.getPlaybackState().currentTrack;
 		if (current && !isSonglinkTrack(current)) {
 			keepKeys.add(getCacheKey(current.id, dashQuality));
 		}
-		const { queue, queueIndex } = get(options.playerStore);
+		const { queue, queueIndex } = options.getPlaybackState();
 		const nextTrack = queue[queueIndex + 1];
 		if (nextTrack && !isSonglinkTrack(nextTrack)) {
 			keepKeys.add(getCacheKey(nextTrack.id, dashQuality));
@@ -245,7 +243,7 @@ export const createTrackLoadController = (
 		sampleRate: number | null;
 		bitDepth: number | null;
 	}> => {
-		const baseQuality = options.getPlaybackQuality?.() ?? get(options.playerStore).quality;
+		const baseQuality = options.getPlaybackQuality?.() ?? options.getPlaybackState().quality;
 		const quality = overrideQuality ?? baseQuality;
 		if (options.isHiResQuality(quality)) {
 			throw new Error('Attempted to resolve hi-res stream via standard resolver');
@@ -271,16 +269,16 @@ export const createTrackLoadController = (
 	};
 
 	const pruneStreamCache = () => {
-		const quality = options.getPlaybackQuality?.() ?? get(options.playerStore).quality;
+		const quality = options.getPlaybackQuality?.() ?? options.getPlaybackState().quality;
 		const keepKeys = new Set<string>();
 		const baseQualities: AudioQuality[] = options.isHiResQuality(quality) ? ['LOSSLESS'] : [quality];
-		const current = get(options.playerStore).currentTrack;
+		const current = options.getPlaybackState().currentTrack;
 		if (current && !isSonglinkTrack(current)) {
 			for (const base of baseQualities) {
 				keepKeys.add(getCacheKey(current.id, base));
 			}
 		}
-		const { queue, queueIndex } = get(options.playerStore);
+		const { queue, queueIndex } = options.getPlaybackState();
 		const nextTrack = queue[queueIndex + 1];
 		if (nextTrack && !isSonglinkTrack(nextTrack)) {
 			for (const base of baseQualities) {
@@ -332,7 +330,7 @@ export const createTrackLoadController = (
 		if (remainingSeconds > options.preloadThresholdSeconds) {
 			return;
 		}
-		const { queue, queueIndex } = get(options.playerStore);
+		const { queue, queueIndex } = options.getPlaybackState();
 		const nextTrack = queue[queueIndex + 1];
 		if (!nextTrack || isSonglinkTrack(nextTrack)) {
 			return;
@@ -479,7 +477,7 @@ export const createTrackLoadController = (
 		options.setLoading(true);
 		const supportsLosslessPlayback = options.getSupportsLosslessPlayback();
 		const streamingFallbackQuality = options.getStreamingFallbackQuality?.() ?? 'HIGH';
-		let requestedQuality = options.getPlaybackQuality?.() ?? get(options.playerStore).quality;
+		let requestedQuality = options.getPlaybackQuality?.() ?? options.getPlaybackState().quality;
 		const originalRequestedQuality = requestedQuality;
 		let fallbackReason: string | null = null;
 

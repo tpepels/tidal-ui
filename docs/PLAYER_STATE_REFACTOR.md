@@ -75,35 +75,33 @@ Refactoring the player state architecture to fix:
 
 ---
 
-## Milestone 4: Consolidate to Single Source of Truth 🚧 In Progress
+## Milestone 4: Consolidate to Single Source of Truth ✅ Complete
 
 **Goal**: Eliminate `playerStore` duplication; machine context IS the source of truth.
 
-**Status**: In progress. The core issues (artwork changing, "HIGH to HIGH" fallback) are fixed in Milestones 1-3. The current architecture:
+**Status**: Complete. Playback state is fully owned by the playbackMachine; there is no legacy store duplication.
 
-- Machine is the source of truth for playback state (via `syncPlayerStoreFromMachine`)
-- playerStore retains queue management, persistence, and volume control
-- This separation works well and is lower risk than full consolidation
+### Milestone 4 Tasks
 
-### Milestone 4 Tasks (if resumed)
-
-- [ ] Analyze which playerStore fields can be derived from machine
+- [x] Analyze which legacy fields can be derived from machine
 - [x] Create derived stores for UI (playerDerived.ts)
 - [x] Replace polling with playbackMachine subscriptions
 - [x] Sync queue mutations to playbackMachine by default
 - [x] Move time/volume updates into playbackMachine context
 - [x] Migrate AudioPlayer + embed UI to machine-derived playback state
 - [x] Migrate LyricsPopup to machine-derived playback state
-- [ ] Migrate queue operations to machine context
-- [ ] Update components incrementally
-- [ ] Preserve localStorage persistence for queue/volume
+- [x] Migrate queue operations to machine context
+- [x] Update components incrementally
+- [x] Preserve localStorage persistence for queue/volume
+- [x] Migrate stream metadata (sample rate/bit depth/replay gain) into machine context
+- [x] Remove legacy playerStore + sync contract
 
 ### Milestone 4 Acceptance Criteria
 
-- [ ] Only one place defines `currentTrack`
-- [ ] FSM state diagram matches runtime exactly
-- [ ] All tests pass
-- [ ] localStorage persistence still works
+- [x] Only one place defines `currentTrack`
+- [x] FSM state diagram matches runtime exactly
+- [x] All tests pass
+- [x] localStorage persistence still works
 
 ---
 
@@ -111,13 +109,16 @@ Refactoring the player state architecture to fix:
 
 ### 2026-02-02
 
-- Progressed Milestone 4: Single Source of Truth
+- Completed Milestone 4: Single Source of Truth
   - Added playbackMachine subscriptions to drive playerDerived stores without polling
   - Created initial machine-derived UI stores to enable incremental migrations
   - Migrated TrackList to machine-derived playback state
   - Synced queue updates to playbackMachine (no env gate required)
   - Routed time/volume updates through playbackMachine context + projection sync
   - Migrated AudioPlayer, embed routes, and LyricsPopup to machine-derived stores
+  - Migrated +layout and album page playback reads to machine-derived stores
+  - Moved queue/track persistence into playbackMachine and removed playerStore queue mutations
+  - Removed legacy playerStore + sync plumbing (sample rate/bit depth/replay gain now machine-owned)
 - Completed Milestone 3: Unify Quality State
   - Added `effectiveQuality` to PlaybackContext
   - Fixed FALLBACK_REQUESTED to not overwrite user's quality preference

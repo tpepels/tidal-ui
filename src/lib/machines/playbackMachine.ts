@@ -57,7 +57,10 @@ export type PlaybackEvent =
 	| { type: 'TIME_UPDATE'; position: number }
 	| { type: 'DURATION_UPDATE'; duration: number }
 	| { type: 'VOLUME_UPDATE'; volume: number }
-	| { type: 'MUTE_UPDATE'; isMuted: boolean };
+	| { type: 'MUTE_UPDATE'; isMuted: boolean }
+	| { type: 'SAMPLE_RATE_UPDATE'; sampleRate: number | null }
+	| { type: 'BIT_DEPTH_UPDATE'; bitDepth: number | null }
+	| { type: 'REPLAY_GAIN_UPDATE'; replayGain: number | null };
 
 /**
  * Generate a unique attempt ID for correlation and stale event detection.
@@ -86,6 +89,9 @@ export interface PlaybackContext {
 	duration: number;
 	volume: number;
 	isMuted: boolean;
+	sampleRate: number | null;
+	bitDepth: number | null;
+	replayGain: number | null;
 	error: Error | null;
 	loadRequestId: number; // Request token for loads
 	/**
@@ -132,6 +138,9 @@ export function transition(
 					streamUrl: null,
 					// Reset effectiveQuality until new stream loads
 					effectiveQuality: null,
+					sampleRate: null,
+					bitDepth: null,
+					replayGain: null,
 					error: null,
 					loadRequestId: context.loadRequestId + 1,
 					attemptId: newAttemptId,
@@ -161,7 +170,10 @@ export function transition(
 					queueIndex: event.queueIndex,
 					currentTrack: nextTrack ?? null,
 					currentTime: trackChanged ? 0 : context.currentTime,
-					duration: trackChanged ? nextTrack?.duration ?? 0 : context.duration
+					duration: trackChanged ? nextTrack?.duration ?? 0 : context.duration,
+					sampleRate: trackChanged ? null : context.sampleRate,
+					bitDepth: trackChanged ? null : context.bitDepth,
+					replayGain: trackChanged ? null : context.replayGain
 				}
 			};
 		}
@@ -471,6 +483,45 @@ export function transition(
 			};
 		}
 
+		case 'SAMPLE_RATE_UPDATE': {
+			if (context.sampleRate === event.sampleRate) {
+				return current;
+			}
+			return {
+				state,
+				context: {
+					...context,
+					sampleRate: event.sampleRate
+				}
+			};
+		}
+
+		case 'BIT_DEPTH_UPDATE': {
+			if (context.bitDepth === event.bitDepth) {
+				return current;
+			}
+			return {
+				state,
+				context: {
+					...context,
+					bitDepth: event.bitDepth
+				}
+			};
+		}
+
+		case 'REPLAY_GAIN_UPDATE': {
+			if (context.replayGain === event.replayGain) {
+				return current;
+			}
+			return {
+				state,
+				context: {
+					...context,
+					replayGain: event.replayGain
+				}
+			};
+		}
+
 		default:
 			return current;
 	}
@@ -493,6 +544,9 @@ export function createInitialState(quality: AudioQuality = 'HIGH'): PlaybackMach
 			duration: 0,
 			volume: 0.8,
 			isMuted: false,
+			sampleRate: null,
+			bitDepth: null,
+			replayGain: null,
 			error: null,
 			loadRequestId: 0,
 			attemptId: generateAttemptId(),
@@ -514,7 +568,6 @@ export type SideEffect =
 	| { type: 'PAUSE_AUDIO' }
 	| { type: 'SEEK_AUDIO'; position: number }
 	| { type: 'SHOW_ERROR'; error: Error }
-	| { type: 'SYNC_PLAYER_TRACK'; track: Track }
 	| { type: 'HANDLE_AUDIO_ERROR'; error: Event; attemptId: string };
 
 /**
@@ -587,9 +640,6 @@ export function deriveSideEffects(
 	}
 
 	// Event-specific effects
-	if (event.type === 'CONVERSION_COMPLETE') {
-		effects.push({ type: 'SYNC_PLAYER_TRACK', track: event.track });
-	}
 	if (event.type === 'LOAD_COMPLETE' && event.streamUrl) {
 		effects.push({
 			type: 'SET_AUDIO_SRC',

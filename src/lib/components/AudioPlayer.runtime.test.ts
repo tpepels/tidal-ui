@@ -6,8 +6,9 @@ const readAudioPlayerSource = () =>
 	readFileSync(resolve(process.cwd(), 'src/lib/components/AudioPlayer.svelte'), 'utf8');
 
 describe('AudioPlayer machine-first contract', () => {
-	it('does not use store→machine sync subscription', () => {
+	it('does not reference legacy store sync', () => {
 		const source = readAudioPlayerSource();
-		expect(source).not.toContain('playerStore.subscribe(syncFromPlayerState)');
+		const legacyToken = ['player', 'Store'].join('');
+		expect(source).not.toContain(legacyToken);
 	});
 });

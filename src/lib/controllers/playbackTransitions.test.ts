@@ -1,29 +1,45 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { writable } from 'svelte/store';
+import type { PlayableTrack } from '../types';
+import { createPlaybackTransitions } from './playbackTransitions';
 
 const playbackMachineActions = vi.hoisted(() => ({
-	setQueue: vi.fn(),
-	play: vi.fn(),
-	pause: vi.fn(),
-	changeQuality: vi.fn(),
-	loadTrack: vi.fn(),
 	updateTime: vi.fn(),
 	updateDuration: vi.fn(),
 	updateVolume: vi.fn()
+}));
+
+const playbackFacadeMock = vi.hoisted(() => ({
+	play: vi.fn(),
+	pause: vi.fn(),
+	toggle: vi.fn(),
+	loadQueue: vi.fn(),
+	next: vi.fn(),
+	previous: vi.fn(),
+	enqueue: vi.fn(),
+	enqueueNext: vi.fn(),
+	clearQueue: vi.fn()
 }));
 
 vi.mock('$lib/stores/playbackMachine.svelte', () => ({
 	playbackMachine: { actions: playbackMachineActions }
 }));
 
-import type { PlayableTrack } from '../types';
-import { get } from 'svelte/store';
-import { playerStore } from '../stores/player';
-import { playbackMachine } from '$lib/stores/playbackMachine.svelte';
-import { createPlaybackTransitions } from './playbackTransitions';
+vi.mock('$lib/controllers/playbackFacade', () => ({
+	playbackFacade: playbackFacadeMock
+}));
+
+type PlaybackState = {
+	currentTrack: PlayableTrack | null;
+	isPlaying: boolean;
+	isLoading: boolean;
+	currentTime: number;
+	duration: number;
+	queue: PlayableTrack[];
+	queueIndex: number;
+};
 
 describe('playbackTransitions', () => {
-	let transitions = createPlaybackTransitions(playerStore);
-
 	const makeTrack = (id: number): PlayableTrack =>
 		({
 			id,
@@ -31,52 +47,94 @@ describe('playbackTransitions', () => {
 			duration: 120
 		}) as PlayableTrack;
 
+	let store = writable<PlaybackState>({
+		currentTrack: null,
+		isPlaying: false,
+		isLoading: false,
+		currentTime: 0,
+		duration: 0,
+		queue: [],
+		queueIndex: -1
+	});
+
+	let transitions = createPlaybackTransitions(store);
+
+	const resetStore = (overrides: Partial<PlaybackState> = {}) => {
+		store.set({
+			currentTrack: null,
+			isPlaying: false,
+			isLoading: false,
+			currentTime: 0,
+			duration: 0,
+			queue: [],
+			queueIndex: -1,
+			...overrides
+		});
+	};
+
 	beforeEach(() => {
 		vi.unstubAllEnvs();
-		playbackMachineActions.setQueue.mockClear();
 		playbackMachineActions.updateTime.mockClear();
 		playbackMachineActions.updateDuration.mockClear();
 		playbackMachineActions.updateVolume.mockClear();
-		playerStore.reset();
-		transitions = createPlaybackTransitions(playerStore);
+		playbackFacadeMock.play.mockClear();
+		playbackFacadeMock.pause.mockClear();
+		playbackFacadeMock.toggle.mockClear();
+		playbackFacadeMock.loadQueue.mockClear();
+		playbackFacadeMock.next.mockClear();
+		playbackFacadeMock.previous.mockClear();
+		playbackFacadeMock.enqueue.mockClear();
+		playbackFacadeMock.enqueueNext.mockClear();
+		playbackFacadeMock.clearQueue.mockClear();
+
+		store = writable({
+			currentTrack: null,
+			isPlaying: false,
+			isLoading: false,
+			currentTime: 0,
+			duration: 0,
+			queue: [],
+			queueIndex: -1
+		});
+		transitions = createPlaybackTransitions(store);
 	});
 
 	it('throws when trying to play without a track', () => {
 		expect(() => transitions.play()).toThrow();
 	});
 
-	it('plays when a track is set', () => {
+	it('calls playbackFacade when playing with a current track', () => {
 		const track = makeTrack(1);
-		transitions.setTrack(track);
+		resetStore({ currentTrack: track, queue: [track], queueIndex: 0 });
 		transitions.play();
-		expect(get(playerStore).isPlaying).toBe(true);
+		expect(playbackFacadeMock.play).toHaveBeenCalled();
+	});
+
+	it('loads a single track via playbackFacade', () => {
+		const track = makeTrack(2);
+		transitions.setTrack(track);
+		expect(playbackFacadeMock.loadQueue).toHaveBeenCalledWith([track], 0);
 	});
 
 	it('seeks within bounds', () => {
-		const track = makeTrack(2);
-		transitions.setTrack(track);
-		playerStore.setDuration(90);
+		resetStore({ duration: 90 });
 		transitions.seekTo(120);
 		expect(playbackMachineActions.updateTime).toHaveBeenCalledWith(90);
 	});
 
 	it('plays from queue index', () => {
 		const tracks = [makeTrack(1), makeTrack(2)];
-		transitions.setQueue(tracks, 0);
+		resetStore({ queue: tracks, queueIndex: 0, currentTrack: tracks[0] });
 		transitions.playFromQueueIndex(1);
-		expect(get(playerStore).currentTrack?.id).toBe(2);
+		expect(playbackFacadeMock.loadQueue).toHaveBeenCalledWith(tracks, 1);
+		expect(playbackFacadeMock.play).toHaveBeenCalled();
 	});
 
-	it('syncs queue index on next/previous', () => {
-		const tracks = [makeTrack(1), makeTrack(2), makeTrack(3)];
-		transitions.setQueue(tracks, 0);
-		playbackMachineActions.setQueue.mockClear();
-
+	it('routes next and previous through playbackFacade', () => {
 		transitions.next();
-		expect(playbackMachineActions.setQueue).toHaveBeenCalledWith(tracks, 1);
+		expect(playbackFacadeMock.next).toHaveBeenCalled();
 
-		playbackMachineActions.setQueue.mockClear();
 		transitions.previous();
-		expect(playbackMachineActions.setQueue).toHaveBeenCalledWith(tracks, 0);
+		expect(playbackFacadeMock.previous).toHaveBeenCalled();
 	});
 });

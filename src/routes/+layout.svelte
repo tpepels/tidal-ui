@@ -12,7 +12,11 @@
 	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 
 	import { toasts } from '$lib/stores/toasts';
-	import { playerStore } from '$lib/stores/player';
+	import {
+		machineCurrentTrack,
+		machineIsPlaying,
+		machineQueue
+	} from '$lib/stores/playerDerived';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { downloadLogStore } from '$lib/stores/downloadLog';
 	import {
@@ -100,7 +104,7 @@
 	let diagnosticsErrors = $state<ErrorReport[] | null>(null);
 
 	$effect(() => {
-		const current = $playerStore.currentTrack;
+		const current = $machineCurrentTrack;
 		if (current && !isSonglinkTrack(current)) {
 			const newPath = `/track/${current.id}`;
 			const isTrackPage = $page.url.pathname.startsWith('/track/');
@@ -124,7 +128,7 @@
 	};
 
 	$effect(() => {
-		if ($playerStore.currentTrack && !AudioPlayerComponent) {
+		if ($machineCurrentTrack && !AudioPlayerComponent) {
 			void ensureAudioPlayerLoaded();
 		}
 	});
@@ -265,8 +269,8 @@
 	$effect(() => {
 		if (typeof document === 'undefined') return;
 
-		const track = $playerStore.currentTrack;
-		const isPlaying = $playerStore.isPlaying;
+		const track = $machineCurrentTrack;
+		const isPlaying = $machineIsPlaying;
 
 		if (track) {
 			const artist = isSonglinkTrack(track) ? track.artistName : formatArtists(track.artists);
@@ -293,12 +297,9 @@
 	});
 
 	function collectQueueState(): { tracks: PlayableTrack[]; quality: AudioQuality } {
-		const state = get(playerStore);
-		const tracks = state.queue.length
-			? state.queue
-			: state.currentTrack
-				? [state.currentTrack]
-				: [];
+		const queue = get(machineQueue);
+		const currentTrack = get(machineCurrentTrack);
+		const tracks = queue.length ? queue : currentTrack ? [currentTrack] : [];
 		return { tracks, quality: get(downloadPreferencesStore).downloadQuality };
 	}
 
@@ -1056,7 +1057,7 @@
 				</div>
 			</main>
 
-			{#if $playerStore.currentTrack && AudioPlayerComponent}
+			{#if $machineCurrentTrack && AudioPlayerComponent}
 				<AudioPlayerComponent
 					onHeightChange={handlePlayerHeight}
 					onVisibilityChange={(visible) => {

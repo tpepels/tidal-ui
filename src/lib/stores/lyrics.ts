@@ -1,7 +1,7 @@
 import { browser } from '$app/environment';
 import { get, writable } from 'svelte/store';
 import type { PlayableTrack } from '../types';
-import { currentTrack as currentTrackStore } from './player';
+import { machineCurrentTrack } from './playerDerived';
 
 export interface LyricsState {
 	open: boolean;
@@ -22,7 +22,7 @@ function createLyricsStore() {
 
 	let currentTrack: PlayableTrack | null = null;
 
-	currentTrackStore.subscribe((track) => {
+	machineCurrentTrack.subscribe((track: PlayableTrack | null) => {
 		currentTrack = track ?? null;
 		store.update((state) => {
 			const trackChanged = state.track?.id !== currentTrack?.id;

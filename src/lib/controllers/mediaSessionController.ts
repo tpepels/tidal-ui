@@ -72,7 +72,7 @@ const getMediaSessionArtwork = (track: PlayableTrack): MediaImage[] => {
 };
 
 export const createMediaSessionController = (
-	playerStore: Readable<PlayerState>,
+	playbackState: Readable<PlayerState>,
 	getAudioElement: () => HTMLMediaElement | null,
 	handlers: MediaSessionHandlers
 ): MediaSessionController => {
@@ -140,7 +140,7 @@ export const createMediaSessionController = (
 		if (!audioElement) return;
 
 		const durationFromAudio = audioElement.duration;
-		const storeState = get(playerStore);
+		const storeState = get(playbackState);
 		const duration = Number.isFinite(durationFromAudio) ? durationFromAudio : storeState.duration;
 
 		try {

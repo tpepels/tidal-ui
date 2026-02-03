@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { writable } from 'svelte/store';
+import { get, writable } from 'svelte/store';
 import type { AudioQuality, Track } from '$lib/types';
 
 const mockGetStreamData = vi.fn();
@@ -86,7 +86,7 @@ it('uses direct stream resolver for standard quality and skips DASH manifest', a
 		audioElement.load = vi.fn();
 
 		const controller = createTrackLoadController({
-			playerStore: store,
+			getPlaybackState: () => get(store),
 			getAudioElement: () => audioElement,
 			getCurrentTrackId: () => null,
 			getSupportsLosslessPlayback: () => true,

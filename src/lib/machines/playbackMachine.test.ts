@@ -406,18 +406,6 @@ describe('playbackMachine', () => {
 			expect(effects[0]).toHaveProperty('attemptId');
 		});
 
-		it('should derive SYNC_PLAYER_TRACK effect on conversion complete', () => {
-			const initial = createInitialState();
-			const converting = transition(initial, { type: 'LOAD_TRACK', track: mockSonglinkTrack });
-			const next = transition(converting, { type: 'CONVERSION_COMPLETE', track: mockTidalTrack });
-			const effects = deriveSideEffects(converting, next, {
-				type: 'CONVERSION_COMPLETE',
-				track: mockTidalTrack
-			});
-
-			expect(effects).toContainEqual({ type: 'SYNC_PLAYER_TRACK', track: mockTidalTrack });
-		});
-
 		it('should derive LOAD_STREAM effect when entering loading state', () => {
 			const initial = createInitialState();
 			const next = transition(initial, { type: 'LOAD_TRACK', track: mockTidalTrack });

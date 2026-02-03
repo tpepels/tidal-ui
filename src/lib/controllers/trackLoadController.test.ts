@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { writable } from 'svelte/store';
+import { get, writable } from 'svelte/store';
 import type { AudioQuality, Track } from '$lib/types';
 import { createTrackLoadController } from './trackLoadController';
 
@@ -86,7 +86,7 @@ describe('trackLoadController', () => {
 		const setLoading = vi.fn();
 
 		const controller = createTrackLoadController({
-			playerStore: store,
+			getPlaybackState: () => get(store),
 			getAudioElement: () => null,
 			getCurrentTrackId: () => null,
 			getSupportsLosslessPlayback: () => true,
@@ -126,7 +126,7 @@ describe('trackLoadController', () => {
 		const setLoading = vi.fn();
 
 		const controller = createTrackLoadController({
-			playerStore: store,
+			getPlaybackState: () => get(store),
 			getAudioElement: () => null,
 			getCurrentTrackId: () => null,
 			getSupportsLosslessPlayback: () => true,
@@ -165,7 +165,7 @@ describe('trackLoadController', () => {
 		const setStreamUrl = vi.fn();
 
 		const controller = createTrackLoadController({
-			playerStore: store,
+			getPlaybackState: () => get(store),
 			getAudioElement: () => null,
 			getCurrentTrackId: () => null,
 			getSupportsLosslessPlayback: () => true,
@@ -225,7 +225,7 @@ describe('trackLoadController', () => {
 			.mockImplementationOnce(() => deferredSecond.promise);
 
 		const controller = createTrackLoadController({
-			playerStore: store,
+			getPlaybackState: () => get(store),
 			getAudioElement: () => null,
 			getCurrentTrackId: () => null,
 			getSupportsLosslessPlayback: () => true,
@@ -281,7 +281,7 @@ describe('trackLoadController', () => {
 		const onFallbackRequested = vi.fn();
 
 		const controller = createTrackLoadController({
-			playerStore: store,
+			getPlaybackState: () => get(store),
 			getAudioElement: () => null,
 			getCurrentTrackId: () => null,
 			getSupportsLosslessPlayback: () => false,

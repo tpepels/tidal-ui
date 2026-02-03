@@ -130,7 +130,7 @@ if (browser && isTestHookEnabled) {
 		userPreferencesStore.setPlaybackQuality(quality);
 		// Also dispatch directly to playback machine to avoid async subscription chain timing issues.
 		// This mirrors the behavior of __tidalSetPlaybackQuality which goes direct.
-		// The subscription chain (userPreferencesStore → playerStore → playbackMachine) is
+		// The subscription chain (userPreferencesStore → playbackMachine) is
 		// asynchronous and can cause race conditions, especially in CI environments.
 		if (typeof window.__tidalSetPlaybackQuality === 'function') {
 			window.__tidalSetPlaybackQuality(quality);

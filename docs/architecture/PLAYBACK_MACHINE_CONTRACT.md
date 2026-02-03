@@ -5,8 +5,7 @@ runtime stores and the audio element.
 
 ## Ownership
 
-- **playbackMachine**: playback state, stream URL selection, fallback/load sequencing.
-- **playerStore**: UI-facing playback state (isPlaying/isLoading/currentTrack) and queue.
+- **playbackMachine**: playback state, queue, stream URL selection, fallback/load sequencing, and stream metadata.
 - **Audio element**: source URL, playback state, currentTime progression.
 
 ## States
@@ -39,7 +38,6 @@ runtime stores and the audio element.
 - `SET_AUDIO_SRC` → set audio element src + load
 - `PLAY_AUDIO` / `PAUSE_AUDIO` / `SEEK_AUDIO`
 - `SHOW_ERROR` → user-visible error
-- `SYNC_PLAYER_TRACK` → sync playerStore track on conversion complete
 
 ## Invariants
 
@@ -50,10 +48,9 @@ runtime stores and the audio element.
 
 ## Sync Rules
 
-- Machine state drives `playerStore.isLoading` and `playerStore.isPlaying`.
-- `playerStore.currentTrack` is synced to machine track only via machine side effects.
-- Seek actions update the audio element; playerStore currentTime updates via timeupdate.
+- UI reads playback state via machine-derived stores.
+- Seek actions update the audio element; machine `currentTime` updates via timeupdate.
 
 ## Out of Scope
 
-- Queue management and volume are owned by `playerStore` and UI controls.
+- None. PlaybackMachine is the single source of truth for playback state.

@@ -1,6 +1,5 @@
 import type { PlayableTrack } from '$lib/types';
 import { playbackMachine } from '$lib/stores/playbackMachine.svelte';
-import { playerStore } from '$lib/stores/player';
 import { playbackQueueCoordinator } from '$lib/controllers/playbackQueueCoordinator';
 import { areTestHooksEnabled } from '$lib/utils/testHooks';
 
@@ -20,11 +19,12 @@ type PlaybackFacade = {
 };
 
 const loadQueue = (tracks: PlayableTrack[], startIndex = 0) => {
-	const snapshot = playbackQueueCoordinator.setQueue(tracks, startIndex);
+	const nextIndex = tracks.length > 0 ? Math.min(Math.max(startIndex, 0), tracks.length - 1) : -1;
+	const snapshot = playbackQueueCoordinator.setQueue(tracks, nextIndex);
 	const nextTrack = snapshot.currentTrack ?? null;
 	if (nextTrack) {
 		// NOTE: Do NOT call changeQuality here - it triggers reload of the CURRENT track,
-		// not the new track. loadTrack will use the correct quality from playerStore.
+		// not the new track. loadTrack will use the machine's requested quality.
 		// Calling changeQuality before loadTrack caused a race condition where the old
 		// track would continue loading/playing after switching to a new track.
 		playbackMachine.actions.loadTrack(nextTrack);
@@ -32,27 +32,22 @@ const loadQueue = (tracks: PlayableTrack[], startIndex = 0) => {
 };
 
 const play = () => {
-	const snapshot = playerStore.getSnapshot();
-	if (!snapshot.currentTrack && snapshot.queue.length > 0) {
-		const fallbackTrack = snapshot.queue[snapshot.queueIndex] ?? snapshot.queue[0];
+	const { currentTrack, queue, queueIndex } = playbackMachine.context;
+	if (!currentTrack && queue.length > 0) {
+		const fallbackTrack = queue[queueIndex] ?? queue[0];
 		if (fallbackTrack) {
-			playerStore.setTrack(fallbackTrack);
 			playbackMachine.actions.loadTrack(fallbackTrack);
 		}
-	}
-	if (snapshot.currentTrack || snapshot.queue.length > 0) {
-		playerStore.play();
 	}
 	playbackMachine.actions.play();
 };
 
 const pause = () => {
-	playerStore.pause();
 	playbackMachine.actions.pause();
 };
 
 const toggle = () => {
-	if (playerStore.getSnapshot().isPlaying) {
+	if (playbackMachine.isPlaying) {
 		pause();
 	} else {
 		play();
@@ -80,11 +75,23 @@ const previous = () => {
 };
 
 const enqueue = (track: PlayableTrack) => {
-	playbackQueueCoordinator.enqueue(track);
+	const before = playbackMachine.context;
+	const wasEmpty = before.queue.length === 0 && !before.currentTrack;
+	const snapshot = playbackQueueCoordinator.enqueue(track);
+	if (wasEmpty && snapshot.currentTrack) {
+		playbackMachine.actions.loadTrack(snapshot.currentTrack);
+		playbackMachine.actions.play();
+	}
 };
 
 const enqueueNext = (track: PlayableTrack) => {
-	playbackQueueCoordinator.enqueueNext(track);
+	const before = playbackMachine.context;
+	const wasEmpty = before.queue.length === 0 && !before.currentTrack;
+	const snapshot = playbackQueueCoordinator.enqueueNext(track);
+	if (wasEmpty && snapshot.currentTrack) {
+		playbackMachine.actions.loadTrack(snapshot.currentTrack);
+		playbackMachine.actions.play();
+	}
 };
 
 const removeFromQueue = (index: number) => {

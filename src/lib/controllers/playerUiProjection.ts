@@ -1,4 +1,3 @@
-import { playerStore } from '$lib/stores/player';
 import { playbackMachine } from '$lib/stores/playbackMachine.svelte';
 
 export const playerUiProjection = {
@@ -12,12 +11,12 @@ export const playerUiProjection = {
 		playbackMachine.actions.updateVolume(volume);
 	},
 	setSampleRate(sampleRate: number | null) {
-		playerStore.setSampleRate(sampleRate);
+		playbackMachine.actions.updateSampleRate(sampleRate);
 	},
 	setBitDepth(bitDepth: number | null) {
-		playerStore.setBitDepth(bitDepth);
+		playbackMachine.actions.updateBitDepth(bitDepth);
 	},
 	setReplayGain(replayGain: number | null) {
-		playerStore.setReplayGain(replayGain);
+		playbackMachine.actions.updateReplayGain(replayGain);
 	}
 };

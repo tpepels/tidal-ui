@@ -3,11 +3,6 @@
  *
  * Derived stores that source playback state from the playbackMachine (single source of truth).
  * These provide a Svelte store interface for components while the machine owns the state.
- *
- * Migration path:
- * 1. Components can gradually switch from playerStore to these derived stores
- * 2. playerStore sync can be removed once all components migrate
- * 3. Persistence can be added directly to machine context
  */
 
 import { derived, readable, type Readable } from 'svelte/store';
@@ -122,6 +117,27 @@ export const machineIsMuted: Readable<boolean> = createMachineStore(
 );
 
 /**
+ * Current stream sample rate (Hz)
+ */
+export const machineSampleRate: Readable<number | null> = createMachineStore(
+	() => playbackMachine.sampleRate
+);
+
+/**
+ * Current stream bit depth
+ */
+export const machineBitDepth: Readable<number | null> = createMachineStore(
+	() => playbackMachine.bitDepth
+);
+
+/**
+ * Current stream replay gain (dB)
+ */
+export const machineReplayGain: Readable<number | null> = createMachineStore(
+	() => playbackMachine.replayGain
+);
+
+/**
  * Queue of tracks
  */
 export const machineQueue: Readable<PlayableTrack[]> = createMachineStore(
@@ -133,6 +149,38 @@ export const machineQueue: Readable<PlayableTrack[]> = createMachineStore(
  */
 export const machineQueueIndex: Readable<number> = createMachineStore(
 	() => playbackMachine.context.queueIndex
+);
+
+/**
+ * Full playback snapshot for controllers that need multiple fields.
+ */
+export const machinePlaybackState = derived(
+	[
+		machineCurrentTrack,
+		machineIsPlaying,
+		machineIsLoading,
+		machineCurrentTime,
+		machineDuration,
+		machineQueue,
+		machineQueueIndex
+	],
+	([
+		$currentTrack,
+		$isPlaying,
+		$isLoading,
+		$currentTime,
+		$duration,
+		$queue,
+		$queueIndex
+	]) => ({
+		currentTrack: $currentTrack,
+		isPlaying: $isPlaying,
+		isLoading: $isLoading,
+		currentTime: $currentTime,
+		duration: $duration,
+		queue: $queue,
+		queueIndex: $queueIndex
+	})
 );
 
 /**

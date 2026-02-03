@@ -15,21 +15,7 @@ type PlaybackState = {
 	queueIndex: number;
 };
 
-type PlaybackStore = Readable<PlaybackState> & {
-	setTrack: (track: PlayableTrack) => void;
-	play: () => void;
-	pause: () => void;
-	togglePlay: () => void;
-	setCurrentTime: (time: number) => void;
-	setDuration: (duration: number) => void;
-	setQueue: (queue: PlayableTrack[], startIndex?: number) => void;
-	enqueue: (track: PlayableTrack) => void;
-	enqueueNext: (track: PlayableTrack) => void;
-	next: () => void;
-	previous: () => void;
-	playAtIndex: (index: number) => void;
-	clearQueue: () => void;
-};
+type PlaybackStore = Readable<PlaybackState>;
 
 type PlaybackTransitions = {
 	play: () => void;
@@ -46,8 +32,8 @@ type PlaybackTransitions = {
 	clearQueue: () => void;
 };
 
-export const createPlaybackTransitions = (playerStore: PlaybackStore): PlaybackTransitions => {
-	const getState = () => get(playerStore);
+export const createPlaybackTransitions = (playbackState: PlaybackStore): PlaybackTransitions => {
+	const getState = () => get(playbackState);
 
 	return {
 		play() {

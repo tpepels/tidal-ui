@@ -2,14 +2,36 @@
 import { expect, afterEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/svelte';
 import * as matchers from '@testing-library/jest-dom/matchers';
+import { existsSync, writeFileSync } from 'node:fs';
 
-const localStorageArgIndex = process.argv.indexOf('--localstorage-file');
-if (localStorageArgIndex !== -1) {
-	const nextArg = process.argv[localStorageArgIndex + 1];
-	if (!nextArg || nextArg.startsWith('-')) {
-		process.argv.splice(localStorageArgIndex, 1);
+const LOCAL_STORAGE_FILE = '.node-localstorage';
+const ensureLocalStorageFlag = (argv: string[]) => {
+	const flag = '--localstorage-file';
+	const prefix = `${flag}=`;
+	const flagIndex = argv.indexOf(flag);
+	if (flagIndex !== -1) {
+		const nextArg = argv[flagIndex + 1];
+		const hasValidPath = Boolean(nextArg) && !nextArg.startsWith('-');
+		if (!hasValidPath) {
+			argv.splice(flagIndex + 1, nextArg ? 1 : 0, LOCAL_STORAGE_FILE);
+		}
+		return;
 	}
+	const prefixedIndex = argv.findIndex((arg) => arg.startsWith(prefix));
+	if (prefixedIndex !== -1) {
+		const value = argv[prefixedIndex].slice(prefix.length);
+		if (!value || value.startsWith('-')) {
+			argv[prefixedIndex] = `${prefix}${LOCAL_STORAGE_FILE}`;
+		}
+	}
+};
+
+if (!existsSync(LOCAL_STORAGE_FILE)) {
+	writeFileSync(LOCAL_STORAGE_FILE, '');
 }
+
+ensureLocalStorageFlag(process.execArgv);
+ensureLocalStorageFlag(process.argv);
 
 // Extend expect with jest-dom matchers
 expect.extend(matchers);
@@ -156,25 +178,29 @@ vi.mock('$app/environment', () => ({
 	version: '3.3'
 }));
 
-if (typeof globalThis.localStorage?.getItem !== 'function') {
-	const storage = new Map<string, string>();
-	const localStorageMock = {
-		getItem: (key: string) => storage.get(key) ?? null,
-		setItem: (key: string, value: string) => {
-			storage.set(key, value);
-		},
-		removeItem: (key: string) => {
-			storage.delete(key);
-		},
-		clear: () => {
-			storage.clear();
-		}
-	};
-	Object.defineProperty(globalThis, 'localStorage', {
-		value: localStorageMock,
-		writable: true
-	});
-}
+const storage = new Map<string, string>();
+const localStorageMock = {
+	getItem: (key: string) => storage.get(key) ?? null,
+	setItem: (key: string, value: string) => {
+		storage.set(key, String(value));
+	},
+	removeItem: (key: string) => {
+		storage.delete(key);
+	},
+	clear: () => {
+		storage.clear();
+	},
+	key: (index: number) => Array.from(storage.keys())[index] ?? null,
+	get length() {
+		return storage.size;
+	}
+};
+
+Object.defineProperty(globalThis, 'localStorage', {
+	value: localStorageMock,
+	writable: true,
+	configurable: true
+});
 
 // Cleanup after each test
 afterEach(() => {

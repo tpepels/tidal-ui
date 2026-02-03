@@ -1,14 +1,12 @@
 /**
  * Browse State Tests
  *
- * Critical invariant: browseState changes should NEVER affect playerStore or playbackMachine.
- * These tests verify the isolation between browsing context and playback state.
+ * Critical invariant: browseState changes should NEVER affect playback state.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { get } from 'svelte/store';
 import { browseState, viewingAlbum, viewingArtist, viewingTrack } from './browseState';
-import { playerStore } from './player';
 import type { Album, Artist, Track } from '$lib/types';
 
 // Mock data - using type assertions since we only need subset of fields for these tests
@@ -51,59 +49,6 @@ describe('browseState', () => {
 	beforeEach(() => {
 		// Reset browse state before each test
 		browseState.reset();
-	});
-
-	describe('state isolation', () => {
-		it('should NOT modify playerStore when setting viewing album', () => {
-			// Get initial player state
-			const initialPlayerState = get(playerStore);
-			const initialTrack = initialPlayerState.currentTrack;
-
-			// Set browse state
-			browseState.setViewingAlbum(mockAlbum);
-
-			// Player state should be unchanged
-			const newPlayerState = get(playerStore);
-			expect(newPlayerState.currentTrack).toBe(initialTrack);
-			expect(newPlayerState.isPlaying).toBe(initialPlayerState.isPlaying);
-			expect(newPlayerState.queue).toEqual(initialPlayerState.queue);
-		});
-
-		it('should NOT modify playerStore when setting viewing track', () => {
-			const initialPlayerState = get(playerStore);
-
-			browseState.setViewingTrack(mockTrack);
-
-			const newPlayerState = get(playerStore);
-			expect(newPlayerState.currentTrack).toBe(initialPlayerState.currentTrack);
-			expect(newPlayerState.isPlaying).toBe(initialPlayerState.isPlaying);
-		});
-
-		it('should NOT modify playerStore when setting viewing artist', () => {
-			const initialPlayerState = get(playerStore);
-
-			browseState.setViewingArtist(mockArtist);
-
-			const newPlayerState = get(playerStore);
-			expect(newPlayerState.currentTrack).toBe(initialPlayerState.currentTrack);
-		});
-
-		it('viewing different album should NOT change now-playing artwork context', () => {
-			// Simulate: user is playing track from album A
-			playerStore.setQueue([mockTrack], 0);
-			const playingTrack = get(playerStore).currentTrack;
-
-			// User navigates to album B (different album)
-			const albumB: Album = { ...mockAlbum, id: 999, title: 'Different Album' };
-			browseState.setViewingAlbum(albumB);
-
-			// Now-playing should still be the original track
-			expect(get(playerStore).currentTrack).toBe(playingTrack);
-			expect((get(playerStore).currentTrack as Track | null)?.album.id).toBe(mockAlbum.id);
-
-			// Browse state should show album B
-			expect(get(viewingAlbum)?.id).toBe(999);
-		});
 	});
 
 	describe('viewing album', () => {

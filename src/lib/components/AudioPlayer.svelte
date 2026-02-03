@@ -6,7 +6,6 @@
 	console.log('[AudioPlayer] Component loading');
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
-	import { playerStore } from '$lib/stores/player';
 	import {
 		machineCurrentTrack,
 		machineIsPlaying,
@@ -15,7 +14,11 @@
 		machineVolume,
 		machineQueue,
 		machineQueueIndex,
-		machineIsMuted
+		machineIsMuted,
+		machinePlaybackState,
+		machineSampleRate,
+		machineBitDepth,
+		machineReplayGain
 	} from '$lib/stores/playerDerived';
 	import { lyricsStore } from '$lib/stores/lyrics';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
@@ -81,15 +84,15 @@
 
 	const PRELOAD_THRESHOLD_SECONDS = 12;
 	const hiResQualities = new Set<AudioQuality>(['HI_RES_LOSSLESS']);
-	const sampleRateLabel = $derived(formatSampleRate($playerStore.sampleRate));
-	const bitDepthLabel = $derived(formatBitDepth($playerStore.bitDepth));
+	const sampleRateLabel = $derived(formatSampleRate($machineSampleRate));
+	const bitDepthLabel = $derived(formatBitDepth($machineBitDepth));
 	const machineStreamUrl = $derived(playbackMachine.streamUrl || streamUrl);
 	const isFirefox = typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent);
 	let supportsLosslessPlayback = true;
 	let streamingFallbackQuality: AudioQuality = 'HIGH';
 
 	const mediaSessionController = createMediaSessionController(
-		playerStore,
+		machinePlaybackState,
 		() => audioElement,
 		{
 			onPlay: () => {
@@ -134,7 +137,7 @@
 	);
 
 	const audioElementController = createAudioElementController({
-		playerStore,
+		playbackState: machinePlaybackState,
 		getAudioElement: () => audioElement,
 		onSetCurrentTime: (time) => playbackMachine.actions.updateTime(time),
 		onSetDuration: (duration) => playbackMachine.actions.updateDuration(duration),
@@ -148,7 +151,7 @@
 		mediaSessionController
 	});
 
-	const playbackTransitions = createPlaybackTransitions(playerStore);
+	const playbackTransitions = createPlaybackTransitions(machinePlaybackState);
 
 	function requestPlay() {
 		playbackFacade.play();
@@ -226,7 +229,6 @@
 	});
 	// -----------------------------
 
-	// Playback is controlled via playbackMachine; playerStore mirrors machine state for UI.
 
 	$effect(() => {
 		if (showQueuePanel && $machineQueue.length === 0) {
@@ -277,7 +279,7 @@
 	$effect(() => {
 		if (audioElement) {
 			const baseVolume = $machineVolume;
-			const replayGain = $playerStore.replayGain;
+			const replayGain = $machineReplayGain;
 
 			if (replayGain !== null && typeof replayGain === 'number') {
 				const gainFactor = Math.pow(10, replayGain / 20);

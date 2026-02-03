@@ -5,15 +5,8 @@ export { losslessAPI as tidalAPI } from './api';
 export * from './types';
 
 // Export stores
-export {
-	playerStore,
-	currentTrack,
-	isPlaying,
-	currentTime,
-	duration,
-	volume,
-	progress
-} from './stores/player';
+export { playbackMachine } from './stores/playbackMachine.svelte';
+export * from './stores/playerDerived';
 export { downloadUiStore } from './stores/downloadUi';
 
 // Export components

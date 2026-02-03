@@ -9,7 +9,6 @@ describe('AudioPlayer integration contract', () => {
 	it('routes playback intent through the playback facade', () => {
 		const source = readAudioPlayerSource();
 
-		expect(source).toContain("import { playerStore } from '$lib/stores/player';");
 		expect(source).toContain("import { playbackMachine } from '$lib/stores/playbackMachine.svelte';");
 		expect(source).toContain("import { playbackFacade } from '$lib/controllers/playbackFacade';");
 		expect(source).toContain('playbackFacade.play');

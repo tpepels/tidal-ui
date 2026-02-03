@@ -10,7 +10,6 @@ import type { Track, Album, Playlist } from '$lib/types';
 
 const {
 	mockSearchStoreActions,
-	mockPlayerStore,
 	mockToasts,
 	mockExecuteTabSearch,
 	mockConvertStreamingUrl,
@@ -19,16 +18,12 @@ const {
 	mockIsSupportedStreamingUrl,
 	mockIsSpotifyPlaylistUrl,
 	mockPrecacheTrackStream,
-	mockPlaybackFacade
+	mockPlaybackFacade,
+	mockPlaybackMachine
 } = vi.hoisted(() => ({
 	mockSearchStoreActions: {
 		search: vi.fn(),
 		commit: vi.fn()
-	},
-	mockPlayerStore: {
-		setTrack: vi.fn(),
-		play: vi.fn(),
-		quality: 'LOSSLESS'
 	},
 	mockToasts: {
 		error: vi.fn(),
@@ -47,6 +42,9 @@ const {
 		play: vi.fn(),
 		pause: vi.fn(),
 		loadQueue: vi.fn()
+	},
+	mockPlaybackMachine: {
+		quality: 'LOSSLESS'
 	}
 }));
 
@@ -55,8 +53,8 @@ vi.mock('$lib/stores/searchStoreAdapter', () => ({
 	searchStoreActions: mockSearchStoreActions
 }));
 
-vi.mock('$lib/stores/player', () => ({
-	playerStore: mockPlayerStore
+vi.mock('$lib/stores/playbackMachine.svelte', () => ({
+	playbackMachine: mockPlaybackMachine
 }));
 
 vi.mock('$lib/stores/toasts', () => ({
@@ -89,9 +87,6 @@ vi.mock('$lib/controllers/playbackFacade', () => ({
 	playbackFacade: mockPlaybackFacade
 }));
 
-vi.mock('svelte/store', () => ({
-	get: vi.fn(() => ({ quality: 'LOSSLESS' }))
-}));
 
 describe('SearchOrchestrator', () => {
 	let orchestrator: SearchOrchestrator;

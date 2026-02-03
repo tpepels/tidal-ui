@@ -9,7 +9,7 @@ import type { Track, Album, Playlist } from '$lib/types';
 import type { SearchTab } from '$lib/stores/searchStoreAdapter';
 import type { RegionOption } from '$lib/stores/region';
 import { searchStoreActions } from '$lib/stores/searchStoreAdapter';
-import { playerStore } from '$lib/stores/player';
+import { playbackMachine } from '$lib/stores/playbackMachine.svelte';
 import { playbackFacade } from '$lib/controllers/playbackFacade';
 import { toasts } from '$lib/stores/toasts';
 import { trackError } from '$lib/core/errorTracker';
@@ -22,7 +22,6 @@ import { precacheTrackStream } from '$lib/services/search/streamingUrlConversion
 import { playlistOrchestrator } from './playlistOrchestrator';
 import { isTidalUrl } from '$lib/utils/urlParser';
 import { isSupportedStreamingUrl, isSpotifyPlaylistUrl } from '$lib/utils/songlink';
-import { get } from 'svelte/store';
 
 /**
  * Search orchestration options
@@ -331,7 +330,7 @@ export class SearchOrchestrator {
 					}
 
 					// Pre-cache the stream URL for immediate playback
-					const currentQuality = get(playerStore).quality;
+					const currentQuality = playbackMachine.quality;
 					await precacheTrackStream(track.id, currentQuality);
 
 					// Play track immediately

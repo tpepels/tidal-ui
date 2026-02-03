@@ -4,14 +4,12 @@ vi.mock('./api', () => ({
 	losslessAPI: { name: 'lossless' }
 }));
 
-vi.mock('./stores/player', () => ({
-	playerStore: 'playerStore',
-	currentTrack: 'currentTrack',
-	isPlaying: 'isPlaying',
-	currentTime: 'currentTime',
-	duration: 'duration',
-	volume: 'volume',
-	progress: 'progress'
+vi.mock('./stores/playbackMachine.svelte', () => ({
+	playbackMachine: 'playbackMachine'
+}));
+
+vi.mock('./stores/playerDerived', () => ({
+	machineCurrentTrack: 'machineCurrentTrack'
 }));
 
 vi.mock('./stores/downloadUi', () => ({
@@ -34,7 +32,8 @@ describe('lib exports', () => {
 	it('re-exports API, stores, and components', async () => {
 		const lib = await import('./index');
 		expect(lib.tidalAPI).toEqual({ name: 'lossless' });
-		expect(lib.playerStore).toBe('playerStore');
+		expect(lib.playbackMachine).toBe('playbackMachine');
+		expect(lib.machineCurrentTrack).toBe('machineCurrentTrack');
 		expect(lib.downloadUiStore).toBe('downloadUiStore');
 		expect(lib.AudioPlayer).toEqual({ name: 'AudioPlayer' });
 		expect(lib.SearchInterface).toEqual({ name: 'SearchInterface' });

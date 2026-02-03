@@ -12,7 +12,7 @@
  * - Storing navigation breadcrumbs
  *
  * NOT for:
- * - Now playing track (use playerStore)
+ * - Now playing track (use playbackMachine / playerDerived)
  * - Playback status (use playbackMachine)
  * - Queue management (use playbackQueueCoordinator)
  */

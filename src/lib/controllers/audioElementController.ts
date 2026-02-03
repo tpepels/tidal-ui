@@ -2,7 +2,7 @@ import { get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 import type { PlayableTrack } from '$lib/types';
 
-type PlayerState = {
+type PlaybackState = {
 	currentTrack: PlayableTrack | null;
 	duration: number;
 	currentTime: number;
@@ -21,7 +21,7 @@ type AudioElementController = {
 };
 
 type ControllerOptions = {
-	playerStore: Readable<PlayerState>;
+	playbackState: Readable<PlaybackState>;
 	getAudioElement: () => HTMLMediaElement | null;
 	onSetCurrentTime: (time: number) => void;
 	onSetDuration: (duration: number) => void;
@@ -65,7 +65,7 @@ export const createAudioElementController = (options: ControllerOptions): AudioE
 		if (!Number.isFinite(audioElement.currentTime)) {
 			return;
 		}
-		const storeState = get(options.playerStore);
+		const storeState = get(options.playbackState);
 		const duration = audioElement.duration;
 		if (storeState.currentTime > 0 && audioElement.currentTime === 0) {
 			return;

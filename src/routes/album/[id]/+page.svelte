@@ -18,7 +18,11 @@
 		Shuffle,
 		LoaderCircle,
 	} from 'lucide-svelte';
-	import { playerStore } from '$lib/stores/player';
+	import {
+		machineCurrentTrack,
+		machineIsPlaying,
+		machineQueue
+	} from '$lib/stores/playerDerived';
 	import { playbackFacade } from '$lib/controllers/playbackFacade';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
@@ -36,10 +40,10 @@
 
 	const isAlbumQueue = $derived(
 		tracks.length > 0 &&
-			$playerStore.queue.length === tracks.length &&
-			$playerStore.queue.every((t, i) => t?.id === tracks[i]?.id)
+			$machineQueue.length === tracks.length &&
+			$machineQueue.every((t, i) => t?.id === tracks[i]?.id)
 	);
-	const isAlbumPlaying = $derived(isAlbumQueue && $playerStore.isPlaying);
+	const isAlbumPlaying = $derived(isAlbumQueue && $machineIsPlaying);
 	let downloadError = $state<string | null>(null);
 	const albumDownloadMode = $derived($downloadPreferencesStore.mode);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
@@ -113,7 +117,7 @@
 
 		if (isAlbumQueue) {
 			const firstTrackId = tracks[0]?.id;
-			if ($playerStore.currentTrack?.id !== firstTrackId) {
+			if ($machineCurrentTrack?.id !== firstTrackId) {
 				playbackFacade.loadQueue(tracks, 0);
 			}
 			playbackFacade.play();

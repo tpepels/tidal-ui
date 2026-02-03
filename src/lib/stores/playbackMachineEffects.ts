@@ -2,8 +2,7 @@ import { toasts } from '$lib/stores/toasts';
 import { convertSonglinkTrackToTidal } from '$lib/utils/trackConversion';
 import { isSonglinkTrack } from '$lib/types';
 import type { PlaybackEvent, SideEffect } from '$lib/machines/playbackMachine';
-import type { AudioQuality, Track } from '$lib/types';
-import { playerStore } from '$lib/stores/player';
+import type { AudioQuality, Track, PlayableTrack } from '$lib/types';
 import { trackError } from '$lib/core/errorTracker';
 import type { TrackLoadController } from '$lib/controllers/trackLoadController';
 import {
@@ -101,7 +100,11 @@ type PlaybackLoadUiCallbacks = {
 
 export class PlaybackMachineSideEffectHandler {
 	private audioElement: HTMLAudioElement | null = null;
-	private syncPlayerTrack: ((track: Track) => void) | null = null;
+	private getCurrentTrack: (() => PlayableTrack | null) | null = null;
+	private getQueue: (() => PlayableTrack[]) | null = null;
+	private getQueueIndex: (() => number) | null = null;
+	private getPlaybackQuality: (() => AudioQuality) | null = null;
+	private getIsPlaying: (() => boolean) | null = null;
 	private loadUiCallbacks: PlaybackLoadUiCallbacks = {};
 	private trackLoadController: TrackLoadController | null = null;
 	private trackLoadControllerInit: Promise<void> | null = null;
@@ -123,8 +126,33 @@ export class PlaybackMachineSideEffectHandler {
 	 */
 	private currentAttemptId: string | null = null;
 
-	constructor(options?: { syncPlayerTrack?: (track: Track) => void }) {
-		this.syncPlayerTrack = options?.syncPlayerTrack ?? null;
+	constructor(options?: {
+		getCurrentTrack?: () => PlayableTrack | null;
+		getQueue?: () => PlayableTrack[];
+		getQueueIndex?: () => number;
+		getPlaybackQuality?: () => AudioQuality;
+		getIsPlaying?: () => boolean;
+	}) {
+		this.getCurrentTrack = options?.getCurrentTrack ?? null;
+		this.getQueue = options?.getQueue ?? null;
+		this.getQueueIndex = options?.getQueueIndex ?? null;
+		this.getPlaybackQuality = options?.getPlaybackQuality ?? null;
+		this.getIsPlaying = options?.getIsPlaying ?? null;
+	}
+
+	private getPlaybackStateSnapshot(): {
+		currentTrack: PlayableTrack | null;
+		queue: PlayableTrack[];
+		queueIndex: number;
+		quality: AudioQuality;
+	} {
+		const fallbackQuality: AudioQuality = this.getPlaybackQuality?.() ?? this.requestedQuality ?? 'HIGH';
+		return {
+			currentTrack: this.getCurrentTrack?.() ?? null,
+			queue: this.getQueue?.() ?? [],
+			queueIndex: this.getQueueIndex?.() ?? -1,
+			quality: fallbackQuality
+		};
 	}
 
 	/**
@@ -223,7 +251,7 @@ export class PlaybackMachineSideEffectHandler {
 		const preloadThreshold = this.loadUiCallbacks.preloadThresholdSeconds ?? 12;
 
 		this.trackLoadController = createTrackLoadController({
-			playerStore,
+			getPlaybackState: () => this.getPlaybackStateSnapshot(),
 			getAudioElement: () => this.audioElement,
 			getCurrentTrackId: () => this.currentTrackId,
 			getSupportsLosslessPlayback: () =>
@@ -246,13 +274,14 @@ export class PlaybackMachineSideEffectHandler {
 			getSequence: () => this.loadSequence,
 			isHiResQuality: hiResCheck,
 			preloadThresholdSeconds: preloadThreshold,
-			getPlaybackQuality: () => this.requestedQuality ?? playerStore.getSnapshot().quality,
+			getPlaybackQuality: () =>
+				this.requestedQuality ?? this.getPlaybackQuality?.() ?? 'HIGH',
 			getStreamingFallbackQuality: () =>
 				this.loadUiCallbacks.getStreamingFallbackQuality?.() ??
 				(this.loadUiCallbacks.isFirefox?.() ? 'LOW' : 'HIGH'),
 			onLoadComplete: (url, quality) => {
 				const shouldResume =
-					this.resumeAfterFallback || playerStore.getSnapshot().isPlaying;
+					this.resumeAfterFallback || (this.getIsPlaying?.() ?? false);
 				const wasFallback = this.resumeAfterFallback;
 				if (this.resumeAfterFallback) {
 					this.resumeAfterFallback = false;
@@ -315,10 +344,10 @@ export class PlaybackMachineSideEffectHandler {
 		});
 
 		this.playbackFallbackController = createPlaybackFallbackController({
-			getCurrentTrack: () => playerStore.getSnapshot().currentTrack,
-			getPlayerQuality: () => playerStore.getSnapshot().quality,
+			getCurrentTrack: () => this.getCurrentTrack?.() ?? null,
+			getPlayerQuality: () => this.getPlaybackQuality?.() ?? 'HIGH',
 			getCurrentPlaybackQuality: () => this.currentPlaybackQuality,
-			getIsPlaying: () => playerStore.getSnapshot().isPlaying,
+			getIsPlaying: () => this.getIsPlaying?.() ?? false,
 			getSupportsLosslessPlayback: () =>
 				this.loadUiCallbacks.getSupportsLosslessPlayback?.() ?? true,
 			getStreamingFallbackQuality: () =>
@@ -573,10 +602,6 @@ export class PlaybackMachineSideEffectHandler {
 				break;
 			}
 
-			case 'SYNC_PLAYER_TRACK': {
-				this.syncPlayerTrack?.(effect.track);
-				break;
-			}
 		}
 	}
 }
