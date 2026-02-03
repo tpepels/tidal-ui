@@ -468,6 +468,7 @@ export class PlaybackMachineSideEffectHandler {
 					break;
 				}
 				if (this.audioElement) {
+					this.audioElement.crossOrigin = 'anonymous';
 					this.audioElement.src = effect.url;
 					this.audioElement.load();
 				}

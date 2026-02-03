@@ -142,11 +142,15 @@ export const createMediaSessionController = (
 		const durationFromAudio = audioElement.duration;
 		const storeState = get(playbackState);
 		const duration = Number.isFinite(durationFromAudio) ? durationFromAudio : storeState.duration;
+		const playbackRate = audioElement.playbackRate ?? 1;
+		if (!Number.isFinite(playbackRate) || playbackRate <= 0) {
+			return;
+		}
 
 		try {
 			navigator.mediaSession.setPositionState({
 				duration: Number.isFinite(duration) ? duration : 0,
-				playbackRate: audioElement.playbackRate ?? 1,
+				playbackRate,
 				position: audioElement.currentTime
 			});
 		} catch (error) {

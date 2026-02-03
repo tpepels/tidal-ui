@@ -370,9 +370,12 @@ export const createTrackLoadController = (
 
 			pruneStreamCache();
 			const audioElement = options.getAudioElement();
-			if (audioElement) {
+			if (audioElement && !options.onLoadComplete) {
 				await tick();
 				audioElement.crossOrigin = 'anonymous';
+				if (audioElement.src !== url) {
+					audioElement.src = url;
+				}
 				audioElement.load();
 			}
 			if (isAttemptCurrent(attemptId)) {
