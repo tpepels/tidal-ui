@@ -6,7 +6,6 @@
 	import { onMount } from 'svelte';
 	import { playbackFacade } from '$lib/controllers/playbackFacade';
 	import { browseState } from '$lib/stores/browseState';
-	import { playbackMachine } from '$lib/stores/playbackMachine.svelte';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
@@ -62,9 +61,6 @@
 			// This does NOT affect playback - only UI display context
 			if (track) {
 				browseState.setViewingTrack(track);
-				if (!playbackMachine.currentTrack && playbackMachine.context.queue.length === 0) {
-					playbackMachine.actions.setQueue([track], 0);
-				}
 			}
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load track';

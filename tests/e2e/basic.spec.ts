@@ -67,6 +67,9 @@ test('navigation to track page', async ({ page }) => {
 test('audio player controls are present', async ({ page }) => {
 	await page.goto('/track/789', { waitUntil: 'domcontentloaded' });
 	await expect(page.locator('h1')).toBeVisible({ timeout: 15000 });
+	const playButton = page.getByRole('button', { name: 'Play' });
+	await expect(playButton).toBeVisible({ timeout: 15000 });
+	await playButton.click();
 	await expect(
 		page.locator('button[aria-label="Play"], button[aria-label="Pause"]')
 	).toBeVisible({ timeout: 15000 });

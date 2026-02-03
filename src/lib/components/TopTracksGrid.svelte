@@ -85,7 +85,24 @@
 		playbackFacade.enqueueNext(track);
 	}
 
+	function shouldIgnoreActivation(event: Event): boolean {
+		if (!(event.target instanceof Element)) {
+			return false;
+		}
+		return Boolean(event.target.closest('a') || event.target.closest('button'));
+	}
+
+	function handleCardActivation(event: Event, track: Track, index: number) {
+		if (shouldIgnoreActivation(event)) {
+			return;
+		}
+		handlePlayTrack(track, index);
+	}
+
 	function handleCardKeydown(event: KeyboardEvent, track: Track, index: number) {
+		if (shouldIgnoreActivation(event)) {
+			return;
+		}
 		if (event.key === 'Enter' || event.key === ' ') {
 			event.preventDefault();
 			handlePlayTrack(track, index);
@@ -112,7 +129,7 @@
 			<div
 				role="button"
 				tabindex="0"
-				onclick={() => handlePlayTrack(track, index)}
+				onclick={(event) => handleCardActivation(event, track, index)}
 				onkeydown={(event) => handleCardKeydown(event, track, index)}
 				class="group flex h-full cursor-pointer flex-col gap-4 rounded-xl border border-gray-800 bg-gray-900/50 p-4 transition-colors hover:border-blue-700 hover:bg-gray-900/70 focus:ring-2 focus:ring-blue-500 focus:outline-none {activeMenuId === track.id ? 'relative z-20' : ''}"
 			>
