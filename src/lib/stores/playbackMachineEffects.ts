@@ -36,6 +36,15 @@ const isPlayAbortError = (error: unknown): boolean => {
 	);
 };
 
+const isNotAllowedPlayError = (error: unknown): boolean => {
+	if (!(error instanceof Error)) return false;
+	return (
+		error.name === 'NotAllowedError' ||
+		error.message.toLowerCase().includes('not allowed') ||
+		error.message.toLowerCase().includes('user didn\'t interact')
+	);
+};
+
 const formatQualityLabel = (quality: AudioQuality): string => QUALITY_LABELS[quality] ?? quality;
 
 const formatFallbackToast = (
@@ -492,6 +501,13 @@ export class PlaybackMachineSideEffectHandler {
 								this.playbackOpLogger?.debug('Play interrupted by new load (expected during fallback)', {
 									phase: 'playing'
 								});
+								return;
+							}
+							if (isNotAllowedPlayError(error)) {
+								this.playbackOpLogger?.warn('Play blocked by browser autoplay policy', {
+									phase: 'error'
+								});
+								dispatch({ type: 'AUDIO_PAUSED' });
 								return;
 							}
 							this.playbackOpLogger?.error('Play failed', error instanceof Error ? error : undefined, {

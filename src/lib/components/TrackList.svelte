@@ -2,7 +2,7 @@
 	import type { Track } from '$lib/types';
 	import { losslessAPI } from '$lib/api';
 	import { onMount } from 'svelte';
-	import { machineCurrentTrack, machineIsPlaying } from '$lib/stores/playerDerived';
+	import { machineCurrentTrack, machineIsPaused, machineIsPlaying } from '$lib/stores/playerDerived';
 	import { playbackFacade } from '$lib/controllers/playbackFacade';
 	import { createTrackDownloadUi } from '$lib/controllers/trackDownloadUi';
 	import ShareButton from '$lib/components/ShareButton.svelte';
@@ -79,6 +79,10 @@
 
 	function handlePlayTrack(track: Track, index: number) {
 		console.info('[TrackList] handlePlayTrack', { trackId: track.id, index });
+		if ($machineCurrentTrack?.id === track.id && $machineIsPaused) {
+			playbackFacade.play();
+			return;
+		}
 		playbackFacade.loadQueue(tracks, index, { autoPlay: true });
 	}
 
