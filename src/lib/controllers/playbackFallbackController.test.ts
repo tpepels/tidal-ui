@@ -169,7 +169,7 @@ describe('playbackFallbackController', () => {
 	});
 
 	describe('no fallback for non-lossless qualities', () => {
-		it('should not fallback when playing streaming quality', () => {
+		it('should fallback to lower quality when streaming playback fails', () => {
 			const options = createMockOptions();
 			options.getPlayerQuality.mockReturnValue('HIGH');
 			options.getCurrentPlaybackQuality.mockReturnValue('HIGH');
@@ -189,7 +189,9 @@ describe('playbackFallbackController', () => {
 			} as unknown as Event;
 
 			const result = controller.planFallback(mockEvent);
-			expect(result).toBeNull();
+			expect(result).not.toBeNull();
+			expect(result?.quality).toBe('LOW');
+			expect(result?.reason).toBe('streaming-playback');
 		});
 	});
 

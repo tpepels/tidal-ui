@@ -39,6 +39,8 @@ export const createPlaybackFallbackController = (
 	let dashFallbackInFlight = false;
 	let losslessFallbackAttemptedTrackId: number | string | null = null;
 	let losslessFallbackInFlight = false;
+	let streamingFallbackAttemptedTrackId: number | string | null = null;
+	let streamingFallbackAttemptedQuality: AudioQuality | null = null;
 
 	const resetForTrack = (trackId: number | string) => {
 		if (dashFallbackAttemptedTrackId && dashFallbackAttemptedTrackId !== trackId) {
@@ -47,6 +49,8 @@ export const createPlaybackFallbackController = (
 		dashFallbackInFlight = false;
 		losslessFallbackAttemptedTrackId = null;
 		losslessFallbackInFlight = false;
+		streamingFallbackAttemptedTrackId = null;
+		streamingFallbackAttemptedQuality = null;
 		options.setResumeAfterFallback(false);
 	};
 
@@ -84,6 +88,16 @@ export const createPlaybackFallbackController = (
 			return false;
 		}
 		return true;
+	};
+
+	const canStartStreamingFallback = (quality: AudioQuality): boolean => {
+		if (streamingFallbackAttemptedTrackId === null) {
+			return true;
+		}
+		if (streamingFallbackAttemptedTrackId !== options.getCurrentTrack()?.id) {
+			return true;
+		}
+		return streamingFallbackAttemptedQuality !== quality;
 	};
 
 	const executeFallback = async (plan: PlaybackFallbackPlan, attemptId: string) => {
@@ -285,6 +299,32 @@ export const createPlaybackFallbackController = (
 				reason: 'lossless-playback',
 				kind: 'lossless'
 			};
+			streamingFallbackAttemptedTrackId = track.id;
+			streamingFallbackAttemptedQuality = fallbackQuality;
+		}
+		if (!fallbackPlan && currentPlayback === 'HIGH') {
+			const shouldFallbackLower =
+				codeNumber !== null &&
+				codeNumber !== abortedCode &&
+				((typeof decodeConstant === 'number' && codeNumber === decodeConstant) ||
+					(typeof srcUnsupported === 'number' && codeNumber === srcUnsupported));
+			if (shouldFallbackLower && canStartStreamingFallback('LOW')) {
+				opLogger?.warn(
+					'Streaming playback error detected; attempting lower quality fallback',
+					{
+						phase: 'error',
+						errorCode: codeNumber ?? undefined
+					}
+				);
+				streamingFallbackAttemptedTrackId = track.id;
+				streamingFallbackAttemptedQuality = 'LOW';
+				fallbackPlan = {
+					track: track as Track,
+					quality: 'LOW',
+					reason: 'streaming-playback',
+					kind: 'lossless'
+				};
+			}
 		}
 		return fallbackPlan;
 	};
