@@ -219,6 +219,9 @@ export function createPlaybackMachineStore(initialQuality: AudioQuality = 'HIGH'
 		pause() {
 			dispatch({ type: 'PAUSE' });
 		},
+		reset() {
+			dispatch({ type: 'RESET' });
+		},
 
 		seek(position: number) {
 			dispatch({ type: 'SEEK', position });
@@ -266,8 +269,8 @@ export function createPlaybackMachineStore(initialQuality: AudioQuality = 'HIGH'
 			dispatch({ type: 'AUDIO_WAITING' });
 		},
 
-		onAudioError(error: Event) {
-			dispatch({ type: 'AUDIO_ERROR', error });
+		onAudioError(error: Event, attemptId?: string) {
+			dispatch({ type: 'AUDIO_ERROR', error, attemptId });
 		},
 
 		onTrackEnd() {
@@ -420,6 +423,7 @@ const createPlaybackMachineStub = (initialQuality: AudioQuality = 'HIGH') => {
 			setQueue: noop,
 			play: noop,
 			pause: noop,
+			reset: noop,
 			seek: noop,
 			updateTime: noop,
 			updateDuration: noop,

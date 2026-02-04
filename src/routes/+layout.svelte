@@ -650,8 +650,14 @@
 			window.location.protocol === 'https:' &&
 			isLocalPreview;
 
+		const isSecureContext =
+			typeof window !== 'undefined' ? window.isSecureContext : false;
 		const shouldUseServiceWorker =
-			!dev && !isLocalPreview && !isUntrustedHttps && import.meta.env.VITE_E2E !== 'true';
+			!dev &&
+			!isLocalPreview &&
+			!isUntrustedHttps &&
+			isSecureContext &&
+			import.meta.env.VITE_E2E !== 'true';
 
 		// Proactively unregister any existing service workers if we shouldn't use them
 		if ('serviceWorker' in navigator && !shouldUseServiceWorker) {
@@ -744,9 +750,10 @@
 <svelte:head>
 	<title>{pageTitle}</title>
 	<link rel="icon" href={favicon} />
-	<link rel="manifest" href="/manifest.webmanifest" />
+	<link rel="manifest" href="/site.webmanifest" />
 
 	<meta name="theme-color" content="#0f172a" />
+	<meta name="mobile-web-app-capable" content="yes" />
 	<meta name="apple-mobile-web-app-capable" content="yes" />
 	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 </svelte:head>

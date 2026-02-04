@@ -126,6 +126,7 @@ describe('PlaybackMachineSideEffectHandler', () => {
 	});
 	it('plays, pauses, and seeks through the audio element', async () => {
 		const audio = buildAudioElement();
+		audio.src = 'https://example.com/track.mp3';
 		const handler = new PlaybackMachineSideEffectHandler();
 		handler.setAudioElement(audio);
 

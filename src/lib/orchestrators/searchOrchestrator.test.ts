@@ -363,8 +363,10 @@ describe('SearchOrchestrator', () => {
 			}
 
 			expect(mockPrecacheTrackStream).toHaveBeenCalledWith(123, 'LOSSLESS');
-			expect(mockPlaybackFacade.loadQueue).toHaveBeenCalledWith([mockTrack], 0);
-			expect(mockPlaybackFacade.play).toHaveBeenCalled();
+			expect(mockPlaybackFacade.loadQueue).toHaveBeenCalledWith([mockTrack], 0, {
+				autoPlay: true
+			});
+			expect(mockPlaybackFacade.play).not.toHaveBeenCalled();
 			expect(mockSearchStoreActions.commit).toHaveBeenCalledWith(
 				expect.objectContaining({
 					query: '',

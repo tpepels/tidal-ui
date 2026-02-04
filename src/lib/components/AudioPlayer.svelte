@@ -203,11 +203,11 @@
 	const shouldShowPlayer = $derived(!playerDismissed && (hasTrack || hasOverlays));
 
 	function dismissPlayer() {
+		playbackMachine.actions.reset();
 		playerDismissed = true;
 		showQueuePanel = false;
 		onVisibilityChange(false);
 		onHeightChange(0);
-
 	}
 
 	function restorePlayer() {
@@ -316,7 +316,8 @@
 		if (testHooksEnabled && (event as Event).isTrusted) {
 			return;
 		}
-		playbackMachine.actions.onAudioError(event);
+		const attemptId = audioElement?.dataset.playbackAttemptId ?? undefined;
+		playbackMachine.actions.onAudioError(event, attemptId);
 	}
 
 	function handleDurationChange() {

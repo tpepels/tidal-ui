@@ -30,9 +30,11 @@ const testHooksEnabled = typeof window !== 'undefined' && areTestHooksEnabled();
  */
 const isPlayAbortError = (error: unknown): boolean => {
 	if (!(error instanceof Error)) return false;
+	if (error.name !== 'AbortError') return false;
+	const message = error.message.toLowerCase();
 	return (
-		error.name === 'AbortError' &&
-		error.message.includes('interrupted by a new load request')
+		message.includes('interrupted by a new load request') ||
+		message.includes('interrupted by a call to pause')
 	);
 };
 
@@ -136,6 +138,8 @@ export class PlaybackMachineSideEffectHandler {
 	 * Async callbacks should check this before mutating state.
 	 */
 	private currentAttemptId: string | null = null;
+	private losslessPlaybackDisabled = false;
+	private pendingPlay = false;
 
 	constructor(options?: {
 		getCurrentTrack?: () => PlayableTrack | null;
@@ -276,7 +280,9 @@ export class PlaybackMachineSideEffectHandler {
 			getAudioElement: () => this.audioElement,
 			getCurrentTrackId: () => this.currentTrackId,
 			getSupportsLosslessPlayback: () =>
-				this.loadUiCallbacks.getSupportsLosslessPlayback?.() ?? true,
+				this.losslessPlaybackDisabled
+					? false
+					: this.loadUiCallbacks.getSupportsLosslessPlayback?.() ?? true,
 			setStreamUrl: (value) => this.loadUiCallbacks.setStreamUrl?.(value),
 			setBufferedPercent: (value) => this.loadUiCallbacks.setBufferedPercent?.(value),
 			setCurrentPlaybackQuality: (value) => {
@@ -341,7 +347,9 @@ export class PlaybackMachineSideEffectHandler {
 			getCurrentPlaybackQuality: () => this.currentPlaybackQuality,
 			getIsPlaying: () => this.getIsPlaying?.() ?? false,
 			getSupportsLosslessPlayback: () =>
-				this.loadUiCallbacks.getSupportsLosslessPlayback?.() ?? true,
+				this.losslessPlaybackDisabled
+					? false
+					: this.loadUiCallbacks.getSupportsLosslessPlayback?.() ?? true,
 			getStreamingFallbackQuality: () =>
 				this.loadUiCallbacks.getStreamingFallbackQuality?.() ??
 				(this.loadUiCallbacks.isFirefox?.() ? 'LOW' : 'HIGH'),
@@ -387,6 +395,41 @@ export class PlaybackMachineSideEffectHandler {
 		}
 	}
 
+	private requestPlay() {
+		if (!this.audioElement) {
+			return;
+		}
+		this.playbackOpLogger?.playing();
+		const promise = this.audioElement.play();
+		if (promise) {
+			promise.catch((error) => {
+				// AbortError is expected when a new load interrupts play() during fallback
+				if (isPlayAbortError(error)) {
+					this.playbackOpLogger?.debug('Play interrupted by new load (expected during fallback)', {
+						phase: 'playing'
+					});
+					return;
+				}
+				if (isNotAllowedPlayError(error)) {
+					this.playbackOpLogger?.warn('Play blocked by browser autoplay policy', {
+						phase: 'error'
+					});
+					this.dispatch?.({ type: 'AUDIO_PAUSED' });
+					return;
+				}
+				this.playbackOpLogger?.error('Play failed', error instanceof Error ? error : undefined, {
+					phase: 'error'
+				});
+				trackError(error instanceof Error ? error : new Error('Play failed'), {
+					component: 'playback-effects',
+					domain: 'playback',
+					source: 'play-audio'
+				});
+				this.dispatch?.({ type: 'AUDIO_WAITING' });
+			});
+		}
+	}
+
 	async execute(
 		effect: SideEffect,
 		dispatch: (event: PlaybackEvent) => void
@@ -425,6 +468,7 @@ export class PlaybackMachineSideEffectHandler {
 				this.currentPlaybackQuality = null;
 				this.dashPlaybackActive = false;
 				this.loadUiCallbacks.setDashPlaybackActive?.(false);
+				this.pendingPlay = false;
 
 				// Start new playback operation for observability
 				this.playbackOpLogger = startPlaybackOperation(effect.track.id, {
@@ -477,9 +521,22 @@ export class PlaybackMachineSideEffectHandler {
 					break;
 				}
 				if (this.audioElement) {
+					// Reset any prior error state before swapping sources.
+					if (this.audioElement.error || this.audioElement.src) {
+						this.audioElement.pause();
+						this.audioElement.removeAttribute('src');
+						this.audioElement.load();
+					}
+					this.audioElement.dataset.playbackAttemptId = effect.attemptId;
 					this.audioElement.crossOrigin = 'anonymous';
 					this.audioElement.src = effect.url;
 					this.audioElement.load();
+					const shouldPlay =
+						this.pendingPlay || (this.getIsPlaying?.() ?? false);
+					if (shouldPlay) {
+						this.pendingPlay = false;
+						queueMicrotask(() => this.requestPlay());
+					}
 				}
 				if (testHooksEnabled && typeof window !== 'undefined') {
 					const testWindow = window as typeof window & { __playSrcs?: string[] };
@@ -492,35 +549,14 @@ export class PlaybackMachineSideEffectHandler {
 
 			case 'PLAY_AUDIO': {
 				if (this.audioElement) {
-					this.playbackOpLogger?.playing();
-					const promise = this.audioElement.play();
-					if (promise) {
-						promise.catch((error) => {
-							// AbortError is expected when a new load interrupts play() during fallback
-							if (isPlayAbortError(error)) {
-								this.playbackOpLogger?.debug('Play interrupted by new load (expected during fallback)', {
-									phase: 'playing'
-								});
-								return;
-							}
-							if (isNotAllowedPlayError(error)) {
-								this.playbackOpLogger?.warn('Play blocked by browser autoplay policy', {
-									phase: 'error'
-								});
-								dispatch({ type: 'AUDIO_PAUSED' });
-								return;
-							}
-							this.playbackOpLogger?.error('Play failed', error instanceof Error ? error : undefined, {
-								phase: 'error'
-							});
-							trackError(error instanceof Error ? error : new Error('Play failed'), {
-								component: 'playback-effects',
-								domain: 'playback',
-								source: 'play-audio'
-							});
-							dispatch({ type: 'AUDIO_WAITING' });
+					if (!this.audioElement.src) {
+						this.pendingPlay = true;
+						this.playbackOpLogger?.debug('Deferring play until audio src is set', {
+							phase: 'playing'
 						});
+						break;
 					}
+					this.requestPlay();
 				}
 				break;
 			}
@@ -529,6 +565,34 @@ export class PlaybackMachineSideEffectHandler {
 				if (this.audioElement) {
 					this.playbackOpLogger?.paused();
 					this.audioElement.pause();
+				}
+				break;
+			}
+
+			case 'RESET_AUDIO': {
+				this.pendingPlay = false;
+				this.pendingLoad = null;
+				this.resumeAfterFallback = false;
+				this.lastFallbackToastKey = null;
+				this.lastFallbackToastAt = 0;
+				this.currentTrackId = null;
+				this.currentPlaybackQuality = null;
+				this.dashPlaybackActive = false;
+				this.requestedQuality = null;
+				this.playbackOpLogger = null;
+				this.losslessPlaybackDisabled = false;
+				this.loadUiCallbacks.setDashPlaybackActive?.(false);
+				this.loadUiCallbacks.setStreamUrl?.('');
+				this.loadUiCallbacks.setBufferedPercent?.(0);
+				this.loadUiCallbacks.setCurrentPlaybackQuality?.(null);
+				this.loadUiCallbacks.setSampleRate?.(null);
+				this.loadUiCallbacks.setBitDepth?.(null);
+				this.loadUiCallbacks.setReplayGain?.(null);
+				if (this.audioElement) {
+					this.audioElement.pause();
+					this.audioElement.removeAttribute('src');
+					this.audioElement.load();
+					delete this.audioElement.dataset.playbackAttemptId;
 				}
 				break;
 			}
@@ -561,6 +625,27 @@ export class PlaybackMachineSideEffectHandler {
 				}
 				const fallbackPlan =
 					this.playbackFallbackController?.planFallback(effect.error) ?? null;
+				const element = (effect.error as Event)?.currentTarget as HTMLMediaElement | null;
+				const mediaError = element?.error ?? null;
+				const code = mediaError?.code;
+				const srcUnsupported =
+					typeof mediaError?.MEDIA_ERR_SRC_NOT_SUPPORTED === 'number'
+						? mediaError.MEDIA_ERR_SRC_NOT_SUPPORTED
+						: null;
+				const decodeConstant =
+					typeof mediaError?.MEDIA_ERR_DECODE === 'number'
+						? mediaError.MEDIA_ERR_DECODE
+						: null;
+				const isLosslessUnsupported =
+					typeof code === 'number' &&
+					(code === srcUnsupported || code === decodeConstant);
+				if (fallbackPlan?.reason === 'lossless-playback' && isLosslessUnsupported) {
+					this.losslessPlaybackDisabled = true;
+					this.playbackOpLogger?.warn(
+						'Disabling lossless playback for this session after unsupported stream error',
+						{ phase: 'error' }
+					);
+				}
 				const isSyntheticError =
 					testHooksEnabled && !((effect.error as Event | undefined)?.isTrusted ?? true);
 				const requestedQuality = this.requestedQuality ?? this.getPlaybackQuality?.() ?? null;
@@ -600,9 +685,6 @@ export class PlaybackMachineSideEffectHandler {
 					break;
 				}
 				if (!fallbackPlan) {
-					const element = (effect.error as Event)?.currentTarget as HTMLMediaElement | null;
-					const mediaError = element?.error ?? null;
-					const code = mediaError?.code;
 					const details =
 						typeof code === 'number' ? ` (code ${code})` : '';
 

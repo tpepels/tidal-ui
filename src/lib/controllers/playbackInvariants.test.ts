@@ -21,9 +21,11 @@ import type { AudioQuality, PlayableTrack } from '$lib/types';
  */
 const isPlayAbortError = (error: unknown): boolean => {
 	if (!(error instanceof Error)) return false;
+	if (error.name !== 'AbortError') return false;
+	const message = error.message.toLowerCase();
 	return (
-		error.name === 'AbortError' &&
-		error.message.includes('interrupted by a new load request')
+		message.includes('interrupted by a new load request') ||
+		message.includes('interrupted by a call to pause')
 	);
 };
 
@@ -140,10 +142,10 @@ describe('Playback System Invariants', () => {
 		});
 
 		/**
-		 * INVARIANT: Non-lossless tracks never trigger fallback.
-		 * There's nothing to fall back to.
+		 * INVARIANT: Streaming playback can only fall back to a lower streaming tier.
+		 * This avoids lossless fallbacks when already streaming.
 		 */
-		it('INVARIANT: streaming quality never triggers lossless fallback', () => {
+		it('INVARIANT: streaming quality can fall back to lower streaming quality', () => {
 			const options = createMockOptions();
 			options.getPlayerQuality.mockReturnValue('HIGH');
 			options.getCurrentPlaybackQuality.mockReturnValue('HIGH');
@@ -152,9 +154,11 @@ describe('Playback System Invariants', () => {
 				currentTarget: createMediaError(4)
 			} as unknown as Event;
 
-			// Error should NOT trigger fallback
+			// Error should trigger lower-quality fallback
 			const result = controller.planFallback(mockEvent);
-			expect(result).toBeNull();
+			expect(result).not.toBeNull();
+			expect(result?.quality).toBe('LOW');
+			expect(result?.reason).toBe('streaming-playback');
 		});
 
 		/**
@@ -191,6 +195,11 @@ describe('Playback System Invariants', () => {
 		 */
 		it('INVARIANT: AbortError from play() interruption is detected', () => {
 			const abortError = createAbortError('The play() request was interrupted by a new load request');
+			expect(isPlayAbortError(abortError)).toBe(true);
+		});
+
+		it('INVARIANT: AbortError from pause interruption is detected', () => {
+			const abortError = createAbortError('The play() request was interrupted by a call to pause().');
 			expect(isPlayAbortError(abortError)).toBe(true);
 		});
 

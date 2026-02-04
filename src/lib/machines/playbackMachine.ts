@@ -49,7 +49,7 @@ export type PlaybackEvent =
 	| { type: 'AUDIO_PLAYING' }
 	| { type: 'AUDIO_PAUSED' }
 	| { type: 'AUDIO_WAITING' }
-	| { type: 'AUDIO_ERROR'; error: Event }
+	| { type: 'AUDIO_ERROR'; error: Event; attemptId?: string }
 	| { type: 'TRACK_END' }
 	| { type: 'CHANGE_QUALITY'; quality: AudioQuality }
 	| { type: 'FALLBACK_REQUESTED'; quality: AudioQuality; reason: string }
@@ -60,7 +60,8 @@ export type PlaybackEvent =
 	| { type: 'MUTE_UPDATE'; isMuted: boolean }
 	| { type: 'SAMPLE_RATE_UPDATE'; sampleRate: number | null }
 	| { type: 'BIT_DEPTH_UPDATE'; bitDepth: number | null }
-	| { type: 'REPLAY_GAIN_UPDATE'; replayGain: number | null };
+	| { type: 'REPLAY_GAIN_UPDATE'; replayGain: number | null }
+	| { type: 'RESET' };
 
 /**
  * Generate a unique attempt ID for correlation and stale event detection.
@@ -330,6 +331,30 @@ export function transition(
 			return current;
 		}
 
+		case 'RESET': {
+			return {
+				state: 'idle',
+				context: {
+					...context,
+					currentTrack: null,
+					queue: [],
+					queueIndex: -1,
+					streamUrl: null,
+					effectiveQuality: null,
+					currentTime: 0,
+					duration: 0,
+					sampleRate: null,
+					bitDepth: null,
+					replayGain: null,
+					error: null,
+					loadRequestId: context.loadRequestId + 1,
+					attemptId: generateAttemptId(),
+					autoPlay: false,
+					isRecovering: false
+				}
+			};
+		}
+
 		case 'AUDIO_READY': {
 			if (state === 'loading') {
 				return {
@@ -595,6 +620,7 @@ export type SideEffect =
 	| { type: 'SET_AUDIO_SRC'; url: string; attemptId: string }
 	| { type: 'PLAY_AUDIO' }
 	| { type: 'PAUSE_AUDIO' }
+	| { type: 'RESET_AUDIO' }
 	| { type: 'SEEK_AUDIO'; position: number }
 	| { type: 'SHOW_ERROR'; error: Error }
 	| { type: 'HANDLE_AUDIO_ERROR'; error: Event; attemptId: string };
@@ -683,11 +709,15 @@ export function deriveSideEffects(
 		effects.push({ type: 'SEEK_AUDIO', position: event.position });
 	}
 	if (event.type === 'AUDIO_ERROR') {
+		const attemptId = event.attemptId ?? next.context.attemptId;
 		effects.push({
 			type: 'HANDLE_AUDIO_ERROR',
 			error: event.error,
-			attemptId: next.context.attemptId
+			attemptId
 		});
+	}
+	if (event.type === 'RESET') {
+		effects.push({ type: 'RESET_AUDIO' });
 	}
 
 	return effects;

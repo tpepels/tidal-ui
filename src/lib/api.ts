@@ -418,6 +418,8 @@ class LosslessAPI {
 	private isValidMediaUrl(url: string): boolean {
 		if (!url) return false;
 		const normalized = url.toLowerCase();
+		// We don't support HLS playlists in the audio element.
+		if (normalized.includes('.m3u8') || normalized.includes('.m3u')) return false;
 		// Filter out XML schema/namespace URLs
 		if (normalized.includes('w3.org')) return false;
 		if (normalized.includes('xmlschema')) return false;
