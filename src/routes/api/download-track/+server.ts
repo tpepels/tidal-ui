@@ -21,7 +21,10 @@ import {
 	MAX_CHUNK_SIZE,
 	downloadCoverToDir,
 	validateChecksum,
-	retryFs
+	retryFs,
+	detectAudioFormatFromBuffer,
+	getServerExtension,
+	buildServerFilename
 } from './_shared';
 import { embedMetadataToFile } from '$lib/server/metadataEmbedder';
 import { createDownloadOperationLogger, downloadLogger } from '$lib/server/observability';
@@ -89,13 +92,15 @@ export const POST: RequestHandler = async ({ request, url }) => {
 						{ error: 'Invalid trackMetadata: must be an object or undefined' },
 						{ status: 400 }
 					);
-				let ext = 'm4a';
-				if (body.quality === 'HI_RES_LOSSLESS' || body.quality === 'LOSSLESS') {
-					ext = 'flac';
-				}
-				const filename = body.trackTitle
-					? `${sanitizePath(body.artistName || 'Unknown')} - ${sanitizePath(body.trackTitle)}.${ext}`
-					: `track-${body.trackId}.${ext}`;
+				const detectedFormat = detectAudioFormatFromBuffer(buffer);
+				const ext = getServerExtension(body.quality, detectedFormat);
+				const filename = buildServerFilename(
+					body.artistName,
+					body.trackTitle,
+					body.trackId,
+					ext,
+					body.trackMetadata
+				);
 				const baseDir = getDownloadDir();
 				const artistDir = sanitizePath(body.artistName || 'Unknown Artist');
 				const albumDir = sanitizePath(body.albumTitle || 'Unknown Album');
@@ -204,7 +209,8 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					conflictResolution,
 					downloadCoverSeperately,
 					coverUrl,
-					trackMetadata
+					trackMetadata,
+					detectedMimeType
 				} = body;
 				// Input validation
 				if (typeof trackId !== 'number' || trackId <= 0)
@@ -343,6 +349,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					artistName,
 					trackTitle,
 					trackMetadata,
+					detectedMimeType: typeof detectedMimeType === 'string' ? detectedMimeType : undefined,
 					downloadCoverSeperately,
 					coverUrl,
 					timestamp: Date.now(),
@@ -397,18 +404,22 @@ export const POST: RequestHandler = async ({ request, url }) => {
 			if (arrayBuffer.byteLength === 0) return json({ error: 'Empty file' }, { status: 400 });
 			const { trackId, quality, albumTitle, artistName, trackTitle, conflictResolution } =
 				uploadData;
-			let ext = 'm4a';
-			if (quality === 'HI_RES_LOSSLESS' || quality === 'LOSSLESS') ext = 'flac';
-			const filename = trackTitle
-				? `${sanitizePath(artistName || 'Unknown')} - ${sanitizePath(trackTitle)}.${ext}`
-				: `track-${trackId}.${ext}`;
+			const buffer = Buffer.from(arrayBuffer);
+			const detectedFormat = detectAudioFormatFromBuffer(buffer);
+			const ext = getServerExtension(quality, detectedFormat);
+			const filename = buildServerFilename(
+				artistName,
+				trackTitle,
+				trackId,
+				ext,
+				uploadData.trackMetadata
+			);
 			const baseDir = getDownloadDir();
 			const artistDir = sanitizePath(artistName || 'Unknown Artist');
 			const albumDir = sanitizePath(albumTitle || 'Unknown Album');
 			const targetDir = path.join(baseDir, artistDir, albumDir);
 			await ensureDir(targetDir);
 			const initialFilepath = path.join(targetDir, filename);
-			const buffer = Buffer.from(arrayBuffer);
 			if (buffer.length > MAX_FILE_SIZE) {
 				return json(
 					{ error: `File too large: maximum ${MAX_FILE_SIZE} bytes allowed` },
@@ -457,6 +468,27 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				if (error.code === 'EACCES') return json({ error: 'Permission denied' }, { status: 403 });
 				return json({ error: 'File write failed' }, { status: 500 });
 			}
+
+			// Embed metadata into the file if track metadata is provided
+			if (uploadData.trackMetadata) {
+				try {
+					await embedMetadataToFile(finalPath, uploadData.trackMetadata);
+					downloadLogger.debug('Metadata embedded successfully', {
+						phase: 'finalize',
+						uploadId,
+						trackId
+					});
+				} catch (metadataError) {
+					downloadLogger.warn('Metadata embedding failed, continuing with raw file', {
+						phase: 'finalize',
+						uploadId,
+						trackId,
+						error: metadataError instanceof Error ? metadataError.message : String(metadataError)
+					});
+					// Continue with raw file - better than no download
+				}
+			}
+
 			endUpload(uploadId);
 			const finalFilename = path.basename(finalPath);
 			let message = `File saved to ${artistDir}/${albumDir}/${finalFilename}`;

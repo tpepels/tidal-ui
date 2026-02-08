@@ -164,6 +164,7 @@ export const downloadTrackServerSide = async (
 		checkExisting?: boolean;
 		downloadCoverSeperately?: boolean;
 		coverUrl?: string;
+		detectedMimeType?: string;
 		signal?: AbortSignal;
 		onProgress?: (progress: {
 			uploaded: number;
@@ -283,7 +284,8 @@ export const downloadTrackServerSide = async (
 				conflictResolution,
 				downloadCoverSeperately: options?.downloadCoverSeperately ?? false,
 				coverUrl: options?.coverUrl,
-				trackMetadata
+				trackMetadata,
+				detectedMimeType: options?.detectedMimeType
 			}),
 			timeout: 10000,
 			signal: options?.signal,
@@ -338,7 +340,8 @@ export const downloadTrackServerSide = async (
 					conflictResolution: options?.conflictResolution || 'overwrite_if_different',
 					downloadCoverSeperately,
 					coverUrl: options?.coverUrl,
-					trackMetadata
+					trackMetadata,
+					detectedMimeType: options?.detectedMimeType
 				}),
 				signal: options?.signal
 			});

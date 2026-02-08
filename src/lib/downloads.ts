@@ -45,6 +45,8 @@ function detectImageFormat(data: Uint8Array): { extension: string; mimeType: str
 	return null;
 }
 
+export { detectAudioFormat, detectAudioFormatFromBlob } from './utils/audioFormat';
+
 export function sanitizeForFilename(value: string | null | undefined): string {
 	if (!value) return 'Unknown';
 	return value
@@ -149,6 +151,7 @@ export async function buildTrackLinksCsv(tracks: Track[], quality: AudioQuality)
 export interface DownloadTrackResult {
 	success: boolean;
 	blob?: Blob;
+	mimeType?: string;
 	error?: Error;
 }
 
@@ -197,7 +200,7 @@ export async function downloadTrackWithRetry(
 				// Retry attempt
 			}
 
-			const { blob } = await losslessAPI.fetchTrackBlob(trackId, quality, filename, {
+			const { blob, mimeType } = await losslessAPI.fetchTrackBlob(trackId, quality, filename, {
 				ffmpegAutoTriggered: false,
 				convertAacToMp3: storage === 'client' ? options?.convertAacToMp3 : false,
 				skipMetadataEmbedding: storage === 'server',
@@ -205,7 +208,7 @@ export async function downloadTrackWithRetry(
 				onProgress: options?.onProgress
 			});
 
-			return { success: true, blob };
+			return { success: true, blob, mimeType };
 		} catch (error) {
 			if (error instanceof DOMException && error.name === 'AbortError') {
 				throw error;
@@ -336,6 +339,7 @@ export async function downloadTrackToServer(
 			conflictResolution: options?.conflictResolution,
 			downloadCoverSeperately: options?.downloadCoverSeperately ?? false,
 			coverUrl,
+			detectedMimeType: fetchResult.mimeType,
 			signal: options?.signal,
 			onProgress: (progress) => {
 				options?.onProgress?.({
@@ -584,7 +588,19 @@ export async function downloadAlbum(
 			});
 
 			if (result.success && result.blob) {
-				zip.file(filename, result.blob);
+				// Correct file extension if detected format differs
+				let zipFilename = filename;
+				if (result.mimeType) {
+					const currentExt = filename.split('.').pop();
+					const isActuallyMp4 = result.mimeType.includes('mp4') || result.mimeType.includes('m4a');
+					const isActuallyFlac = result.mimeType.includes('flac');
+					if (currentExt === 'flac' && isActuallyMp4) {
+						zipFilename = filename.replace(/\.flac$/, '.m4a');
+					} else if (currentExt === 'm4a' && isActuallyFlac) {
+						zipFilename = filename.replace(/\.m4a$/, '.flac');
+					}
+				}
+				zip.file(zipFilename, result.blob);
 			} else {
 				console.error(`[ZIP Download] Track failed: ${track.title}`, result.error);
 				failedTracks.push({ track, error: result.error ?? new Error('Unknown error') });
@@ -709,6 +725,7 @@ export async function downloadAlbum(
 									downloadCoverSeperately && canonicalAlbum.cover
 										? losslessAPI.getCoverUrl(canonicalAlbum.cover, '1280')
 										: undefined,
+								detectedMimeType: result.mimeType,
 								onProgress: (progress) => {
 									downloadUiStore.updateTrackPhase(taskId, 'uploading');
 									downloadUiStore.updateTrackProgress(taskId, progress.uploaded, progress.total);
@@ -764,13 +781,26 @@ export async function downloadAlbum(
 					// Update progress to show download is starting
 					downloadUiStore.updateTrackStage(taskId, 0.5);
 
+					// Correct file extension if detected format differs from quality-based extension
+					let correctedFilename = filename;
+					if (result.mimeType) {
+						const currentExt = filename.split('.').pop();
+						const isActuallyMp4 = result.mimeType.includes('mp4') || result.mimeType.includes('m4a');
+						const isActuallyFlac = result.mimeType.includes('flac');
+						if (currentExt === 'flac' && isActuallyMp4) {
+							correctedFilename = filename.replace(/\.flac$/, '.m4a');
+						} else if (currentExt === 'm4a' && isActuallyFlac) {
+							correctedFilename = filename.replace(/\.m4a$/, '.flac');
+						}
+					}
+
 					// Trigger individual download
 					let url: string | null = null;
 					try {
 						url = URL.createObjectURL(result.blob);
 						const a = document.createElement('a');
 						a.href = url;
-						a.download = filename;
+						a.download = correctedFilename;
 						document.body.appendChild(a);
 						a.click();
 						document.body.removeChild(a);

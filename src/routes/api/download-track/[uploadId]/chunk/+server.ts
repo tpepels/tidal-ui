@@ -18,7 +18,10 @@ import {
 	downloadCoverToDir,
 	moveFile,
 	retryFs,
-	touchUploadTimestamp
+	touchUploadTimestamp,
+	detectAudioFormatFromFile,
+	getServerExtension,
+	buildServerFilename
 } from '../../_shared';
 import { embedMetadataToFile } from '$lib/server/metadataEmbedder';
 import {
@@ -171,23 +174,18 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				);
 			}
 
-			// Determine file extension based on quality
-			let ext = 'm4a';
-			if (quality === 'HI_RES_LOSSLESS' || quality === 'LOSSLESS') {
-				ext = 'flac';
-			} else if (quality === 'HIGH') {
-				ext = 'm4a';
-			}
+			// Detect actual audio format from the temp file's magic bytes
+			const detectedFormat = await detectAudioFormatFromFile(chunkState.tempFilePath).catch(() => null);
+			const ext = getServerExtension(quality, detectedFormat, uploadData.detectedMimeType);
 
-			// Generate filename
-			let filename: string;
-			if (trackTitle) {
-				const sanitizedTitle = sanitizePath(trackTitle);
-				const sanitizedArtist = sanitizePath(artistName || 'Unknown');
-				filename = `${sanitizedArtist} - ${sanitizedTitle}.${ext}`;
-			} else {
-				filename = `track-${trackId}.${ext}`;
-			}
+			// Generate filename with track numbers for proper ordering
+			const filename = buildServerFilename(
+				artistName,
+				trackTitle,
+				trackId,
+				ext,
+				uploadData.trackMetadata
+			);
 
 			// Organize by artist/album directory structure
 			const baseDir = getDownloadDir();

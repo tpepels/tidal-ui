@@ -1,4 +1,5 @@
 // API service for HIFI API
+import { detectAudioFormat, detectAudioFormatFromBlob } from './utils/audioFormat';
 import { API_CONFIG, fetchWithCORS, selectApiTargetForRegion } from '$lib/config';
 import type { RegionOption } from '$lib/stores/region';
 import { parseTidalUrl } from './utils/urlParser';
@@ -684,7 +685,10 @@ class LosslessAPI {
 			offset += chunk.byteLength;
 		}
 
-		return { blob: new Blob([merged], { type: 'audio/flac' }), mimeType: 'audio/flac' };
+		// Detect actual format from magic bytes instead of assuming FLAC
+		const detectedFormat = detectAudioFormat(merged);
+		const mimeType = detectedFormat?.mimeType ?? 'audio/flac';
+		return { blob: new Blob([merged], { type: mimeType }), mimeType };
 	}
 
 	private async resolveHiResStreamFromDash(trackId: number): Promise<string> {
@@ -1925,7 +1929,12 @@ class LosslessAPI {
 						shouldConvertToMp3
 					);
 			const finalBlob = processedBlob ?? downloadBlob;
-			return { blob: finalBlob, mimeType: contentType ?? undefined };
+
+			// Detect actual audio format from magic bytes to avoid mislabeling
+			const detectedFormat = await detectAudioFormatFromBlob(finalBlob).catch(() => null);
+			const resolvedMimeType = detectedFormat?.mimeType ?? contentType ?? undefined;
+
+			return { blob: finalBlob, mimeType: resolvedMimeType };
 		} catch (error) {
 			if (error instanceof DOMException && error.name === 'AbortError') {
 				throw error;

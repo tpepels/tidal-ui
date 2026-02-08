@@ -104,6 +104,7 @@ export interface PendingUpload {
 	artistName?: string;
 	trackTitle?: string;
 	trackMetadata?: TrackLookup;
+	detectedMimeType?: string;
 	downloadCoverSeperately?: boolean;
 	coverUrl?: string;
 	timestamp: number;
@@ -629,6 +630,99 @@ export const getQueuePosition = (uploadId: string): number => {
 	const pendingUploads = Array.from(activeUploads);
 	const position = pendingUploads.indexOf(uploadId);
 	return position >= 0 ? position : -1;
+};
+
+/**
+ * Detect audio format from magic bytes in a buffer.
+ * FLAC starts with "fLaC" (0x664C6143), MP4 has "ftyp" at offset 4.
+ */
+export const detectAudioFormatFromBuffer = (
+	buffer: Buffer | Uint8Array
+): { extension: string; mimeType: string } | null => {
+	if (!buffer || buffer.length < 12) return null;
+
+	// FLAC: bytes 0-3 = 0x66 0x4C 0x61 0x43 ("fLaC")
+	if (buffer[0] === 0x66 && buffer[1] === 0x4c && buffer[2] === 0x61 && buffer[3] === 0x43) {
+		return { extension: 'flac', mimeType: 'audio/flac' };
+	}
+
+	// MP4/M4A: bytes 4-7 = 0x66 0x74 0x79 0x70 ("ftyp")
+	if (buffer[4] === 0x66 && buffer[5] === 0x74 && buffer[6] === 0x79 && buffer[7] === 0x70) {
+		return { extension: 'm4a', mimeType: 'audio/mp4' };
+	}
+
+	return null;
+};
+
+/**
+ * Detect audio format from a file on disk by reading the first 12 bytes.
+ */
+export const detectAudioFormatFromFile = async (
+	filePath: string
+): Promise<{ extension: string; mimeType: string } | null> => {
+	const handle = await fs.open(filePath, 'r');
+	try {
+		const buffer = Buffer.alloc(12);
+		await handle.read(buffer, 0, 12, 0);
+		return detectAudioFormatFromBuffer(buffer);
+	} finally {
+		await handle.close().catch(() => {});
+	}
+};
+
+/**
+ * Determine file extension for audio quality, with optional format detection override.
+ * Priority: magic byte detection > client-detected mimeType > quality-based default.
+ */
+export const getServerExtension = (
+	quality: AudioQuality,
+	detectedFormat?: { extension: string } | null,
+	detectedMimeType?: string
+): string => {
+	if (detectedFormat) return detectedFormat.extension;
+	if (detectedMimeType) {
+		if (detectedMimeType.includes('flac')) return 'flac';
+		if (detectedMimeType.includes('mp4') || detectedMimeType.includes('m4a')) return 'm4a';
+	}
+	if (quality === 'HI_RES_LOSSLESS' || quality === 'LOSSLESS') return 'flac';
+	return 'm4a';
+};
+
+/**
+ * Build a filename for server-side downloads that includes track numbers for ordering.
+ * Album title is already part of the directory structure, so it's not duplicated in the filename.
+ * Format: "Artist - 01 Title.ext" or "Artist - 01-03 Title.ext" for multi-volume
+ */
+export const buildServerFilename = (
+	artistName: string | undefined,
+	trackTitle: string | undefined,
+	trackId: number,
+	ext: string,
+	trackMetadata?: { track?: { trackNumber?: number; volumeNumber?: number; album?: { numberOfVolumes?: number } } }
+): string => {
+	if (!trackTitle) {
+		return `track-${trackId}.${ext}`;
+	}
+
+	const artist = sanitizePath(artistName || 'Unknown');
+	const title = sanitizePath(trackTitle);
+
+	const trackNumber = Number(trackMetadata?.track?.trackNumber);
+	const volumeNumber = Number(trackMetadata?.track?.volumeNumber);
+	const numberOfVolumes = Number(trackMetadata?.track?.album?.numberOfVolumes);
+
+	let trackPart = '';
+	if (Number.isFinite(trackNumber) && trackNumber > 0) {
+		const trackPadded = String(trackNumber).padStart(2, '0');
+		if (numberOfVolumes > 1 && Number.isFinite(volumeNumber) && volumeNumber > 0) {
+			const volumePadded = String(volumeNumber).padStart(2, '0');
+			trackPart = `${volumePadded}-${trackPadded} `;
+		} else {
+			trackPart = `${trackPadded} `;
+		}
+	}
+
+	return `${artist} - ${trackPart}${title}.${ext}`;
 };
 
 // Handle file conflicts based on resolution strategy
