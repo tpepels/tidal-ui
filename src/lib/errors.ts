@@ -98,12 +98,28 @@ export function withErrorHandling<R>(fn: () => Promise<R>, context: string): Pro
 	})();
 }
 
+/**
+ * Get timeout in milliseconds based on operation type
+ * @param operationType - Type of operation (default: 10s, download: 60s, upload: 45s)
+ * @returns Timeout in milliseconds
+ */
+export function getTimeoutForOperation(
+	operationType: 'download' | 'upload' | 'default' = 'default'
+): number {
+	const timeouts = {
+		download: 60000,  // 60 seconds for large downloads
+		upload: 45000,    // 45 seconds for server uploads
+		default: 10000    // 10 seconds for standard API calls
+	};
+	return timeouts[operationType];
+}
+
 // Robust fetch with retry, timeout, and error handling
 export async function retryFetch(
 	url: string,
-	options: RequestInit & { timeout?: number; maxRetries?: number } = {}
+	options: RequestInit & { timeout?: number; maxRetries?: number; operationType?: 'download' | 'upload' | 'default' } = {}
 ): Promise<Response> {
-	const { timeout = 10000, maxRetries = 3, signal, ...fetchOptions } = options;
+	const { operationType = 'default', timeout = getTimeoutForOperation(operationType), maxRetries = 3, signal, ...fetchOptions } = options;
 
 	return retryWithBackoff(
 		async () => {

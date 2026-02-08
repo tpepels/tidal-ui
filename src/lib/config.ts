@@ -359,6 +359,20 @@ function shouldStickToSingleTarget(url: URL): boolean {
 }
 
 /**
+ * Detect if a URL is a media download/stream URL that needs longer timeout
+ */
+function isDownloadUrl(url: string | URL): boolean {
+	const urlStr = typeof url === 'string' ? url : url.toString();
+	// Check for content delivery, streaming, or media URLs
+	const downloadPatterns = [
+		/content\.tidal\.com/i,
+		/\.(flac|mp3|m4a|aac|ogg|wav)(\?|$)/i,
+		/audio|stream|media|download/i
+	];
+	return downloadPatterns.some(pattern => pattern.test(urlStr));
+}
+
+/**
  * Fetch with CORS handling
  */
 export async function fetchWithCORS(
@@ -368,6 +382,7 @@ export async function fetchWithCORS(
 		preferredQuality?: string;
 		timeout?: number;
 		maxRetries?: number;
+		operationType?: 'download' | 'upload' | 'default';
 	}
 ): Promise<Response> {
 	const resolvedUrl = resolveUrl(url);
@@ -431,6 +446,9 @@ export async function fetchWithCORS(
 	const defaultTimeout = getDefaultTimeoutForUrl(resolvedUrl);
 	const timeout = options?.timeout ?? defaultTimeout;
 	const maxRetries = options?.maxRetries ?? getDefaultMaxRetriesForUrl(resolvedUrl);
+	
+	// Auto-detect download operations and use longer timeout
+	const operationType = options?.operationType ?? (isDownloadUrl(resolvedUrl) ? 'download' : 'default');
 
 	for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
 		const target = stickyTarget
@@ -476,7 +494,8 @@ export async function fetchWithCORS(
 				...options,
 				headers,
 				timeout,
-				maxRetries
+				maxRetries,
+				operationType
 			});
 			if (response.ok) {
 				const unexpected = await isUnexpectedProxyResponse(response);

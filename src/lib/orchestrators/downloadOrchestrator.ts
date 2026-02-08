@@ -28,6 +28,7 @@ import {
 	createDownloadNotificationPort,
 	type DownloadNotificationPort
 } from './download/downloadNotificationPort';
+import { DownloadQueue, type DownloadQueueConfig } from '$lib/core/downloadQueue';
 import { get } from 'svelte/store';
 
 const isMappedDownloadError = (value: unknown): value is MappedDownloadError =>
@@ -118,6 +119,15 @@ export class DownloadOrchestrator {
 	/** Map of taskId -> download attempt for retry functionality */
 	private downloadAttempts = new Map<string, DownloadAttempt>();
 
+	/** Map of task ID to queued download ID for correlation */
+	private taskToQueueId = new Map<string, string>();
+
+	/** Queue for sequential download processing */
+	private downloadQueue: DownloadQueue;
+
+	/** Failed downloads for user visibility */
+	private failedDownloads = new Map<string, { taskId: string; error: string; track: PlayableTrack }>();
+
 	/** Maximum number of stored attempts (prevents memory leak) */
 	private readonly MAX_STORED_ATTEMPTS = 50;
 	private readonly ui: DownloadUiPort;
@@ -127,13 +137,52 @@ export class DownloadOrchestrator {
 	private readonly execution: DownloadExecutionPort;
 	private readonly executors: ReturnType<typeof createDownloadExecutors>;
 
-	constructor(deps?: DownloadOrchestratorDeps) {
+	constructor(deps?: DownloadOrchestratorDeps, queueConfig?: DownloadQueueConfig) {
 		this.ui = deps?.ui ?? createDownloadUiPort();
 		this.log = deps?.log ?? createDownloadLogPort();
 		this.notifier = deps?.notifier ?? createDownloadNotificationPort();
 		this.trackResolver = deps?.trackResolver ?? createTrackResolver();
 		this.execution = deps?.execution ?? createDownloadExecutionPort();
 		this.executors = createDownloadExecutors(this.execution);
+
+		// Initialize download queue with callbacks
+		this.downloadQueue = new DownloadQueue(
+			{
+				maxConcurrent: queueConfig?.maxConcurrent ?? 2,
+				maxRetries: queueConfig?.maxRetries ?? 3,
+				autoRetryFailures: queueConfig?.autoRetryFailures ?? true
+			},
+			{
+				onStarted: (item) => {
+					this.log.log(`Starting download: ${item.trackId} (attempt ${item.retryCount + 1})`);
+				},
+				onCompleted: (item) => {
+					this.log.success(`Download completed: ${item.trackId}`);
+					this.failedDownloads.delete(item.id);
+				},
+				onFailed: (item, error) => {
+					const taskId = this.taskToQueueId.get(item.id);
+					if (taskId) {
+						this.ui.errorTrackDownload(taskId, error.message);
+					}
+					// Store failed download for display
+					const attempt = this.downloadAttempts.get(item.id);
+					if (attempt) {
+						this.failedDownloads.set(item.id, {
+							taskId: item.id,
+							error: error.message,
+							track: attempt.track
+						});
+					}
+					this.log.error(`Download failed: ${item.trackId} - ${error.message}`);
+				},
+				onRetry: (item, attempt) => {
+					this.log.warning(
+						`Re-queuing download: ${item.trackId} (attempt ${attempt}/${item.maxRetries})`
+					);
+				}
+			}
+		);
 	}
 
 	/**
@@ -302,12 +351,12 @@ export class DownloadOrchestrator {
 				});
 			}
 
-			// Download completed successfully
+		// Download completed successfully
 			this.ui.completeTrackDownload(taskId!);
 			const successMessage =
 				effectiveOptions.storage === 'server'
-					? `Saved to server: ${filename}`
-					: `Downloaded: ${filename}`;
+					? `Saved: ${targetTrack.title}`
+					: `Downloaded: ${targetTrack.title}`;
 			this.showNotification('success', successMessage, effectiveOptions.notificationMode);
 
 			return { success: true, filename, taskId };
@@ -326,10 +375,22 @@ export class DownloadOrchestrator {
 				};
 			}
 
-			// Handle other errors
+			// Handle other errors - mark for re-queue
 			const mappedError = isMappedDownloadError(error) ? error : mapDownloadError(error);
 			this.ui.errorTrackDownload(taskId, mappedError.userMessage);
 			this.showNotification('error', mappedError.userMessage, effectiveOptions.notificationMode);
+
+			// Store failed download for later retry
+			this.failedDownloads.set(taskId, {
+				taskId,
+				error: mappedError.userMessage,
+				track
+			});
+
+			// Log for operator visibility
+			this.log.error(
+				`Download failed (can be retried): ${track.title} - ${mappedError.userMessage}`
+			);
 
 			return {
 				success: false,
@@ -371,6 +432,93 @@ export class DownloadOrchestrator {
 	 */
 	cancelDownload(taskId: string): void {
 		this.ui.cancelTrackDownload(taskId);
+	}
+
+	/**
+	 * Get list of failed downloads that can be retried
+	 */
+	getFailedDownloads() {
+		return Array.from(this.failedDownloads.values());
+	}
+
+	/**
+	 * Retry a specific failed download
+	 */
+	async retryFailedDownload(failedId: string): Promise<DownloadOrchestratorResult> {
+		const failed = this.failedDownloads.get(failedId);
+		if (!failed) {
+			return {
+				success: false,
+				error: {
+					code: 'UNKNOWN_ERROR',
+					retry: false,
+					message: 'Failed download not found'
+				}
+			};
+		}
+
+		// Retry using the stored attempt
+		const result = await this.retryDownload(failed.taskId);
+		
+		// Remove from failed list if retry succeeds
+		if (result.success) {
+			this.failedDownloads.delete(failedId);
+		}
+
+		return result;
+	}
+
+	/**
+	 * Retry all failed downloads
+	 */
+	async retryAllFailedDownloads(): Promise<DownloadOrchestratorResult[]> {
+		const failedIds = Array.from(this.failedDownloads.keys());
+		const results = await Promise.all(
+			failedIds.map(id => this.retryFailedDownload(id))
+		);
+		return results;
+	}
+
+	/**
+	 * Get current download queue status
+	 */
+	getQueueStatus() {
+		return this.downloadQueue.getStatus();
+	}
+
+	/**
+	 * Pause all downloads in the queue
+	 */
+	pauseQueue(): void {
+		this.downloadQueue.pause();
+	}
+
+	/**
+	 * Resume queued downloads
+	 */
+	resumeQueue(): void {
+		this.downloadQueue.resume();
+	}
+
+	/**
+	 * Stop all downloads and clear the queue
+	 */
+	stopQueue(): void {
+		this.downloadQueue.stop();
+	}
+
+	/**
+	 * Restart the download queue
+	 */
+	restartQueue(): void {
+		this.downloadQueue.restart();
+	}
+
+	/**
+	 * Clear all failed downloads
+	 */
+	clearFailedDownloads(): void {
+		this.failedDownloads.clear();
 	}
 
 	/**
@@ -426,6 +574,12 @@ export class DownloadOrchestrator {
 			source: 'notification',
 			severity: 'medium'
 		};
+
+		// Success messages from downloads are subtle - only log them
+		if (type === 'success') {
+			this.log.success(message);
+			return;
+		}
 
 		switch (mode) {
 			case 'alert':
