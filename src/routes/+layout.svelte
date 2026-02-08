@@ -224,7 +224,6 @@
 	}
 
 	function toggleDownloadLog(): void {
-		if (!isPlayerVisible) return;
 		downloadLogStore.toggle();
 	}
 
@@ -251,12 +250,6 @@
 			void refreshDiagnostics();
 		}
 	}
-
-	$effect(() => {
-		if (!isPlayerVisible && $downloadLogStore.isVisible) {
-			downloadLogStore.hide();
-		}
-	});
 
 	$effect(() => {
 		if (!isPlayerVisible && typeof document !== 'undefined') {

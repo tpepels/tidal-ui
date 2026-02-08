@@ -713,12 +713,10 @@ export const buildServerFilename = (
 
 	let trackPart = '';
 	if (Number.isFinite(trackNumber) && trackNumber > 0) {
-		const trackPadded = String(trackNumber).padStart(2, '0');
 		if (numberOfVolumes > 1 && Number.isFinite(volumeNumber) && volumeNumber > 0) {
-			const volumePadded = String(volumeNumber).padStart(2, '0');
-			trackPart = `${volumePadded}-${trackPadded} `;
+			trackPart = `${volumeNumber}-${trackNumber} `;
 		} else {
-			trackPart = `${trackPadded} `;
+			trackPart = `${trackNumber} `;
 		}
 	}
 
