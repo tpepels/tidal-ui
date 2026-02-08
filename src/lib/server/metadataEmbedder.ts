@@ -87,7 +87,7 @@ export async function embedMetadataToFile(
 	// ffmpeg <6.0 can't write FLAC back into MP4, so remux to native FLAC.
 	if (ext === '.m4a') {
 		const flacPath = filePath.replace(/\.m4a$/i, '.flac');
-		const tempPath = flacPath + '.tmp';
+		const tempPath = filePath.replace(/\.m4a$/i, '.tmp.flac');
 
 		try {
 			await runFfmpeg(ffmpegPath, [
