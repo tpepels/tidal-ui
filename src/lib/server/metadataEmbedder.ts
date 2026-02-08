@@ -1,7 +1,8 @@
 import type { TrackLookup } from '../types';
-// @ts-expect-error - ffmetadata has no TypeScript definitions
-import ffmetadata from 'ffmetadata';
+import { execFile } from 'node:child_process';
 import { spawnSync } from 'node:child_process';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 import { formatArtistsForMetadata } from '../utils/formatters';
 
 export interface ServerMetadataOptions {
@@ -10,115 +11,117 @@ export interface ServerMetadataOptions {
 	convertToMp3?: boolean;
 }
 
-let ffmpegAvailable: boolean | null = null;
-let warnedMissingFfmpeg = false;
+let resolvedFfmpegPath: string | null | undefined = undefined; // undefined = not checked yet
 
-const checkFfmpegAvailable = (): boolean => {
-	if (ffmpegAvailable !== null) {
-		return ffmpegAvailable;
+/**
+ * Find ffmpeg binary. Checks FFMPEG_PATH env, then PATH, then common install locations.
+ */
+const findFfmpeg = (): string | null => {
+	if (resolvedFfmpegPath !== undefined) return resolvedFfmpegPath;
+
+	const candidates = [
+		process.env.FFMPEG_PATH,
+		'ffmpeg',
+		'/usr/bin/ffmpeg',
+		'/usr/local/bin/ffmpeg',
+		'/opt/ffmpeg/ffmpeg',
+		'/snap/bin/ffmpeg'
+	].filter(Boolean) as string[];
+
+	for (const candidate of candidates) {
+		try {
+			const result = spawnSync(candidate, ['-version'], {
+				stdio: ['ignore', 'pipe', 'ignore'],
+				timeout: 5000
+			});
+			if (!result.error && result.status === 0) {
+				resolvedFfmpegPath = candidate;
+				const versionLine = result.stdout?.toString().split('\n')[0] ?? '';
+				console.log(`[Server Metadata] Found ffmpeg: ${candidate} (${versionLine})`);
+				return resolvedFfmpegPath;
+			}
+		} catch {
+			// Try next candidate
+		}
 	}
-	try {
-		const result = spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' });
-		// Check both for successful status AND absence of spawn errors
-		ffmpegAvailable = !result.error && result.status === 0;
-	} catch {
-		ffmpegAvailable = false;
-	}
-	if (!ffmpegAvailable && !warnedMissingFfmpeg) {
-		warnedMissingFfmpeg = true;
-		console.warn('[Server Metadata] ffmpeg not available; skipping metadata embedding.');
-	}
-	return ffmpegAvailable;
+
+	resolvedFfmpegPath = null;
+	console.warn(
+		'[Server Metadata] ffmpeg not found. Metadata embedding disabled.\n' +
+			'  Searched: ' +
+			candidates.join(', ') +
+			'\n' +
+			'  Set FFMPEG_PATH environment variable to your ffmpeg binary path.'
+	);
+	return null;
 };
 
 /**
- * Embed metadata into audio files server-side using FFmpeg/ffmetadata
- *
- * This function is defensive against crashes in the ffmetadata library.
- * The ffmetadata library has a bug where it can crash with "Cannot read properties
- * of undefined (reading 'toString')" when ffmpeg is not available or fails.
+ * Embed metadata into an audio file using ffmpeg directly.
+ * Supports both FLAC and M4A/MP4 containers.
  */
 export async function embedMetadataToFile(filePath: string, lookup: TrackLookup): Promise<void> {
-	// Early return if ffmpeg is not available
-	if (!checkFfmpegAvailable()) {
+	const ffmpegPath = findFfmpeg();
+	if (!ffmpegPath) return;
+
+	const metadata = buildMetadataObject(lookup);
+	const entries = Object.entries(metadata);
+	if (entries.length === 0) {
+		console.warn('[Server Metadata] No metadata entries to embed for:', filePath);
 		return;
 	}
 
-	const metadata = buildMetadataObject(lookup);
+	const ext = path.extname(filePath);
+	const tempPath = filePath + '.tmp' + ext;
 
-	// Set up a safety handler to catch crashes from ffmetadata library's buggy error handling
-	let uncaughtExceptionHandler: ((err: Error) => void) | null = null;
-	let handlerActive = false;
+	// Build ffmpeg arguments: -i input -metadata key=value ... -c copy -y output
+	const args = [
+		'-y',
+		'-i',
+		filePath,
+		...entries.flatMap(([key, value]) => ['-metadata', `${key}=${value}`]),
+		'-c',
+		'copy',
+		tempPath
+	];
 
 	try {
-		// Create a promise that wraps the ffmetadata call with crash protection
-		await new Promise<void>((resolve, reject) => {
-			let settled = false;
-
-			// Install temporary uncaught exception handler for ffmetadata crashes
-			uncaughtExceptionHandler = (err: Error) => {
-				if (!settled && err.message?.includes('Cannot read properties of undefined')) {
-					// This is the ffmetadata library bug - treat as a regular error
-					settled = true;
-					handlerActive = false;
-					console.warn('[Server Metadata] Caught ffmetadata library crash, treating as error');
-					reject(new Error('FFmpeg metadata library encountered an internal error'));
-				}
-			};
-			process.once('uncaughtException', uncaughtExceptionHandler);
-			handlerActive = true;
-
-			// Set a timeout to prevent hanging
-			const timeout = setTimeout(() => {
-				if (!settled) {
-					settled = true;
-					reject(new Error('Metadata embedding timeout after 30s'));
-				}
-			}, 30000);
-
-			try {
-				ffmetadata.write(filePath, metadata, (err?: Error) => {
-					clearTimeout(timeout);
-					if (!settled) {
-						settled = true;
-						// Small delay to catch any async crashes from ffmetadata
-						setTimeout(() => {
-							if (handlerActive && uncaughtExceptionHandler) {
-								process.removeListener('uncaughtException', uncaughtExceptionHandler);
-								handlerActive = false;
-							}
-						}, 100);
-
-						if (err) {
-							reject(err);
-						} else {
-							resolve();
-						}
-					}
-				});
-			} catch (error) {
-				clearTimeout(timeout);
-				if (!settled) {
-					settled = true;
-					reject(error);
-				}
-			}
-		});
-
-		console.log('[Server Metadata] Successfully embedded metadata into:', filePath);
-	} catch (error) {
-		console.warn('[Server Metadata] Failed to embed metadata into file:', filePath, error);
-		throw error;
-	} finally {
-		// Clean up the exception handler if still active
-		if (handlerActive && uncaughtExceptionHandler) {
-			process.removeListener('uncaughtException', uncaughtExceptionHandler);
+		await runFfmpeg(ffmpegPath, args);
+		// Verify temp file was created and has reasonable size
+		const [origStat, tempStat] = await Promise.all([fs.stat(filePath), fs.stat(tempPath)]);
+		if (tempStat.size < origStat.size * 0.5) {
+			throw new Error(
+				`Output file suspiciously small (${tempStat.size} vs ${origStat.size} bytes)`
+			);
 		}
+		await fs.rename(tempPath, filePath);
+		console.log(
+			`[Server Metadata] Embedded ${entries.length} tags into: ${path.basename(filePath)}`
+		);
+	} catch (error) {
+		await fs.unlink(tempPath).catch(() => {});
+		const msg = error instanceof Error ? error.message : String(error);
+		console.error(`[Server Metadata] Failed to embed metadata into ${filePath}: ${msg}`);
+		throw error;
 	}
 }
 
+function runFfmpeg(ffmpegPath: string, args: string[]): Promise<string> {
+	return new Promise((resolve, reject) => {
+		execFile(ffmpegPath, args, { timeout: 30000 }, (error, _stdout, stderr) => {
+			if (error) {
+				// Include stderr for diagnosis
+				const stderrTail = stderr ? stderr.split('\n').slice(-5).join('\n') : '';
+				reject(new Error(`ffmpeg failed: ${error.message}\n${stderrTail}`));
+			} else {
+				resolve(stderr || '');
+			}
+		});
+	});
+}
+
 /**
- * Build metadata object compatible with ffmetadata
+ * Build metadata key-value pairs from a TrackLookup object.
  */
 function buildMetadataObject(lookup: TrackLookup) {
 	const { track } = lookup;

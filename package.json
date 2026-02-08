@@ -58,7 +58,6 @@
 	"dependencies": {
 		"@ffmpeg/ffmpeg": "^0.12.6",
 		"@ffmpeg/util": "^0.12.1",
-		"ffmetadata": "^1.7.0",
 		"ioredis": "^5.4.1",
 		"jszip": "^3.10.1",
 		"lucide-svelte": "^0.544.0",

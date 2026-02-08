@@ -25,8 +25,8 @@ RUN npm prune --production
 # Use another Node.js Slim image for the final stage
 FROM node:24.0.1-slim AS runner
 
-# Install Redis
-RUN apt-get update && apt-get install -y redis-server && rm -rf /var/lib/apt/lists/*
+# Install Redis and ffmpeg for metadata embedding
+RUN apt-get update && apt-get install -y redis-server ffmpeg && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory
 WORKDIR /app
