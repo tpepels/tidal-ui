@@ -57,47 +57,78 @@ const findFfmpeg = (): string | null => {
 };
 
 /**
- * Embed metadata into an audio file using ffmpeg directly.
- * Supports both FLAC and M4A/MP4 containers.
+ * Embed metadata into an audio file using ffmpeg.
+ *
+ * For M4A files containing FLAC audio (common with Tidal DASH streams),
+ * remuxes to a native FLAC container since older ffmpeg versions can't write
+ * FLAC codec back into MP4 containers. This also produces proper .flac files.
+ *
+ * Returns the final file path, which may differ from the input if the
+ * container format was changed (e.g. .m4a -> .flac).
  */
-export async function embedMetadataToFile(filePath: string, lookup: TrackLookup): Promise<void> {
+export async function embedMetadataToFile(
+	filePath: string,
+	lookup: TrackLookup
+): Promise<string> {
 	const ffmpegPath = findFfmpeg();
-	if (!ffmpegPath) return;
+	if (!ffmpegPath) return filePath;
 
 	const metadata = buildMetadataObject(lookup);
 	const entries = Object.entries(metadata);
 	if (entries.length === 0) {
 		console.warn('[Server Metadata] No metadata entries to embed for:', filePath);
-		return;
+		return filePath;
 	}
 
-	const ext = path.extname(filePath);
-	const tempPath = filePath + '.tmp' + ext;
+	const ext = path.extname(filePath).toLowerCase();
+	const metadataArgs = entries.flatMap(([key, value]) => ['-metadata', `${key}=${value}`]);
 
-	// Build ffmpeg arguments: -i input -metadata key=value ... -c copy -y output
-	const args = [
-		'-y',
-		'-i',
-		filePath,
-		...entries.flatMap(([key, value]) => ['-metadata', `${key}=${value}`]),
-		'-c',
-		'copy',
-		tempPath
-	];
+	// M4A files from Tidal DASH often contain FLAC audio in an MP4 container.
+	// ffmpeg <6.0 can't write FLAC back into MP4, so remux to native FLAC.
+	if (ext === '.m4a') {
+		const flacPath = filePath.replace(/\.m4a$/i, '.flac');
+		const tempPath = flacPath + '.tmp';
 
-	try {
-		await runFfmpeg(ffmpegPath, args);
-		// Verify temp file was created and has reasonable size
-		const [origStat, tempStat] = await Promise.all([fs.stat(filePath), fs.stat(tempPath)]);
-		if (tempStat.size < origStat.size * 0.5) {
-			throw new Error(
-				`Output file suspiciously small (${tempStat.size} vs ${origStat.size} bytes)`
+		try {
+			await runFfmpeg(ffmpegPath, [
+				'-y',
+				'-i',
+				filePath,
+				...metadataArgs,
+				'-c',
+				'copy',
+				tempPath
+			]);
+			await verifyOutput(filePath, tempPath);
+			await fs.rename(tempPath, flacPath);
+			await fs.unlink(filePath);
+			console.log(
+				`[Server Metadata] Remuxed to native FLAC with ${entries.length} tags: ${path.basename(flacPath)}`
+			);
+			return flacPath;
+		} catch (remuxError) {
+			await fs.unlink(tempPath).catch(() => {});
+			// If remux to FLAC failed, the audio codec isn't FLAC (likely AAC).
+			// Fall through to standard M4A metadata embedding.
+			console.log(
+				`[Server Metadata] Not FLAC-in-MP4, trying standard M4A embedding: ${
+					remuxError instanceof Error ? remuxError.message.split('\n')[0] : remuxError
+				}`
 			);
 		}
+	}
+
+	// Standard metadata embedding (native FLAC files, or AAC M4A files)
+	const tempPath = filePath + '.tmp' + ext;
+
+	try {
+		await runFfmpeg(ffmpegPath, ['-y', '-i', filePath, ...metadataArgs, '-c', 'copy', tempPath]);
+		await verifyOutput(filePath, tempPath);
 		await fs.rename(tempPath, filePath);
 		console.log(
 			`[Server Metadata] Embedded ${entries.length} tags into: ${path.basename(filePath)}`
 		);
+		return filePath;
 	} catch (error) {
 		await fs.unlink(tempPath).catch(() => {});
 		const msg = error instanceof Error ? error.message : String(error);
@@ -106,11 +137,19 @@ export async function embedMetadataToFile(filePath: string, lookup: TrackLookup)
 	}
 }
 
+async function verifyOutput(originalPath: string, outputPath: string): Promise<void> {
+	const [origStat, outStat] = await Promise.all([fs.stat(originalPath), fs.stat(outputPath)]);
+	if (outStat.size < origStat.size * 0.5) {
+		throw new Error(
+			`Output file suspiciously small (${outStat.size} vs ${origStat.size} bytes)`
+		);
+	}
+}
+
 function runFfmpeg(ffmpegPath: string, args: string[]): Promise<string> {
 	return new Promise((resolve, reject) => {
 		execFile(ffmpegPath, args, { timeout: 30000 }, (error, _stdout, stderr) => {
 			if (error) {
-				// Include stderr for diagnosis
 				const stderrTail = stderr ? stderr.split('\n').slice(-5).join('\n') : '';
 				reject(new Error(`ffmpeg failed: ${error.message}\n${stderrTail}`));
 			} else {

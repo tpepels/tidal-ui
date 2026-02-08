@@ -197,7 +197,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			const initialFilepath = path.join(targetDir, filename);
 
 			// Handle file conflicts
-			const { finalPath, action } = await resolveFileConflict(
+			let { finalPath, action } = await resolveFileConflict(
 				initialFilepath,
 				conflictResolution || 'overwrite_if_different',
 				chunkState.totalSize,
@@ -276,7 +276,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 
 			if (uploadData.trackMetadata) {
 				try {
-					await embedMetadataToFile(finalPath, uploadData.trackMetadata);
+					finalPath = await embedMetadataToFile(finalPath, uploadData.trackMetadata);
 					opLogger?.debug('Metadata embedded successfully', { phase: 'finalize' });
 				} catch (metadataError) {
 					opLogger?.warn('Metadata embedding failed, continuing with raw file', {

@@ -107,7 +107,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				const targetDir = path.join(baseDir, artistDir, albumDir);
 				await ensureDir(targetDir);
 				const initialFilepath = path.join(targetDir, filename);
-				const { finalPath, action } = await resolveFileConflict(
+				let { finalPath, action } = await resolveFileConflict(
 					initialFilepath,
 					body.conflictResolution || pendingUpload?.conflictResolution || 'overwrite',
 					buffer.length,
@@ -151,7 +151,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				const trackMetadata = body.trackMetadata ?? pendingUpload?.trackMetadata;
 				if (trackMetadata) {
 					try {
-						await embedMetadataToFile(finalPath, trackMetadata);
+						finalPath = await embedMetadataToFile(finalPath, trackMetadata);
 						downloadLogger.debug('Metadata embedded successfully', {
 							phase: 'finalize',
 							uploadId: bodyUploadId,
@@ -432,7 +432,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
 			if (uploadData.checksum && !(await validateChecksum(buffer, uploadData.checksum))) {
 				return json({ error: 'Checksum validation failed' }, { status: 400 });
 			}
-				const { finalPath, action } = await resolveFileConflict(
+				let { finalPath, action } = await resolveFileConflict(
 					initialFilepath,
 					conflictResolution,
 					buffer.length,
@@ -472,7 +472,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
 			// Embed metadata into the file if track metadata is provided
 			if (uploadData.trackMetadata) {
 				try {
-					await embedMetadataToFile(finalPath, uploadData.trackMetadata);
+					finalPath = await embedMetadataToFile(finalPath, uploadData.trackMetadata);
 					downloadLogger.debug('Metadata embedded successfully', {
 						phase: 'finalize',
 						uploadId,
