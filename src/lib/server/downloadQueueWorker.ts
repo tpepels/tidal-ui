@@ -406,20 +406,17 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 
 		const duration = Date.now() - startTime;
 
-		if (failedTracks === totalTracks) {
+		if (failedTracks > 0) {
+			// ANY track failure = album failure (no partial albums allowed)
+			// This ensures albums are either complete or marked as failed for retry/deletion
 			await updateJobStatus(job.id, {
 				status: 'failed',
-				error: 'All tracks failed',
-				completedAt: Date.now(),
-				downloadTimeMs: duration
-			});
-		} else if (failedTracks > 0) {
-			await updateJobStatus(job.id, {
-				status: 'completed',
-				error: `${failedTracks} of ${totalTracks} tracks failed`,
+				error: failedTracks === totalTracks 
+					? 'All tracks failed'
+					: `Album incomplete: ${failedTracks} of ${totalTracks} tracks could not be downloaded`,
 				completedAt: Date.now(),
 				downloadTimeMs: duration,
-				progress: 1
+				progress: completedTracks / totalTracks
 			});
 		} else {
 			await updateJobStatus(job.id, {

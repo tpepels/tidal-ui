@@ -41,7 +41,7 @@ export interface DownloadResult {
 }
 
 export interface ApiClient {
-	getTrack(trackId: number, quality: AudioQuality): Promise<TrackLookup>;
+	getTrack(trackId: number, quality: AudioQuality, options?: { skipTarget?: string }): Promise<TrackLookup>;
 }
 
 export interface FetchFunction {

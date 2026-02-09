@@ -391,6 +391,7 @@ export async function fetchWithCORS(
 		timeout?: number;
 		maxRetries?: number;
 		operationType?: 'download' | 'upload' | 'default';
+		skipTarget?: string; // Skip a previously-failed target on retry
 	}
 ): Promise<Response> {
 	const resolvedUrl = resolveUrl(url);
@@ -429,6 +430,11 @@ export async function fetchWithCORS(
 	let uniqueTargets = attemptOrder.filter(
 		(target, index, array) => array.findIndex((entry) => entry.name === target.name) === index
 	);
+
+	// Filter out if skipTarget is provided
+	if (options?.skipTarget && options.skipTarget !== 'current') {
+		uniqueTargets = uniqueTargets.filter(target => target.name !== options.skipTarget);
+	}
 
 	const healthyTargets = uniqueTargets.filter((target) => isTargetHealthy(target.name));
 	if (healthyTargets.length > 0) {

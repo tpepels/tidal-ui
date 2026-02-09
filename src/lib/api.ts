@@ -714,7 +714,7 @@ class LosslessAPI {
 	 */
 	private async fetch(
 		url: string,
-		options?: RequestInit & { apiVersion?: 'v1' | 'v2'; preferredQuality?: string }
+		options?: RequestInit & { apiVersion?: 'v1' | 'v2'; preferredQuality?: string; skipTarget?: string }
 	): Promise<Response> {
 		return fetchWithCORS(url, options);
 	}
@@ -823,12 +823,12 @@ class LosslessAPI {
 	/**
 	 * Get track info and stream URL (with retries for quality fallback)
 	 */
-	async getTrack(id: number, quality: AudioQuality = 'LOSSLESS'): Promise<TrackLookup> {
+	async getTrack(id: number, quality: AudioQuality = 'LOSSLESS', options?: { skipTarget?: string }): Promise<TrackLookup> {
 		const url = `${this.baseUrl}/track/?id=${id}&quality=${quality}`;
 		let lastError: Error | null = null;
 
 		for (let attempt = 1; attempt <= 3; attempt += 1) {
-			const response = await this.fetch(url, { apiVersion: 'v2' });
+			const response = await this.fetch(url, { apiVersion: 'v2', skipTarget: options?.skipTarget });
 			this.ensureNotRateLimited(response);
 			if (response.ok) {
 				const data = await response.json();

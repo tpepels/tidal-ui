@@ -22,11 +22,12 @@ export async function downloadTrackCore(params: {
 	apiClient: ApiClient;
 	fetchFn: FetchFunction;
 	options?: DownloadOptions;
+	skipTarget?: string;
 }): Promise<DownloadResult> {
-	const { trackId, quality, apiClient, fetchFn, options } = params;
+	const { trackId, quality, apiClient, fetchFn, options, skipTarget } = params;
 
 	// Get track metadata from API
-	const trackLookup = await apiClient.getTrack(trackId, quality);
+	const trackLookup = await apiClient.getTrack(trackId, quality, { skipTarget });
 
 	let result: DownloadResult | null = null;
 
@@ -93,7 +94,7 @@ export async function downloadTrackCore(params: {
 					});
 					// Refetch manifest to potentially get URLs from different target
 					try {
-						const freshLookup = await apiClient.getTrack(trackId, quality);
+						const freshLookup = await apiClient.getTrack(trackId, quality, { skipTarget: 'previous' });
 						trackLookup.info.manifest = freshLookup.info.manifest;
 					} catch (refetchErr) {
 						console.warn('[DownloadCore] Failed to refetch manifest:', refetchErr);
