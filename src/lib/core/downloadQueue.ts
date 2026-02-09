@@ -9,6 +9,10 @@
 export interface QueuedDownload {
 	id: string;
 	trackId: number | string;
+	trackTitle?: string;
+	artistName?: string;
+	albumId?: number | string;
+	albumTitle?: string;
 	priority: number;
 	retryCount: number;
 	maxRetries: number;
@@ -62,22 +66,32 @@ export class DownloadQueue {
 	enqueue(
 		id: string,
 		trackId: number | string,
-		priority: number = 0,
-		maxRetries?: number
+		options?: {
+			priority?: number;
+			maxRetries?: number;
+			trackTitle?: string;
+			artistName?: string;
+			albumId?: number | string;
+			albumTitle?: string;
+		}
 	): void {
 		if (this.queue.has(id)) {
 			// Already queued, update priority if higher
 			const existing = this.queue.get(id)!;
-			existing.priority = Math.max(existing.priority, priority);
+			existing.priority = Math.max(existing.priority, options?.priority ?? 0);
 			return;
 		}
 
 		this.queue.set(id, {
 			id,
 			trackId,
-			priority,
+			trackTitle: options?.trackTitle,
+			artistName: options?.artistName,
+			albumId: options?.albumId,
+			albumTitle: options?.albumTitle,
+			priority: options?.priority ?? 0,
 			retryCount: 0,
-			maxRetries: maxRetries ?? this.maxRetries,
+			maxRetries: options?.maxRetries ?? this.maxRetries,
 			enqueuedAt: Date.now()
 		});
 
@@ -154,13 +168,32 @@ export class DownloadQueue {
 	 * Get current queue status
 	 */
 	getStatus() {
+		const queuedItems = Array.from(this.queue.values());
+		
+		// Group items by album
+		const albumGroups = new Map<string, QueuedDownload[]>();
+		for (const item of queuedItems) {
+			const albumKey = item.albumId ? String(item.albumId) : 'ungrouped';
+			if (!albumGroups.has(albumKey)) {
+				albumGroups.set(albumKey, []);
+			}
+			albumGroups.get(albumKey)!.push(item);
+		}
+
 		return {
 			queued: this.queue.size,
 			running: this.running.size,
 			processing: this.processingPromises.size,
 			paused: this.paused.size,
 			isPaused: this.isPaused,
-			queuedItems: Array.from(this.queue.values())
+			queuedItems,
+			albumGroups: Array.from(albumGroups.entries()).map(([albumId, tracks]) => ({
+				albumId,
+				albumTitle: tracks[0]?.albumTitle || 'Unknown Album',
+				artistName: tracks[0]?.artistName || 'Unknown Artist',
+				trackCount: tracks.length,
+				tracks
+			}))
 		};
 	}
 

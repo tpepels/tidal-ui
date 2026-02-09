@@ -6,7 +6,7 @@
  * and the download/conversion services.
  */
 
-import type { PlayableTrack, AudioQuality } from '$lib/types';
+import type { PlayableTrack, AudioQuality, Album } from '$lib/types';
 import {
 	buildDownloadFilename,
 	type DownloadError
@@ -128,6 +128,9 @@ export class DownloadOrchestrator {
 	/** Failed downloads for user visibility */
 	private failedDownloads = new Map<string, { taskId: string; error: string; track: PlayableTrack }>();
 
+	/** Store queued track downloads for execution */
+	private queuedDownloads = new Map<string, { id: string; track: PlayableTrack; options: DownloadOrchestratorOptions; albumId?: number | string; albumTitle?: string }>();
+
 	/** Maximum number of stored attempts (prevents memory leak) */
 	private readonly MAX_STORED_ATTEMPTS = 50;
 	private readonly ui: DownloadUiPort;
@@ -183,6 +186,9 @@ export class DownloadOrchestrator {
 				}
 			}
 		);
+
+		// Set up queue executor
+		this.downloadQueue.setExecutor((downloadId: string) => this.executeDownload(downloadId));
 	}
 
 	/**
@@ -477,6 +483,138 @@ export class DownloadOrchestrator {
 			failedIds.map(id => this.retryFailedDownload(id))
 		);
 		return results;
+	}
+
+	/**
+	 * Execute a queued download (called by the queue processor)
+	 * @private
+	 */
+	private async executeDownload(downloadId: string): Promise<void> {
+		const queuedDownload = this.queuedDownloads.get(downloadId);
+		if (!queuedDownload) {
+			throw new Error(`Queued download not found: ${downloadId}`);
+		}
+
+		const { track, options } = queuedDownload;
+
+		try {
+			// Execute the download using existing downloadTrack logic
+			const result = await this.downloadTrack(track, options);
+			
+			if (!result.success) {
+				// Re-queue if retryable
+				if (result.error && 'retry' in result.error && result.error.retry) {
+					this.downloadQueue.requeueFailed(downloadId, result.error.message);
+					return; // Don't clean up yet- will retry
+				} else {
+					throw new Error(result.error?.message || 'Download failed');
+				}
+			}
+
+			// Clean up on success
+			this.queuedDownloads.delete(downloadId);
+		} catch (error) {
+			// Clean up on failure
+			this.queuedDownloads.delete(downloadId);
+			throw error;
+		}
+	}
+
+	/**
+	 * Queue a track download for batch processing
+	 */
+	queueTrack(
+		track: PlayableTrack,
+		options?: DownloadOrchestratorOptions & { albumId?: number | string; albumTitle?: string }
+	): string {
+		const downloadId = `dl-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+		
+		const effectiveOptions = this.resolveOptions(options);
+		
+		// Store the track download details
+		this.queuedDownloads.set(downloadId, {
+			id: downloadId,
+			track,
+			options: effectiveOptions,
+			albumId: options?.albumId,
+			albumTitle: options?.albumTitle
+		});
+
+		// Get artist name - handle both Track and SonglinkTrack types
+		const artistName = 'artistName' in track 
+			? track.artistName 
+			: track.artists?.[0]?.name || 'Unknown Artist';
+
+		// Enqueue in the download queue
+		this.downloadQueue.enqueue(downloadId, track.id, {
+			priority: 0,
+			trackTitle: track.title,
+			artistName,
+			albumId: options?.albumId,
+			albumTitle: options?.albumTitle
+		});
+
+		return downloadId;
+	}
+
+	/**
+	 * Download an entire album as a batch (all tracks queued)
+	 */
+	async downloadAlbum(
+		album: Album,
+		options?: {
+			quality?: AudioQuality;
+			storage?: 'server' | 'client';
+			convertAacToMp3?: boolean;
+			downloadCoversSeperately?: boolean;
+			conflictResolution?: 'overwrite' | 'skip' | 'rename' | 'overwrite_if_different';
+			artistName?: string;
+		}
+	): Promise<{ success: boolean; queuedCount: number; error?: string }> {
+		// Import dynamically to avoid issues
+		const { losslessAPI } = await import('$lib/api');
+		
+		try {
+			// Fetch album tracks
+			const { tracks } = await losslessAPI.getAlbum(album.id);
+			
+			if (!tracks || tracks.length === 0) {
+				const errorMsg = `No tracks found for album: ${album.title}`;
+				this.log.error(errorMsg);
+				return { success: false, queuedCount: 0, error: errorMsg };
+			}
+
+			const albumTitle = album.title || 'Unknown Album';
+			const artistName = options?.artistName || album.artist?.name || 'Unknown Artist';
+
+			this.log.log(`Queuing album: "${albumTitle}" by ${artistName} (${tracks.length} tracks)`);
+
+			// Queue all tracks
+			let queuedCount = 0;
+			for (const track of tracks) {
+				this.queueTrack(track, {
+					quality: options?.quality || 'LOSSLESS',
+					storage: options?.storage || 'server',
+					convertAacToMp3: options?.convertAacToMp3 || false,
+					downloadCoversSeperately: options?.downloadCoversSeperately || false,
+					conflictResolution: options?.conflictResolution || 'overwrite_if_different',
+					albumId: album.id,
+					albumTitle,
+					autoConvertSonglink: false,
+					useCoordinator: false,
+					notificationMode: 'silent'
+				});
+				queuedCount++;
+			}
+
+			this.log.success(`Queued ${queuedCount} tracks from "${albumTitle}"`);
+			
+			return { success: true, queuedCount };
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Failed to queue album';
+			this.log.error(`Album queue failed: ${message}`);
+			return { success: false, queuedCount: 0, error: message };
+		}
 	}
 
 	/**

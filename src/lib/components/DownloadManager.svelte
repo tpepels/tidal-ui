@@ -165,30 +165,48 @@
 						Queue ({queueStatus.running + queueStatus.queued})
 					</h4>
 					<div class="download-manager-queue">
-						<div class="queue-item queue-item--header">
-							<span class="queue-item-title">Track</span>
-							<span class="queue-item-status">Status</span>
-						</div>
-						{#each queueStatus.queuedItems.slice(0, 5) as item (item.id)}
-							<div class="queue-item">
-								<span class="queue-item-title" title={String(item.trackId)}>
-									{item.trackId}
-								</span>
-								<span
-									class="queue-item-status {item.retryCount > 0
-										? 'retrying'
-										: 'pending'}"
-								>
-									{item.retryCount > 0
-										? `Retry ${item.retryCount}/${item.maxRetries}`
-										: 'Queued'}
-								</span>
+						{#if queueStatus.albumGroups && queueStatus.albumGroups.length > 0}
+							<!-- Album-grouped view -->
+							{#each queueStatus.albumGroups as album (album.albumId)}
+								<div class="album-group">
+									<div class="album-group-header">
+										<span class="album-title" title="{album.albumTitle} by {album.artistName}">
+											{album.albumTitle}
+										</span>
+										<span class="album-badge">
+											{album.trackCount} track{album.trackCount !== 1 ? 's' : ''}
+										</span>
+									</div>
+									<div class="album-artist">{album.artistName}</div>
+								</div>
+							{/each}
+						{:else}
+							<!-- Flat track view (fallback for individual tracks) -->
+							<div class="queue-item queue-item--header">
+								<span class="queue-item-title">Track</span>
+								<span class="queue-item-status">Status</span>
 							</div>
-						{/each}
-						{#if queueStatus.queuedItems.length > 5}
-							<div class="queue-item queue-item--more">
-								<span>+{queueStatus.queuedItems.length - 5} more</span>
-							</div>
+							{#each queueStatus.queuedItems.slice(0, 5) as item (item.id)}
+								<div class="queue-item">
+									<span class="queue-item-title" title={String(item.trackId)}>
+										{item.trackId}
+									</span>
+									<span
+										class="queue-item-status {item.retryCount > 0
+											? 'retrying'
+											: 'pending'}"
+									>
+										{item.retryCount > 0
+											? `Retry ${item.retryCount}/${item.maxRetries}`
+											: 'Queued'}
+									</span>
+								</div>
+							{/each}
+							{#if queueStatus.queuedItems.length > 5}
+								<div class="queue-item queue-item--more">
+									<span>+{queueStatus.queuedItems.length - 5} more</span>
+								</div>
+							{/if}
 						{/if}
 					</div>
 				</div>
@@ -242,7 +260,7 @@
 			{/if}
 
 			<div class="download-manager-info">
-				<p>Downloads are processed sequentially (max 4 concurrent). Timeouts trigger auto-retry.</p>
+				<p>Albums are queued together as batches. Max 4 concurrent downloads with auto-retry on timeout.</p>
 			</div>
 		</div>
 	{/if}
@@ -569,6 +587,56 @@
 	.queue-item-status.retrying {
 		color: var(--color-warning);
 		font-weight: 600;
+	}
+
+	/* Album Groups */
+	.album-group {
+		padding: 10px 12px;
+		border-bottom: 1px solid var(--color-border);
+		background: var(--color-bg-secondary);
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.album-group:last-child {
+		border-bottom: none;
+	}
+
+	.album-group-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+	}
+
+	.album-title {
+		flex: 1;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		color: var(--color-text-primary);
+		font-weight: 600;
+		font-size: 12px;
+	}
+
+	.album-badge {
+		flex-shrink: 0;
+		padding: 2px 8px;
+		border-radius: 10px;
+		background: rgba(59, 130, 246, 0.15);
+		color: var(--color-primary);
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.3px;
+	}
+
+	.album-artist {
+		color: var(--color-text-secondary);
+		font-size: 11px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	/* Failed */
