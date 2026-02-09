@@ -23,7 +23,7 @@ let activeDownloads = 0;
 const activeSemaphore = new Map<string, Promise<void>>();
 
 /**
- * Build internal API URL - use HTTP for internal container communication
+ * Build internal API URL - use HTTPS with self-signed cert handling
  */
 function getInternalApiUrl(): string {
 	if (process.env.INTERNAL_API_URL) {
@@ -32,9 +32,19 @@ function getInternalApiUrl(): string {
 	}
 	
 	const port = process.env.PORT || 5000;
-	const url = `http://localhost:${port}`;
-	console.log('[Worker] Using default internal API URL:', url);
+	const url = `https://localhost:${port}`;
+	console.log('[Worker] Using default internal API URL:', url, '(HTTPS with self-signed cert)');
 	return url;
+}
+
+/**
+ * Get Node.js HTTPS agent for self-signed certificates
+ */
+async function getHttpsAgent() {
+	const https = await import('https');
+	return new https.Agent({ 
+		rejectUnauthorized: false // Allow self-signed certs on localhost
+	});
 }
 
 /**
@@ -51,10 +61,17 @@ async function fetchWithTimeout(
 	console.log(`[Worker] Fetch ${options.method || 'GET'} ${url}`);
 	
 	try {
-		const response = await fetch(url, {
+		const fetchOptions: any = {
 			...options,
 			signal: controller.signal
-		});
+		};
+		
+		// Add HTTPS agent if this is an HTTPS URL
+		if (url.startsWith('https://')) {
+			fetchOptions.agent = await getHttpsAgent();
+		}
+		
+		const response = await fetch(url, fetchOptions);
 		
 		console.log(`[Worker] Response ${response.status} from ${url}`);
 		return response;
