@@ -264,10 +264,54 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 	});
 
 	try {
-		console.log(`[Worker] Album ${albumJob.albumId}: Fetching album data via losslessAPI`);
-
-		// Use losslessAPI which has target rotation, proper timeouts, and retry logic
-		const { album, tracks } = await losslessAPI.getAlbum(albumJob.albumId);
+		// Fetch album with target rotation (server-safe direct fetch, not browser proxy)
+		const targets = API_CONFIG.targets.length > 0 
+			? API_CONFIG.targets 
+			: [{ name: 'default', baseUrl: API_CONFIG.baseUrl || 'https://triton.squid.wtf', weight: 1, requiresProxy: false, category: 'auto-only' as const }];
+		
+		let albumData: { album: Record<string, unknown>; tracks: Array<Record<string, unknown>> } | null = null;
+		let lastError: Error | null = null;
+		
+		// Try up to 3 targets with 10s timeout per target (30s max total)
+		const maxAttempts = Math.min(3, targets.length);
+		for (let i = 0; i < maxAttempts; i++) {
+			const target = targets[i];
+			try {
+				const albumUrl = `${target.baseUrl}/album/?id=${albumJob.albumId}`;
+				console.log(`[Worker] Album ${albumJob.albumId}: Trying ${target.name} (${target.baseUrl})`);
+				
+				const controller = new AbortController();
+				const timeout = setTimeout(() => controller.abort(), 10_000); // 10s per target
+				
+				let albumResponse: Response;
+				try {
+					albumResponse = await globalThis.fetch(albumUrl, { signal: controller.signal });
+				} finally {
+					clearTimeout(timeout);
+				}
+				
+				if (!albumResponse.ok) {
+					lastError = new Error(`HTTP ${albumResponse.status} from ${target.name}`);
+					console.warn(`[Worker] ${lastError.message}, trying next target...`);
+					continue;
+				}
+				
+				const responseData = await albumResponse.json();
+				albumData = parseAlbumResponse(responseData);
+				console.log(`[Worker] Album ${albumJob.albumId}: Successfully fetched from ${target.name}`);
+				break; // Success!
+			} catch (error) {
+				lastError = error instanceof Error ? error : new Error(String(error));
+				console.warn(`[Worker] Target ${target.name} failed: ${lastError.message}`);
+				// Continue to next target
+			}
+		}
+		
+		if (!albumData) {
+			throw lastError || new Error('All targets failed to fetch album');
+		}
+		
+		const { album, tracks } = albumData;
 		const totalTracks = tracks.length;
 
 		if (totalTracks === 0) {
@@ -396,15 +440,15 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		let errorMsg = message;
 
 		if (message.includes('abort') || message.includes('AbortError')) {
-			errorMsg = 'Request timeout while fetching album data';
+			errorMsg = 'Timeout fetching album data (tried 3 targets, 10s each)';
+		} else if (message.includes('All targets failed')) {
+			errorMsg = `${message} - check network connectivity and API availability`;
 		} else if (message.includes('ECONNREFUSED')) {
-			errorMsg = 'Connection refused - API not reachable';
+			errorMsg = 'Connection refused - API targets not reachable';
 		} else if (message.includes('ENOTFOUND')) {
-			errorMsg = 'Host not found - DNS resolution failed';
+			errorMsg = 'Host not found - DNS resolution failed for all targets';
 		} else if (message.includes('ETIMEDOUT') || message.includes('timeout')) {
-			errorMsg = 'Connection timeout - API took too long to respond';
-		} else if (message.includes('All API targets failed')) {
-			errorMsg = 'All API targets failed - check network and target availability';
+			errorMsg = 'Connection timeout - all API targets took too long to respond';
 		}
 
 		console.error(`[Worker] Album ${albumJob.albumId} failed: ${errorMsg}`);
