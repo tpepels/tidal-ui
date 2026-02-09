@@ -13,7 +13,7 @@ export function decodeBase64Manifest(manifest: string): string {
 	let result = trimmed;
 	
 	// If the manifest is a proxy-wrapped URL, extract the actual URL
-	if (trimmed.startsWith('/api/proxy') || trimmed.includes('/api/proxy?url=')) {
+	if (isProxyUrl(trimmed)) {
 		try {
 			const urlObj = new URL(trimmed, 'http://localhost');
 			const encoded = urlObj.searchParams.get('url');
@@ -44,7 +44,7 @@ export function decodeBase64Manifest(manifest: string): string {
 	}
 	
 	// After base64 decoding, check again for proxy URLs
-	if (result && (result.startsWith('/api/proxy') || result.includes('/api/proxy?url='))) {
+	if (result && isProxyUrl(result)) {
 		try {
 			const urlObj = new URL(result, 'http://localhost');
 			const encoded = urlObj.searchParams.get('url');
@@ -78,14 +78,44 @@ function unescapeXmlEntities(text: string): string {
 		.replace(/&gt;/g, '>');
 }
 
+function isProxyUrl(value: string): boolean {
+	if (!value || typeof value !== 'string') return false;
+	try {
+		const urlObj = new URL(value, 'http://localhost');
+		return urlObj.pathname === '/api/proxy' && urlObj.searchParams.has('url');
+	} catch {
+		return false;
+	}
+}
+
+function unwrapProxyUrl(value: string): string {
+	if (!value || typeof value !== 'string') return value;
+	if (!isProxyUrl(value)) return value;
+	try {
+		const urlObj = new URL(value, 'http://localhost');
+		const encoded = urlObj.searchParams.get('url');
+		if (!encoded) return value;
+		return decodeURIComponent(encoded);
+	} catch {
+		return value;
+	}
+}
+
+function normalizeCandidateUrl(value: string): string {
+	return unescapeXmlEntities(unwrapProxyUrl(value));
+}
+
 export function extractStreamUrlFromManifest(manifest: string): string | null {
 	try {
 		let decoded = decodeBase64Manifest(manifest);
 		const trimmed = decoded.trim();
 
 		// Plain URL
-		if (!trimmed.startsWith('{') && !trimmed.startsWith('[') && isValidMediaUrl(decoded)) {
-			return unescapeXmlEntities(decoded);
+		if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+			const normalized = normalizeCandidateUrl(decoded);
+			if (isValidMediaUrl(normalized)) {
+				return normalized;
+			}
 		}
 
 		// JSON format
@@ -93,10 +123,14 @@ export function extractStreamUrlFromManifest(manifest: string): string | null {
 		if (parsed) {
 			if (Array.isArray(parsed.urls) && parsed.urls.length > 0) {
 				const candidate = parsed.urls.find((value) => typeof value === 'string');
-				if (candidate) return unescapeXmlEntities(candidate);
+				if (candidate) {
+					const normalized = normalizeCandidateUrl(candidate);
+					if (isValidMediaUrl(normalized)) return normalized;
+				}
 			}
 			if (typeof parsed.url === 'string') {
-				return unescapeXmlEntities(parsed.url);
+				const normalized = normalizeCandidateUrl(parsed.url);
+				if (isValidMediaUrl(normalized)) return normalized;
 			}
 			if (typeof parsed.manifest === 'string') {
 				decoded = decodeBase64Manifest(parsed.manifest);
@@ -104,9 +138,9 @@ export function extractStreamUrlFromManifest(manifest: string): string | null {
 				if (
 					!nestedTrimmed.startsWith('{') &&
 					!nestedTrimmed.startsWith('[') &&
-					isValidMediaUrl(decoded)
+					isValidMediaUrl(normalizeCandidateUrl(decoded))
 				) {
-					return unescapeXmlEntities(decoded);
+					return normalizeCandidateUrl(decoded);
 				}
 			}
 		}
@@ -119,9 +153,9 @@ export function extractStreamUrlFromManifest(manifest: string): string | null {
 		// Try to extract BaseURL from DASH XML for single-segment files
 		const baseUrlMatch = decoded.match(/<BaseURL>([^<]+)<\/BaseURL>/);
 		if (baseUrlMatch) {
-			const url = baseUrlMatch[1].trim();
+			const url = normalizeCandidateUrl(baseUrlMatch[1].trim());
 			if (isValidMediaUrl(url)) {
-				return unescapeXmlEntities(url);
+				return url;
 			}
 		}
 
@@ -129,12 +163,12 @@ export function extractStreamUrlFromManifest(manifest: string): string | null {
 		const urlRegex = /https?:\/\/[\w\-.~:?#[\]@!$&'()*+,;=%/]+/g;
 		let match: RegExpExecArray | null;
 		while ((match = urlRegex.exec(decoded)) !== null) {
-			const url = match[0];
+			const url = normalizeCandidateUrl(match[0]);
 			// Skip segment template URLs and initialization segments
 			if (url.includes('$Number$')) continue;
 			if (/\/\d+\.mp4/.test(url)) continue; // Skip segment files like /0.mp4, /1.mp4, etc.
 			if (isValidMediaUrl(url)) {
-				return unescapeXmlEntities(url);
+				return url;
 			}
 		}
 

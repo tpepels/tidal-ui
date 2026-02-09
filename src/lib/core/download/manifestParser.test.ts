@@ -72,9 +72,27 @@ describe('manifestParser', () => {
 			expect(result).toBe(url);
 		});
 
+		it('should extract URL from JSON manifest when url is proxied', () => {
+			const url = 'https://example.com/audio.flac';
+			const proxyUrl = '/api/proxy?url=' + encodeURIComponent(url);
+			const json = JSON.stringify({ url: proxyUrl });
+			const base64 = btoa(json);
+			const result = extractStreamUrlFromManifest(base64);
+			expect(result).toBe(url);
+		});
+
 		it('should extract URL from JSON urls array', () => {
 			const url = 'https://example.com/audio.flac';
 			const json = JSON.stringify({ urls: [url] });
+			const base64 = btoa(json);
+			const result = extractStreamUrlFromManifest(base64);
+			expect(result).toBe(url);
+		});
+
+		it('should extract URL from JSON urls array when proxied', () => {
+			const url = 'https://example.com/audio.flac';
+			const proxyUrl = '/api/proxy?url=' + encodeURIComponent(url);
+			const json = JSON.stringify({ urls: [proxyUrl] });
 			const base64 = btoa(json);
 			const result = extractStreamUrlFromManifest(base64);
 			expect(result).toBe(url);
