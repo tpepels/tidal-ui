@@ -107,6 +107,8 @@ const buildAudioElement = () =>
 	({
 		src: '',
 		currentTime: 0,
+		dataset: {},
+		crossOrigin: '',
 		load: vi.fn(),
 		play: vi.fn(() => Promise.resolve()),
 		pause: vi.fn()

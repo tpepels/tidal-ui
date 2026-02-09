@@ -7,7 +7,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import type { AudioQuality } from '$lib/types';
-import { API_CONFIG, fetchWithCORS } from '$lib/config';
+import { API_CONFIG } from '$lib/config';
 import {
 	getDownloadDir,
 	sanitizePath,
@@ -212,11 +212,14 @@ export const POST: RequestHandler = async ({ request }) => {
 			);
 		}
 
-		// Download the audio stream through the proxy (same as client does)
+		// Download the audio stream through the proxy
+		// Force proxy usage for CDN URLs by wrapping them manually
 		let audioResponse: Response;
 		try {
-			// Use fetchWithCORS which handles proxy routing just like client code
-			audioResponse = await fetchWithCORS(streamUrl);
+			const proxyUrl = API_CONFIG.proxyUrl || '/api/proxy';
+			const proxiedUrl = `${proxyUrl}?url=${encodeURIComponent(streamUrl)}`;
+			console.log('[Internal Download] Fetching through proxy:', proxiedUrl.substring(0, 150));
+			audioResponse = await fetch(proxiedUrl);
 		} catch (streamError) {
 			return json(
 				{ success: false, error: `Failed to fetch audio stream: ${streamError instanceof Error ? streamError.message : 'Network error'}` },

@@ -11,6 +11,7 @@ import {
 	getAllJobs,
 	getQueueStats,
 	cleanupOldJobs,
+	deleteJob,
 	type QueuedJob,
 	type TrackJob,
 	type AlbumJob
@@ -18,11 +19,13 @@ import {
 
 describe('Download Queue Manager', () => {
 	beforeEach(async () => {
+		// Disable Redis for tests to ensure memory storage is used
+		vi.stubEnv('REDIS_DISABLED', 'true');
+		
 		// Clear queue before each test
 		const jobs = await getAllJobs();
 		for (const job of jobs) {
-			// We'll need a delete function for testing
-			// For now, just note this limitation
+			await deleteJob(job.id);
 		}
 	});
 

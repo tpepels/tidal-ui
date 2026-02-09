@@ -41,6 +41,11 @@ import { downloadUiStore } from './stores/downloadUi';
 describe('downloadAlbum server progress', () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
+		// Mock fetch for queue API
+		global.fetch = vi.fn().mockResolvedValue({
+			ok: true,
+			json: async () => ({ success: true, jobId: 'test-job-1' })
+		});
 	});
 
 	it('passes upload progress callback for server downloads', async () => {
@@ -106,9 +111,10 @@ describe('downloadAlbum server progress', () => {
 			storage: 'server'
 		});
 
-		expect(downloadTrackServerSide).toHaveBeenCalled();
-		const args = vi.mocked(downloadTrackServerSide).mock.calls[0];
-		const options = args?.[7];
-		expect(options).toEqual(expect.objectContaining({ onProgress: expect.any(Function) }));
+		// Verify queue API was called instead of individual download
+		expect(global.fetch).toHaveBeenCalledWith('/api/download-queue', expect.objectContaining({
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' }
+		}));
 	});
 });
