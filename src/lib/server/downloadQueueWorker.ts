@@ -25,6 +25,24 @@ const MAX_CONCURRENT = 4;
 const POLL_INTERVAL_MS = 2000;
 const PROCESSING_TIMEOUT_MS = 300000; // 5 minute max time in 'processing' state
 const activeSemaphore = new Map<string, Promise<void>>();
+const HEALTH_BACKOFF_MS = {
+	rateLimit: 5 * 60 * 1000, // 5 minutes
+	serverError: 3 * 60 * 1000, // 3 minutes
+	timeout: 2 * 60 * 1000 // 2 minutes
+};
+const targetHealth = new Map<string, number>();
+
+function isTargetTemporarilyDown(name: string): boolean {
+	const downUntil = targetHealth.get(name);
+	return !!downUntil && downUntil > Date.now();
+}
+
+function markTargetDown(name: string, reason: string, timeoutMs: number): void {
+	const until = Date.now() + timeoutMs;
+	targetHealth.set(name, until);
+	const seconds = Math.round(timeoutMs / 1000);
+	console.warn(`[Worker] Marking target ${name} down for ${seconds}s (${reason})`);
+}
 
 /**
  * Download a single track using the server download adapter
@@ -268,14 +286,21 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		const targets = API_CONFIG.targets.length > 0 
 			? API_CONFIG.targets 
 			: [{ name: 'default', baseUrl: API_CONFIG.baseUrl || 'https://triton.squid.wtf', weight: 1, requiresProxy: false, category: 'auto-only' as const }];
+
+		const healthyTargets = targets.filter(t => !isTargetTemporarilyDown(t.name));
+		const selectedTargets = healthyTargets.length > 0 ? healthyTargets : targets;
+
+		if (selectedTargets.length === 0) {
+			throw new Error('No API targets available for album fetch');
+		}
 		
 		let albumData: { album: Record<string, unknown>; tracks: Array<Record<string, unknown>> } | null = null;
 		let lastError: Error | null = null;
 		
 		// Try up to 3 targets with 10s timeout per target (30s max total)
-		const maxAttempts = Math.min(3, targets.length);
+		const maxAttempts = Math.min(3, selectedTargets.length);
 		for (let i = 0; i < maxAttempts; i++) {
-			const target = targets[i];
+			const target = selectedTargets[i];
 			try {
 				const albumUrl = `${target.baseUrl}/album/?id=${albumJob.albumId}`;
 				console.log(`[Worker] Album ${albumJob.albumId}: Trying ${target.name} (${target.baseUrl})`);
@@ -291,8 +316,20 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 				}
 				
 				if (!albumResponse.ok) {
-					lastError = new Error(`HTTP ${albumResponse.status} from ${target.name}`);
-					console.warn(`[Worker] ${lastError.message}, trying next target...`);
+					const statusText = albumResponse.statusText || '';
+					const errorBody = await albumResponse.text().catch(() => '');
+					const bodySnippet = errorBody.trim().slice(0, 300);
+					const statusSummary = `HTTP ${albumResponse.status}${statusText ? ` ${statusText}` : ''} from ${target.name}`;
+					const logSummary = bodySnippet ? `${statusSummary}: ${bodySnippet}` : `${statusSummary} (no body)`;
+					console.warn(`[Worker] ${logSummary}`);
+					lastError = new Error(bodySnippet ? `${statusSummary} - ${bodySnippet}` : statusSummary);
+
+					if (albumResponse.status === 429) {
+						markTargetDown(target.name, 'rate limited', HEALTH_BACKOFF_MS.rateLimit);
+					} else if (albumResponse.status >= 500) {
+						markTargetDown(target.name, 'server error', HEALTH_BACKOFF_MS.serverError);
+					}
+
 					continue;
 				}
 				
@@ -303,6 +340,12 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 			} catch (error) {
 				lastError = error instanceof Error ? error : new Error(String(error));
 				console.warn(`[Worker] Target ${target.name} failed: ${lastError.message}`);
+
+				if (lastError.name === 'AbortError') {
+					markTargetDown(target.name, 'timeout', HEALTH_BACKOFF_MS.timeout);
+				} else {
+					markTargetDown(target.name, 'network error', HEALTH_BACKOFF_MS.serverError);
+				}
 				// Continue to next target
 			}
 		}
@@ -318,11 +361,6 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 			throw new Error('Album has no tracks');
 		}
 
-		await updateJobStatus(job.id, {
-			trackCount: totalTracks,
-			completedTracks: 0
-		});
-
 		const artistName =
 			albumJob.artistName ||
 			(album.artist &&
@@ -334,6 +372,12 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 
 		const albumTitle =
 			(typeof album.title === 'string' ? album.title : undefined) || 'Unknown Album';
+
+		await updateJobStatus(job.id, {
+			job: { ...job.job, albumTitle, artistName },
+			trackCount: totalTracks,
+			completedTracks: 0
+		});
 
 		// Extract cover art URL
 		let coverUrl: string | undefined;

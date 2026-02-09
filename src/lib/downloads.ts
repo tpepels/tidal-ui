@@ -424,6 +424,8 @@ export async function downloadAlbum(
 		}
 
 		const artistName = preferredArtistName ?? canonicalAlbum.artist?.name ?? 'Unknown Artist';
+		const albumTitle = canonicalAlbum.title ?? 'Unknown Album';
+		const trackCount = tracks.length;
 		
 		// Submit album job to server queue
 		const response = await fetch('/api/download-queue', {
@@ -434,7 +436,9 @@ export async function downloadAlbum(
 					type: 'album',
 					albumId: album.id,
 					quality,
-					artistName
+					artistName,
+					albumTitle,
+					trackCount
 				}
 			})
 		});

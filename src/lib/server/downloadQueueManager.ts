@@ -153,7 +153,9 @@ export interface AlbumJob {
 	type: 'album';
 	albumId: number;
 	quality: AudioQuality;
+	albumTitle?: string;
 	artistName?: string;
+	trackCount?: number;
 }
 
 export type DownloadJob = TrackJob | AlbumJob;
@@ -243,7 +245,8 @@ export async function enqueueJob(
 		createdAt: Date.now(),
 		priority: options?.priority || 'normal',
 		maxRetries: options?.maxRetries ?? 3,
-		retryCount: 0
+		retryCount: 0,
+		trackCount: job.type === 'album' ? job.trackCount : undefined
 	};
 
 	const client = await getConnectedRedis();

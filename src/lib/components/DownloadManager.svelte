@@ -176,7 +176,8 @@
 				{#if stats.running > 0}
 					<div class="section current-section">
 						<h4 class="section-title">
-							<span>🔄 Currently Downloading</span>
+							<span class="section-title-icon rotating"><RefreshCw size={14} strokeWidth={2} /></span>
+							<span>Currently Downloading</span>
 							<span class="section-count">{stats.running}</span>
 						</h4>
 						<div class="current-items">
@@ -184,7 +185,7 @@
 								<div class="current-item">
 									<div class="current-item-header">
 										<div class="current-item-title">
-											{job.job.type === 'track' ? job.job.trackTitle : job.job.albumTitle || 'Unknown'}
+											{job.job.type === 'track' ? job.job.trackTitle : job.job.albumTitle || 'Unknown Album'}
 										</div>
 										<span class="badge badge-processing">PROCESSING</span>
 									</div>
@@ -618,6 +619,15 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 8px;
+	}
+
+	.section-title-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 18px;
+		height: 18px;
+		color: var(--color-text-secondary);
 	}
 
 	.error-title {

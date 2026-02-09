@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { downloadTrackCore } from './downloadCore';
+import { downloadTrackCore, setDownloadDebugLogging } from './downloadCore';
 import type { ApiClient, DownloadOptions } from './types';
 
 // Mock response helper
@@ -73,12 +73,18 @@ describe('downloadTrackCore', () => {
 	});
 
 	it('should download track from single URL manifest', async () => {
+		const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+		setDownloadDebugLogging(false);
+
 		const result = await downloadTrackCore({
 			trackId: 1,
 			quality: 'LOSSLESS',
 			apiClient: mockApiClient,
 			fetchFn
 		});
+
+		expect(logSpy).not.toHaveBeenCalled();
+		logSpy.mockRestore();
 
 		expect(result).toBeDefined();
 		expect(result.buffer).toBeDefined();

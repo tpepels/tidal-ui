@@ -5,6 +5,7 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { spawn } from 'child_process';
 import type { AudioQuality } from '$lib/types';
 import type { ApiClient } from '../../core/download/types';
 import { downloadTrackCore } from '../../core/download/downloadCore';
@@ -30,6 +31,38 @@ import {
 	recordCircuitBreakerEvent
 } from '$lib/observability/downloadMetrics';
 
+async function writeBasicMetadata(
+	filePath: string,
+	fields: { title?: string; artist?: string; album?: string; trackNumber?: number }
+): Promise<void> {
+	const hasFields = fields.title || fields.artist || fields.album || fields.trackNumber;
+	if (!hasFields) return;
+
+	const tmpPath = `${filePath}.tmp`;
+	const args = ['-y', '-i', filePath, '-map', '0:a', '-c', 'copy'];
+
+	if (fields.title) args.push('-metadata', `title=${fields.title}`);
+	if (fields.artist) args.push('-metadata', `artist=${fields.artist}`);
+	if (fields.album) args.push('-metadata', `album=${fields.album}`);
+	if (fields.trackNumber) args.push('-metadata', `track=${fields.trackNumber}`);
+
+	args.push(tmpPath);
+
+	await new Promise<void>((resolve, reject) => {
+		const child = spawn('ffmpeg', args, { stdio: 'ignore' });
+		child.on('error', reject);
+		child.on('exit', (code) => {
+			if (code === 0) {
+				resolve();
+			} else {
+				reject(new Error(`ffmpeg exited with code ${code}`));
+			}
+		});
+	});
+
+	await fs.rename(tmpPath, filePath);
+}
+
 /**
  * Server-side fetch that constructs direct upstream URLs with target rotation
  * (losslessAPI.fetch uses fetchWithCORS which creates proxy URLs - unusable server-side)
@@ -41,7 +74,28 @@ const TARGET_FAILURE_TTL_MS = 86_400_000; // 1 day
 const CIRCUIT_BREAKER_THRESHOLD = 3; // Disable after 3 consecutive failures
 const CIRCUIT_BREAKER_TIMEOUT_MS = 60_000; // Re-enable after 60 seconds
 
+function resetCircuitState(): void {
+	targetFailureTimestamps.clear();
+	consecutiveFailures.clear();
+}
+
 async function createServerFetch(): Promise<typeof globalThis.fetch> {
+	async function readErrorSnippet(response: Response): Promise<string> {
+		try {
+			const contentType = response.headers.get('content-type') || '';
+			if (/json|text|html/i.test(contentType)) {
+				const bodyText = await response.text();
+				return bodyText.trim().slice(0, 500);
+			}
+
+			// Attempt to decode first 1KB for binary responses
+			const buffer = new Uint8Array(await response.arrayBuffer());
+			const decoder = new TextDecoder('utf-8', { fatal: false });
+			return decoder.decode(buffer.slice(0, 1024)).trim();
+		} catch (err) {
+			return `Unable to read body (${err instanceof Error ? err.message : String(err)})`;
+		}
+	}
 
 	function isTargetHealthy(targetName: string): boolean {
 		const failureAt = targetFailureTimestamps.get(targetName);
@@ -196,7 +250,9 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 				// If the segment fails, log it but throw with proper error
 				// Let higher level (downloadSegmentedDash) handle per-segment failures
 				const statusError = `HTTP ${response.status}`;
-				console.warn(`[ServerFetch] CDN segment returned ${statusError}: ${finalUrl.substring(0, 80)}...`);
+				const bodySnippet = await readErrorSnippet(response);
+				const logSnippet = bodySnippet ? ` Body: ${bodySnippet}` : '';
+				console.warn(`[ServerFetch] CDN segment returned ${statusError}: ${finalUrl.substring(0, 80)}...${logSnippet}`);
 				throw new Error(`Failed to fetch CDN segment: ${statusError}`);
 			} catch (error) {
 				throw error instanceof Error ? error : new Error(String(error));
@@ -251,8 +307,13 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 						resetConsecutiveFailures(target.name);
 						return response;
 					}
+					const bodySnippet = await readErrorSnippet(response);
 					markTargetUnhealthy(target.name);
-					lastError = new Error(`HTTP ${response.status} from target`);
+					lastError = new Error(
+						bodySnippet
+							? `HTTP ${response.status} from ${target.name}: ${bodySnippet}`
+							: `HTTP ${response.status} from ${target.name}`
+					);
 					continue;
 				}
 
@@ -268,8 +329,13 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 					resetConsecutiveFailures(target.name);
 					return response;
 				}
+				const bodySnippet = await readErrorSnippet(response);
 				markTargetUnhealthy(target.name);
-				lastError = new Error(`HTTP ${response.status} from ${target.name}`);
+				lastError = new Error(
+					bodySnippet
+						? `HTTP ${response.status} from ${target.name}: ${bodySnippet}`
+						: `HTTP ${response.status} from ${target.name}`
+				);
 			} catch (error) {
 				markTargetUnhealthy(target.name);
 				lastError = error instanceof Error ? error : new Error(String(error));
@@ -280,6 +346,9 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 		throw lastError || new Error('All targets failed');
 	};
 }
+
+// Test helpers
+export const __test = { createServerFetch, resetCircuitState };
 
 export interface ServerDownloadParams {
 	trackId: number;
@@ -342,8 +411,15 @@ export async function downloadTrackServerSide(
 		const detectedFormat = detectAudioFormat(new Uint8Array(buffer));
 		const ext = getServerExtension(quality, detectedFormat);
 
-		// Build filename
-		const filename = buildServerFilename(artistName, trackTitle, trackId, ext, undefined);
+		// Build filename with track number for ordering
+		const filename = buildServerFilename(
+			artistName,
+			trackTitle,
+			trackId,
+			ext,
+			result.trackMetadata,
+			trackNumber ?? result.trackMetadata?.track?.trackNumber
+		);
 
 		// Determine directory structure
 		const baseDir = getDownloadDir();		const artistDir = sanitizePath(artistName || 'Unknown Artist');
@@ -374,6 +450,18 @@ export async function downloadTrackServerSide(
 
 		// Write file to disk
 		await fs.writeFile(finalPath, buffer);
+
+		// Embed basic metadata (best-effort)
+		try {
+			await writeBasicMetadata(finalPath, {
+				title: trackTitle,
+				artist: artistName,
+				album: albumTitle,
+				trackNumber
+			});
+		} catch (metaErr) {
+			console.warn('[ServerDownload] Metadata write skipped:', metaErr);
+		}
 		console.log(`[ServerDownload] Saved to: ${finalPath}`);
 
 		// Download cover art if requested
