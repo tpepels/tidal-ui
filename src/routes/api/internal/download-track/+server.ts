@@ -158,11 +158,13 @@ export const POST: RequestHandler = async ({ request }) => {
 			const baseUrlMatch = manifestContent.match(/<BaseURL>([^<]+)<\/BaseURL>/);
 			if (baseUrlMatch) {
 				streamUrl = baseUrlMatch[1].trim();
+				console.log('[Internal Download] Extracted BaseURL from DASH manifest');
 			} else {
-				// Try to find any URL in the XML
-				const urlMatch = manifestContent.match(/(https?:\/\/[^\s<>"]+)/);
-				if (urlMatch) {
-					streamUrl = urlMatch[1];
+				// Try alternate DASH format with media attribute
+				const mediaMatch = manifestContent.match(/media="([^"]+\.flac[^"]*)"/i);
+				if (mediaMatch) {
+					streamUrl = mediaMatch[1];
+					console.log('[Internal Download] Extracted media URL from DASH');
 				}
 			}
 		}
@@ -175,7 +177,13 @@ export const POST: RequestHandler = async ({ request }) => {
 			);
 		}
 		
-		console.log('[Internal Download] Extracted stream URL:', streamUrl.substring(0, 80) + '...');
+		// Log just the domain and path, not full URL
+		try {
+			const urlObj = new URL(streamUrl);
+			console.log(`[Internal Download] Stream URL: ${urlObj.hostname}${urlObj.pathname.substring(0, 40)}...`);
+		} catch {
+			console.log('[Internal Download] Stream URL:', streamUrl.substring(0, 80));
+		}
 
 		// Download the audio stream
 		let audioResponse: Response;
@@ -265,13 +273,10 @@ export const POST: RequestHandler = async ({ request }) => {
 		// Write file to disk
 		await fs.writeFile(finalPath, buffer);
 
-		// Embed metadata (non-blocking, don't fail if this errors)
-		// Note: streamingData doesn't have full metadata, metadata embedding may be limited
-		try {
-			await embedMetadataToFile(finalPath, streamingData);
-		} catch (embedErr) {
-			console.warn('[Internal Download] Metadata embedding failed:', embedErr);
-		}
+		// TODO: Embed metadata using trackTitle, artistName, albumTitle from request body
+		// Current embedMetadataToFile expects full track object with album/artist nested objects
+		// which we don't have in streamingData. Skip for now.
+		// Future: build metadata object from request params or fetch track metadata separately
 
 		// Download cover art (non-blocking)
 		// Note: streaming response doesn't include cover art info
