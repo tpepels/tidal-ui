@@ -50,7 +50,6 @@ export async function downloadTrackServerSide(
 		albumTitle,
 		artistName,
 		trackTitle,
-		trackNumber,
 		coverUrl,
 		conflictResolution = 'overwrite',
 		apiClient,

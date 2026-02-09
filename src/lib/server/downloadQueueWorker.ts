@@ -288,10 +288,10 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 			try {
 				const contentType = albumResponse.headers.get('content-type') || '';
 				if (contentType.includes('application/json')) {
-					const errorData = await albumResponse.json();
-					errorText =
-						(errorData as any)?.error
-							? String((errorData as any).error)
+				const errorData = await albumResponse.json() as Record<string, unknown>;
+				errorText =
+					errorData?.error
+						? String(errorData.error)
 							: JSON.stringify(errorData);
 				} else {
 					errorText = await albumResponse.text();

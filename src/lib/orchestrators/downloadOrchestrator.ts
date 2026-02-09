@@ -240,21 +240,38 @@ export class DownloadOrchestrator {
 			}
 
 			const result = await response.json() as { success: boolean; jobId: string };
-						userMessage: 'Failed to submit track to download queue'
-					}
-				};
-			}
-		}
 		
-		const effectiveConvertAacToMp3 =
-			effectiveOptions.storage === 'client' ? effectiveOptions.convertAacToMp3 : false;
+		// Placeholder filename - actual name will be determined when queue processes track
+		const filename = track.title || 'download';
+		
+		// Return immediately - download will be processed by server queue
+		return {
+			success: true,
+			filename,
+			taskId: result.jobId
+		};
+	} catch (error) {
+		const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+		return {
+			success: false,
+			error: {
+				code: 'QUEUE_SUBMISSION_FAILED',
+				message: errorMsg,
+				userMessage: 'Failed to submit track to download queue'
+			}
+		};
+	}
+}
+	
+	const effectiveConvertAacToMp3 =
+		effectiveOptions.storage === 'client' ? effectiveOptions.convertAacToMp3 : false;
 
-		// Step 1: Handle Songlink conversion if needed
-		const resolutionResult = await this.trackResolver.resolve(track, {
-			autoConvertSonglink: effectiveOptions.autoConvertSonglink
-		});
+	// Step 1: Handle Songlink conversion if needed
+	const resolutionResult = await this.trackResolver.resolve(track, {
+		autoConvertSonglink: effectiveOptions.autoConvertSonglink
+	});
 
-		if (!resolutionResult.success) {
+	if (!resolutionResult.success) {
 			if (resolutionResult.error.code === 'CONVERSION_FAILED') {
 				this.showNotification(
 					'error',

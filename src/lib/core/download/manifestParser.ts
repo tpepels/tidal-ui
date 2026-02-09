@@ -111,7 +111,6 @@ export function extractStreamUrlFromManifest(manifest: string): string | null {
 
 export function parseManifest(manifest: string): ManifestParseResult {
 	const decoded = decodeBase64Manifest(manifest);
-	const trimmed = decoded.trim();
 
 	// Check if segmented DASH
 	if (isSegmentedDashManifest(decoded)) {
