@@ -486,7 +486,10 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 	const target = url.searchParams.get('url');
 	const origin = request.headers.get('origin');
 
-	console.log('Proxy request for URL:', target);
+	console.log('========== PROXY REQUEST START ==========');
+	console.log('[Proxy] Target URL:', target);
+	console.log('[Proxy] Origin:', origin);
+	console.log('[Proxy] Request headers:', Object.fromEntries(request.headers.entries()));
 
 	if (!allowOrigin(origin)) {
 		console.log('Proxy request blocked by origin check');
@@ -590,7 +593,11 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 	}
 
 		try {
-			console.log('Proxy fetching upstream URL:', parsedTarget.toString());
+			console.log('[Proxy] ========== UPSTREAM FETCH START ==========');
+			console.log('[Proxy] Fetching:', parsedTarget.toString());
+			console.log('[Proxy] Request headers:', Object.fromEntries(upstreamHeaders.entries()));
+			
+			const upstreamFetchStart = Date.now();
 			let upstream = await fetchWithRetry(
 				parsedTarget,
 				{
@@ -599,10 +606,12 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 				},
 				fetch
 			);
+			const upstreamFetchDuration = Date.now() - upstreamFetchStart;
+			
 			if (upstream.status === 416 && hasRangeRequest) {
 				const retryHeaders = new Headers(upstreamHeaders);
 				retryHeaders.delete('range');
-				console.warn('Proxy received 416, retrying without Range header');
+				console.warn('[Proxy] Received 416, retrying without Range header');
 				upstream = await fetchWithRetry(
 					parsedTarget,
 					{
@@ -612,15 +621,23 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 					fetch
 				);
 			}
-			console.log('Proxy upstream response status:', upstream.status, upstream.statusText);
-			const upstreamContentType = upstream.headers.get('content-type');
-			console.log('Proxy upstream content-type:', upstreamContentType);
+			
+			console.log('[Proxy] Upstream fetch completed in', upstreamFetchDuration, 'ms');
+			console.log('[Proxy] Response status:', upstream.status, upstream.statusText);
+			console.log('[Proxy] Response headers:', Object.fromEntries(upstream.headers.entries()));
+			
 		const upstreamHeaderEntries = Array.from(upstream.headers.entries());
 		const sanitizedHeaderEntries = sanitizeHeaderEntries(upstreamHeaderEntries);
 		const headers = applyProxyHeaders(sanitizedHeaderEntries, origin);
 
 		const upstreamCacheControl = upstream.headers.get('cache-control');
 		const upstreamContentLength = upstream.headers.get('content-length');
+		const upstreamContentType = upstream.headers.get('content-type');
+		
+		console.log('[Proxy] Content-Type:', upstreamContentType);
+		console.log('[Proxy] Content-Length:', upstreamContentLength);
+		console.log('[Proxy] Cache-Control:', upstreamCacheControl);
+		console.log('[Proxy] ========== UPSTREAM FETCH END ==========');
 		const canStream =
 			Boolean(upstream.body) &&
 			!hasRangeRequest &&
@@ -720,9 +737,14 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 			headers
 		});
 	} catch (error) {
-		console.error('Proxy error:', error);
-		console.error('Proxy error stack:', error instanceof Error ? error.stack : 'No stack');
-		console.error('Proxy target URL:', parsedTarget.toString());
+		console.error('[Proxy] ========== PROXY ERROR ==========');
+		console.error('[Proxy] Error type:', error?.constructor?.name);
+		console.error('[Proxy] Error message:', error instanceof Error ? error.message : 'Unknown');
+		console.error('[Proxy] Error code:', (error as any)?.code);
+		console.error('[Proxy] Error cause:', (error as any)?.cause);
+		console.error('[Proxy] Error stack:', error instanceof Error ? error.stack : 'No stack');
+		console.error('[Proxy] Target URL:', parsedTarget.toString());
+		console.error('[Proxy] =====================================');
 		markUpstreamUnhealthy(parsedTarget.origin);
 		return new Response(
 			JSON.stringify({

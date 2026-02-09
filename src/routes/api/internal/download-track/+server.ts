@@ -213,27 +213,63 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 
 		// Download the audio stream through the proxy
-		// Force proxy usage for CDN URLs by routing through our own proxy endpoint
+		// Use external proxy directly to avoid self-signed cert issues with internal proxy
 		let audioResponse: Response;
 		try {
-			// Construct absolute URL to our proxy endpoint
-			const baseUrl = process.env.INTERNAL_API_URL || `https://localhost:${process.env.PORT || 5000}`;
-			const proxiedUrl = `${baseUrl}/api/proxy?url=${encodeURIComponent(streamUrl)}`;
-			console.log('[Internal Download] Fetching through proxy:', proxiedUrl.substring(0, 150));
-			console.log('[Internal Download] Making request with NODE_TLS_REJECT_UNAUTHORIZED:', process.env.NODE_TLS_REJECT_UNAUTHORIZED);
+			// Use the external proxy that the browser uses (e.g., wolf.qqdl.site)
+			// This avoids the self-signed certificate issue with calling our own /api/proxy endpoint
+			const externalProxyUrl = API_CONFIG.targets[0]?.baseUrl;
 			
+			if (!externalProxyUrl) {
+				console.error('[Internal Download] No external proxy configured');
+				return json(
+					{ success: false, error: 'No proxy configuration available' },
+					{ status: 500 }
+				);
+			}
+			
+			// Construct the proxied URL using the external proxy
+			const proxiedUrl = `${externalProxyUrl}/api/proxy?url=${encodeURIComponent(streamUrl)}`;
+			
+			console.log('[Internal Download] ========== PROXY FETCH START ==========');
+			console.log('[Internal Download] Using external proxy:', externalProxyUrl);
+			console.log('[Internal Download] Stream URL:', streamUrl);
+			console.log('[Internal Download] Proxied URL:', proxiedUrl.substring(0, 200));
+			console.log('[Internal Download] Calling fetch...');
+			
+			const fetchStart = Date.now();
 			audioResponse = await fetch(proxiedUrl);
-			console.log('[Internal Download] Proxy fetch completed, status:', audioResponse.status);
+			const fetchDuration = Date.now() - fetchStart;
+			
+			console.log('[Internal Download] Fetch completed in', fetchDuration, 'ms');
+			console.log('[Internal Download] Response status:', audioResponse.status, audioResponse.statusText);
+			console.log('[Internal Download] Response headers:', Object.fromEntries(audioResponse.headers.entries()));
+			console.log('[Internal Download] ========== PROXY FETCH END ==========');
 		} catch (streamError) {
-			console.error('[Internal Download] Proxy fetch error:', streamError);
-			console.error('[Internal Download] Error details:', streamError instanceof Error ? streamError.message : 'Unknown');
+			console.error('[Internal Download] ========== PROXY FETCH ERROR ==========');
+			console.error('[Internal Download] Error type:', streamError?.constructor?.name);
+			console.error('[Internal Download] Error message:', streamError instanceof Error ? streamError.message : 'Unknown');
+			console.error('[Internal Download] Error code:', (streamError as any)?.code);
+			console.error('[Internal Download] Error cause:', (streamError as any)?.cause);
 			console.error('[Internal Download] Error stack:', streamError instanceof Error ? streamError.stack : 'No stack');
+			console.error('[Internal Download] ========================================');
 			return json(
 				{ success: false, error: `Failed to fetch audio stream: ${streamError instanceof Error ? streamError.message : 'Network error'}` },
 				{ status: 500 }
 			);
 		}
 		if (!audioResponse.ok) {
+			console.error('[Internal Download] Proxy returned non-OK status:', audioResponse.status, audioResponse.statusText);
+			console.error('[Internal Download] Response headers:', Object.fromEntries(audioResponse.headers.entries()));
+			
+			// Try to read error body
+			try {
+				const errorText = await audioResponse.text();
+				console.error('[Internal Download] Response body:', errorText.substring(0, 500));
+			} catch (e) {
+				console.error('[Internal Download] Could not read response body');
+			}
+			
 			return json(
 				{ success: false, error: `Failed to download audio: HTTP ${audioResponse.status}` },
 				{ status: 500 }
@@ -242,8 +278,13 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		let arrayBuffer: ArrayBuffer;
 		try {
+			console.log('[Internal Download] Reading response body...');
+			const readStart = Date.now();
 			arrayBuffer = await audioResponse.arrayBuffer();
+			const readDuration = Date.now() - readStart;
+			console.log('[Internal Download] Body read in', readDuration, 'ms, size:', arrayBuffer.byteLength, 'bytes');
 		} catch (bufferError) {
+			console.error('[Internal Download] Failed to read response body:', bufferError);
 			return json(
 				{ success: false, error: `Failed to read audio data: ${bufferError instanceof Error ? bufferError.message : 'Read error'}` },
 				{ status: 500 }
@@ -251,6 +292,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 		
 		const buffer = Buffer.from(arrayBuffer);
+		console.log('[Internal Download] Created buffer, size:', buffer.length, 'bytes');
 
 		if (buffer.length === 0) {
 			return json(
