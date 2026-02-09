@@ -91,114 +91,91 @@ export const POST: RequestHandler = async ({ request }) => {
 			);
 		}
 		
-		// Log the response structure for debugging
-		console.log('[Internal Download] Track response type:', typeof trackResponseData);
-		console.log('[Internal Download] Track response is array:', Array.isArray(trackResponseData));
-		console.log('[Internal Download] Track response keys:', trackResponseData && typeof trackResponseData === 'object' ? Object.keys(trackResponseData).slice(0, 10) : 'N/A');
-		if (Array.isArray(trackResponseData)) {
-			console.log('[Internal Download] Array length:', trackResponseData.length);
-			console.log('[Internal Download] First entry keys:', trackResponseData[0] && typeof trackResponseData[0] === 'object' ? Object.keys(trackResponseData[0]).slice(0, 10) : 'N/A');
-		}
+		// Parse track streaming data from response
+		// Response format: { version: "2.2", data: { trackId, manifest, ... } }
+		let streamingData: Record<string, unknown> | undefined;
+		let manifestBase64: string | undefined;
 		
-		// Parse track data from response (handle various response formats)
-		let trackData: Record<string, unknown> | undefined;
-		let streamUrl: string | undefined;
-		
-		// The response might be an array or object
-		const dataArray = Array.isArray(trackResponseData) ? trackResponseData : [trackResponseData];
-		
-		for (const entry of dataArray) {
-			if (entry && typeof entry === 'object') {
-				const obj = entry as Record<string, unknown>;
+		// Handle v2 API format
+		if (trackResponseData && typeof trackResponseData === 'object' && 'data' in trackResponseData) {
+			const container = trackResponseData as { data?: unknown };
+			if (container.data && typeof container.data === 'object') {
+				streamingData = container.data as Record<string, unknown>;
+				console.log('[Internal Download] Found v2 API data:', Object.keys(streamingData));
 				
-				// Check if this looks like track metadata
-				if ('title' in obj && ('id' in obj || 'url' in obj)) {
-					// This entry has title and either id or url - likely track metadata
-					if (!trackData && 'title' in obj && 'artist' in obj) {
-						trackData = obj;
-						console.log('[Internal Download] Found trackData with title and artist');
-					}
-					
-					// Check if this entry has a URL or manifest
-					if (!streamUrl && ('url' in obj || 'manifest' in obj)) {
-						const rawUrl = obj.url || obj.manifest;
-						if (rawUrl && typeof rawUrl === 'string') {
-							streamUrl = rawUrl;
-							console.log('[Internal Download] Found streamUrl:', streamUrl.substring(0, 50) + '...');
-						}
-					}
+				// Extract manifest
+				if ('manifest' in streamingData && typeof streamingData.manifest === 'string') {
+					manifestBase64 = streamingData.manifest;
 				}
 			}
 		}
 		
-		if (!trackData) {
-			console.error('[Internal Download] Could not find trackData. Response structure:', JSON.stringify(trackResponseData, null, 2).substring(0, 500));
+		if (!streamingData) {
+			console.error('[Internal Download] Could not parse streaming data. Response:', JSON.stringify(trackResponseData, null, 2).substring(0, 500));
 			return json(
-				{ success: false, error: 'Could not parse track metadata from response' },
+				{ success: false, error: 'Could not parse track streaming data from response' },
 				{ status: 500 }
 			);
 		}
 		
-		// If no stream URL found in array, try trackData itself
-		if (!streamUrl) {
-			const rawUrl = trackData.url || trackData.manifest;
-			if (rawUrl && typeof rawUrl === 'string') {
-				streamUrl = rawUrl;
-				console.log('[Internal Download] Found streamUrl in trackData');
-			}
-		}
-		
-		// If streamUrl doesn't look like a URL, try base64 decoding (manifest format)
-		if (streamUrl && !streamUrl.startsWith('http')) {
-			try {
-				const decoded = Buffer.from(streamUrl, 'base64').toString('utf-8');
-				console.log('[Internal Download] Decoded manifest, first 100 chars:', decoded.substring(0, 100));
-				
-				// If decoded starts with http, use it directly
-				if (decoded.startsWith('http')) {
-					streamUrl = decoded;
-				} else {
-					// Try parsing as JSON
-					try {
-						const parsed = JSON.parse(decoded);
-						if (parsed.url) {
-							streamUrl = parsed.url;
-						} else if (parsed.urls && Array.isArray(parsed.urls) && parsed.urls[0]) {
-							streamUrl = parsed.urls[0];
-						}
-					} catch {
-						// Not JSON, check if contains URL
-						const urlMatch = decoded.match(/(https?:\/\/[^\s]+)/);
-						if (urlMatch) {
-							streamUrl = urlMatch[1];
-						}
-					}
-				}
-			} catch (decodeError) {
-				console.warn('[Internal Download] Failed to decode manifest:', decodeError);
-			}
-		}
-		
-		if (!streamUrl || typeof streamUrl !== 'string') {
-			console.error('[Internal Download] No stream URL available. trackData keys:', Object.keys(trackData));
+		if (!manifestBase64) {
+			console.error('[Internal Download] No manifest in response. Keys:', Object.keys(streamingData));
 			return json(
-				{ success: false, error: 'No stream URL available in track data' },
+				{ success: false, error: 'No streaming manifest in response' },
 				{ status: 404 }
 			);
 		}
 		
-		console.log('[Internal Download] Final streamUrl:', streamUrl.substring(0, 80) + '...');
-		
-		// Validate stream URL format
+		// Decode manifest (base64)
+		let manifestContent: string;
 		try {
-			new URL(streamUrl);
-		} catch (urlError) {
-			console.error('[Internal Download] Invalid stream URL format:', streamUrl);
+			manifestContent = Buffer.from(manifestBase64, 'base64').toString('utf-8');
+			console.log('[Internal Download] Decoded manifest type:', manifestContent.substring(0, 50));
+		} catch (decodeError) {
+			console.error('[Internal Download] Failed to decode manifest:', decodeError);
 			return json(
-				{ success: false, error: `Invalid stream URL format: ${streamUrl}` },
+				{ success: false, error: 'Failed to decode streaming manifest' },
 				{ status: 500 }
 			);
 		}
+		
+		// Extract stream URL from manifest
+		let streamUrl: string | undefined;
+		
+		// If manifest is plain URL
+		if (manifestContent.startsWith('http')) {
+			streamUrl = manifestContent.trim();
+		} else if (manifestContent.startsWith('{')) {
+			// JSON format
+			try {
+				const parsed = JSON.parse(manifestContent);
+				streamUrl = parsed.url || parsed.urls?.[0];
+			} catch (jsonError) {
+				console.warn('[Internal Download] Manifest is not valid JSON:', jsonError);
+			}
+		} else if (manifestContent.startsWith('<?xml')) {
+			// DASH XML format - extract BaseURL
+			const baseUrlMatch = manifestContent.match(/<BaseURL>([^<]+)<\/BaseURL>/);
+			if (baseUrlMatch) {
+				streamUrl = baseUrlMatch[1].trim();
+			} else {
+				// Try to find any URL in the XML
+				const urlMatch = manifestContent.match(/(https?:\/\/[^\s<>"]+)/);
+				if (urlMatch) {
+					streamUrl = urlMatch[1];
+				}
+			}
+		}
+		
+		if (!streamUrl) {
+			console.error('[Internal Download] Could not extract URL from manifest. First 200 chars:', manifestContent.substring(0, 200));
+			return json(
+				{ success: false, error: 'Could not extract stream URL from manifest' },
+				{ status: 404 }
+			);
+		}
+		
+		console.log('[Internal Download] Extracted stream URL:', streamUrl.substring(0, 80) + '...');
 
 		// Download the audio stream
 		let audioResponse: Response;
@@ -243,18 +220,11 @@ export const POST: RequestHandler = async ({ request }) => {
 			);
 		}
 
-		// Build file path - safely extract nested properties
-		const extractString = (obj: unknown, key: string, fallback: string): string => {
-			if (obj && typeof obj === 'object' && key in obj) {
-				const value = (obj as Record<string, unknown>)[key];
-				return typeof value === 'string' ? value : fallback;
-			}
-			return fallback;
-		};
-		
-		const finalArtistName = artistName || extractString(trackData.artist, 'name', 'Unknown Artist');
-		const finalAlbumTitle = albumTitle || extractString(trackData.album, 'title', 'Unknown Album');
-		const finalTrackTitle = trackTitle || extractString(trackData, 'title', 'Unknown Track');
+		// Build file path using metadata from request body
+		// (API response only contains streaming manifest, not track metadata)
+		const finalArtistName = artistName || 'Unknown Artist';
+		const finalAlbumTitle = albumTitle || 'Unknown Album';
+		const finalTrackTitle = trackTitle || 'Unknown Track';
 
 		const detectedFormat = detectAudioFormatFromBuffer(buffer);
 		const ext = getServerExtension(quality, detectedFormat);
@@ -264,7 +234,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			finalTrackTitle,
 			trackId,
 			ext,
-			trackData
+			streamingData
 		);
 
 		const baseDir = getDownloadDir();
@@ -296,17 +266,20 @@ export const POST: RequestHandler = async ({ request }) => {
 		await fs.writeFile(finalPath, buffer);
 
 		// Embed metadata (non-blocking, don't fail if this errors)
+		// Note: streamingData doesn't have full metadata, metadata embedding may be limited
 		try {
-			await embedMetadataToFile(finalPath, trackData);
+			await embedMetadataToFile(finalPath, streamingData);
 		} catch (embedErr) {
 			console.warn('[Internal Download] Metadata embedding failed:', embedErr);
 		}
 
 		// Download cover art (non-blocking)
-		if (trackData.album?.cover) {
+		// Note: streaming response doesn't include cover art info
+		// TODO: Pass cover URL from album data in future
+		if (streamingData.album?.cover) {
 			try {
 				// Build cover URL from cover ID (https://resources.tidal.com/...)
-				const coverId = trackData.album.cover as string;
+				const coverId = streamingData.album.cover as string;
 				const coverUrl = `https://resources.tidal.com/images/${coverId.replace(/-/g, '/')}/${'1280'}x${'1280'}.jpg`;
 				await downloadCoverToDir(targetDir, coverUrl, path.basename(finalPath));
 			} catch (coverErr) {
