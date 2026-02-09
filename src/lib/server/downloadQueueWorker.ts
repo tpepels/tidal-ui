@@ -23,7 +23,22 @@ let activeDownloads = 0;
 const activeSemaphore = new Map<string, Promise<void>>();
 
 /**
- * Wrapper for fetch with timeout
+ * Build internal API URL - use HTTP for internal container communication
+ */
+function getInternalApiUrl(): string {
+	if (process.env.INTERNAL_API_URL) {
+		console.log('[Worker] Using INTERNAL_API_URL:', process.env.INTERNAL_API_URL);
+		return process.env.INTERNAL_API_URL;
+	}
+	
+	const port = process.env.PORT || 5000;
+	const url = `http://localhost:${port}`;
+	console.log('[Worker] Using default internal API URL:', url);
+	return url;
+}
+
+/**
+ * Wrapper for fetch with timeout and detailed error logging
  */
 async function fetchWithTimeout(
 	url: string,
@@ -33,13 +48,20 @@ async function fetchWithTimeout(
 	const controller = new AbortController();
 	const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
+	console.log(`[Worker] Fetch ${options.method || 'GET'} ${url}`);
+	
 	try {
-		return await fetch(url, {
+		const response = await fetch(url, {
 			...options,
-			signal: controller.signal,
-			// @ts-ignore - Node.js https agent for self-signed certs
-			agent: new (await import('https')).Agent({ rejectUnauthorized: false })
+			signal: controller.signal
 		});
+		
+		console.log(`[Worker] Response ${response.status} from ${url}`);
+		return response;
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.error(`[Worker] Fetch error for ${url}: ${message}`);
+		throw error;
 	} finally {
 		clearTimeout(timeoutId);
 	}
@@ -65,9 +87,7 @@ async function downloadTrack(
 		// - Embeds metadata
 		// - Downloads cover art
 		
-		// Use INTERNAL_API_URL if set (for Docker/NAT), otherwise use localhost
-		const port = process.env.PORT || 5000;
-		const baseUrl = process.env.INTERNAL_API_URL || `https://localhost:${port}`;
+		const baseUrl = getInternalApiUrl();
 		const url = `${baseUrl}/api/internal/download-track`;
 		
 		const body = {
@@ -88,10 +108,23 @@ async function downloadTrack(
 		});
 
 		if (!response.ok) {
-			const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+			let errorText = '';
+			try {
+				const contentType = response.headers.get('content-type');
+				if (contentType?.includes('application/json')) {
+					const errorData = await response.json();
+					errorText = errorData.error || JSON.stringify(errorData);
+				} else {
+					errorText = await response.text();
+				}
+			} catch (e) {
+				errorText = 'Could not parse error response';
+			}
+			const errorMsg = `HTTP ${response.status}: ${errorText || 'No details'}`;
+			console.error(`[Worker] Track ${trackId} failed: ${errorMsg}`);
 			return { 
 				success: false, 
-				error: errorData.error || `HTTP ${response.status}` 
+				error: errorMsg
 			};
 		}
 
@@ -110,12 +143,21 @@ async function downloadTrack(
 			};
 		}
 	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Unknown error';
-		if (message.includes('abort')) {
-			return { success: false, error: 'Download timeout (30s)' };
+		const message = error instanceof Error ? error.message : String(error);
+		let errorMsg = message;
+		
+		if (message.includes('abort') || message.includes('AbortError')) {
+			errorMsg = 'Timeout (30s)';
+		} else if (message.includes('ECONNREFUSED')) {
+			errorMsg = 'Connection refused - API not reachable';
+		} else if (message.includes('ENOTFOUND')) {
+			errorMsg = 'Host not found - DNS resolution failed';
+		} else if (message.includes('ETIMEDOUT')) {
+			errorMsg = 'Connection timeout';
 		}
-		console.error(`[Worker] Track ${trackId} failed:`, message);
-		return { success: false, error: message };
+		
+		console.error(`[Worker] Track ${trackId} failed: ${errorMsg}`);
+		return { success: false, error: errorMsg };
 	}
 }
 
@@ -166,16 +208,26 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 
 	try {
 		// Fetch album tracks via the API
-		// Use INTERNAL_API_URL if set (for Docker/NAT), otherwise use localhost
-		const port = process.env.PORT || 5000;
-		const baseUrl = process.env.INTERNAL_API_URL || `https://localhost:${port}`;
-		const albumResponse = await fetchWithTimeout(
-			`${baseUrl}/api/tidal?endpoint=/albums/${albumJob.albumId}`,
-			{}
-		);
+		const baseUrl = getInternalApiUrl();
+		const albumUrl = `${baseUrl}/api/tidal?endpoint=/albums/${albumJob.albumId}`;
+		
+		console.log(`[Worker] Album ${albumJob.albumId}: Fetching album data from ${albumUrl}`);
+		const albumResponse = await fetchWithTimeout(albumUrl, {});
 		
 		if (!albumResponse.ok) {
-			throw new Error(`Failed to fetch album: HTTP ${albumResponse.status}`);
+			let errorText = '';
+			try {
+				const contentType = albumResponse.headers.get('content-type');
+				if (contentType?.includes('application/json')) {
+					const errorData = await albumResponse.json();
+					errorText = errorData.error || JSON.stringify(errorData);
+				} else {
+					errorText = await albumResponse.text();
+				}
+			} catch (e) {
+				errorText = 'Could not parse error response';
+			}
+			throw new Error(`Failed to fetch album: HTTP ${albumResponse.status}: ${errorText}`);
 		}
 		
 		const { album, tracks } = await albumResponse.json();
@@ -241,11 +293,23 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 
 		console.log(`[Worker] Album ${albumJob.albumId} completed: ${completedTracks}/${totalTracks} tracks`);
 	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Unknown error';
-		console.error(`[Worker] Album ${albumJob.albumId} failed:`, message);
+		const message = error instanceof Error ? error.message : String(error);
+		let errorMsg = message;
+		
+		if (message.includes('abort') || message.includes('AbortError')) {
+			errorMsg = 'Timeout fetching album data (30s)';
+		} else if (message.includes('ECONNREFUSED')) {
+			errorMsg = 'Connection refused - API not reachable at ' + getInternalApiUrl();
+		} else if (message.includes('ENOTFOUND')) {
+			errorMsg = 'Host not found - DNS resolution failed for ' + getInternalApiUrl();
+		} else if (message.includes('ETIMEDOUT')) {
+			errorMsg = 'Connection timeout reaching ' + getInternalApiUrl();
+		}
+		
+		console.error(`[Worker] Album ${albumJob.albumId} failed: ${errorMsg}`);
 		await updateJobStatus(job.id, {
 			status: 'failed',
-			error: message,
+			error: errorMsg,
 			completedAt: Date.now()
 		});
 	}
