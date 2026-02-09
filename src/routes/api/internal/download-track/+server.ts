@@ -213,11 +213,12 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 
 		// Download the audio stream through the proxy
-		// Force proxy usage for CDN URLs by wrapping them manually
+		// Force proxy usage for CDN URLs by routing through our own proxy endpoint
 		let audioResponse: Response;
 		try {
-			const proxyUrl = API_CONFIG.proxyUrl || '/api/proxy';
-			const proxiedUrl = `${proxyUrl}?url=${encodeURIComponent(streamUrl)}`;
+			// Construct absolute URL to our proxy endpoint
+			const baseUrl = process.env.INTERNAL_API_URL || `https://localhost:${process.env.PORT || 5000}`;
+			const proxiedUrl = `${baseUrl}/api/proxy?url=${encodeURIComponent(streamUrl)}`;
 			console.log('[Internal Download] Fetching through proxy:', proxiedUrl.substring(0, 150));
 			audioResponse = await fetch(proxiedUrl);
 		} catch (streamError) {
