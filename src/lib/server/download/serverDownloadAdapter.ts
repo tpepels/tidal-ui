@@ -10,6 +10,11 @@ import type { ApiClient } from '../../core/download/types';
 import { downloadTrackCore } from '../../core/download/downloadCore';
 import { detectAudioFormat } from '../../utils/audioFormat';
 import { 
+	API_CONFIG,
+	getPrimaryTarget,
+	ensureWeightedTargets
+} from '$lib/config';
+import { 
 	getDownloadDir, 
 	sanitizePath, 
 	ensureDir,
@@ -18,6 +23,96 @@ import {
 	getServerExtension,
 	downloadCoverToDir
 } from '../../../routes/api/download-track/_shared';
+
+/**
+ * Server-side fetch that constructs direct upstream URLs with target rotation
+ * (losslessAPI.fetch uses fetchWithCORS which creates proxy URLs - unusable server-side)
+ */
+async function createServerFetch(): Promise<typeof globalThis.fetch> {
+	const targetFailureTimestamps = new Map<string, number>();
+	const TARGET_FAILURE_TTL_MS = 60_000;
+
+	function isTargetHealthy(targetName: string): boolean {
+		const failureAt = targetFailureTimestamps.get(targetName);
+		if (!failureAt) return true;
+		return Date.now() - failureAt > TARGET_FAILURE_TTL_MS;
+	}
+
+	function markTargetUnhealthy(targetName: string): void {
+		targetFailureTimestamps.set(targetName, Date.now());
+	}
+
+	return async (url: string, options?: RequestInit) => {
+		let finalUrl = url;
+
+		// If it's a proxy-wrapped URL, the handler will have to strip it
+		// But better: if it's a relative path, construct absolute URL from targets
+		if (finalUrl.startsWith('/') && !finalUrl.includes('/api/proxy')) {
+			const primaryTarget = getPrimaryTarget('v2');
+			finalUrl = `${primaryTarget.baseUrl}${finalUrl}`;
+		}
+
+		// If it's a proxy URL we can't handle on server, try to decode it
+		if (finalUrl.includes('/api/proxy?url=')) {
+			try {
+				const urlObj = new URL(finalUrl, 'http://localhost');
+				const encoded = urlObj.searchParams.get('url');
+				if (encoded) {
+					finalUrl = decodeURIComponent(encoded);
+					console.log(`[ServerFetch] Decoded proxy URL: ${finalUrl.substring(0, 80)}...`);
+				}
+			} catch (e) {
+				// If decoding fails, try with targets
+				console.warn(`[ServerFetch] Failed to decode proxy URL, will try targets`);
+			}
+		}
+
+		// Try each target in order
+		const weightedTargets = ensureWeightedTargets('v2');
+		const attemptOrder = [getPrimaryTarget('v2'), ...weightedTargets];
+		const uniqueTargets = attemptOrder.filter(
+			(target, index, array) => 
+				array.findIndex(entry => entry.name === target.name) === index
+		);
+
+		const healthyTargets = uniqueTargets.filter(target => isTargetHealthy(target.name));
+		const targetList = healthyTargets.length > 0 ? healthyTargets : uniqueTargets;
+
+		let lastError: Error | null = null;
+
+		for (const target of targetList) {
+			try {
+				// If URL is already absolute and for this target, use it
+				if (finalUrl.startsWith('http')) {
+					const response = await globalThis.fetch(finalUrl, options);
+					if (response.ok) {
+						return response;
+					}
+					markTargetUnhealthy(target.name);
+					lastError = new Error(`HTTP ${response.status} from target`);
+					continue;
+				}
+
+				// Otherwise, construct URL using targets
+				const upstreamUrl = `${target.baseUrl}${finalUrl.startsWith('/') ? finalUrl : `/${finalUrl}`}`;
+				console.log(`[ServerFetch] Trying ${target.name}: ${upstreamUrl.substring(0, 80)}...`);
+				
+				const response = await globalThis.fetch(upstreamUrl, options);
+				if (response.ok) {
+					return response;
+				}
+				markTargetUnhealthy(target.name);
+				lastError = new Error(`HTTP ${response.status} from ${target.name}`);
+			} catch (error) {
+				markTargetUnhealthy(target.name);
+				lastError = error instanceof Error ? error : new Error(String(error));
+				console.warn(`[ServerFetch] Error with ${target.name}:`, lastError.message);
+			}
+		}
+
+		throw lastError || new Error('All targets failed');
+	};
+}
 
 export interface ServerDownloadParams {
 	trackId: number;
@@ -52,28 +147,20 @@ export async function downloadTrackServerSide(
 		trackTitle,
 		coverUrl,
 		conflictResolution = 'overwrite',
-		apiClient // losslessAPI with fetchWithCORS - handles everything
+		apiClient // losslessAPI - we'll use it for getTrack() parsing only
 	} = params;
 
 	try {
-		// Use losslessAPI's built-in fetch which calls fetchWithCORS
-		// This gives us target rotation, failover, and proper response parsing
-		// We create a fetchFn that uses the API client's internal fetch
-		const fetchFn: typeof globalThis.fetch = async (url, options) => {
-			// Check if apiClient has a fetch method we can use
-			if ('fetch' in apiClient && typeof apiClient.fetch === 'function') {
-				return (apiClient as any).fetch(url, options);
-			}
-			// Fallback to global fetch
-			return globalThis.fetch(url, options);
-		};
+		// Create server-side fetch with target rotation
+		// This replaces losslessAPI.fetch which constructs proxy URLs
+		const fetchFn = await createServerFetch();
 		
 		// Download audio using core logic
 		const result = await downloadTrackCore({
 			trackId,
 			quality,
-			apiClient, // Has proper getTrack() with response parsing
-			fetchFn, // Uses apiClient's fetch -> fetchWithCORS -> target rotation
+			apiClient, // Uses apiClient.getTrack() for response parsing (properly tested)
+			fetchFn,   // Uses our server fetch that constructs direct upstream URLs with target rotation
 			options: {
 				skipMetadataEmbedding: true // Server-side doesn't embed metadata yet
 			}
