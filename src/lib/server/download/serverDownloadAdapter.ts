@@ -5,11 +5,16 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import type { AudioQuality } from '$lib/types';
+import type { AudioQuality, TrackLookup } from '$lib/types';
 import type { ApiClient } from '../../core/download/types';
 import { downloadTrackCore } from '../../core/download/downloadCore';
 import { detectAudioFormat } from '../../utils/audioFormat';
-import { API_CONFIG } from '$lib/config';
+import { 
+	API_CONFIG,
+	getPrimaryTarget,
+	ensureWeightedTargets,
+	selectFromWeightedTargets
+} from '$lib/config';
 import { 
 	getDownloadDir, 
 	sanitizePath, 
@@ -20,6 +25,65 @@ import {
 	downloadCoverToDir
 } from '../../../routes/api/download-track/_shared';
 
+
+/**
+ * Server-side API client that uses target rotation with fallback
+ * Constructs direct upstream URLs instead of using proxy wrapper
+ */
+function createServerApiClient(fetchFn: typeof globalThis.fetch): ApiClient {
+	return {
+		async getTrack(trackId: number, quality: AudioQuality): Promise<TrackLookup> {
+			// Get targets in priority order (using same logic as fetchWithCORS)
+			const weightedTargets = ensureWeightedTargets('v2');
+			
+			// Start with primary target, then fall back to others
+			const attemptOrder = [getPrimaryTarget('v2'), ...weightedTargets];
+			
+			// Remove duplicates while preserving order
+			const uniqueTargets = attemptOrder.filter(
+				(target, index, array) => 
+					array.findIndex(entry => entry.name === target.name) === index
+			);
+			
+			let lastError: unknown = null;
+			
+			// Try each target in order
+			for (const target of uniqueTargets) {
+				try {
+					// Build direct upstream URL - no proxy wrapper
+					const url = `${target.baseUrl}/track/?id=${trackId}&quality=${quality}`;
+					
+					console.log(`[ServerApiClient] Fetching from ${target.name}: ${url}`);
+					
+					const response = await fetchFn(url, {
+						headers: {
+							'Accept': 'application/json'
+						}
+					});
+					
+					if (!response.ok) {
+						console.warn(`[ServerApiClient] ${target.name} returned ${response.status}`);
+						lastError = new Error(`HTTP ${response.status} from ${target.name}`);
+						continue; // Try next target
+					}
+					
+					const data = await response.json() as TrackLookup;
+					console.log(`[ServerApiClient] Successfully fetched track from ${target.name}`);
+					return data;
+					
+				} catch (error) {
+					console.warn(`[ServerApiClient] Error with ${target.name}:`, error);
+					lastError = error;
+					// Continue to next target
+				}
+			}
+			
+			// All targets failed
+			throw lastError || new Error('All API targets failed for track lookup');
+		}
+	};
+}
+
 export interface ServerDownloadParams {
 	trackId: number;
 	quality: AudioQuality;
@@ -29,7 +93,7 @@ export interface ServerDownloadParams {
 	trackNumber?: number;
 	coverUrl?: string;
 	conflictResolution?: 'overwrite' | 'skip' | 'overwrite_if_different';
-	apiClient: ApiClient;
+	apiClient?: ApiClient;
 	fetch: typeof globalThis.fetch;
 }
 
@@ -53,33 +117,43 @@ export async function downloadTrackServerSide(
 		trackTitle,
 		coverUrl,
 		conflictResolution = 'overwrite',
-		apiClient,
+		apiClient: providedApiClient,
 		fetch: fetchFn
 	} = params;
 
 	try {
-		// Create a fetch wrapper that constructs upstream URLs directly from configured base URLs
-		// No proxy loopback - fetch directly from the configured API endpoints
-		const baseUrl = API_CONFIG.baseUrl || API_CONFIG.targets[0]?.baseUrl || 'https://api.tidal.com';
+		// Use provided API client or create server-side one with target rotation
+		const serverApiClient = providedApiClient || createServerApiClient(fetchFn);
 		
-		const wrappedFetch: typeof globalThis.fetch = (url, options) => {
+		// Create wrapped fetch for core downloader
+		// Handles both relative paths and proxy-wrapped URLs
+		const wrappedFetch: typeof globalThis.fetch = async (url, options) => {
 			let finalUrl = typeof url === 'string' ? url : url.toString();
 			
-			// If it's a proxy wrapper URL (from apiClient), construct the actual upstream URL
-			// Examples: /track/?id=123&quality=LOSSLESS or /album/?id=456
-			if (finalUrl.startsWith('/')) {
-				// Construct absolute URL using configured API base URL
-				finalUrl = new URL(finalUrl, baseUrl).toString();
+			// If it's a proxy wrapper URL (e.g., /api/proxy?url=ENCODED_URL)
+			// extract and use the actual upstream URL directly
+			if (finalUrl.includes('/api/proxy?url=')) {
+				const urlObj = new URL(finalUrl, 'http://localhost'); // Need base for URL parsing
+				const encoded = urlObj.searchParams.get('url');
+				if (encoded) {
+					finalUrl = decodeURIComponent(encoded);
+					console.log(`[ServerDownload] Decoded proxy URL to: ${finalUrl}`);
+				}
+			}
+			// If it's a relative path, construct absolute URL from primary target
+			else if (finalUrl.startsWith('/')) {
+				const primaryTarget = getPrimaryTarget('v2');
+				finalUrl = `${primaryTarget.baseUrl}${finalUrl}`;
 			}
 			
 			return fetchFn(finalUrl, options);
 		};
 
-		// Download audio using core logic
+		// Download audio using core logic with server API client
 		const result = await downloadTrackCore({
 			trackId,
 			quality,
-			apiClient,
+			apiClient: serverApiClient,
 			fetchFn: wrappedFetch,
 			options: {
 				skipMetadataEmbedding: true // Server-side doesn't embed metadata yet

@@ -77,6 +77,9 @@ function ensureWeightedTargets(apiVersion: 'v1' | 'v2' = 'v2'): WeightedTarget[]
 	}
 }
 
+// Export for server-side use (e.g., download adapter)
+export { ensureWeightedTargets };
+
 export function selectApiTarget(apiVersion: 'v1' | 'v2' = 'v2'): ApiClusterTarget {
 	const targets = ensureWeightedTargets(apiVersion);
 	return selectFromWeightedTargets(targets);

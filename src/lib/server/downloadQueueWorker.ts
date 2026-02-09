@@ -45,6 +45,8 @@ async function downloadTrack(
 		const apiTarget = API_CONFIG.baseUrl || API_CONFIG.targets[0]?.baseUrl || 'unknown';
 		
 		// Call the server adapter directly (NO HTTP)
+		// Don't pass losslessAPI - it returns proxy URLs that don't work in Node.js
+		// The server adapter creates its own client with target rotation
 		const result = await downloadTrackServerSide({
 			trackId,
 			quality,
@@ -54,7 +56,7 @@ async function downloadTrack(
 			trackNumber,
 			coverUrl,
 			conflictResolution: 'overwrite_if_different',
-			apiClient: losslessAPI,
+			// apiClient: omitted - adapter will create server-side client with target rotation
 			fetch: globalThis.fetch
 		});
 
