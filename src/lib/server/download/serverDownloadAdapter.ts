@@ -34,14 +34,14 @@ import {
  * Server-side fetch that constructs direct upstream URLs with target rotation
  * (losslessAPI.fetch uses fetchWithCORS which creates proxy URLs - unusable server-side)
  */
+// Shared circuit breaker state across all server fetches
+const targetFailureTimestamps = new Map<string, number>();
+const consecutiveFailures = new Map<string, number>();
+const TARGET_FAILURE_TTL_MS = 86_400_000; // 1 day
+const CIRCUIT_BREAKER_THRESHOLD = 3; // Disable after 3 consecutive failures
+const CIRCUIT_BREAKER_TIMEOUT_MS = 60_000; // Re-enable after 60 seconds
+
 async function createServerFetch(): Promise<typeof globalThis.fetch> {
-	const targetFailureTimestamps = new Map<string, number>();
-	const TARGET_FAILURE_TTL_MS = 86_400_000; // 1 day
-	
-	// Circuit breaker: track consecutive failures to temporarily disable broken targets
-	const consecutiveFailures = new Map<string, number>();
-	const CIRCUIT_BREAKER_THRESHOLD = 3; // Disable after 3 consecutive failures
-	const CIRCUIT_BREAKER_TIMEOUT_MS = 60_000; // Re-enable after 60 seconds
 
 	function isTargetHealthy(targetName: string): boolean {
 		const failureAt = targetFailureTimestamps.get(targetName);

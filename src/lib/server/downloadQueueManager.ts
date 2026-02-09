@@ -12,8 +12,8 @@ import { getRedisClient } from './redis';
 export async function initializeQueue(): Promise<void> {
 	console.log('[Queue] Initializing...');
 	const client = getRedisClient();
-	
-	if (client && redisConnected) {
+
+	if (client) {
 		try {
 			const jobs = await client.hgetall(QUEUE_KEY);
 			let recovered = 0;
@@ -247,7 +247,7 @@ export async function enqueueJob(
 	};
 
 	const client = getRedisClient();
-	if (client && redisConnected) {
+	if (client) {
 		try {
 			await client.hset(QUEUE_KEY, jobId, JSON.stringify(queuedJob));
 			console.log(`[Queue] Job ${jobId} enqueued (${job.type})`);
@@ -302,8 +302,8 @@ export async function findDuplicateJob(job: DownloadJob): Promise<QueuedJob | nu
 export async function dequeueJob(): Promise<QueuedJob | null> {
 	const client = getRedisClient();
 	const now = Date.now();
-	
-	if (client && redisConnected) {
+
+	if (client) {
 		try {
 			const jobs = await client.hgetall(QUEUE_KEY);
 			const priorityMap = { high: 3, normal: 2, low: 1 };
@@ -373,7 +373,7 @@ export async function updateJobStatus(
 ): Promise<void> {
 	const client = getRedisClient();
 	
-	if (client && redisConnected) {
+	if (client) {
 		try {
 			const existing = await client.hget(QUEUE_KEY, jobId);
 			if (existing) {
@@ -408,7 +408,7 @@ export async function updateJobStatus(
 export async function getJob(jobId: string): Promise<QueuedJob | null> {
 	const client = getRedisClient();
 	
-	if (client && redisConnected) {
+	if (client) {
 		try {
 			const data = await client.hget(QUEUE_KEY, jobId);
 			if (data) {
@@ -429,7 +429,7 @@ export async function getJob(jobId: string): Promise<QueuedJob | null> {
 export async function getAllJobs(): Promise<QueuedJob[]> {
 	const client = getRedisClient();
 	
-	if (client && redisConnected) {
+	if (client) {
 		try {
 			const jobs = await client.hgetall(QUEUE_KEY);
 			return Object.values(jobs).map(v => JSON.parse(v) as QueuedJob);
@@ -477,7 +477,7 @@ export async function cleanupOldJobs(olderThanMs: number = 24 * 60 * 60 * 1000):
 		const shouldClean = isOld && (job.status === 'completed' || job.status === 'failed');
 		
 		if (shouldClean) {
-			if (client && redisConnected) {
+			if (client) {
 				try {
 					await client.hdel(QUEUE_KEY, job.id);
 					cleaned++;
@@ -503,7 +503,7 @@ export async function cleanupOldJobs(olderThanMs: number = 24 * 60 * 60 * 1000):
 export async function deleteJob(jobId: string): Promise<boolean> {
 	const client = getRedisClient();
 	
-	if (client && redisConnected) {
+	if (client) {
 		try {
 			const result = await client.hdel(QUEUE_KEY, jobId);
 			if (result > 0) {

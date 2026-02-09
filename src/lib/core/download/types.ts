@@ -15,6 +15,7 @@ export interface DownloadOptions {
 	onProgress?: (progress: DownloadProgress) => void;
 	skipMetadataEmbedding?: boolean;
 	convertAacToMp3?: boolean;
+	headers?: HeadersInit;
 }
 
 export interface ManifestParseResult {

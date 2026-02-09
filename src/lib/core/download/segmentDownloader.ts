@@ -16,7 +16,10 @@ export async function downloadSegmentedDash(
 	let receivedBytes = 0;
 
 	for (const url of urls) {
-		const response = await fetchFn(url, { signal: options?.signal });
+		const response = await fetchFn(url, {
+			signal: options?.signal,
+			headers: options?.headers
+		});
 		if (!response.ok) {
 			throw new Error(`Failed to fetch DASH segment (status ${response.status}): ${url}`);
 		}
