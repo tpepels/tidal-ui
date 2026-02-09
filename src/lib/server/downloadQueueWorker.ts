@@ -157,7 +157,7 @@ async function downloadTrack(
 			body: JSON.stringify(body)
 		});
 
-		if (!response.ok) {
+		if (!response || !response.ok) {
 			let errorText = '';
 			try {
 				const contentType = response.headers.get('content-type');
@@ -178,18 +178,35 @@ async function downloadTrack(
 			};
 		}
 
-		const result = await response.json();
+		let result: unknown;
+		try {
+			result = await response.json();
+		} catch (parseError) {
+			return {
+				success: false,
+				error: 'Failed to parse download response: ' + (parseError instanceof Error ? parseError.message : 'Invalid JSON')
+			};
+		}
 		
-		if (result.success) {
-			console.log(`[Worker] Completed: ${result.filename || trackId}`);
+		if (!result || typeof result !== 'object') {
+			return {
+				success: false,
+				error: 'Invalid response format from download endpoint'
+			};
+		}
+		
+		const resultObj = result as { success?: unknown; error?: unknown; filename?: unknown; filepath?: unknown };
+		
+		if (resultObj.success === true) {
+			console.log(`[Worker] Completed: ${resultObj.filename || trackId}`);
 			return { 
 				success: true, 
-				filepath: result.filepath 
+				filepath: typeof resultObj.filepath === 'string' ? resultObj.filepath : undefined
 			};
 		} else {
 			return { 
 				success: false, 
-				error: result.error || 'Download failed' 
+				error: typeof resultObj.error === 'string' ? resultObj.error : 'Download failed' 
 			};
 		}
 	} catch (error) {
@@ -246,6 +263,99 @@ async function processTrackJob(job: QueuedJob): Promise<void> {
 }
 
 /**
+ * Parse album response data which can be in multiple formats
+ */
+function parseAlbumResponse(data: unknown): { album: Record<string, unknown>; tracks: Array<Record<string, unknown>> } {
+	if (!data) {
+		throw new Error('Empty response from API');
+	}
+	
+	// Handle v2 API format: { data: { items: [...] } }
+	if (data && typeof data === 'object' && 'data' in data) {
+		const dataObj = data as { data?: unknown };
+		if (dataObj.data && typeof dataObj.data === 'object' && 'items' in dataObj.data) {
+			const items = (dataObj.data as { items?: unknown }).items;
+			if (Array.isArray(items) && items.length > 0) {
+				const firstItem = items[0];
+				const firstTrack = (firstItem && typeof firstItem === 'object' && 'item' in firstItem) 
+					? (firstItem as { item: unknown }).item 
+					: firstItem;
+				
+				if (firstTrack && typeof firstTrack === 'object' && 'album' in firstTrack) {
+					const albumData = (firstTrack as { album?: unknown }).album;
+					if (!albumData || typeof albumData !== 'object') {
+						throw new Error('Invalid album data in API response');
+					}
+					const album = albumData as Record<string, unknown>;
+					
+					const tracks = items.map((i: unknown) => {
+						if (!i || typeof i !== 'object') return null;
+						const item = ('item' in i) ? (i as { item: unknown }).item : i;
+						if (!item || typeof item !== 'object') return null;
+						const track = item as Record<string, unknown>;
+						// Validate track has required fields
+						if (!track.id || typeof track.id !== 'number') return null;
+						return track;
+					}).filter((t): t is Record<string, unknown> => t !== null);
+					
+					if (tracks.length === 0) {
+						throw new Error('No valid tracks found in album');
+					}
+					
+					return { album, tracks };
+				}
+			}
+		}
+	}
+	
+	// Handle array format: [album, { items: [...] }]
+	const entries = Array.isArray(data) ? data : [data];
+	let album: Record<string, unknown> | undefined;
+	let trackCollection: { items?: unknown[] } | undefined;
+	
+	for (const entry of entries) {
+		if (!entry || typeof entry !== 'object') continue;
+		
+		// Check if this is an album object
+		if (!album && 'title' in entry && 'id' in entry) {
+			album = entry as Record<string, unknown>;
+			continue;
+		}
+		
+		// Check if this is a track collection
+		if (!trackCollection && 'items' in entry && Array.isArray((entry as { items?: unknown[] }).items)) {
+			trackCollection = entry as { items?: unknown[] };
+		}
+	}
+	
+	if (!album) {
+		throw new Error('Album not found in response');
+	}
+	
+	const tracks: Array<Record<string, unknown>> = [];
+	if (trackCollection?.items) {
+		for (const rawItem of trackCollection.items) {
+			if (!rawItem || typeof rawItem !== 'object') continue;
+			
+			const trackObj = ('item' in rawItem && rawItem.item && typeof rawItem.item === 'object')
+				? rawItem.item as Record<string, unknown>
+				: rawItem as Record<string, unknown>;
+			
+			// Validate track has required fields
+			if (trackObj.id && typeof trackObj.id === 'number') {
+				tracks.push(trackObj);
+			}
+		}
+	}
+	
+	if (tracks.length === 0) {
+		throw new Error('No valid tracks found in album response');
+	}
+	
+	return { album, tracks };
+}
+
+/**
  * Process an album job
  */
 async function processAlbumJob(job: QueuedJob): Promise<void> {
@@ -284,16 +394,31 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 			throw new Error(`Failed to fetch album: HTTP ${albumResponse.status}: ${errorText}`);
 		}
 		
-		const { album, tracks } = await albumResponse.json();
+		let responseData: unknown;
+		try {
+			responseData = await albumResponse.json();
+		} catch (parseError) {
+			throw new Error('Failed to parse album response as JSON: ' + (parseError instanceof Error ? parseError.message : 'Unknown error'));
+		}
+		
+		const { album, tracks } = parseAlbumResponse(responseData);
 		const totalTracks = tracks.length;
+		
+		if (totalTracks === 0) {
+			throw new Error('Album has no tracks');
+		}
 
 		await updateJobStatus(job.id, {
 			trackCount: totalTracks,
 			completedTracks: 0
 		});
 
-		const artistName = albumJob.artistName || album.artist?.name || 'Unknown Artist';
-		const albumTitle = album.title || 'Unknown Album';
+		const artistName = albumJob.artistName || 
+			(album.artist && typeof album.artist === 'object' && 'name' in album.artist 
+				? String((album.artist as { name: unknown }).name) 
+				: undefined) || 
+			'Unknown Artist';
+		const albumTitle = (typeof album.title === 'string' ? album.title : undefined) || 'Unknown Album';
 
 		let completedTracks = 0;
 		let failedTracks = 0;
@@ -301,13 +426,21 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		// Download tracks sequentially to avoid overwhelming the server
 		for (let i = 0; i < tracks.length; i++) {
 			const track = tracks[i];
+			const trackId = typeof track.id === 'number' ? track.id : 0;
+			const trackTitle = (typeof track.title === 'string' ? track.title : undefined) || 'Unknown Track';
+			
+			if (!trackId) {
+				console.warn(`[Worker] Skipping track ${i} - invalid ID`);
+				failedTracks++;
+				continue;
+			}
 			
 			const result = await downloadTrack(
-				track.id,
+				trackId,
 				albumJob.quality,
 				albumTitle,
 				artistName,
-				track.title
+				trackTitle
 			);
 
 			if (result.success) {

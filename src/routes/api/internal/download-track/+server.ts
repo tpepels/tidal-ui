@@ -57,14 +57,39 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 		
 		// Get track metadata
-		const trackResponse = await fetch(`${apiBaseUrl}/track/?id=${trackId}&quality=${quality}`);
-		if (!trackResponse.ok) {
+		let trackResponse: Response;
+		try {
+			trackResponse = await fetch(`${apiBaseUrl}/track/?id=${trackId}&quality=${quality}`);
+		} catch (fetchError) {
 			return json(
-				{ success: false, error: `Failed to fetch track metadata: HTTP ${trackResponse.status}` },
+				{ success: false, error: `Failed to connect to API: ${fetchError instanceof Error ? fetchError.message : 'Connection error'}` },
 				{ status: 500 }
 			);
 		}
-		const trackResponseData = await trackResponse.json();
+		
+		if (!trackResponse || !trackResponse.ok) {
+			return json(
+				{ success: false, error: `Failed to fetch track metadata: HTTP ${trackResponse?.status || 'unknown'}` },
+				{ status: 500 }
+			);
+		}
+		
+		let trackResponseData: unknown;
+		try {
+			trackResponseData = await trackResponse.json();
+		} catch (parseError) {
+			return json(
+				{ success: false, error: 'Failed to parse track response as JSON' },
+				{ status: 500 }
+			);
+		}
+		
+		if (!trackResponseData) {
+			return json(
+				{ success: false, error: 'Empty response from API' },
+				{ status: 500 }
+			);
+		}
 		
 		// Parse track data from response (handle various response formats)
 		let trackData: Record<string, unknown> | undefined;
@@ -99,15 +124,33 @@ export const POST: RequestHandler = async ({ request }) => {
 			streamUrl = (trackData.url || trackData.manifest) as string;
 		}
 		
-		if (!streamUrl) {
+		if (!streamUrl || typeof streamUrl !== 'string') {
 			return json(
 				{ success: false, error: 'No stream URL available in track data' },
 				{ status: 404 }
 			);
 		}
+		
+		// Validate stream URL format
+		try {
+			new URL(streamUrl);
+		} catch (urlError) {
+			return json(
+				{ success: false, error: `Invalid stream URL format: ${streamUrl}` },
+				{ status: 500 }
+			);
+		}
 
 		// Download the audio stream
-		const audioResponse = await fetch(streamUrl);
+		let audioResponse: Response;
+		try {
+			audioResponse = await fetch(streamUrl);
+		} catch (streamError) {
+			return json(
+				{ success: false, error: `Failed to fetch audio stream: ${streamError instanceof Error ? streamError.message : 'Network error'}` },
+				{ status: 500 }
+			);
+		}
 		if (!audioResponse.ok) {
 			return json(
 				{ success: false, error: `Failed to download audio: HTTP ${audioResponse.status}` },
@@ -115,7 +158,16 @@ export const POST: RequestHandler = async ({ request }) => {
 			);
 		}
 
-		const arrayBuffer = await audioResponse.arrayBuffer();
+		let arrayBuffer: ArrayBuffer;
+		try {
+			arrayBuffer = await audioResponse.arrayBuffer();
+		} catch (bufferError) {
+			return json(
+				{ success: false, error: `Failed to read audio data: ${bufferError instanceof Error ? bufferError.message : 'Read error'}` },
+				{ status: 500 }
+			);
+		}
+		
 		const buffer = Buffer.from(arrayBuffer);
 
 		if (buffer.length === 0) {
@@ -124,11 +176,26 @@ export const POST: RequestHandler = async ({ request }) => {
 				{ status: 500 }
 			);
 		}
+		
+		if (buffer.length < 1024) {
+			return json(
+				{ success: false, error: `Downloaded file suspiciously small (${buffer.length} bytes)` },
+				{ status: 500 }
+			);
+		}
 
-		// Build file path
-		const finalArtistName = artistName || trackData.artist?.name || 'Unknown Artist';
-		const finalAlbumTitle = albumTitle || trackData.album?.title || 'Unknown Album';
-		const finalTrackTitle = trackTitle || trackData.title || 'Unknown Track';
+		// Build file path - safely extract nested properties
+		const extractString = (obj: unknown, key: string, fallback: string): string => {
+			if (obj && typeof obj === 'object' && key in obj) {
+				const value = (obj as Record<string, unknown>)[key];
+				return typeof value === 'string' ? value : fallback;
+			}
+			return fallback;
+		};
+		
+		const finalArtistName = artistName || extractString(trackData.artist, 'name', 'Unknown Artist');
+		const finalAlbumTitle = albumTitle || extractString(trackData.album, 'title', 'Unknown Album');
+		const finalTrackTitle = trackTitle || extractString(trackData, 'title', 'Unknown Track');
 
 		const detectedFormat = detectAudioFormatFromBuffer(buffer);
 		const ext = getServerExtension(quality, detectedFormat);
