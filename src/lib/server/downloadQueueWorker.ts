@@ -256,6 +256,7 @@ function parseAlbumResponse(data: unknown): { album: Record<string, unknown>; tr
  */
 async function processAlbumJob(job: QueuedJob): Promise<void> {
 	const albumJob = job.job as AlbumJob;
+
 	await updateJobStatus(job.id, { 
 		status: 'processing', 
 		startedAt: Date.now(),
@@ -263,21 +264,35 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 	});
 
 	try {
-		// Fetch album tracks from the upstream Tidal proxy API
 		const apiBaseUrl = API_CONFIG.baseUrl || API_CONFIG.targets[0]?.baseUrl;
 		if (!apiBaseUrl) {
 			throw new Error('No upstream API configured');
 		}
-		
+
 		const albumUrl = `${apiBaseUrl}/album/?id=${albumJob.albumId}`;
 		console.log(`[Worker] Album ${albumJob.albumId}: Fetching album data from ${apiBaseUrl}`);
-		
-	const albumResponse = await fetch(albumUrl);
+
+		// --- Proper fetch with timeout ---
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), 30_000);
+
+		let albumResponse: Response;
+		try {
+			albumResponse = await globalThis.fetch(albumUrl, { signal: controller.signal });
+		} finally {
+			clearTimeout(timeout);
+		}
+
+		if (!albumResponse.ok) {
+			let errorText = '';
 			try {
-				const contentType = albumResponse.headers.get('content-type');
-				if (contentType?.includes('application/json')) {
+				const contentType = albumResponse.headers.get('content-type') || '';
+				if (contentType.includes('application/json')) {
 					const errorData = await albumResponse.json();
-					errorText = errorData.error || JSON.stringify(errorData);
+					errorText =
+						(errorData as any)?.error
+							? String((errorData as any).error)
+							: JSON.stringify(errorData);
 				} else {
 					errorText = await albumResponse.text();
 				}
@@ -286,17 +301,20 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 			}
 			throw new Error(`Failed to fetch album: HTTP ${albumResponse.status}: ${errorText}`);
 		}
-		
+
 		let responseData: unknown;
 		try {
 			responseData = await albumResponse.json();
 		} catch (parseError) {
-			throw new Error('Failed to parse album response as JSON: ' + (parseError instanceof Error ? parseError.message : 'Unknown error'));
+			throw new Error(
+				'Failed to parse album response as JSON: ' +
+					(parseError instanceof Error ? parseError.message : 'Unknown error')
+			);
 		}
-		
+
 		const { album, tracks } = parseAlbumResponse(responseData);
 		const totalTracks = tracks.length;
-		
+
 		if (totalTracks === 0) {
 			throw new Error('Album has no tracks');
 		}
@@ -306,17 +324,21 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 			completedTracks: 0
 		});
 
-		const artistName = albumJob.artistName || 
-			(album.artist && typeof album.artist === 'object' && 'name' in album.artist 
-				? String((album.artist as { name: unknown }).name) 
-				: undefined) || 
+		const artistName =
+			albumJob.artistName ||
+			(album.artist &&
+			typeof album.artist === 'object' &&
+			'name' in album.artist
+				? String((album.artist as { name: unknown }).name)
+				: undefined) ||
 			'Unknown Artist';
-		const albumTitle = (typeof album.title === 'string' ? album.title : undefined) || 'Unknown Album';
-		
+
+		const albumTitle =
+			(typeof album.title === 'string' ? album.title : undefined) || 'Unknown Album';
+
 		// Extract cover art URL
 		let coverUrl: string | undefined;
 		if (album.cover && typeof album.cover === 'string') {
-			// Build cover URL from cover ID (format: uuid)
 			const coverId = album.cover;
 			coverUrl = `https://resources.tidal.com/images/${coverId.replace(/-/g, '/')}/1280x1280.jpg`;
 			console.log(`[Worker] Found cover art: ${coverId}`);
@@ -326,26 +348,26 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		let failedTracks = 0;
 		const startTime = Date.now();
 
-		// Initialize per-track progress
 		const trackProgress = tracks.map((track, idx) => ({
 			trackId: typeof track.id === 'number' ? track.id : 0,
-			trackTitle: (typeof track.title === 'string' ? track.title : undefined) || `Track ${idx + 1}`,
+			trackTitle:
+				(typeof track.title === 'string' ? track.title : undefined) ||
+				`Track ${idx + 1}`,
 			status: 'pending' as 'pending' | 'downloading' | 'completed' | 'failed',
 			error: undefined as string | undefined
 		}));
 
-		// Update job with initial track progress
-		await updateJobStatus(job.id, {
-			trackProgress
-		});
+		await updateJobStatus(job.id, { trackProgress });
 
-		// Download tracks sequentially to avoid overwhelming the server
 		for (let i = 0; i < tracks.length; i++) {
 			const track = tracks[i];
 			const trackId = typeof track.id === 'number' ? track.id : 0;
-			const trackTitle = (typeof track.title === 'string' ? track.title : undefined) || 'Unknown Track';
-			const trackNumber = typeof track.trackNumber === 'number' ? track.trackNumber : (i + 1);
-			
+			const trackTitle =
+				(typeof track.title === 'string' ? track.title : undefined) ||
+				'Unknown Track';
+			const trackNumber =
+				typeof track.trackNumber === 'number' ? track.trackNumber : i + 1;
+
 			if (!trackId) {
 				console.warn(`[Worker] Skipping track ${i} - invalid ID`);
 				failedTracks++;
@@ -353,10 +375,9 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 				trackProgress[i].error = 'Invalid track ID';
 				continue;
 			}
-			
-			// Mark track as downloading
+
 			trackProgress[i].status = 'downloading';
-			
+
 			const result = await downloadTrack(
 				trackId,
 				albumJob.quality,
@@ -376,16 +397,15 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 				trackProgress[i].error = result.error;
 			}
 
-			// Update progress with per-track details
 			await updateJobStatus(job.id, {
 				progress: (i + 1) / totalTracks,
-				completedTracks: completedTracks,
+				completedTracks,
 				trackProgress
 			});
 		}
 
-		// Mark as completed or failed
 		const duration = Date.now() - startTime;
+
 		if (failedTracks === totalTracks) {
 			await updateJobStatus(job.id, {
 				status: 'failed',
@@ -410,11 +430,13 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 			});
 		}
 
-		console.log(`[Worker] Album ${albumJob.albumId} completed: ${completedTracks}/${totalTracks} tracks`);
+		console.log(
+			`[Worker] Album ${albumJob.albumId} completed: ${completedTracks}/${totalTracks} tracks`
+		);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		let errorMsg = message;
-		
+
 		if (message.includes('abort') || message.includes('AbortError')) {
 			errorMsg = 'Timeout fetching album data (30s)';
 		} else if (message.includes('ECONNREFUSED')) {
@@ -424,8 +446,9 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		} else if (message.includes('ETIMEDOUT')) {
 			errorMsg = 'Connection timeout';
 		}
-		
+
 		console.error(`[Worker] Album ${albumJob.albumId} failed: ${errorMsg}`);
+
 		await updateJobStatus(job.id, {
 			status: 'failed',
 			error: errorMsg,
@@ -433,6 +456,7 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		});
 	}
 }
+
 
 /**
  * Process a single job with proper error handling
