@@ -256,6 +256,11 @@ function resolveUrl(url: string): URL | null {
  * Create a proxied URL if needed
  */
 export function getProxiedUrl(url: string): string {
+	const isBrowser = typeof window !== 'undefined' && typeof window.document !== 'undefined';
+	if (!isBrowser) {
+		return url;
+	}
+
 	if (!API_CONFIG.useProxy || !API_CONFIG.proxyUrl) {
 		return url;
 	}

@@ -40,7 +40,21 @@ const buildConfig = (overrides?: Partial<{
 	};
 };
 
+const ensureBrowserWindow = () => {
+	Object.defineProperty(globalThis, 'window', {
+		value: { document: {} },
+		configurable: true
+	});
+};
+
+const clearBrowserWindow = () => {
+	if ('window' in globalThis) {
+		delete (globalThis as { window?: unknown }).window;
+	}
+};
+
 const setupConfig = async (overrides?: Parameters<typeof buildConfig>[0]) => {
+	ensureBrowserWindow();
 	vi.resetModules();
 	vi.unmock('$lib/config');
 	vi.doMock('./config/targets', () => ({
@@ -60,6 +74,7 @@ const setupConfig = async (overrides?: Parameters<typeof buildConfig>[0]) => {
 
 afterEach(() => {
 	vi.restoreAllMocks();
+	clearBrowserWindow();
 });
 
 describe('config target selection', () => {
@@ -75,6 +90,14 @@ describe('config target selection', () => {
 		const url = 'https://api.example.com/v1/tracks/1';
 		const proxied = config.getProxiedUrl(url);
 		expect(proxied).toBe(`/proxy?url=${encodeURIComponent(url)}`);
+	});
+
+	it('skips proxy wrapping outside the browser', async () => {
+		const { config } = await setupConfig();
+		delete (globalThis as { window?: unknown }).window;
+		const url = 'https://api.example.com/v1/tracks/1';
+		const proxied = config.getProxiedUrl(url);
+		expect(proxied).toBe(url);
 	});
 
 	it('rewrites quality and sets headers for custom targets', async () => {
