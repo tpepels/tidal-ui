@@ -33,13 +33,30 @@ import {
 
 async function writeBasicMetadata(
 	filePath: string,
-	fields: { title?: string; artist?: string; album?: string; trackNumber?: number }
+	fields: { title?: string; artist?: string; album?: string; trackNumber?: number; coverPath?: string }
 ): Promise<void> {
 	const hasFields = fields.title || fields.artist || fields.album || fields.trackNumber;
 	if (!hasFields) return;
 
 	const tmpPath = `${filePath}.tmp`;
-	const args = ['-y', '-i', filePath, '-map', '0:a', '-c', 'copy'];
+	const args = ['-y', '-i', filePath, '-map', '0:a'];
+
+	let hasCover = false;
+	if (fields.coverPath) {
+		try {
+			await fs.access(fields.coverPath);
+			hasCover = true;
+			args.push('-i', fields.coverPath);
+		} catch {
+			hasCover = false;
+		}
+	}
+
+	args.push('-c', 'copy');
+
+	if (hasCover) {
+		args.push('-map', '1', '-disposition:v', 'attached_pic', '-metadata:s:v', 'title=Cover', '-metadata:s:v', 'comment=Cover');
+	}
 
 	if (fields.title) args.push('-metadata', `title=${fields.title}`);
 	if (fields.artist) args.push('-metadata', `artist=${fields.artist}`);
@@ -381,12 +398,26 @@ export async function downloadTrackServerSide(
 		albumTitle,
 		artistName,
 		trackTitle,
+		trackNumber,
 		coverUrl,
 		conflictResolution = 'overwrite',
 		apiClient // losslessAPI - we'll use it for getTrack() parsing only
 	} = params;
 
 	try {
+		// Fetch track metadata first so we can reuse tags without double-fetching later
+		const trackLookup = await apiClient.getTrack(trackId, quality);
+		const lookupTrackNumber = Number(trackLookup.track.trackNumber) || undefined;
+		const lookupAlbumTitle = trackLookup.track.album?.title;
+		const lookupArtistName = trackLookup.track.artist?.name;
+		const lookupCoverId = trackLookup.track.album?.cover;
+		const effectiveAlbumTitle = albumTitle || lookupAlbumTitle;
+		const effectiveArtistName = artistName || lookupArtistName;
+		let effectiveCoverUrl = coverUrl;
+		if (!effectiveCoverUrl && lookupCoverId) {
+			effectiveCoverUrl = `https://resources.tidal.com/images/${lookupCoverId.replace(/-/g, '/')}/1280x1280.jpg`;
+		}
+
 		// Create server-side fetch with target rotation
 		// This replaces losslessAPI.fetch which constructs proxy URLs
 		const fetchFn = await createServerFetch();
@@ -413,17 +444,17 @@ export async function downloadTrackServerSide(
 
 		// Build filename with track number for ordering
 		const filename = buildServerFilename(
-			artistName,
+			effectiveArtistName,
 			trackTitle,
 			trackId,
 			ext,
-			result.trackMetadata,
-			trackNumber ?? result.trackMetadata?.track?.trackNumber
+			trackLookup,
+			trackNumber ?? lookupTrackNumber
 		);
 
 		// Determine directory structure
-		const baseDir = getDownloadDir();		const artistDir = sanitizePath(artistName || 'Unknown Artist');
-		const albumDir = sanitizePath(albumTitle || 'Unknown Album');
+		const baseDir = getDownloadDir();		const artistDir = sanitizePath(effectiveArtistName || 'Unknown Artist');
+		const albumDir = sanitizePath(effectiveAlbumTitle || 'Unknown Album');
 		const targetDir = path.join(baseDir, artistDir, albumDir);
 		await ensureDir(targetDir);
 
@@ -451,31 +482,34 @@ export async function downloadTrackServerSide(
 		// Write file to disk
 		await fs.writeFile(finalPath, buffer);
 
-		// Embed basic metadata (best-effort)
-		try {
-			await writeBasicMetadata(finalPath, {
-				title: trackTitle,
-				artist: artistName,
-				album: albumTitle,
-				trackNumber
-			});
-		} catch (metaErr) {
-			console.warn('[ServerDownload] Metadata write skipped:', metaErr);
-		}
-		console.log(`[ServerDownload] Saved to: ${finalPath}`);
-
-		// Download cover art if requested
+		// Download cover art if requested (before metadata so we can embed it)
 		let coverDownloaded = false;
-		if (coverUrl) {
+		let embeddedCoverPath: string | undefined;
+		if (effectiveCoverUrl) {
 			try {
-				coverDownloaded = await downloadCoverToDir(coverUrl, targetDir);
+				coverDownloaded = await downloadCoverToDir(effectiveCoverUrl, targetDir);
 				if (coverDownloaded) {
+					embeddedCoverPath = path.join(targetDir, 'cover.jpg');
 					console.log(`[ServerDownload] Cover art downloaded`);
 				}
 			} catch (coverErr) {
 				console.warn(`[ServerDownload] Cover download failed:`, coverErr);
 			}
 		}
+
+		// Embed basic metadata (best-effort)
+		try {
+			await writeBasicMetadata(finalPath, {
+				title: trackTitle,
+				artist: effectiveArtistName,
+				album: effectiveAlbumTitle,
+				trackNumber: trackNumber ?? lookupTrackNumber,
+				coverPath: embeddedCoverPath
+			});
+		} catch (metaErr) {
+			console.warn('[ServerDownload] Metadata write skipped:', metaErr);
+		}
+		console.log(`[ServerDownload] Saved to: ${finalPath}`);
 
 		const finalFilename = path.basename(finalPath);
 		return {
