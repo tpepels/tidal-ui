@@ -213,27 +213,13 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 
 		// Download the audio stream through the proxy
-		// Use external proxy directly to avoid self-signed cert issues with internal proxy
+		// Call the internal proxy endpoint via HTTP to avoid self-signed cert issues
 		let audioResponse: Response;
 		try {
-			// Use the external proxy that the browser uses (e.g., wolf.qqdl.site)
-			// This avoids the self-signed certificate issue with calling our own /api/proxy endpoint
-			const externalProxyUrl = API_CONFIG.targets[0]?.baseUrl;
-			
-			if (!externalProxyUrl) {
-				console.error('[Internal Download] No external proxy configured');
-				return json(
-					{ success: false, error: 'No proxy configuration available' },
-					{ status: 500 }
-				);
-			}
-			
-			// Construct the proxied URL using the external proxy
-			const proxiedUrl = `${externalProxyUrl}/api/proxy?url=${encodeURIComponent(streamUrl)}`;
+			const port = process.env.PORT || 5000;
+			const proxiedUrl = `http://localhost:${port}/api/proxy?url=${encodeURIComponent(streamUrl)}`;
 			
 			console.log('[Internal Download] ========== PROXY FETCH START ==========');
-			console.log('[Internal Download] Using external proxy:', externalProxyUrl);
-			console.log('[Internal Download] Stream URL:', streamUrl);
 			console.log('[Internal Download] Proxied URL:', proxiedUrl.substring(0, 200));
 			console.log('[Internal Download] Calling fetch...');
 			
@@ -243,14 +229,10 @@ export const POST: RequestHandler = async ({ request }) => {
 			
 			console.log('[Internal Download] Fetch completed in', fetchDuration, 'ms');
 			console.log('[Internal Download] Response status:', audioResponse.status, audioResponse.statusText);
-			console.log('[Internal Download] Response headers:', Object.fromEntries(audioResponse.headers.entries()));
 			console.log('[Internal Download] ========== PROXY FETCH END ==========');
 		} catch (streamError) {
 			console.error('[Internal Download] ========== PROXY FETCH ERROR ==========');
-			console.error('[Internal Download] Error type:', streamError?.constructor?.name);
 			console.error('[Internal Download] Error message:', streamError instanceof Error ? streamError.message : 'Unknown');
-			console.error('[Internal Download] Error code:', (streamError as any)?.code);
-			console.error('[Internal Download] Error cause:', (streamError as any)?.cause);
 			console.error('[Internal Download] Error stack:', streamError instanceof Error ? streamError.stack : 'No stack');
 			console.error('[Internal Download] ========================================');
 			return json(
