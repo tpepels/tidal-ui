@@ -433,10 +433,21 @@ export async function fetchWithCORS(
 
 	// Filter out if skipTarget is provided - ensures we try different target on retry
 	if (options?.skipTarget) {
-		const filtered = uniqueTargets.filter(target => target.name !== options.skipTarget);
-		// Only use filtered list if it has targets; otherwise keep original (fallback)
-		if (filtered.length > 0) {
-			uniqueTargets = filtered;
+		// Handle 'retry-N' format: rotate to different targets on each retry
+		const retryMatch = options.skipTarget.match(/^retry-(\d+)$/);
+		if (retryMatch) {
+			const retryNum = parseInt(retryMatch[1], 10);
+			// Rotate the target list by moving first N targets to the end
+			const rotateCount = retryNum % uniqueTargets.length;
+			uniqueTargets = [...uniqueTargets.slice(rotateCount), ...uniqueTargets.slice(0, rotateCount)];
+			console.log(`[Config] Rotated targets by ${rotateCount} for retry ${retryNum}`);
+		} else {
+			// Standard skipTarget: filter out the named target
+			const filtered = uniqueTargets.filter(target => target.name !== options.skipTarget);
+			// Only use filtered list if it has targets; otherwise keep original (fallback)
+			if (filtered.length > 0) {
+				uniqueTargets = filtered;
+			}
 		}
 	}
 

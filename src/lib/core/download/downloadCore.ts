@@ -40,14 +40,20 @@ async function delayBeforeRetry(attemptNumber: number): Promise<void> {
 /**
  * Classify segment download errors to determine if retry is worthwhile
  * Some errors (permissions, region-lock) are permanent and won't be fixed by retrying
+ * CDN 403 errors are special: they're retriable via manifest refetch from different target
  */
 function isRetriableSegmentError(error: Error): boolean {
 	const msg = error.message.toLowerCase();
 	
+	// CDN segment 403s are retriable via manifest refetch (different target = different CDN URLs)
+	if (msg.includes('cdn segment') && /\b403\b/.test(msg)) {
+		return true;
+	}
+	
 	// Permanent failures - don't retry these
 	const permanentPatterns = [
 		// HTTP errors
-		/\b403\b/,           // Forbidden (permission denied, region-locked)
+		/\b403\b/,           // Forbidden (permission denied, region-locked) - but CDN checked above
 		/\b404\b/,           // Not found (manifest was wrong)
 		/\b401\b/,           // Unauthorized (auth token invalid)
 		/\b400\b/,           // Bad request (invalid parameters)
@@ -161,6 +167,19 @@ export async function downloadTrackCore(params: {
 
 		while (manifestRetries < MAX_MANIFEST_RETRIES && !result) {
 			try {
+				// Refetch manifest on retry to get different CDN URLs from different target
+				if (manifestRetries > 0) {
+					console.log('[DownloadCore] Refetching manifest from different target...', {
+						attempt: manifestRetries + 1
+					});
+					await delayBeforeRetry(manifestRetries);
+					
+					// Get fresh manifest from different target
+					// Use retry counter in skipTarget to force cache miss and different target selection
+					const freshLookup = await apiClient.getTrack(trackId, quality, { skipTarget: `retry-${manifestRetries}` });
+					trackLookup = freshLookup;
+				}
+				
 				const manifest = trackLookup.info.manifest;
 				const parsed = parseManifest(manifest);
 
@@ -194,27 +213,21 @@ export async function downloadTrackCore(params: {
 				lastSegmentError = error instanceof Error ? error : new Error(String(error));
 				manifestRetries++;
 				
-				// Don't retry permanent failures (403, 404, CORS, etc)
+				// Check if error is retriable (CDN 403s are retriable via manifest refetch)
 				const isRetriable = isRetriableSegmentError(lastSegmentError);
 				
-				if (isRetriable && manifestRetries < MAX_MANIFEST_RETRIES) {
-					console.log('[DownloadCore] Segment download failed (retriable), retrying with fresh manifest...', {
-						error: lastSegmentError.message,
-						attempt: manifestRetries + 1
-					});
-					// Wait before retrying to avoid hammering targets
-					await delayBeforeRetry(manifestRetries);
-					
-					// Refetch manifest to potentially get URLs from different target
-					try {
-						const freshLookup = await apiClient.getTrack(trackId, quality, { skipTarget: 'previous' });
-						trackLookup.info.manifest = freshLookup.info.manifest;
-					} catch (refetchErr) {
-						console.warn('[DownloadCore] Failed to refetch manifest:', refetchErr);
-						// Continue anyway with same manifest
-					}
-				} else if (!isRetriable) {
+				if (!isRetriable) {
 					console.warn('[DownloadCore] Segment download failed (permanent error), not retrying:', lastSegmentError.message);
+					break; // Exit retry loop for permanent errors
+				} else if (manifestRetries >= MAX_MANIFEST_RETRIES) {
+					console.warn('[DownloadCore] Max manifest retries reached, giving up');
+					break;
+				} else {
+					console.log('[DownloadCore] Segment download failed (retriable via different target), will retry...', {
+						error: lastSegmentError.message,
+						nextAttempt: manifestRetries + 1
+					});
+					// Manifest refetch happens at top of loop with skipTarget
 				}
 			}
 		}
