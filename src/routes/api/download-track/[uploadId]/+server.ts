@@ -80,9 +80,10 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		await ensureDir(targetDir);
 
 		const buffer = Buffer.from(arrayBuffer);
-		if (buffer.length > MAX_FILE_SIZE) {
+		if (MAX_FILE_SIZE > 0 && buffer.length > MAX_FILE_SIZE) {
+			const trackDesc = `track ID ${trackId} (${trackTitle || 'Unknown'})`;
 			return json(
-				{ error: `File too large: maximum ${MAX_FILE_SIZE} bytes allowed` },
+				{ error: `File too large (${(buffer.length / 1024 / 1024).toFixed(2)}MB) for ${trackDesc}: maximum ${MAX_FILE_SIZE} bytes allowed` },
 				{ status: 400 }
 			);
 		}

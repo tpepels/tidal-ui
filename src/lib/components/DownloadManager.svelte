@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { downloadOrchestrator } from '$lib/orchestrators';
-	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { Play, Pause, Square, RotateCcw, AlertCircle, Trash2, RotateCw } from 'lucide-svelte';
 
 	let isOpen = $state(false);
@@ -40,7 +39,7 @@
 	};
 
 	const handleRetryAllFailed = async () => {
-		const results = await downloadOrchestrator.retryAllFailedDownloads();
+		await downloadOrchestrator.retryAllFailedDownloads();
 		failedDownloads = downloadOrchestrator.getFailedDownloads();
 		queueStatus = downloadOrchestrator.getQueueStatus();
 	};
@@ -53,22 +52,24 @@
 	};
 
 	const totalItems = $derived(queueStatus.queued + queueStatus.running);
+	const hasActivity = $derived(totalItems > 0 || failedDownloads.length > 0);
 </script>
 
 <div class="download-manager-container">
-	{#if totalItems > 0 || failedDownloads.length > 0}
-		<button
-			onclick={() => (isOpen = !isOpen)}
-			type="button"
-			class="download-manager-toggle"
-			title={isOpen ? 'Hide download manager' : 'Show download manager'}
-		>
+	<button
+		onclick={() => (isOpen = !isOpen)}
+		type="button"
+		class="download-manager-toggle"
+		class:has-activity={hasActivity}
+		title={isOpen ? 'Hide download manager' : 'Show download manager'}
+	>
+		{#if hasActivity}
 			<div class="download-manager-badge">
 				{totalItems + failedDownloads.length}
 			</div>
-			<span class="download-manager-icon">⬇</span>
-		</button>
-	{/if}
+		{/if}
+		<span class="download-manager-icon">⬇</span>
+	</button>
 
 	{#if isOpen}
 		<div class="download-manager-panel">
@@ -152,7 +153,12 @@
 					<span>Stop</span>
 				</button>
 			</div>
-
+		{#if !hasActivity}
+			<div class="download-manager-empty">
+				<p class="empty-message">No active downloads</p>
+				<p class="empty-hint">Downloads will appear here when you start downloading tracks or albums</p>
+			</div>
+		{/if}
 			{#if queueStatus.running > 0 || queueStatus.queued > 0}
 				<div class="download-manager-section">
 					<h4 class="download-manager-subtitle">
@@ -165,7 +171,7 @@
 						</div>
 						{#each queueStatus.queuedItems.slice(0, 5) as item (item.id)}
 							<div class="queue-item">
-								<span class="queue-item-title" title={item.trackId}>
+								<span class="queue-item-title" title={String(item.trackId)}>
 									{item.trackId}
 								</span>
 								<span
@@ -704,6 +710,39 @@
 	.download-manager-queue::-webkit-scrollbar-thumb:hover,
 	.download-manager-failed::-webkit-scrollbar-thumb:hover {
 		background: rgba(255, 255, 255, 0.3);
+	}
+
+	/* Empty state */
+	.download-manager-empty {
+		padding: 32px 16px;
+		text-align: center;
+		color: var(--color-text-secondary);
+	}
+
+	.empty-message {
+		margin: 0 0 8px 0;
+		font-size: 14px;
+		font-weight: 500;
+		color: var(--color-text-primary);
+	}
+
+	.empty-hint {
+		margin: 0;
+		font-size: 12px;
+		line-height: 1.5;
+		opacity: 0.7;
+	}
+
+	/* Toggle button inactive state */
+	.download-manager-toggle:not(.has-activity) {
+		background: rgba(255, 255, 255, 0.1);
+		opacity: 0.6;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+	}
+
+	.download-manager-toggle:not(.has-activity):hover {
+		opacity: 1;
+		background: rgba(255, 255, 255, 0.15);
 	}
 
 	/* Responsive */

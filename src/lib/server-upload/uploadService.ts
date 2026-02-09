@@ -316,8 +316,8 @@ export const downloadTrackServerSide = async (
 				options?.signal
 			);
 			if (uploadResult.success) {
-				const toastMessage = uploadResult.message ?? 'Server download completed';
-				toasts.success(`Download completed: ${toastMessage}`);
+				const logMessage = uploadResult.message ?? 'Server download completed';
+				console.log(`[Server Download] ${logMessage}`);
 			}
 			return uploadResult;
 		} else {
@@ -354,7 +354,7 @@ export const downloadTrackServerSide = async (
 			}
 
 			const data = await uploadResponse.json();
-			toasts.success(`Download completed: ${data.message}`);
+			console.log(`[Server Download] Completed: ${data.message}`);
 			return {
 				success: true,
 				filepath: data.filepath,

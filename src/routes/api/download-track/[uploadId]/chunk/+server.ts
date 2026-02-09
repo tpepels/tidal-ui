@@ -111,10 +111,12 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			return json({ error }, { status: 400 });
 		}
 		if (chunkState.totalSize > MAX_FILE_SIZE) {
+			const uploadData = pendingUploads.get(uploadId);
+			const trackDesc = uploadData ? `track ID ${uploadData.trackId} (${uploadData.trackTitle || 'Unknown'})` : 'unknown track';
 			await fs.unlink(chunkState.tempFilePath).catch(() => {});
 			endUpload(uploadId);
 			return json(
-				{ error: `File too large: maximum ${MAX_FILE_SIZE} bytes allowed` },
+				{ error: `File too large (${(chunkState.totalSize / 1024 / 1024).toFixed(2)}MB) for ${trackDesc}: maximum ${MAX_FILE_SIZE} bytes allowed` },
 				{ status: 400 }
 			);
 		}
@@ -165,11 +167,12 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				downloadCoverSeperately,
 				coverUrl
 			} = uploadData;
-			if (totalSize && totalSize > MAX_FILE_SIZE) {
+			if (MAX_FILE_SIZE > 0 && totalSize && totalSize > MAX_FILE_SIZE) {
+				const trackDesc = `track ID ${trackId} (${trackTitle || 'Unknown'})`;
 				await fs.unlink(chunkState.tempFilePath).catch(() => {});
 				endUpload(uploadId);
 				return json(
-					{ error: `File too large: maximum ${MAX_FILE_SIZE} bytes allowed` },
+					{ error: `File too large (${(totalSize / 1024 / 1024).toFixed(2)}MB) for ${trackDesc}: maximum ${MAX_FILE_SIZE} bytes allowed` },
 					{ status: 400 }
 				);
 			}
@@ -197,29 +200,30 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			const initialFilepath = path.join(targetDir, filename);
 
 			// Handle file conflicts
-			let { finalPath, action } = await resolveFileConflict(
-				initialFilepath,
-				conflictResolution || 'overwrite_if_different',
-				chunkState.totalSize,
-				chunkState.checksum || undefined
-			);
+		const { finalPath: initialFinalPath, action } = await resolveFileConflict(
+			initialFilepath,
+			conflictResolution || 'overwrite_if_different',
+			chunkState.totalSize,
+			chunkState.checksum || undefined
+		);
+		let finalPath = initialFinalPath;
 
-			if (action === 'skip') {
-				await fs.unlink(chunkState.tempFilePath).catch(() => {});
-				endUpload(uploadId);
-				const finalFilename = path.basename(finalPath);
-				return json(
-					{
-						success: true,
-						filepath: finalPath,
-						filename: finalFilename,
-						action,
-						message: `File already exists, skipped: ${artistDir}/${albumDir}/${finalFilename}`,
-						coverDownloaded: false
-					},
-					{ status: 201 }
-				);
-			}
+		if (action === 'skip') {
+			await fs.unlink(chunkState.tempFilePath).catch(() => {});
+			endUpload(uploadId);
+			const finalFilename = path.basename(finalPath);
+			return json(
+				{
+					success: true,
+					filepath: finalPath,
+					filename: finalFilename,
+					action,
+					message: `File already exists, skipped: ${artistDir}/${albumDir}/${finalFilename}`,
+					coverDownloaded: false
+				},
+				{ status: 201 }
+			);
+		}
 
 			try {
 				await moveFile(chunkState.tempFilePath, finalPath);

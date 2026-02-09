@@ -107,12 +107,13 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				const targetDir = path.join(baseDir, artistDir, albumDir);
 				await ensureDir(targetDir);
 				const initialFilepath = path.join(targetDir, filename);
-				let { finalPath, action } = await resolveFileConflict(
-					initialFilepath,
-					body.conflictResolution || pendingUpload?.conflictResolution || 'overwrite',
-					buffer.length,
-					pendingUpload?.checksum
-				);
+			const { finalPath: initialFinalPath, action } = await resolveFileConflict(
+				initialFilepath,
+				body.conflictResolution || pendingUpload?.conflictResolution || 'overwrite',
+				buffer.length,
+				pendingUpload?.checksum
+			);
+			let finalPath = initialFinalPath;
 				if (action === 'skip') {
 					const finalFilename = path.basename(finalPath);
 					if (bodyUploadId) {
@@ -296,9 +297,9 @@ export const POST: RequestHandler = async ({ request, url }) => {
 						{ error: 'Invalid trackMetadata: must be an object or undefined' },
 						{ status: 400 }
 					);
-				if (blobSize !== undefined && blobSize > MAX_FILE_SIZE)
+				if (MAX_FILE_SIZE > 0 && blobSize !== undefined && blobSize > MAX_FILE_SIZE)
 					return json(
-						{ error: `File too large: maximum ${MAX_FILE_SIZE} bytes allowed` },
+						{ error: `File too large (${(blobSize / 1024 / 1024).toFixed(2)}MB) for track "${body.trackTitle || 'Unknown'}" by ${body.artistName || 'Unknown'}: maximum ${MAX_FILE_SIZE} bytes allowed` },
 						{ status: 400 }
 					);
 				if (useChunks && blobSize === undefined) {
@@ -420,9 +421,9 @@ export const POST: RequestHandler = async ({ request, url }) => {
 			const targetDir = path.join(baseDir, artistDir, albumDir);
 			await ensureDir(targetDir);
 			const initialFilepath = path.join(targetDir, filename);
-			if (buffer.length > MAX_FILE_SIZE) {
+			if (MAX_FILE_SIZE > 0 && buffer.length > MAX_FILE_SIZE) {
 				return json(
-					{ error: `File too large: maximum ${MAX_FILE_SIZE} bytes allowed` },
+					{ error: `File too large (${(buffer.length / 1024 / 1024).toFixed(2)}MB) for track "${trackTitle || 'Unknown'}" by ${artistName || 'Unknown'}: maximum ${MAX_FILE_SIZE} bytes allowed` },
 					{ status: 400 }
 				);
 			}
@@ -432,12 +433,13 @@ export const POST: RequestHandler = async ({ request, url }) => {
 			if (uploadData.checksum && !(await validateChecksum(buffer, uploadData.checksum))) {
 				return json({ error: 'Checksum validation failed' }, { status: 400 });
 			}
-				let { finalPath, action } = await resolveFileConflict(
-					initialFilepath,
-					conflictResolution,
-					buffer.length,
-					uploadData.checksum
-				);
+			const { finalPath: initialFinalPath, action } = await resolveFileConflict(
+				initialFilepath,
+				conflictResolution,
+				buffer.length,
+				uploadData.checksum
+			);
+			let finalPath = initialFinalPath;
 				if (action === 'skip') {
 					const finalFilename = path.basename(finalPath);
 					endUpload(uploadId);

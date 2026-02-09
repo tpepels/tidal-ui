@@ -133,7 +133,7 @@ export const chunkUploads = new Map<string, ChunkUploadState>();
 export const activeUploads = new Set<string>();
 export const UPLOAD_TTL = 15 * 60 * 1000; // 15 minutes - longer TTL for slow connections/large files
 export const MAX_CONCURRENT_UPLOADS = parseInt(process.env.MAX_CONCURRENT_UPLOADS || '40');
-export const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || '524288000'); // 500MB default
+export const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || '0'); // 0 = unlimited (single-user system)
 export const MAX_CHUNK_SIZE = parseInt(process.env.MAX_CHUNK_SIZE || '10485760'); // 10MB default
 export const MAX_COVER_BYTES = 10 * 1024 * 1024;
 const ALLOWED_COVER_HOSTS = new Set(['resources.tidal.com']);
