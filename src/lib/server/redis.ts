@@ -110,7 +110,7 @@ export async function getConnectedRedis(): Promise<Redis | null> {
 	const instance = getRedisClient();
 	if (!instance) return null;
 
-	if (instance.status === 'ready' || instance.status === 'connecting' || instance.status === 'connect') {
+	if (instance.status === 'ready') {
 		return instance;
 	}
 
