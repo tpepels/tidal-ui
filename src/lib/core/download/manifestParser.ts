@@ -9,6 +9,22 @@ export function decodeBase64Manifest(manifest: string): string {
 	if (typeof manifest !== 'string') return '';
 	const trimmed = manifest.trim();
 	if (!trimmed) return '';
+	
+	// If the manifest is a proxy-wrapped URL, extract the actual URL
+	if (trimmed.includes('/api/proxy?url=')) {
+		try {
+			const urlObj = new URL(trimmed, 'http://localhost');
+			const encoded = urlObj.searchParams.get('url');
+			if (encoded) {
+				const decoded = decodeURIComponent(encoded);
+				console.log('[ManifestParser] Decoded proxy URL in manifest');
+				return decoded;
+			}
+		} catch (e) {
+			// Fall through to base64 decoding
+		}
+	}
+	
 	try {
 		// Support URL-safe base64 and missing padding
 		const normalized = (() => {

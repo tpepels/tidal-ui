@@ -45,14 +45,7 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 	return async (url: string, options?: RequestInit) => {
 		let finalUrl = url;
 
-		// If it's a proxy-wrapped URL, the handler will have to strip it
-		// But better: if it's a relative path, construct absolute URL from targets
-		if (finalUrl.startsWith('/') && !finalUrl.includes('/api/proxy')) {
-			const primaryTarget = getPrimaryTarget('v2');
-			finalUrl = `${primaryTarget.baseUrl}${finalUrl}`;
-		}
-
-		// If it's a proxy URL we can't handle on server, try to decode it
+		// If it's a proxy-wrapped URL, extract the actual upstream URL
 		if (finalUrl.includes('/api/proxy?url=')) {
 			try {
 				const urlObj = new URL(finalUrl, 'http://localhost');
@@ -60,11 +53,18 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 				if (encoded) {
 					finalUrl = decodeURIComponent(encoded);
 					console.log(`[ServerFetch] Decoded proxy URL: ${finalUrl.substring(0, 80)}...`);
+					// Use the decoded URL directly
+					return globalThis.fetch(finalUrl, options);
 				}
 			} catch (e) {
-				// If decoding fails, try with targets
-				console.warn(`[ServerFetch] Failed to decode proxy URL, will try targets`);
+				console.warn(`[ServerFetch] Failed to decode proxy URL`);
 			}
+		}
+
+		// If it's a relative path, construct absolute URL from targets
+		if (finalUrl.startsWith('/') && !finalUrl.includes('/api/proxy')) {
+			const primaryTarget = getPrimaryTarget('v2');
+			finalUrl = `${primaryTarget.baseUrl}${finalUrl}`;
 		}
 
 		// Try each target in order
