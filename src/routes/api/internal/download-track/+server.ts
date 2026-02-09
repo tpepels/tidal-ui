@@ -94,20 +94,75 @@ export const POST: RequestHandler = async ({ request }) => {
 		// Parse track data from response (handle various response formats)
 		let trackData: Record<string, unknown> | undefined;
 		let streamUrl: string | undefined;
+		let manifestData: string | undefined;
 		
-		// The response might be an array or object
-		const dataArray = Array.isArray(trackResponseData) ? trackResponseData : [trackResponseData];
-		for (const entry of dataArray) {
-			if (entry && typeof entry === 'object') {
-				// Check if this looks like track metadata
-				if ('title' in entry && ('id' in entry || 'url' in entry)) {
-					if (!trackData && ('title' in entry && 'artist' in entry)) {
-						trackData = entry as Record<string, unknown>;
+		// Helper to extract stream URL from manifest
+		const extractUrlFromManifest = (manifest: string): string | null => {
+			try {
+				// Try to decode base64 if it looks encoded
+				if (manifest && !manifest.startsWith('http')) {
+					const decoded = Buffer.from(manifest, 'base64').toString('utf-8');
+					if (decoded.startsWith('http')) {
+						return decoded;
 					}
-					// Check if this looks like a manifest or URL entry
-					if (!streamUrl && ('url' in entry || 'manifest' in entry)) {
-						streamUrl = (entry.url || entry.manifest) as string;
+					// Try parsing as JSON
+					try {
+						const parsed = JSON.parse(decoded);
+						if (parsed.url) return parsed.url;
+						if (parsed.urls && Array.isArray(parsed.urls) && parsed.urls[0]) return parsed.urls[0];
+					} catch {
+						// Not JSON, return decoded if it looks like URL
+						if (decoded.includes('://')) return decoded;
 					}
+				}
+				return null;
+			} catch {
+				return null;
+			}
+		};
+		
+		// Handle v2 API format: { data: { ... } }
+		if (trackResponseData && typeof trackResponseData === 'object' && 'data' in trackResponseData) {
+			const container = trackResponseData as { data?: unknown };
+			if (container.data && typeof container.data === 'object') {
+				const data = container.data as Record<string, unknown>;
+				
+				// Check if data itself is the track
+				if ('title' in data || 'id' in data) {
+					trackData = data;
+					if ('manifest' in data) manifestData = String(data.manifest);
+					if ('url' in data) streamUrl = String(data.url);
+				}
+				
+				// Check if data contains track in items or similar
+				if (!trackData && 'items' in data && Array.isArray(data.items) && data.items[0]) {
+					const firstItem = data.items[0];
+					if (firstItem && typeof firstItem === 'object') {
+						trackData = firstItem as Record<string, unknown>;
+						if ('manifest' in firstItem) manifestData = String((firstItem as Record<string, unknown>).manifest);
+						if ('url' in firstItem) streamUrl = String((firstItem as Record<string, unknown>).url);
+					}
+				}
+			}
+		}
+		
+		// Handle array format: [track, info, ...]
+		if (!trackData) {
+			const dataArray = Array.isArray(trackResponseData) ? trackResponseData : [trackResponseData];
+			for (const entry of dataArray) {
+				if (!entry || typeof entry !== 'object') continue;
+				
+				// Look for track metadata (has title/id)
+				if (!trackData && ('title' in entry || 'id' in entry)) {
+					trackData = entry as Record<string, unknown>;
+				}
+				
+				// Look for manifest/url data
+				if (!manifestData && 'manifest' in entry) {
+					manifestData = String((entry as Record<string, unknown>).manifest);
+				}
+				if (!streamUrl && 'url' in entry) {
+					streamUrl = String((entry as Record<string, unknown>).url);
 				}
 			}
 		}
@@ -119,9 +174,20 @@ export const POST: RequestHandler = async ({ request }) => {
 			);
 		}
 		
+		// Extract stream URL from various sources
 		if (!streamUrl) {
-			// Try to extract from track data if available
-			streamUrl = (trackData.url || trackData.manifest) as string;
+			// Try from trackData directly
+			if ('url' in trackData && trackData.url) {
+				streamUrl = String(trackData.url);
+			} else if ('manifest' in trackData && trackData.manifest) {
+				manifestData = String(trackData.manifest);
+			}
+		}
+		
+		// Try to extract URL from manifest if we have one
+		if (!streamUrl && manifestData) {
+			const extracted = extractUrlFromManifest(manifestData);
+			if (extracted) streamUrl = extracted;
 		}
 		
 		if (!streamUrl || typeof streamUrl !== 'string') {
