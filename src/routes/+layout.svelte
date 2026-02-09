@@ -4,7 +4,6 @@
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import LyricsPopup from '$lib/components/LyricsPopup.svelte';
-	import DownloadLog from '$lib/components/DownloadLog.svelte';
 	import DownloadManager from '$lib/components/DownloadManager.svelte';
 	import DiagnosticsOverlay from '$lib/components/DiagnosticsOverlay.svelte';
 
@@ -1071,7 +1070,7 @@
 
 	<LyricsPopup />
 	<ToastContainer />
-	<DownloadLog />
+	<!-- <DownloadLog /> --> <!-- Replaced by DownloadManager -->
 	<DownloadManager />
 	{#if diagnosticsEnabled && !isEmbed}
 		<button class="diagnostics-toggle" type="button" onclick={toggleDiagnostics}>

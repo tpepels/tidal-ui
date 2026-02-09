@@ -21,7 +21,8 @@ import {
 	touchUploadTimestamp,
 	detectAudioFormatFromFile,
 	getServerExtension,
-	buildServerFilename
+	buildServerFilename,
+	startCleanupInterval
 } from '../../_shared';
 import { embedMetadataToFile } from '$lib/server/metadataEmbedder';
 import {
@@ -30,7 +31,13 @@ import {
 	downloadLogger
 } from '$lib/server/observability';
 
+// Ensure state is loaded before processing chunks
+const initPromise = startCleanupInterval();
+
 export const POST: RequestHandler = async ({ request, params }) => {
+	// Wait for initialization to complete
+	await initPromise;
+	
 	const uploadId = params.uploadId;
 	const chunkIndex = parseInt(request.headers.get('x-chunk-index') || '0');
 	const totalChunks = parseInt(request.headers.get('x-total-chunks') || '0');

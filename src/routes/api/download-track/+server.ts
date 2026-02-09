@@ -29,10 +29,13 @@ import {
 import { embedMetadataToFile } from '$lib/server/metadataEmbedder';
 import { createDownloadOperationLogger, downloadLogger } from '$lib/server/observability';
 
-// Start the cleanup interval when the module loads
-startCleanupInterval();
+// Start the cleanup interval when the module loads (with await to ensure state is loaded)
+const initPromise = startCleanupInterval();
 
 export const POST: RequestHandler = async ({ request, url }) => {
+	// Ensure initialization completes before processing requests
+	await initPromise;
+	
 	let startedUploadId: string | undefined;
 	const pathParts = url.pathname.split('/');
 	const uploadId = pathParts[pathParts.indexOf('download-track') + 1];

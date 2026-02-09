@@ -203,6 +203,26 @@ export class DownloadOrchestrator {
 		options?: DownloadOrchestratorOptions
 	): Promise<DownloadOrchestratorResult> {
 		const effectiveOptions = this.resolveOptions(options);
+		
+		// For server downloads, use the queue system for better visibility and management
+		if (effectiveOptions.storage === 'server' && effectiveOptions.useCoordinator !== false) {
+			const downloadId = this.queueTrack(track, {
+				...effectiveOptions,
+				albumId: undefined, // Individual track, not part of album batch
+				albumTitle: undefined
+			});
+			
+			// Placeholder filename - actual name will be determined when queue processes track
+			const filename = track.title || 'download';
+			
+			// Return immediately - download will be processed by queue
+			return {
+				success: true,
+				filename,
+				taskId: downloadId
+			};
+		}
+		
 		const effectiveConvertAacToMp3 =
 			effectiveOptions.storage === 'client' ? effectiveOptions.convertAacToMp3 : false;
 
