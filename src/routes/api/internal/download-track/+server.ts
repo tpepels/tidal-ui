@@ -78,8 +78,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		
 		let trackResponseData: unknown;
 		try {
-			trackResponseData = await trackResponse.json();
-		} catch (parseError) {
+			trackResponseData = await trackResponse.json();			console.log('[Internal Download] Full track response structure:', JSON.stringify(responseData, null, 2).substring(0, 1500));		} catch (parseError) {
 			return json(
 				{ success: false, error: 'Failed to parse track response as JSON' },
 				{ status: 500 }
@@ -163,30 +162,23 @@ export const POST: RequestHandler = async ({ request }) => {
 				streamUrl = baseUrlMatch[1].trim();
 				console.log('[Internal Download] Extracted BaseURL from DASH manifest');
 			} else {
-				// Try media attribute
-				const mediaMatch = manifestContent.match(/media="([^"]+\.(flac|mp4|m4a)[^"]*)"/i);
-				if (mediaMatch) {
-					streamUrl = mediaMatch[1];
-					console.log('[Internal Download] Extracted media attribute from DASH');
-				} else {
-					// Fallback: find URLs that look like media URLs (not xmlns)
-					// Skip xmlns URLs and look for actual media URLs
-					const allUrls = manifestContent.match(/(https?:\/\/[^\s<>"]+)/g);
-					if (allUrls) {
-						// Filter out xmlns/schema URLs and keep actual media URLs
-						streamUrl = allUrls.find(url => 
-							!url.includes('w3.org') && 
-							!url.includes('schemas') &&
-							!url.includes('xmlns')
-						);
-						if (streamUrl) {
-							console.log('[Internal Download] Extracted media URL via filtered search');
-						}
+				// Extract all URLs from the XML
+				const allUrls = manifestContent.match(/(https?:\/\/[^\s<>"']+)/g);
+				if (allUrls) {
+					// Filter out xmlns/schema URLs and keep actual media URLs
+					streamUrl = allUrls.find(url => 
+						!url.includes('w3.org') && 
+						!url.includes('schemas') &&
+						!url.includes('xmlns')
+					);
+					if (streamUrl) {
+						console.log('[Internal Download] Extracted media URL from DASH');
 					}
-					
-					if (!streamUrl) {
-						console.error('[Internal Download] No media URL found. Sample of manifest:', manifestContent.substring(0, 500));
-					}
+				}
+				
+				if (!streamUrl) {
+					console.error('[Internal Download] No media URL found in DASH manifest');
+					console.error('[Internal Download] Manifest sample:', manifestContent.substring(0, 800));
 				}
 			}
 		}
