@@ -69,6 +69,20 @@ function createServerApiClient(fetchFn: typeof globalThis.fetch): ApiClient {
 					
 					const data = await response.json() as TrackLookup;
 					console.log(`[ServerApiClient] Successfully fetched track from ${target.name}`);
+					
+					// Validate response structure
+					if (!data || typeof data !== 'object') {
+						console.warn(`[ServerApiClient] Invalid response structure from ${target.name}`);
+						lastError = new Error(`Invalid response from ${target.name}`);
+						continue;
+					}
+					
+					// Log response structure for debugging
+					console.log(`[ServerApiClient] Response keys: ${Object.keys(data).join(', ')}`);
+					if (data.info) {
+						console.log(`[ServerApiClient] info keys: ${Object.keys(data.info).join(', ')}`);
+					}
+					
 					return data;
 					
 				} catch (error) {
