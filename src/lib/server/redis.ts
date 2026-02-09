@@ -104,6 +104,23 @@ export function getRedisClient(): Redis | null {
 	}
 }
 
+export async function getConnectedRedis(): Promise<Redis | null> {
+	const instance = getRedisClient();
+	if (!instance) return null;
+
+	if (instance.status === 'ready') {
+		return instance;
+	}
+
+	try {
+		await instance.connect();
+		return instance;
+	} catch (error) {
+		markRedisUnavailable(error);
+		return null;
+	}
+}
+
 export function isRedisEnabled(): boolean {
 	if (isRedisDisabled()) {
 		return false;

@@ -4,14 +4,14 @@
  */
 
 import type { AudioQuality } from '$lib/types';
-import { getRedisClient } from './redis';
+import { getConnectedRedis } from './redis';
 
 /**
  * Initialize queue system: clean up stale processing jobs from crashes
  */
 export async function initializeQueue(): Promise<void> {
 	console.log('[Queue] Initializing...');
-	const client = getRedisClient();
+	const client = await getConnectedRedis();
 
 	if (client) {
 		try {
@@ -246,7 +246,7 @@ export async function enqueueJob(
 		retryCount: 0
 	};
 
-	const client = getRedisClient();
+	const client = await getConnectedRedis();
 	if (client) {
 		try {
 			await client.hset(QUEUE_KEY, jobId, JSON.stringify(queuedJob));
@@ -300,7 +300,7 @@ export async function findDuplicateJob(job: DownloadJob): Promise<QueuedJob | nu
  * Get next job from queue (with priority and retry logic)
  */
 export async function dequeueJob(): Promise<QueuedJob | null> {
-	const client = getRedisClient();
+	const client = await getConnectedRedis();
 	const now = Date.now();
 
 	if (client) {
@@ -371,7 +371,7 @@ export async function updateJobStatus(
 	jobId: string, 
 	updates: Partial<QueuedJob>
 ): Promise<void> {
-	const client = getRedisClient();
+	const client = await getConnectedRedis();
 	
 	if (client) {
 		try {
@@ -406,7 +406,7 @@ export async function updateJobStatus(
  * Get job by ID
  */
 export async function getJob(jobId: string): Promise<QueuedJob | null> {
-	const client = getRedisClient();
+	const client = await getConnectedRedis();
 	
 	if (client) {
 		try {
@@ -427,8 +427,7 @@ export async function getJob(jobId: string): Promise<QueuedJob | null> {
  * Get all jobs
  */
 export async function getAllJobs(): Promise<QueuedJob[]> {
-	const client = getRedisClient();
-	
+	const client = await getConnectedRedis();
 	if (client) {
 		try {
 			const jobs = await client.hgetall(QUEUE_KEY);
@@ -470,7 +469,7 @@ export async function cleanupOldJobs(olderThanMs: number = 24 * 60 * 60 * 1000):
 	const jobs = await getAllJobs();
 	let cleaned = 0;
 
-	const client = getRedisClient();
+	const client = await getConnectedRedis();
 	
 	for (const job of jobs) {
 		const isOld = job.completedAt && (now - job.completedAt) > olderThanMs;
@@ -501,7 +500,7 @@ export async function cleanupOldJobs(olderThanMs: number = 24 * 60 * 60 * 1000):
  * Delete a job from the queue (permanent removal, for failed jobs marked for deletion)
  */
 export async function deleteJob(jobId: string): Promise<boolean> {
-	const client = getRedisClient();
+		const client = await getConnectedRedis();
 	
 	if (client) {
 		try {
