@@ -411,6 +411,7 @@ export async function downloadTrackServerSide(
 		const lookupAlbumTitle = trackLookup.track.album?.title;
 		const lookupArtistName = trackLookup.track.artist?.name;
 		const lookupCoverId = trackLookup.track.album?.cover;
+		const finalTrackNumber = trackNumber ?? lookupTrackNumber;
 		const effectiveAlbumTitle = albumTitle || lookupAlbumTitle;
 		const effectiveArtistName = artistName || lookupArtistName;
 		let effectiveCoverUrl = coverUrl;
@@ -448,8 +449,8 @@ export async function downloadTrackServerSide(
 			trackTitle,
 			trackId,
 			ext,
-			trackLookup,
-			trackNumber ?? lookupTrackNumber
+			{ track: { trackNumber: finalTrackNumber, volumeNumber: trackLookup.track.volumeNumber, album: { numberOfVolumes: trackLookup.track.album?.numberOfVolumes } } },
+			finalTrackNumber
 		);
 
 		// Determine directory structure
@@ -503,7 +504,7 @@ export async function downloadTrackServerSide(
 				title: trackTitle,
 				artist: effectiveArtistName,
 				album: effectiveAlbumTitle,
-				trackNumber: trackNumber ?? lookupTrackNumber,
+				trackNumber: finalTrackNumber,
 				coverPath: embeddedCoverPath
 			});
 		} catch (metaErr) {
