@@ -14,6 +14,8 @@ import {
 	getPrimaryTarget,
 	ensureWeightedTargets
 } from '$lib/config';
+import type { ApiClusterTarget } from '$lib/config';
+import { APP_VERSION } from '$lib/version';
 import { 
 	getDownloadDir, 
 	sanitizePath, 
@@ -42,6 +44,36 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 		targetFailureTimestamps.set(targetName, Date.now());
 	}
 
+	function isCustomTarget(target: ApiClusterTarget): boolean {
+		return (
+			API_CONFIG.targets.some((t) => t.name === target.name) &&
+			!target.baseUrl.includes('tidal.com') &&
+			!target.baseUrl.includes('api.tidal.com') &&
+			!target.baseUrl.includes('monochrome.tf')
+		);
+	}
+
+	function buildHeaders(
+		options: RequestInit | undefined,
+		target?: ApiClusterTarget
+	): Headers {
+		const headers = new Headers(options?.headers);
+		if (target && isCustomTarget(target)) {
+			headers.set('X-Client', `BiniLossless/${APP_VERSION}`);
+		}
+		return headers;
+	}
+
+	function getTargetForOrigin(origin: string): ApiClusterTarget | undefined {
+		return API_CONFIG.targets.find((target) => {
+			try {
+				return new URL(target.baseUrl).origin === origin;
+			} catch {
+				return false;
+			}
+		});
+	}
+
 	return async (url: string, options?: RequestInit) => {
 		let finalUrl = url;
 
@@ -53,8 +85,6 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 				if (encoded) {
 					finalUrl = decodeURIComponent(encoded);
 					console.log(`[ServerFetch] Decoded proxy URL: ${finalUrl.substring(0, 80)}...`);
-					// Use the decoded URL directly
-					return globalThis.fetch(finalUrl, options);
 				}
 			} catch (e) {
 				console.warn(`[ServerFetch] Failed to decode proxy URL`);
@@ -82,9 +112,30 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 
 		for (const target of targetList) {
 			try {
-				// If URL is already absolute and for this target, use it
+				// If URL is already absolute, try to rotate between known targets
 				if (finalUrl.startsWith('http')) {
-					const response = await globalThis.fetch(finalUrl, options);
+					let targetUrl = finalUrl;
+					let targetForHeaders = target;
+					try {
+						const parsed = new URL(finalUrl);
+						const originTarget = getTargetForOrigin(parsed.origin);
+						if (originTarget) {
+							const replaced = new URL(target.baseUrl);
+							replaced.pathname = parsed.pathname;
+							replaced.search = parsed.search;
+							replaced.hash = parsed.hash;
+							targetUrl = replaced.toString();
+							targetForHeaders = target;
+						}
+					} catch {
+						// Fall back to original absolute URL
+						targetForHeaders = undefined;
+					}
+
+					const response = await globalThis.fetch(targetUrl, {
+						...options,
+						headers: buildHeaders(options, targetForHeaders)
+					});
 					if (response.ok) {
 						return response;
 					}
@@ -97,7 +148,10 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 				const upstreamUrl = `${target.baseUrl}${finalUrl.startsWith('/') ? finalUrl : `/${finalUrl}`}`;
 				console.log(`[ServerFetch] Trying ${target.name}: ${upstreamUrl.substring(0, 80)}...`);
 				
-				const response = await globalThis.fetch(upstreamUrl, options);
+				const response = await globalThis.fetch(upstreamUrl, {
+					...options,
+					headers: buildHeaders(options, target)
+				});
 				if (response.ok) {
 					return response;
 				}
