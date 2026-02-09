@@ -359,6 +359,12 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 
 		await updateJobStatus(job.id, { trackProgress });
 
+		// ALBUM FAILURE POLICY: 
+		// If ANY track fails to download, the entire album is marked as 'failed'.
+		// This prevents silent partial downloads where some tracks are missing.
+		// UI must handle failed albums with clear indication and retry/delete options.
+		// This is intentional to maintain data integrity.
+		
 		for (let i = 0; i < tracks.length; i++) {
 			const track = tracks[i];
 			const trackId = typeof track.id === 'number' ? track.id : 0;

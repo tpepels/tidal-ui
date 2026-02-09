@@ -431,9 +431,13 @@ export async function fetchWithCORS(
 		(target, index, array) => array.findIndex((entry) => entry.name === target.name) === index
 	);
 
-	// Filter out if skipTarget is provided
-	if (options?.skipTarget && options.skipTarget !== 'current') {
-		uniqueTargets = uniqueTargets.filter(target => target.name !== options.skipTarget);
+	// Filter out if skipTarget is provided - ensures we try different target on retry
+	if (options?.skipTarget) {
+		const filtered = uniqueTargets.filter(target => target.name !== options.skipTarget);
+		// Only use filtered list if it has targets; otherwise keep original (fallback)
+		if (filtered.length > 0) {
+			uniqueTargets = filtered;
+		}
 	}
 
 	const healthyTargets = uniqueTargets.filter((target) => isTargetHealthy(target.name));
@@ -463,6 +467,9 @@ export async function fetchWithCORS(
 	
 	// Auto-detect download operations and use longer timeout
 	const operationType = options?.operationType ?? (isDownloadUrl(resolvedUrl) ? 'download' : 'default');
+	
+	// Track attempts for better error reporting
+	const attemptDetails: { target: string; error?: string; status?: number }[] = [];
 
 	for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
 		const target = stickyTarget
@@ -517,13 +524,17 @@ export async function fetchWithCORS(
 					return response;
 				}
 				lastUnexpectedResponse = response;
+				attemptDetails.push({ target: target.name, status: response.status });
 				continue;
 			}
 
 			lastResponse = response;
+			attemptDetails.push({ target: target.name, status: response.status });
 		} catch (error) {
 			lastError = error;
 			markTargetUnhealthy(target.name);
+			const errorMsg = error instanceof Error ? error.message : String(error);
+			attemptDetails.push({ target: target.name, error: errorMsg });
 			if (error instanceof TypeError && error.message.includes('CORS')) {
 				continue;
 			}
@@ -538,6 +549,16 @@ export async function fetchWithCORS(
 		return lastResponse;
 	}
 
+	// Build detailed error message with attempt information
+	const attemptSummary = attemptDetails
+		.map((d) => {
+			if (d.error) {
+				return `[${d.target}] Error: ${d.error.substring(0, 50)}`;
+			}
+			return `[${d.target}] HTTP ${d.status}`;
+		})
+		.join('; ');
+
 	if (lastError) {
 		if (
 			lastError instanceof TypeError &&
@@ -545,11 +566,18 @@ export async function fetchWithCORS(
 			lastError.message.includes('CORS')
 		) {
 			throw new Error(
-				'CORS error detected. Please configure a proxy in src/lib/config.ts or enable CORS on your backend.'
+				`CORS error detected (${attemptSummary}). Please configure a proxy in src/lib/config.ts or enable CORS on your backend.`
 			);
 		}
-		throw lastError;
+		const errorMsg = lastError instanceof Error ? lastError.message : String(lastError);
+		throw new Error(
+			`API request failed after ${attemptDetails.length} target(s): ${errorMsg}. ` +
+			`Attempts: ${attemptSummary}`
+		);
 	}
 
-	throw new Error('All API targets failed without response.');
+	throw new Error(
+		`All API targets failed [${attemptSummary}] without response. ` +
+		`Check network connectivity and target availability.`
+	);
 }

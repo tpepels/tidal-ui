@@ -25,6 +25,10 @@ import {
 	getServerExtension,
 	downloadCoverToDir
 } from '../../../routes/api/download-track/_shared';
+import {
+	recordTargetHealthChange,
+	recordCircuitBreakerEvent
+} from '$lib/observability/downloadMetrics';
 
 /**
  * Server-side fetch that constructs direct upstream URLs with target rotation
@@ -33,6 +37,11 @@ import {
 async function createServerFetch(): Promise<typeof globalThis.fetch> {
 	const targetFailureTimestamps = new Map<string, number>();
 	const TARGET_FAILURE_TTL_MS = 86_400_000; // 1 day
+	
+	// Circuit breaker: track consecutive failures to temporarily disable broken targets
+	const consecutiveFailures = new Map<string, number>();
+	const CIRCUIT_BREAKER_THRESHOLD = 3; // Disable after 3 consecutive failures
+	const CIRCUIT_BREAKER_TIMEOUT_MS = 60_000; // Re-enable after 60 seconds
 
 	function isTargetHealthy(targetName: string): boolean {
 		const failureAt = targetFailureTimestamps.get(targetName);
@@ -42,6 +51,61 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 
 	function markTargetUnhealthy(targetName: string): void {
 		targetFailureTimestamps.set(targetName, Date.now());
+		
+		// Increment consecutive failures for circuit breaker
+		const failureCount = (consecutiveFailures.get(targetName) || 0) + 1;
+		consecutiveFailures.set(targetName, failureCount);
+		
+		recordTargetHealthChange(targetName, 'unhealthy', {
+			reason: 'Request failed',
+			consecutiveFailures: failureCount
+		});
+		
+		if (failureCount >= CIRCUIT_BREAKER_THRESHOLD) {
+			console.warn(
+				`[CircuitBreaker] Target '${targetName}' has ${failureCount} consecutive failures. ` +
+				`Will be skipped for ${CIRCUIT_BREAKER_TIMEOUT_MS}ms.`
+			);
+			recordCircuitBreakerEvent(targetName, 'open', {
+				reason: 'Too many consecutive failures',
+				consecutiveFailures: failureCount
+			});
+		}
+	}
+	
+	function resetConsecutiveFailures(targetName: string): void {
+		if (consecutiveFailures.has(targetName)) {
+			consecutiveFailures.delete(targetName);
+			recordTargetHealthChange(targetName, 'healthy', {
+				reason: 'Request succeeded',
+				consecutiveFailures: 0
+			});
+		}
+	}
+	
+	function isTargetCircuitClosed(targetName: string): boolean {
+		const failureCount = consecutiveFailures.get(targetName) || 0;
+		if (failureCount < CIRCUIT_BREAKER_THRESHOLD) {
+			return true; // Circuit is open, allow requests
+		}
+		
+		// Circuit is closed, check if timeout has passed
+		const failureAt = targetFailureTimestamps.get(targetName);
+		if (!failureAt) return true;
+		
+		const timeSinceFailure = Date.now() - failureAt;
+		if (timeSinceFailure > CIRCUIT_BREAKER_TIMEOUT_MS) {
+			// Timeout has passed, reset and allow requests again
+			consecutiveFailures.delete(targetName);
+			recordCircuitBreakerEvent(targetName, 'reset', {
+				reason: 'Timeout expired, attempting recovery',
+				consecutiveFailures: 0
+			});
+			console.log(`[CircuitBreaker] Target '${targetName}' circuit reset, attempting recovery...`);
+			return true;
+		}
+		
+		return false; // Circuit still broken, skip this target
 	}
 
 	function isCustomTarget(target: ApiClusterTarget): boolean {
@@ -98,9 +162,12 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 		}
 
 		// Check if this is a CDN segment URL (not an API call)
-		// Segment URLs have paths like /d/XXXXX, /segment, etc - not API paths
-		const isCDNSegmentUrl = finalUrl.startsWith('http') && 
-			!/\/api\/|\/v[0-9]+\/|\/auth/.test(new URL(finalUrl).pathname);
+		// CDN segments: sp-*.audio.tidal.com, sp-*.media.tidal.com, etc
+		// API calls: include /api/, /v2/, /v1/, /auth paths
+		const isCDNSegmentUrl = finalUrl.startsWith('http') && (
+			/audio\.tidal\.com|media\.tidal\.com|cdn\.example\.com/.test(finalUrl) ||
+			(!/\/api\/|\/v[0-9]+\/|\/auth|\/album|\/artist|\/track|\/search/.test(new URL(finalUrl).pathname))
+		);
 
 		// For CDN segment URLs, just try the URL as-is with no target rotation
 		// (segment paths are target-specific and can't be swapped across CDNs)
@@ -113,9 +180,11 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 				if (response.ok) {
 					return response;
 				}
-				// If the segment 403s, log it but still throw - let higher level handle retry
-				console.warn(`[ServerFetch] CDN segment returned ${response.status}: ${finalUrl.substring(0, 80)}...`);
-				throw new Error(`HTTP ${response.status} from segment CDN`);
+				// If the segment fails, log it but throw with proper error
+				// Let higher level (downloadSegmentedDash) handle per-segment failures
+				const statusError = `HTTP ${response.status}`;
+				console.warn(`[ServerFetch] CDN segment returned ${statusError}: ${finalUrl.substring(0, 80)}...`);
+				throw new Error(`Failed to fetch CDN segment: ${statusError}`);
 			} catch (error) {
 				throw error instanceof Error ? error : new Error(String(error));
 			}
@@ -130,7 +199,12 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 		);
 
 		const healthyTargets = uniqueTargets.filter(target => isTargetHealthy(target.name));
-		const targetList = healthyTargets.length > 0 ? healthyTargets : uniqueTargets;
+		const circuitClosedTargets = healthyTargets.filter(target => isTargetCircuitClosed(target.name));
+		const targetList = circuitClosedTargets.length > 0 
+			? circuitClosedTargets 
+			: healthyTargets.length > 0 
+				? healthyTargets 
+				: uniqueTargets;
 
 		let lastError: Error | null = null;
 
@@ -161,6 +235,7 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 						headers: buildHeaders(options, targetForHeaders)
 					});
 					if (response.ok) {
+						resetConsecutiveFailures(target.name);
 						return response;
 					}
 					markTargetUnhealthy(target.name);
@@ -177,6 +252,7 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 					headers: buildHeaders(options, target)
 				});
 				if (response.ok) {
+					resetConsecutiveFailures(target.name);
 					return response;
 				}
 				markTargetUnhealthy(target.name);
