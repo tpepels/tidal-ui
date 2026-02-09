@@ -32,7 +32,7 @@ import {
  */
 async function createServerFetch(): Promise<typeof globalThis.fetch> {
 	const targetFailureTimestamps = new Map<string, number>();
-	const TARGET_FAILURE_TTL_MS = 60_000;
+	const TARGET_FAILURE_TTL_MS = 86_400_000; // 1 day
 
 	function isTargetHealthy(targetName: string): boolean {
 		const failureAt = targetFailureTimestamps.get(targetName);
@@ -97,7 +97,31 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 			finalUrl = `${primaryTarget.baseUrl}${finalUrl}`;
 		}
 
-		// Try each target in order
+		// Check if this is a CDN segment URL (not an API call)
+		// Segment URLs have paths like /d/XXXXX, /segment, etc - not API paths
+		const isCDNSegmentUrl = finalUrl.startsWith('http') && 
+			!/\/api\/|\/v[0-9]+\/|\/auth/.test(new URL(finalUrl).pathname);
+
+		// For CDN segment URLs, just try the URL as-is with no target rotation
+		// (segment paths are target-specific and can't be swapped across CDNs)
+		if (isCDNSegmentUrl) {
+			try {
+				const response = await globalThis.fetch(finalUrl, {
+					...options,
+					headers: buildHeaders(options, undefined)
+				});
+				if (response.ok) {
+					return response;
+				}
+				// If the segment 403s, log it but still throw - let higher level handle retry
+				console.warn(`[ServerFetch] CDN segment returned ${response.status}: ${finalUrl.substring(0, 80)}...`);
+				throw new Error(`HTTP ${response.status} from segment CDN`);
+			} catch (error) {
+				throw error instanceof Error ? error : new Error(String(error));
+			}
+		}
+
+		// Try each target in order (only for API calls)
 		const weightedTargets = ensureWeightedTargets('v2');
 		const attemptOrder = [getPrimaryTarget('v2'), ...weightedTargets];
 		const uniqueTargets = attemptOrder.filter(

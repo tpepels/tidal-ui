@@ -14,6 +14,7 @@ import { parseManifest } from './manifestParser';
 import { downloadSegmentedDash } from './segmentDownloader';
 
 const MIN_VALID_AUDIO_SIZE = 1000; // 1KB minimum
+const MAX_MANIFEST_RETRIES = 3; // Try manifest from different targets
 
 export async function downloadTrackCore(params: {
 	trackId: number;
@@ -45,47 +46,77 @@ export async function downloadTrackCore(params: {
 		}
 	}
 
-	// Fallback to manifest parsing
+	// Fallback to manifest parsing (with retries for segment failures)
 	if (!result) {
-		const manifest = trackLookup.info.manifest;
-		const parsed = parseManifest(manifest);
+		let manifestRetries = 0;
+		let lastSegmentError: Error | null = null;
 
-		if (parsed.type === 'segmented-dash' && parsed.initializationUrl && parsed.segmentUrls) {
-			// Multi-segment DASH download
-			console.log('[DownloadCore] Downloading segmented DASH:', {
-				segments: parsed.segmentUrls.length + 1,
-				codec: parsed.codec
-			});
-			result = await downloadSegmentedDash(
-				parsed.initializationUrl,
-				parsed.segmentUrls,
-				fetchFn,
-				options
-			);
-		} else if (parsed.type === 'single-url' && parsed.streamUrl) {
-			// Single URL download
-			console.log('[DownloadCore] Downloading from single URL');
-			const response = await fetchFn(parsed.streamUrl, { signal: options?.signal });
-			if (!response.ok) {
-				throw new Error(`Failed to fetch audio stream (status ${response.status})`);
+		while (manifestRetries < MAX_MANIFEST_RETRIES && !result) {
+			try {
+				const manifest = trackLookup.info.manifest;
+				const parsed = parseManifest(manifest);
+
+				if (parsed.type === 'segmented-dash' && parsed.initializationUrl && parsed.segmentUrls) {
+					// Multi-segment DASH download
+					console.log('[DownloadCore] Downloading segmented DASH:', {
+						segments: parsed.segmentUrls.length + 1,
+						codec: parsed.codec,
+						attempt: manifestRetries + 1
+					});
+					result = await downloadSegmentedDash(
+						parsed.initializationUrl,
+						parsed.segmentUrls,
+						fetchFn,
+						options
+					);
+				} else if (parsed.type === 'single-url' && parsed.streamUrl) {
+					// Single URL download
+					console.log('[DownloadCore] Downloading from single URL');
+					const response = await fetchFn(parsed.streamUrl, { signal: options?.signal });
+					if (!response.ok) {
+						throw new Error(`Failed to fetch audio stream (status ${response.status})`);
+					}
+					result = await downloadFromResponse(response, options);
+				} else {
+					throw new Error(
+						`Could not extract download URL from manifest (type: ${parsed.type})`
+					);
+				}
+			} catch (error) {
+				lastSegmentError = error instanceof Error ? error : new Error(String(error));
+				manifestRetries++;
+				
+				if (manifestRetries < MAX_MANIFEST_RETRIES) {
+					console.log('[DownloadCore] Segment download failed, retrying with fresh manifest...', {
+						error: lastSegmentError.message,
+						attempt: manifestRetries + 1
+					});
+					// Refetch manifest to potentially get URLs from different target
+					try {
+						const freshLookup = await apiClient.getTrack(trackId, quality);
+						trackLookup.info.manifest = freshLookup.info.manifest;
+					} catch (refetchErr) {
+						console.warn('[DownloadCore] Failed to refetch manifest:', refetchErr);
+						// Continue anyway with same manifest
+					}
+				}
 			}
-			result = await downloadFromResponse(response, options);
-		} else {
-			throw new Error(
-				`Could not extract download URL from manifest (type: ${parsed.type})`
-			);
+		}
+
+		if (!result && lastSegmentError) {
+			throw lastSegmentError;
 		}
 	}
 
 	// Validate size
-	if (result.receivedBytes < MIN_VALID_AUDIO_SIZE) {
+	if (result && result.receivedBytes < MIN_VALID_AUDIO_SIZE) {
 		throw new Error(
 			`Downloaded file suspiciously small (${result.receivedBytes} bytes). ` +
 			`This likely indicates a DASH initialization segment instead of the full audio file.`
 		);
 	}
 
-	return result;
+	return result || { buffer: new ArrayBuffer(0), receivedBytes: 0 };
 }
 
 async function downloadFromResponse(

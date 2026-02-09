@@ -12,63 +12,81 @@ export interface ApiClusterTarget {
 }
 
 const V2_API_TARGETS = [
-	// NOTE: Most proxy APIs are currently down (returning 404).
-	// These need to be updated with working Tidal proxy services.
-	// Search for "working tidal api proxies" in Tidal communities.
 	{
-		name: 'wolf',
-		baseUrl: 'https://wolf.qqdl.site',
-		weight: 40,
-		requiresProxy: true,
+		name: 'squid-api',
+		baseUrl: 'https://triton.squid.wtf',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'spotisaver-1',
+		baseUrl: 'https://hifi-one.spotisaver.net',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'spotisaver-2',
+		baseUrl: 'https://hifi-two.spotisaver.net',
+		weight: 15,
+		requiresProxy: false,
 		category: 'auto-only'
 	},
 	{
 		name: 'kinoplus',
 		baseUrl: 'https://tidal.kinoplus.online',
-		weight: 30,
-		requiresProxy: true,
+		weight: 15,
+		requiresProxy: false,
 		category: 'auto-only'
 	},
 	{
 		name: 'binimum',
 		baseUrl: 'https://tidal-api.binimum.org',
-		weight: 20,
-		requiresProxy: true,
+		weight: 10,
+		requiresProxy: false,
 		category: 'auto-only'
 	},
 	{
 		name: 'hund',
 		baseUrl: 'https://hund.qqdl.site',
 		weight: 15,
-		requiresProxy: true,
-		category: 'auto-only'
-	},
-	{
-		name: 'maus',
-		baseUrl: 'https://maus.qqdl.site',
-		weight: 10,
-		requiresProxy: true,
-		category: 'auto-only'
-	},
-	{
-		name: 'squid-api',
-		baseUrl: 'https://triton.squid.wtf',
-		weight: 5,
-		requiresProxy: true,
+		requiresProxy: false,
 		category: 'auto-only'
 	},
 	{
 		name: 'katze',
 		baseUrl: 'https://katze.qqdl.site',
-		weight: 5,
-		requiresProxy: true,
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'maus',
+		baseUrl: 'https://maus.qqdl.site',
+		weight: 15,
+		requiresProxy: false,
 		category: 'auto-only'
 	},
 	{
 		name: 'vogel',
 		baseUrl: 'https://vogel.qqdl.site',
-		weight: 5,
-		requiresProxy: true,
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'wolf',
+		baseUrl: 'https://wolf.qqdl.site',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'monochrome',
+		baseUrl: 'https://arran.monochrome.tf',
+		weight: 15,
+		requiresProxy: false,
 		category: 'auto-only'
 	}
 ] satisfies ApiClusterTarget[];
