@@ -70,8 +70,11 @@ describe('Download Queue Manager', () => {
 			const queued = await getJob(jobId);
 
 			expect(queued).toBeDefined();
-			expect(queued?.job.albumTitle).toBe('Test Album');
-			expect(queued?.job.trackTitle).toBe('Test Track');
+		expect(queued?.job.type).toBe('track');
+		if (queued && queued.job.type === 'track') {
+			expect(queued.job.albumTitle).toBe('Test Album');
+			expect(queued.job.trackTitle).toBe('Test Track');
+		}
 		});
 	});
 
@@ -88,7 +91,9 @@ describe('Download Queue Manager', () => {
 
 			expect(retrieved).toBeDefined();
 			expect(retrieved?.id).toBe(jobId);
-			expect(retrieved?.job.trackId).toBe(12345);
+		if (retrieved && retrieved.job.type === 'track') {
+			expect(retrieved.job.trackId).toBe(12345);
+		}
 			expect(retrieved?.status).toBe('queued');
 		});
 
@@ -159,8 +164,7 @@ describe('Download Queue Manager', () => {
 			const job: AlbumJob = {
 				type: 'album',
 				albumId: 67890,
-				quality: 'LOSSLESS',
-				trackCount: 10
+				quality: 'LOSSLESS'
 			};
 
 			const jobId = await enqueueJob(job);

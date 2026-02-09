@@ -340,7 +340,7 @@
 												</div>
 												<div class="detail-row">
 													<span class="detail-label">Type:</span>
-													<span class="detail-value">{job.jobType === 'track' ? 'Single Track' : 'Album'}</span>
+													<span class="detail-value">{job.job.type === 'track' ? 'Single Track' : 'Album'}</span>
 												</div>
 												<div class="detail-row">
 													<span class="detail-label">Artist:</span>

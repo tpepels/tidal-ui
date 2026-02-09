@@ -222,31 +222,26 @@ export class DownloadOrchestrator {
 							trackId: track.id,
 							quality: effectiveOptions.quality || 'LOSSLESS',
 						albumTitle: 'album' in track ? track.album?.title : undefined,
+						artistName
+					}
+				})
+			});
 
-				if (!response.ok) {
-					const error = await response.text();
-					return {
-						success: false,
+			if (!response.ok) {
+				const error = await response.text();
+				return {
+					success: false,
 					error: {
 						code: 'QUEUE_SUBMISSION_FAILED',
 						message: `Failed to queue track: ${error}`,
 						userMessage: 'Failed to queue track for download'
 					}
-				
-				// Placeholder filename - actual name will be determined when queue processes track
-				const filename = track.title || 'download';
-				
-				// Return immediately - download will be processed by server queue
-				return {
-					success: true,
-					filename,
-					taskId: result.jobId
 				};
-			} catch (error) {
-				const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-				return {
-					success: false,
-					error: new DownloadOrchestratorError('QUEUE_SUBMISSION_FAILED', errorMsg, 'Failed to submit track to download queue')
+			}
+
+			const result = await response.json() as { success: boolean; jobId: string };
+						userMessage: 'Failed to submit track to download queue'
+					}
 				};
 			}
 		}
