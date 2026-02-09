@@ -140,16 +140,18 @@ export async function downloadTrackCore(params: {
 		console.log('[DownloadCore] Using cached manifest request for track', trackId);
 	}
 	
-	const trackLookup = await trackLookupPromise;
+	let trackLookup = await trackLookupPromise;
 
 	let result: DownloadResult | null = null;
 
 	// Try originalTrackUrl first (pre-signed URL)
 	if (trackLookup.originalTrackUrl) {
 		try {
+			console.log('[DownloadCore] Trying originalTrackUrl for track', trackId);
 			const response = await fetchFn(trackLookup.originalTrackUrl, { signal: options?.signal });
 			if (response.ok) {
 				result = await downloadFromResponse(response, options);
+				console.log('[DownloadCore] OriginalTrackUrl succeeded, audio downloaded');
 			} else {
 				console.warn('[DownloadCore] OriginalTrackUrl failed, falling back to manifest', {
 					status: response.status
@@ -169,18 +171,26 @@ export async function downloadTrackCore(params: {
 			try {
 				// Refetch manifest on retry to get different CDN URLs from different target
 				if (manifestRetries > 0) {
-					console.log('[DownloadCore] Refetching manifest from different target...', {
-						attempt: manifestRetries + 1
+					console.log('[DownloadCore] Manifest retry starting...', {
+						attempt: manifestRetries + 1,
+						maxRetries: MAX_MANIFEST_RETRIES
 					});
 					await delayBeforeRetry(manifestRetries);
 					
 					// Get fresh manifest from different target
 					// Use retry counter in skipTarget to force cache miss and different target selection
+					console.log('[DownloadCore] Fetching fresh manifest from different target...', {
+						trackId,
+						quality,
+						skipTarget: `retry-${manifestRetries}`
+					});
 					const freshLookup = await apiClient.getTrack(trackId, quality, { skipTarget: `retry-${manifestRetries}` });
 					trackLookup = freshLookup;
+					console.log('[DownloadCore] Fresh manifest received from different target');
 				}
 				
 				const manifest = trackLookup.info.manifest;
+				console.log('[DownloadCore] Parsing manifest for track', trackId);
 				const parsed = parseManifest(manifest);
 
 				if (parsed.type === 'segmented-dash' && parsed.initializationUrl && parsed.segmentUrls) {
@@ -188,7 +198,8 @@ export async function downloadTrackCore(params: {
 					console.log('[DownloadCore] Downloading segmented DASH:', {
 						segments: parsed.segmentUrls.length + 1,
 						codec: parsed.codec,
-						attempt: manifestRetries + 1
+						attempt: manifestRetries + 1,
+						initializationUrl: parsed.initializationUrl.substring(0, 80)
 					});
 					result = await downloadSegmentedDash(
 						parsed.initializationUrl,
@@ -196,14 +207,18 @@ export async function downloadTrackCore(params: {
 						fetchFn,
 						options
 					);
+					console.log('[DownloadCore] Segmented DASH download completed successfully');
 				} else if (parsed.type === 'single-url' && parsed.streamUrl) {
 					// Single URL download
-					console.log('[DownloadCore] Downloading from single URL');
+					console.log('[DownloadCore] Downloading from single URL', {
+						url: parsed.streamUrl.substring(0, 80)
+					});
 					const response = await fetchFn(parsed.streamUrl, { signal: options?.signal });
 					if (!response.ok) {
 						throw new Error(`Failed to fetch audio stream (status ${response.status})`);
 					}
 					result = await downloadFromResponse(response, options);
+					console.log('[DownloadCore] Single URL download completed successfully');
 				} else {
 					throw new Error(
 						`Could not extract download URL from manifest (type: ${parsed.type})`
@@ -211,28 +226,39 @@ export async function downloadTrackCore(params: {
 				}
 			} catch (error) {
 				lastSegmentError = error instanceof Error ? error : new Error(String(error));
-				manifestRetries++;
-				
-				// Check if error is retriable (CDN 403s are retriable via manifest refetch)
 				const isRetriable = isRetriableSegmentError(lastSegmentError);
 				
+				console.warn('[DownloadCore] Download attempt failed:', {
+					attempt: manifestRetries + 1,
+					error: lastSegmentError.message,
+					isRetriable,
+					manifestRetriesExhausted: manifestRetries >= MAX_MANIFEST_RETRIES - 1
+				});
+				
 				if (!isRetriable) {
-					console.warn('[DownloadCore] Segment download failed (permanent error), not retrying:', lastSegmentError.message);
+					console.warn('[DownloadCore] Error is permanent (not retriable), abandoning download:', lastSegmentError.message);
 					break; // Exit retry loop for permanent errors
-				} else if (manifestRetries >= MAX_MANIFEST_RETRIES) {
-					console.warn('[DownloadCore] Max manifest retries reached, giving up');
+				} else if (manifestRetries >= MAX_MANIFEST_RETRIES - 1) {
+					console.warn('[DownloadCore] Max manifest retries reached (attempt', manifestRetries + 1, 'of', MAX_MANIFEST_RETRIES + ')');
 					break;
 				} else {
-					console.log('[DownloadCore] Segment download failed (retriable via different target), will retry...', {
-						error: lastSegmentError.message,
-						nextAttempt: manifestRetries + 1
+					console.log('[DownloadCore] Error is retriable, will try different target on next attempt...', {
+						currentAttempt: manifestRetries + 1,
+						nextAttempt: manifestRetries + 2,
+						maxAttempts: MAX_MANIFEST_RETRIES + 1
 					});
+					manifestRetries++;
 					// Manifest refetch happens at top of loop with skipTarget
 				}
 			}
 		}
 
 		if (!result && lastSegmentError) {
+			console.error('[DownloadCore] Download failed for track', trackId, '- all attempts exhausted:', {
+				error: lastSegmentError.message,
+				attemptsUsed: manifestRetries + 1,
+				maxAttempts: MAX_MANIFEST_RETRIES + 1
+			});
 			throw lastSegmentError;
 		}
 	}
