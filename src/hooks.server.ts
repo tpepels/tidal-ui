@@ -1,4 +1,15 @@
 import type { Handle } from '@sveltejs/kit';
+import { startWorker } from '$lib/server/downloadQueueWorker';
+import { dev } from '$app/environment';
+
+// Start background download worker
+if (!dev) {
+	// Only run worker in production (avoid conflicts during dev hot-reload)
+	startWorker();
+	console.log('[Server] Background download worker started');
+} else {
+	console.log('[Server] Background download worker disabled in dev mode');
+}
 
 export const handle: Handle = async ({ event, resolve }) => {
 	// Increase request body size limit for audio file uploads
