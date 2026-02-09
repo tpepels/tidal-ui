@@ -228,7 +228,12 @@
 						<div class="queue-list">
 							{#each queueJobs.filter(j => j.status === 'queued').slice(0, 5) as job (job.id)}
 								<div class="queue-item-card">
-									<div class="queue-item-click" onclick={() => expandedJobId = expandedJobId === job.id ? null : job.id}>
+									<button
+										type="button"
+										class="queue-item-click"
+										on:click={() => expandedJobId = expandedJobId === job.id ? null : job.id}
+										aria-expanded={expandedJobId === job.id}
+									>
 										<div class="queue-item-main">
 											<div class="queue-item-info">
 												<div class="queue-item-title">{job.job.trackTitle || job.job.albumTitle || 'Unknown'}</div>
@@ -280,7 +285,7 @@
 												{/if}
 											</div>
 										{/if}
-									</div>
+									</button>
 								</div>
 							{/each}
 
@@ -315,7 +320,12 @@
 						<div class="failed-list">
 							{#each queueJobs.filter(j => j.status === 'failed').slice(0, 3) as job (job.id)}
 								<div class="failed-item-card">
-									<div class="failed-item-click" onclick={() => expandedJobId = expandedJobId === job.id ? null : job.id}>
+									<button
+										type="button"
+										class="failed-item-click"
+										on:click={() => expandedJobId = expandedJobId === job.id ? null : job.id}
+										aria-expanded={expandedJobId === job.id}
+									>
 										<div class="failed-item-main">
 											<div class="failed-item-info">
 												<div class="failed-item-title">
@@ -349,7 +359,7 @@
 												</div>
 											</div>
 										{/if}
-									</div>
+									</button>
 								</div>
 							{/each}
 
@@ -740,13 +750,20 @@
 		overflow: hidden;
 	}
 
-	.queue-item-click {
+	.queue-item-click,
+	.failed-item-click {
 		cursor: pointer;
 		padding: 10px;
 		transition: background 0.2s;
+		background: none;
+		border: none;
+		text-align: left;
+		width: 100%;
+		color: inherit;
 	}
 
-	.queue-item-click:hover {
+	.queue-item-click:hover,
+	.failed-item-click:hover {
 		background: rgba(255, 255, 255, 0.08);
 	}
 
@@ -789,24 +806,6 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-	}
-
-	.queue-item-meta {
-		font-size: 10px;
-		color: var(--color-text-secondary);
-		display: flex;
-		gap: 6px;
-		margin-top: 4px;
-		flex-wrap: wrap;
-	}
-
-	.badge-small {
-		background: rgba(59, 130, 246, 0.15);
-		color: var(--color-primary);
-		padding: 2px 6px;
-		border-radius: 3px;
-		font-size: 9px;
-		font-weight: 600;
 	}
 
 	.meta-album-progress {

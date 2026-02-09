@@ -4,6 +4,7 @@ import { env } from '$env/dynamic/private';
 let client: Redis | null | undefined;
 let redisUnavailable = false;
 let hasLoggedError = false;
+let connectPromise: Promise<Redis | null> | null = null;
 
 function isRedisDisabled(): boolean {
 	const flag = (env.REDIS_DISABLED || '').toLowerCase();
@@ -13,6 +14,7 @@ function isRedisDisabled(): boolean {
 function markRedisUnavailable(error: unknown): void {
 	logRedisError(error);
 	redisUnavailable = true;
+	connectPromise = null;
 	if (client) {
 		try {
 			client.disconnect();
@@ -108,13 +110,27 @@ export async function getConnectedRedis(): Promise<Redis | null> {
 	const instance = getRedisClient();
 	if (!instance) return null;
 
-	if (instance.status === 'ready') {
+	if (instance.status === 'ready' || instance.status === 'connecting' || instance.status === 'connect') {
 		return instance;
 	}
 
 	try {
-		await instance.connect();
-		return instance;
+		if (connectPromise) {
+			return await connectPromise;
+		}
+
+		connectPromise = instance
+			.connect()
+			.then(() => {
+				connectPromise = null;
+				return instance;
+			})
+			.catch((error) => {
+				connectPromise = null;
+				throw error;
+			});
+
+		return await connectPromise;
 	} catch (error) {
 		markRedisUnavailable(error);
 		return null;
