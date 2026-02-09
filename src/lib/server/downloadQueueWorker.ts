@@ -11,7 +11,7 @@ import {
 	type TrackJob,
 	type AlbumJob
 } from './downloadQueueManager';
-import { losslessAPI } from '$lib/api';
+import { API_CONFIG } from '$lib/config';
 import type { AudioQuality } from '$lib/types';
 
 let isRunning = false;
@@ -257,10 +257,34 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 	});
 
 	try {
-		// Fetch album tracks using losslessAPI
-		console.log(`[Worker] Album ${albumJob.albumId}: Fetching album data...`);
+		// Fetch album tracks from the upstream Tidal proxy API
+		const apiBaseUrl = API_CONFIG.baseUrl || API_CONFIG.targets[0]?.baseUrl;
+		if (!apiBaseUrl) {
+			throw new Error('No upstream API configured');
+		}
 		
-		const { album, tracks } = await losslessAPI.getAlbum(albumJob.albumId);
+		const albumUrl = `${apiBaseUrl}/album/?id=${albumJob.albumId}`;
+		console.log(`[Worker] Album ${albumJob.albumId}: Fetching album data from ${apiBaseUrl}`);
+		
+		const albumResponse = await fetchWithTimeout(albumUrl, {});
+		
+		if (!albumResponse.ok) {
+			let errorText = '';
+			try {
+				const contentType = albumResponse.headers.get('content-type');
+				if (contentType?.includes('application/json')) {
+					const errorData = await albumResponse.json();
+					errorText = errorData.error || JSON.stringify(errorData);
+				} else {
+					errorText = await albumResponse.text();
+				}
+			} catch (e) {
+				errorText = 'Could not parse error response';
+			}
+			throw new Error(`Failed to fetch album: HTTP ${albumResponse.status}: ${errorText}`);
+		}
+		
+		const { album, tracks } = await albumResponse.json();
 		const totalTracks = tracks.length;
 
 		await updateJobStatus(job.id, {

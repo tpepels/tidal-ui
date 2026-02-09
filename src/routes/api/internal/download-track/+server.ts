@@ -7,7 +7,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import type { AudioQuality } from '$lib/types';
-import { losslessAPI } from '$lib/api';
+import { API_CONFIG } from '$lib/config';
 import {
 	getDownloadDir,
 	sanitizePath,
@@ -47,41 +47,67 @@ export const POST: RequestHandler = async ({ request }) => {
 			);
 		}
 
-		// Fetch track metadata using the losslessAPI proxy
-		// This goes through /api/tidal which has all the TIDAL auth
-		const baseUrl = `http://localhost:${process.env.PORT || 5173}`;
+		// Fetch track metadata from upstream Tidal proxy API
+		const apiBaseUrl = API_CONFIG.baseUrl || API_CONFIG.targets[0]?.baseUrl;
+		if (!apiBaseUrl) {
+			return json(
+				{ success: false, error: 'No upstream API configured' },
+				{ status: 500 }
+			);
+		}
 		
 		// Get track metadata
-		const trackResponse = await fetch(`${baseUrl}/api/tidal?endpoint=/tracks/${trackId}`);
+		const trackResponse = await fetch(`${apiBaseUrl}/track/?id=${trackId}&quality=${quality}`);
 		if (!trackResponse.ok) {
 			return json(
-				{ success: false, error: 'Failed to fetch track metadata' },
+				{ success: false, error: `Failed to fetch track metadata: HTTP ${trackResponse.status}` },
 				{ status: 500 }
 			);
 		}
-		const trackData = await trackResponse.json();
+		const trackResponseData = await trackResponse.json();
 		
-		// Get stream URL via the proxy
-		const streamResponse = await fetch(
-			`${baseUrl}/api/tidal?endpoint=/tracks/${trackId}/streamUrl&quality=${quality}`
-		);
-		if (!streamResponse.ok) {
+		// Parse track data from response (handle various response formats)
+		let trackData: Record<string, unknown> | undefined;
+		let streamUrl: string | undefined;
+		
+		// The response might be an array or object
+		const dataArray = Array.isArray(trackResponseData) ? trackResponseData : [trackResponseData];
+		for (const entry of dataArray) {
+			if (entry && typeof entry === 'object') {
+				// Check if this looks like track metadata
+				if ('title' in entry && ('id' in entry || 'url' in entry)) {
+					if (!trackData && ('title' in entry && 'artist' in entry)) {
+						trackData = entry as Record<string, unknown>;
+					}
+					// Check if this looks like a manifest or URL entry
+					if (!streamUrl && ('url' in entry || 'manifest' in entry)) {
+						streamUrl = (entry.url || entry.manifest) as string;
+					}
+				}
+			}
+		}
+		
+		if (!trackData) {
 			return json(
-				{ success: false, error: 'Failed to get stream URL' },
+				{ success: false, error: 'Could not parse track metadata from response' },
 				{ status: 500 }
 			);
 		}
-		const streamData = await streamResponse.json();
 		
-		if (!streamData.url) {
+		if (!streamUrl) {
+			// Try to extract from track data if available
+			streamUrl = (trackData.url || trackData.manifest) as string;
+		}
+		
+		if (!streamUrl) {
 			return json(
-				{ success: false, error: 'No stream URL available' },
+				{ success: false, error: 'No stream URL available in track data' },
 				{ status: 404 }
 			);
 		}
 
 		// Download the audio stream
-		const audioResponse = await fetch(streamData.url);
+		const audioResponse = await fetch(streamUrl);
 		if (!audioResponse.ok) {
 			return json(
 				{ success: false, error: `Failed to download audio: HTTP ${audioResponse.status}` },
@@ -153,7 +179,9 @@ export const POST: RequestHandler = async ({ request }) => {
 		// Download cover art (non-blocking)
 		if (trackData.album?.cover) {
 			try {
-				const coverUrl = losslessAPI.getCoverUrl(trackData.album.cover, '1280');
+				// Build cover URL from cover ID (https://resources.tidal.com/...)
+				const coverId = trackData.album.cover as string;
+				const coverUrl = `https://resources.tidal.com/images/${coverId.replace(/-/g, '/')}/${'1280'}x${'1280'}.jpg`;
 				await downloadCoverToDir(targetDir, coverUrl, path.basename(finalPath));
 			} catch (coverErr) {
 				console.warn('[Internal Download] Cover download failed:', coverErr);
