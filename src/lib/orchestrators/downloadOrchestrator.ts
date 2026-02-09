@@ -204,23 +204,55 @@ export class DownloadOrchestrator {
 	): Promise<DownloadOrchestratorResult> {
 		const effectiveOptions = this.resolveOptions(options);
 		
-		// For server downloads, use the queue system for better visibility and management
+		// For server downloads, submit directly to server queue API
 		if (effectiveOptions.storage === 'server' && effectiveOptions.useCoordinator !== false) {
-			const downloadId = this.queueTrack(track, {
-				...effectiveOptions,
-				albumId: undefined, // Individual track, not part of album batch
-				albumTitle: undefined
-			});
-			
-			// Placeholder filename - actual name will be determined when queue processes track
-			const filename = track.title || 'download';
-			
-			// Return immediately - download will be processed by queue
-			return {
-				success: true,
-				filename,
-				taskId: downloadId
-			};
+			try {
+				// Get artist name - handle both Track and SonglinkTrack types
+				const artistName = 'artistName' in track 
+					? track.artistName 
+					: track.artists?.[0]?.name || 'Unknown Artist';
+
+				// Submit track job to server queue
+				const response = await fetch('/api/download-queue', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						job: {
+							type: 'track',
+							trackId: track.id,
+							quality: effectiveOptions.quality || 'LOSSLESS',
+							albumTitle: track.album?.title,
+							artistName
+						}
+					})
+				});
+
+				if (!response.ok) {
+					const error = await response.text();
+					return {
+						success: false,
+						error: new DownloadOrchestratorError('QUEUE_SUBMISSION_FAILED', `Failed to queue track: ${error}`, 'Failed to queue track for download')
+					};
+				}
+
+				const result = await response.json() as { success: boolean; jobId: string };
+				
+				// Placeholder filename - actual name will be determined when queue processes track
+				const filename = track.title || 'download';
+				
+				// Return immediately - download will be processed by server queue
+				return {
+					success: true,
+					filename,
+					taskId: result.jobId
+				};
+			} catch (error) {
+				const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+				return {
+					success: false,
+					error: new DownloadOrchestratorError('QUEUE_SUBMISSION_FAILED', errorMsg, 'Failed to submit track to download queue')
+				};
+			}
 		}
 		
 		const effectiveConvertAacToMp3 =

@@ -1,10 +1,31 @@
 <script lang="ts">
 	import { downloadOrchestrator } from '$lib/orchestrators';
 	import { serverQueue, queueStats, workerStatus, totalDownloads } from '$lib/stores/serverQueue.svelte';
-	import { Play, Pause, Square, RotateCcw, AlertCircle, Trash2, RotateCw, RefreshCw } from 'lucide-svelte';
+	import { Play, Pause, Square, RotateCcw, AlertCircle, Trash2, RotateCw, RefreshCw, ChevronDown, ChevronUp } from 'lucide-svelte';
+
+	interface QueueJob {
+		id: string;
+		jobType: 'track' | 'album';
+		status: 'queued' | 'processing' | 'completed' | 'failed';
+		job: {
+			trackId?: string;
+			trackTitle?: string;
+			artistName?: string;
+			albumTitle?: string;
+			albumId?: string;
+			quality?: string;
+		};
+		progress?: number;
+		createdAt?: number;
+		startedAt?: number;
+		completedAt?: number;
+		error?: string;
+	}
 
 	let isOpen = $state(false);
 	let isLoading = $state(false);
+	let queueJobs = $state<QueueJob[]>([]);
+	let expandedJobId = $state<string | null>(null);
 
 	// Use server queue data
 	let stats = $derived.by(() => {
@@ -27,15 +48,58 @@
 		return () => serverQueue.stopPolling();
 	});
 
+	// Fetch queue jobs details
+	const fetchQueueJobs = async () => {
+		try {
+			const response = await fetch('/api/download-queue');
+			if (!response.ok) throw new Error('Failed to fetch jobs');
+			
+			const data = await response.json() as { success: boolean; jobs: QueueJob[] };
+			if (data.success) {
+				queueJobs = data.jobs;
+			}
+		} catch (err) {
+			console.error('Failed to fetch queue jobs:', err);
+		}
+	};
+
+	// Auto-refresh jobs when panel opens or stats change
+	$effect(() => {
+		if (isOpen) {
+			fetchQueueJobs();
+		}
+	});
+
+	$effect(() => {
+		if (isOpen && stats.running > 0) {
+			const interval = setInterval(fetchQueueJobs, 1000);
+			return () => clearInterval(interval);
+		}
+	});
+
 	const handleClearFailed = async () => {
 		if (confirm('Clear all failed downloads?')) {
 			isLoading = true;
 			try {
-				// TODO: Implement bulk delete of failed jobs
-				// const jobs = await getAllJobs();
-				// const failedJobs = jobs.filter(j => j.status === 'failed');
-				// await Promise.all(failedJobs.map(j => fetch(`/api/download-queue/${j.id}`, { method: 'DELETE' })));
-				// await serverQueue.poll();
+				// Fetch all jobs
+				const response = await fetch('/api/download-queue');
+				if (!response.ok) throw new Error('Failed to fetch jobs');
+				
+				const data = await response.json() as { success: boolean; jobs: Array<{ id: string; status: string }> };
+				if (!data.success) throw new Error('Failed to get jobs');
+				
+				// Filter for failed jobs and delete them
+				const failedJobs = data.jobs.filter(j => j.status === 'failed');
+				await Promise.all(
+					failedJobs.map(j => 
+						fetch(`/api/download-queue/${j.id}`, { method: 'DELETE' })
+					)
+				);
+				
+				// Refresh stats
+				await serverQueue.poll();
+			} catch (err) {
+				console.error('Failed to clear failed jobs:', err);
 			} finally {
 				isLoading = false;
 			}
@@ -46,6 +110,7 @@
 		isLoading = true;
 		try {
 			await serverQueue.poll();
+			await fetchQueueJobs();
 		} finally {
 			isLoading = false;
 		}
@@ -71,7 +136,10 @@
 	{#if isOpen}
 		<div class="download-manager-panel">
 			<div class="download-manager-header">
-				<h3 class="download-manager-title">Downloads</h3>
+				<div>
+					<h3 class="download-manager-title">Download Manager</h3>
+					<p class="download-manager-subtitle-text">{stats.running} downloading • {stats.queued} queued</p>
+				</div>
 				<button
 					onclick={() => (isOpen = false)}
 					class="download-manager-close"
@@ -82,28 +150,214 @@
 				</button>
 			</div>
 
-			<div class="download-manager-section">
-				<div class="download-manager-stats">
-					<div class="download-manager-stat">
-						<span class="stat-label">Running</span>
-						<span class="stat-value running">{stats.running}</span>
-					</div>
-					<div class="download-manager-stat">
-						<span class="stat-label">Queued</span>
-						<span class="stat-value queued">{stats.queued}</span>
-					</div>
-					<div class="download-manager-stat">
-						<span class="stat-label">Failed</span>
-						<span class="stat-value failed">{stats.failed}</span>
-					</div>
-					<div class="download-manager-stat">
-						<span class="stat-label">Status</span>
-						<span class="stat-value status">{$workerStatus.running ? 'Processing' : 'Idle'}</span>
-					</div>
+			<!-- Stats bar -->
+			<div class="download-manager-stats-bar">
+				<div class="stat-item stat-running">
+					<span class="stat-number">{stats.running}</span>
+					<span class="stat-label">Running</span>
+				</div>
+				<div class="stat-item stat-queued">
+					<span class="stat-number">{stats.queued}</span>
+					<span class="stat-label">Queued</span>
+				</div>
+				<div class="stat-item stat-completed">
+					<span class="stat-number">{stats.completed}</span>
+					<span class="stat-label">Completed</span>
+				</div>
+				<div class="stat-item stat-failed">
+					<span class="stat-number">{stats.failed}</span>
+					<span class="stat-label">Failed</span>
 				</div>
 			</div>
 
-			<div class="download-manager-controls">
+			<div class="download-manager-content">
+				<!-- Current/Active Downloads -->
+				{#if stats.running > 0}
+					<div class="section current-section">
+						<h4 class="section-title">
+							<span>🔄 Currently Downloading</span>
+							<span class="section-count">{stats.running}</span>
+						</h4>
+						<div class="current-items">
+							{#each queueJobs.filter(j => j.status === 'processing') as job (job.id)}
+								<div class="current-item">
+									<div class="current-item-header">
+										<div class="current-item-title">
+											{job.job.trackTitle || job.job.albumTitle || 'Unknown'}
+										</div>
+										<span class="badge badge-processing">PROCESSING</span>
+									</div>
+									<div class="current-item-meta">
+										<span>{job.job.artistName || 'Unknown Artist'}</span>
+										{#if job.job.quality}
+											<span class="meta-separator">•</span>
+											<span>{job.job.quality}</span>
+										{/if}
+									</div>
+									{#if job.progress}
+										<div class="progress-bar">
+											<div class="progress-fill" style="width: {job.progress}%"></div>
+										</div>
+										<div class="progress-text">{Math.round(job.progress)}%</div>
+									{/if}
+								</div>
+							{/each}
+						</div>
+					</div>
+				{/if}
+
+				<!-- Queued items -->
+				{#if stats.queued > 0}
+					<div class="section">
+						<h4 class="section-title">
+							<span>📋 Queue</span>
+							<span class="section-count">{stats.queued}</span>
+						</h4>
+						<div class="queue-list">
+							{#each queueJobs.filter(j => j.status === 'queued').slice(0, 5) as job (job.id)}
+								<div class="queue-item-card">
+									<div class="queue-item-click" onclick={() => expandedJobId = expandedJobId === job.id ? null : job.id}>
+										<div class="queue-item-main">
+											<div class="queue-item-info">
+												<div class="queue-item-title">{job.job.trackTitle || job.job.albumTitle || 'Unknown'}</div>
+												<div class="queue-item-artist">{job.job.artistName || 'Unknown Artist'}</div>
+												{#if job.job.albumTitle && job.job.trackTitle}
+													<div class="queue-item-album">{job.job.albumTitle}</div>
+												{/if}
+											</div>
+											<span class="expand-icon">
+												{#if expandedJobId === job.id}
+													<ChevronUp size={16} />
+												{:else}
+													<ChevronDown size={16} />
+												{/if}
+											</span>
+										</div>
+
+										{#if expandedJobId === job.id}
+											<div class="queue-item-details">
+												<div class="detail-row">
+													<span class="detail-label">Type:</span>
+													<span class="detail-value">{job.jobType === 'track' ? 'Single Track' : 'Album'}</span>
+												</div>
+												<div class="detail-row">
+													<span class="detail-label">Quality:</span>
+													<span class="detail-value">{job.job.quality || 'Unknown'}</span>
+												</div>
+												<div class="detail-row">
+													<span class="detail-label">Status:</span>
+													<span class="detail-value">{job.status}</span>
+												</div>
+												{#if job.createdAt}
+													<div class="detail-row">
+														<span class="detail-label">Added:</span>
+														<span class="detail-value">{new Date(job.createdAt).toLocaleTimeString()}</span>
+													</div>
+												{/if}
+											</div>
+										{/if}
+									</div>
+								</div>
+							{/each}
+
+							{#if stats.queued > 5}
+								<div class="queue-more-hint">
+									+{stats.queued - 5} more in queue
+								</div>
+							{/if}
+						</div>
+					</div>
+				{/if}
+
+				<!-- Completed -->
+				{#if stats.completed > 0}
+					<div class="section">
+						<h4 class="section-title">
+							<span>✓ Completed</span>
+							<span class="section-count">{stats.completed}</span>
+						</h4>
+						<div class="completion-summary">
+							<p>{stats.completed} file{stats.completed !== 1 ? 's' : ''} successfully downloaded</p>
+						</div>
+					</div>
+				{/if}
+
+				<!-- Failed -->
+				{#if stats.failed > 0}
+					<div class="section">
+						<h4 class="section-title error-title">
+							<span>⚠️ Failed ({stats.failed})</span>
+						</h4>
+						<div class="failed-list">
+							{#each queueJobs.filter(j => j.status === 'failed').slice(0, 3) as job (job.id)}
+								<div class="failed-item-card">
+									<div class="failed-item-click" onclick={() => expandedJobId = expandedJobId === job.id ? null : job.id}>
+										<div class="failed-item-main">
+											<div class="failed-item-info">
+												<div class="failed-item-title">{job.job.trackTitle || job.job.albumTitle || 'Unknown'}</div>
+												<div class="failed-item-error-text">{job.error || 'Unknown error'}</div>
+											</div>
+											<span class="expand-icon">
+												{#if expandedJobId === job.id}
+													<ChevronUp size={16} />
+												{:else}
+													<ChevronDown size={16} />
+												{/if}
+											</span>
+										</div>
+
+										{#if expandedJobId === job.id}
+											<div class="failed-item-details">
+												<div class="detail-row">
+													<span class="detail-label">Job ID:</span>
+													<span class="detail-value" style="font-family: monospace; font-size: 11px;">{job.id}</span>
+												</div>
+												<div class="detail-row">
+													<span class="detail-label">Type:</span>
+													<span class="detail-value">{job.jobType === 'track' ? 'Single Track' : 'Album'}</span>
+												</div>
+												<div class="detail-row">
+													<span class="detail-label">Artist:</span>
+													<span class="detail-value">{job.job.artistName || 'Unknown'}</span>
+												</div>
+											</div>
+										{/if}
+									</div>
+								</div>
+							{/each}
+
+							{#if stats.failed > 3}
+								<div class="queue-more-hint">
+									+{stats.failed - 3} more failed items
+								</div>
+							{/if}
+						</div>
+						<div class="failed-actions">
+							<button
+								onclick={handleClearFailed}
+								class="control-btn control-btn--danger"
+								type="button"
+								title="Clear failed downloads"
+								disabled={isLoading}
+							>
+								<Trash2 size={14} />
+								<span>Clear Failed</span>
+							</button>
+						</div>
+					</div>
+				{/if}
+
+				<!-- Empty state -->
+				{#if stats.running === 0 && stats.queued === 0 && stats.completed === 0 && stats.failed === 0}
+					<div class="download-manager-empty">
+						<p class="empty-message">No downloads yet</p>
+						<p class="empty-hint">Start downloading tracks or albums to see them here</p>
+					</div>
+				{/if}
+			</div>
+
+			<!-- Footer with controls -->
+			<div class="download-manager-footer">
 				<button
 					onclick={handleManualRefresh}
 					class="control-btn control-btn--secondary"
@@ -112,65 +366,10 @@
 					disabled={isLoading}
 				>
 					<span class:rotating={isLoading}>
-						<RefreshCw size={16} />
+						<RefreshCw size={14} />
 					</span>
 					<span>Refresh</span>
 				</button>
-			</div>
-		{#if !hasActivity}
-			<div class="download-manager-empty">
-				<p class="empty-message">No active downloads</p>
-				<p class="empty-hint">Downloads will appear here when you start downloading tracks or albums</p>
-			</div>
-		{/if}
-		{#if stats.running > 0 || stats.queued > 0}
-			<div class="download-manager-section">
-				<h4 class="download-manager-subtitle">
-					Queue ({stats.running + stats.queued})
-				</h4>
-				<div class="download-manager-queue">
-					<p class="queue-info">
-						{#if stats.running > 0}
-							<strong>{stats.running}</strong> download{stats.running !== 1 ? 's' : ''} in progress
-						{/if}
-						{#if stats.running > 0 && stats.queued > 0} • {/if}
-						{#if stats.queued > 0}
-							<strong>{stats.queued}</strong> queued
-						{/if}
-					</p>
-				</div>
-			</div>
-		{/if}
-
-{#if stats.failed > 0}
-			<div class="download-manager-section">
-				<div class="download-manager-subtitle-row">
-					<h4 class="download-manager-subtitle">
-						<AlertCircle size={14} />
-						Failed ({stats.failed})
-					</h4>
-					<div class="download-manager-failed-actions">
-						<button
-							onclick={handleClearFailed}
-							class="failed-action-btn failed-action-btn--clear"
-							type="button"
-							title="Clear failed list"
-							disabled={isLoading}
-						>
-							<Trash2 size={14} />
-						</button>
-					</div>
-				</div>
-				<div class="download-manager-failed">
-					<p class="failed-info">
-						{stats.failed} download{stats.failed !== 1 ? 's' : ''} failed. Server queue will retain failed jobs for manual retry.
-					</p>
-					</div>
-				</div>
-			{/if}
-
-			<div class="download-manager-info">
-				<p>Albums are queued together as batches. Max 4 concurrent downloads with auto-retry on timeout.</p>
 			</div>
 		</div>
 	{/if}
@@ -182,7 +381,7 @@
 		--color-success: #10b981;
 		--color-warning: #f59e0b;
 		--color-error: #ef4444;
-		--color-bg-primary: rgba(11, 16, 26, 0.95);
+		--color-bg-primary: rgba(11, 16, 26, 0.98);
 		--color-bg-secondary: rgba(255, 255, 255, 0.05);
 		--color-border: rgba(255, 255, 255, 0.1);
 		--color-text-primary: #e2e8f0;
@@ -200,12 +399,12 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 48px;
-		height: 48px;
+		width: 56px;
+		height: 56px;
 		border-radius: 50%;
 		background: var(--color-primary);
 		color: white;
-		font-size: 20px;
+		font-size: 24px;
 		box-shadow: 0 4px 20px rgba(59, 130, 246, 0.4);
 		transition: all 0.3s ease;
 	}
@@ -219,14 +418,14 @@
 		position: absolute;
 		top: -8px;
 		right: -8px;
-		min-width: 24px;
-		height: 24px;
+		min-width: 26px;
+		height: 26px;
 		padding: 0 6px;
-		border-radius: 12px;
+		border-radius: 13px;
 		background: var(--color-error);
 		color: white;
 		font-size: 11px;
-		font-weight: 600;
+		font-weight: 700;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -235,12 +434,12 @@
 
 	.download-manager-panel {
 		position: fixed;
-		bottom: calc(20px + var(--player-height, 0px) + 70px + env(safe-area-inset-bottom, 0px));
+		bottom: calc(20px + var(--player-height, 0px) + 80px + env(safe-area-inset-bottom, 0px));
 		right: 20px;
 		z-index: 99998;
-		width: 380px;
-		max-height: 600px;
-		overflow-y: auto;
+		width: 600px;
+		max-height: 80vh;
+		max-height: 80dvh;
 		border-radius: 12px;
 		background: var(--color-bg-primary);
 		border: 1px solid var(--color-border);
@@ -248,6 +447,7 @@
 		animation: slideUp 0.3s ease;
 		display: flex;
 		flex-direction: column;
+		overflow: hidden;
 	}
 
 	@keyframes slideUp {
@@ -265,31 +465,39 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 14px 16px;
+		padding: 16px;
 		border-bottom: 1px solid var(--color-border);
 		flex-shrink: 0;
+		gap: 12px;
 	}
 
 	.download-manager-title {
 		margin: 0;
-		font-size: 15px;
-		font-weight: 600;
+		font-size: 16px;
+		font-weight: 700;
 		color: var(--color-text-primary);
 		letter-spacing: 0.5px;
+	}
+
+	.download-manager-subtitle-text {
+		margin: 4px 0 0 0;
+		font-size: 12px;
+		color: var(--color-text-secondary);
 	}
 
 	.download-manager-close {
 		all: unset;
 		cursor: pointer;
-		width: 28px;
-		height: 28px;
+		width: 32px;
+		height: 32px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		border-radius: 4px;
+		font-size: 20px;
+		border-radius: 6px;
 		color: var(--color-text-secondary);
-		font-size: 16px;
 		transition: all 0.2s;
+		flex-shrink: 0;
 	}
 
 	.download-manager-close:hover {
@@ -297,80 +505,399 @@
 		color: var(--color-text-primary);
 	}
 
-	/* Sections */
-	.download-manager-section {
-		padding: 12px 16px;
-		border-bottom: 1px solid var(--color-border);
-	}
-
-	.download-manager-section:last-of-type {
-		border-bottom: none;
-	}
-
-	/* Stats */
-	.download-manager-stats {
+	/* Stats bar */
+	.download-manager-stats-bar {
 		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 8px;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 1px;
+		border-top: 1px solid var(--color-border);
+		border-bottom: 1px solid var(--color-border);
+		padding: 0;
+		background: var(--color-border);
+		flex-shrink: 0;
 	}
 
-	.download-manager-stat {
+	.stat-item {
 		display: flex;
 		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 12px 8px;
+		background: var(--color-bg-primary);
+		text-align: center;
 		gap: 4px;
-		padding: 8px;
-		border-radius: 6px;
-		background: var(--color-bg-secondary);
 	}
 
-	.stat-label {
-		font-size: 11px;
-		font-weight: 600;
-		color: var(--color-text-secondary);
-		text-transform: uppercase;
-		letter-spacing: 0.5px;
-	}
-
-	.stat-value {
+	.stat-number {
 		font-size: 18px;
 		font-weight: 700;
 		color: var(--color-text-primary);
 	}
 
-	.stat-value.running {
-		color: var(--color-success);
-	}
-
-	.stat-value.queued {
-		color: var(--color-warning);
-	}
-
-	.stat-value.failed {
-		color: var(--color-error);
-	}
-
-	.stat-value.status {
-		color: var(--color-primary);
-		font-size: 13px;
+	.stat-label {
+		font-size: 10px;
+		color: var(--color-text-secondary);
+		text-transform: uppercase;
+		letter-spacing: 0.3px;
 		font-weight: 600;
 	}
 
-	/* Controls */
-	.download-manager-controls {
+	.stat-running .stat-number {
+		color: #10b981;
+	}
+
+	.stat-queued .stat-number {
+		color: #f59e0b;
+	}
+
+	.stat-completed .stat-number {
+		color: #06b6d4;
+	}
+
+	.stat-failed .stat-number {
+		color: #ef4444;
+	}
+
+	/* Main content */
+	.download-manager-content {
+		flex: 1;
+		overflow-y: auto;
 		display: flex;
+		flex-direction: column;
+		gap: 16px;
+		padding: 16px;
+	}
+
+	.section {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	.current-section {
+		border: 1px solid rgba(16, 185, 129, 0.2);
+		background: rgba(16, 185, 129, 0.05);
+		padding: 12px;
+		border-radius: 8px;
+	}
+
+	.section-title {
+		margin: 0;
+		font-size: 12px;
+		font-weight: 700;
+		color: var(--color-text-secondary);
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
 		gap: 8px;
-		padding: 12px 16px;
-		padding-top: 0;
+	}
+
+	.error-title {
+		color: var(--color-error);
+	}
+
+	.section-count {
+		background: var(--color-bg-secondary);
+		padding: 2px 8px;
+		border-radius: 10px;
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--color-text-primary);
+	}
+
+	/* Current items */
+	.current-items {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+
+	.current-item {
+		background: rgba(59, 130, 246, 0.1);
+		border: 1px solid rgba(59, 130, 246, 0.3);
+		border-radius: 8px;
+		padding: 12px;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.current-item-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+	}
+
+	.current-item-title {
+		font-weight: 600;
+		font-size: 13px;
+		color: var(--color-text-primary);
+		flex: 1;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.badge {
+		padding: 3px 8px;
+		border-radius: 4px;
+		font-size: 10px;
+		font-weight: 700;
+		white-space: nowrap;
 		flex-shrink: 0;
 	}
 
+	.badge-processing {
+		background: rgba(16, 185, 129, 0.2);
+		color: #10b981;
+	}
+
+	.current-item-meta {
+		font-size: 11px;
+		color: var(--color-text-secondary);
+		display: flex;
+		gap: 8px;
+		flex-wrap: wrap;
+	}
+
+	.meta-separator {
+		opacity: 0.5;
+	}
+
+	.progress-bar {
+		width: 100%;
+		height: 4px;
+		background: rgba(255, 255, 255, 0.1);
+		border-radius: 2px;
+		overflow: hidden;
+		margin-top: 4px;
+	}
+
+	.progress-fill {
+		height: 100%;
+		background: linear-gradient(90deg, #10b981, #06b6d4);
+		transition: width 0.2s ease;
+	}
+
+	.progress-text {
+		font-size: 10px;
+		color: var(--color-text-secondary);
+		text-align: right;
+	}
+
+	/* Queue list */
+	.queue-list {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		max-height: 300px;
+		overflow-y: auto;
+	}
+
+	.queue-item-card {
+		background: var(--color-bg-secondary);
+		border: 1px solid var(--color-border);
+		border-radius: 6px;
+		overflow: hidden;
+	}
+
+	.queue-item-click {
+		cursor: pointer;
+		padding: 10px;
+		transition: background 0.2s;
+	}
+
+	.queue-item-click:hover {
+		background: rgba(255, 255, 255, 0.08);
+	}
+
+	.queue-item-main {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+	}
+
+	.queue-item-info {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.queue-item-title {
+		font-weight: 600;
+		font-size: 12px;
+		color: var(--color-text-primary);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.queue-item-artist {
+		font-size: 11px;
+		color: var(--color-text-secondary);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.queue-item-album {
+		font-size: 10px;
+		color: var(--color-text-secondary);
+		opacity: 0.8;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.expand-icon {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: var(--color-text-secondary);
+		flex-shrink: 0;
+		transition: transform 0.2s;
+	}
+
+	.queue-item-details {
+		padding-top: 8px;
+		border-top: 1px solid var(--color-border);
+		margin-top: 8px;
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.detail-row {
+		display: flex;
+		justify-content: space-between;
+		gap: 8px;
+		font-size: 11px;
+	}
+
+	.detail-label {
+		color: var(--color-text-secondary);
+		font-weight: 600;
+		min-width: 70px;
+	}
+
+	.detail-value {
+		color: var(--color-text-primary);
+		text-align: right;
+		flex: 1;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.queue-more-hint {
+		text-align: center;
+		padding: 8px 10px;
+		font-size: 11px;
+		color: var(--color-text-secondary);
+		background: rgba(255, 255, 255, 0.02);
+		border-top: 1px solid var(--color-border);
+	}
+
+	/* Completion summary */
+	.completion-summary {
+		background: rgba(6, 182, 212, 0.05);
+		border: 1px solid rgba(6, 182, 212, 0.2);
+		border-radius: 6px;
+		padding: 10px;
+		font-size: 12px;
+		color: var(--color-text-primary);
+	}
+
+	.completion-summary p {
+		margin: 0;
+	}
+
+	/* Failed items */
+	.failed-list {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		max-height: 250px;
+		overflow-y: auto;
+	}
+
+	.failed-item-card {
+		background: rgba(239, 68, 68, 0.08);
+		border: 1px solid rgba(239, 68, 68, 0.25);
+		border-radius: 6px;
+		overflow: hidden;
+	}
+
+	.failed-item-click {
+		cursor: pointer;
+		padding: 10px;
+		transition: background 0.2s;
+	}
+
+	.failed-item-click:hover {
+		background: rgba(239, 68, 68, 0.12);
+	}
+
+	.failed-item-main {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+	}
+
+	.failed-item-info {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.failed-item-title {
+		font-weight: 600;
+		font-size: 12px;
+		color: var(--color-text-primary);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.failed-item-error-text {
+		font-size: 10px;
+		color: var(--color-error);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.failed-item-details {
+		padding-top: 8px;
+		border-top: 1px solid rgba(239, 68, 68, 0.2);
+		margin-top: 8px;
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.failed-actions {
+		display: flex;
+		gap: 8px;
+		padding-top: 8px;
+		border-top: 1px solid var(--color-border);
+	}
+
+	/* Controls */
 	.control-btn {
 		all: unset;
-		flex: 1;
 		cursor: pointer;
-		padding: 8px 12px;
+		padding: 8px 14px;
 		border-radius: 6px;
-		display: flex;
+		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		gap: 6px;
@@ -378,15 +905,7 @@
 		font-weight: 600;
 		transition: all 0.2s;
 		white-space: nowrap;
-	}
-
-	.control-btn--primary {
-		background: var(--color-primary);
-		color: white;
-	}
-
-	.control-btn--primary:hover {
-		background: #2563eb;
+		border: 1px solid transparent;
 	}
 
 	.control-btn--secondary {
@@ -414,293 +933,22 @@
 		cursor: not-allowed;
 	}
 
-	/* Subtitle */
-	.download-manager-subtitle {
-		margin: 0 0 8px 0;
-		font-size: 12px;
-		font-weight: 700;
-		color: var(--color-text-secondary);
-		text-transform: uppercase;
-		letter-spacing: 0.5px;
-		display: flex;
-		align-items: center;
-		gap: 6px;
-	}
-
-	.download-manager-subtitle-row {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		margin-bottom: 8px;
-		gap: 8px;
-	}
-
-	/* Queue */
-	.download-manager-queue {
-		display: flex;
-		flex-direction: column;
-		gap: 0;
-		border-radius: 6px;
-		overflow: hidden;
-		border: 1px solid var(--color-border);
-		max-height: 150px;
-		overflow-y: auto;
-	}
-
-	.queue-item {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 8px 10px;
-		border-bottom: 1px solid var(--color-border);
-		font-size: 12px;
-		background: var(--color-bg-secondary);
-	}
-
-	.queue-item:last-child {
-		border-bottom: none;
-	}
-
-	.queue-item--header {
-		background: transparent;
-		font-weight: 600;
-		color: var(--color-text-secondary);
-		font-size: 11px;
-		text-transform: uppercase;
-		padding: 6px 10px;
-		border-bottom: 1px solid var(--color-border);
-	}
-
-	.queue-item--more {
-		justify-content: center;
-		color: var(--color-text-secondary);
-		font-size: 11px;
-		padding: 6px 10px;
-	}
-
-	.queue-item-title {
-		flex: 1;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		color: var(--color-text-primary);
-	}
-
-	.queue-item-status {
-		margin-left: auto;
-		padding-left: 8px;
-		white-space: nowrap;
-		color: var(--color-text-secondary);
-		font-size: 11px;
-	}
-
-	.queue-item-status.retrying {
-		color: var(--color-warning);
-		font-weight: 600;
-	}
-
-	/* Album Groups */
-	.album-group {
-		padding: 10px 12px;
-		border-bottom: 1px solid var(--color-border);
-		background: var(--color-bg-secondary);
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-
-	.album-group:last-child {
-		border-bottom: none;
-	}
-
-	.album-group-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 8px;
-	}
-
-	.album-title {
-		flex: 1;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		color: var(--color-text-primary);
-		font-weight: 600;
-		font-size: 12px;
-	}
-
-	.album-badge {
-		flex-shrink: 0;
-		padding: 2px 8px;
-		border-radius: 10px;
-		background: rgba(59, 130, 246, 0.15);
-		color: var(--color-primary);
-		font-size: 10px;
-		font-weight: 700;
-		letter-spacing: 0.3px;
-	}
-
-	.album-artist {
-		color: var(--color-text-secondary);
-		font-size: 11px;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	/* Failed */
-	.download-manager-failed {
-		display: flex;
-		flex-direction: column;
-		gap: 0;
-		border-radius: 6px;
-		overflow: hidden;
-		border: 1px solid rgba(239, 68, 68, 0.2);
-		max-height: 150px;
-		overflow-y: auto;
-	}
-
-	.failed-item {
-		padding: 8px 10px;
-		border-bottom: 1px solid var(--color-border);
-		background: rgba(239, 68, 68, 0.05);
-		font-size: 12px;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-	}
-
-	.failed-item:last-child {
-		border-bottom: none;
-	}
-
-	.failed-item--more {
-		justify-content: center;
-		color: var(--color-text-secondary);
-		font-size: 11px;
-		padding: 6px 10px;
-		background: transparent;
-	}
-
-	.failed-item-info {
-		flex: 1;
-		min-width: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-
-	.failed-item-title {
-		color: var(--color-text-primary);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		font-weight: 500;
-	}
-
-	.failed-item-error {
-		color: var(--color-error);
-		font-size: 11px;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.download-manager-failed-actions {
-		display: flex;
-		gap: 6px;
-		flex-shrink: 0;
-	}
-
-	.failed-action-btn {
-		all: unset;
-		cursor: pointer;
-		padding: 4px 8px;
-		border-radius: 4px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 4px;
-		font-size: 11px;
-		font-weight: 600;
-		transition: all 0.2s;
-		white-space: nowrap;
-	}
-
-	.failed-action-btn--retry {
-		background: rgba(16, 185, 129, 0.1);
-		color: var(--color-success);
-		border: 1px solid rgba(16, 185, 129, 0.3);
-	}
-
-	.failed-action-btn--retry:hover {
-		background: rgba(16, 185, 129, 0.2);
-	}
-
-	.failed-action-btn--clear {
-		background: rgba(239, 68, 68, 0.1);
-		color: var(--color-error);
-		border: 1px solid rgba(239, 68, 68, 0.3);
-	}
-
-	.failed-action-btn--clear:hover {
-		background: rgba(239, 68, 68, 0.2);
-	}
-
-	/* Info */
-	.download-manager-info {
-		padding: 10px 16px;
-		font-size: 11px;
-		color: var(--color-text-secondary);
-		line-height: 1.4;
-		border-top: 1px solid var(--color-border);
-		background: var(--color-bg-secondary);
-		border-radius: 0 0 12px 12px;
-		margin: auto 0 0 0;
-	}
-
-	.download-manager-info p {
-		margin: 0;
-	}
-
-	/* Scrollbar */
-	.download-manager-panel::-webkit-scrollbar,
-	.download-manager-queue::-webkit-scrollbar,
-	.download-manager-failed::-webkit-scrollbar {
-		width: 6px;
-	}
-
-	.download-manager-panel::-webkit-scrollbar-track,
-	.download-manager-queue::-webkit-scrollbar-track,
-	.download-manager-failed::-webkit-scrollbar-track {
-		background: transparent;
-	}
-
-	.download-manager-panel::-webkit-scrollbar-thumb,
-	.download-manager-queue::-webkit-scrollbar-thumb,
-	.download-manager-failed::-webkit-scrollbar-thumb {
-		background: rgba(255, 255, 255, 0.2);
-		border-radius: 3px;
-	}
-
-	.download-manager-panel::-webkit-scrollbar-thumb:hover,
-	.download-manager-queue::-webkit-scrollbar-thumb:hover,
-	.download-manager-failed::-webkit-scrollbar-thumb:hover {
-		background: rgba(255, 255, 255, 0.3);
-	}
-
 	/* Empty state */
 	.download-manager-empty {
-		padding: 32px 16px;
+		padding: 60px 16px;
 		text-align: center;
 		color: var(--color-text-secondary);
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		align-items: center;
+		min-height: 200px;
 	}
 
 	.empty-message {
 		margin: 0 0 8px 0;
-		font-size: 14px;
-		font-weight: 500;
+		font-size: 15px;
+		font-weight: 600;
 		color: var(--color-text-primary);
 	}
 
@@ -709,21 +957,19 @@
 		font-size: 12px;
 		line-height: 1.5;
 		opacity: 0.7;
+		max-width: 280px;
 	}
 
-	/* Toggle button inactive state */
-	.download-manager-toggle:not(.has-activity) {
-		background: rgba(255, 255, 255, 0.1);
-		opacity: 0.6;
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+	/* Footer */
+	.download-manager-footer {
+		padding: 12px 16px;
+		border-top: 1px solid var(--color-border);
+		display: flex;
+		gap: 8px;
+		flex-shrink: 0;
+		background: var(--color-bg-secondary);
 	}
 
-	.download-manager-toggle:not(.has-activity):hover {
-		opacity: 1;
-		background: rgba(255, 255, 255, 0.15);
-	}
-
-	/* Rotating animation for refresh button */
 	.rotating {
 		display: inline-block;
 		animation: spin 1s linear infinite;
@@ -738,16 +984,49 @@
 		}
 	}
 
+	/* Scrollbars */
+	.download-manager-content::-webkit-scrollbar,
+	.queue-list::-webkit-scrollbar,
+	.failed-list::-webkit-scrollbar {
+		width: 6px;
+	}
+
+	.download-manager-content::-webkit-scrollbar-track,
+	.queue-list::-webkit-scrollbar-track,
+	.failed-list::-webkit-scrollbar-track {
+		background: transparent;
+	}
+
+	.download-manager-content::-webkit-scrollbar-thumb,
+	.queue-list::-webkit-scrollbar-thumb,
+	.failed-list::-webkit-scrollbar-thumb {
+		background: rgba(255, 255, 255, 0.15);
+		border-radius: 3px;
+	}
+
+	.download-manager-content::-webkit-scrollbar-thumb:hover,
+	.queue-list::-webkit-scrollbar-thumb:hover,
+	.failed-list::-webkit-scrollbar-thumb:hover {
+		background: rgba(255, 255, 255, 0.25);
+	}
+
 	/* Responsive */
-	@media (max-width: 640px) {
+	@media (max-width: 900px) {
 		.download-manager-panel {
 			width: calc(100vw - 40px);
-			right: 20px;
-			max-height: 400px;
+			max-height: 70vh;
+		}
+	}
+
+	@media (max-width: 640px) {
+		.download-manager-panel {
+			width: calc(100vw - 30px);
+			right: 15px;
+			max-height: 60vh;
 		}
 
-		.download-manager-stats {
-			grid-template-columns: 1fr 1fr;
+		.download-manager-stats-bar {
+			grid-template-columns: repeat(2, 1fr);
 		}
 
 		.control-btn span {

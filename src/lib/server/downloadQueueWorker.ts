@@ -39,7 +39,9 @@ async function downloadTrack(
 		// - Embeds metadata
 		// - Downloads cover art
 		
-		const baseUrl = `http://localhost:${process.env.PORT || 5173}`;
+		// Use INTERNAL_API_URL if set (for Docker/NAT), otherwise use localhost
+		const port = process.env.PORT || 5000;
+		const baseUrl = process.env.INTERNAL_API_URL || `https://localhost:${port}`;
 		const url = `${baseUrl}/api/internal/download-track`;
 		
 		const body = {
@@ -56,7 +58,9 @@ async function downloadTrack(
 			headers: {
 				'Content-Type': 'application/json'
 			},
-			body: JSON.stringify(body)
+			body: JSON.stringify(body),
+			// @ts-ignore - Node.js https agent for self-signed certs
+			agent: new (await import('https')).Agent({ rejectUnauthorized: false })
 		});
 
 		if (!response.ok) {
@@ -135,8 +139,13 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 
 	try {
 		// Fetch album tracks via the API
-		const baseUrl = `http://localhost:${process.env.PORT || 5173}`;
-		const albumResponse = await fetch(`${baseUrl}/api/tidal?endpoint=/albums/${albumJob.albumId}`);
+		// Use INTERNAL_API_URL if set (for Docker/NAT), otherwise use localhost
+		const port = process.env.PORT || 5000;
+		const baseUrl = process.env.INTERNAL_API_URL || `https://localhost:${port}`;
+		const albumResponse = await fetch(`${baseUrl}/api/tidal?endpoint=/albums/${albumJob.albumId}`, {
+			// @ts-ignore - Node.js https agent for self-signed certs
+			agent: new (await import('https')).Agent({ rejectUnauthorized: false })
+		});
 		
 		if (!albumResponse.ok) {
 			throw new Error(`Failed to fetch album: HTTP ${albumResponse.status}`);
