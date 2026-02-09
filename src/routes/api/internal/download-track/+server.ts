@@ -8,6 +8,12 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import type { AudioQuality } from '$lib/types';
 import { API_CONFIG } from '$lib/config';
+
+// Timestamp helper
+const getTimestamp = () => {
+	const now = new Date();
+	return now.toLocaleTimeString('en-US', { hour12: false });
+};
 import {
 	getDownloadDir,
 	sanitizePath,
@@ -79,7 +85,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		let trackResponseData: unknown;
 		try {
 			trackResponseData = await trackResponse.json();
-			console.log('[Internal Download] Full track response structure:', JSON.stringify(trackResponseData, null, 2).substring(0, 1500));
+			console.log(`[${getTimestamp()}] [Internal Download] Full track response structure:`, JSON.stringify(trackResponseData, null, 2).substring(0, 1500));
 		} catch {
 			return json(
 				{ success: false, error: 'Failed to parse track response as JSON' },
@@ -103,12 +109,12 @@ export const POST: RequestHandler = async ({ request }) => {
 			const container = trackResponseData as { data?: unknown };
 			if (container.data && typeof container.data === 'object') {
 				streamingData = container.data as Record<string, unknown>;
-				console.log('[Internal Download] Found v2 API data:', Object.keys(streamingData));
+				console.log(`[${getTimestamp()}] [Internal Download] Found v2 API data:`, Object.keys(streamingData));
 			}
 		}
 		
 		if (!streamingData) {
-			console.error('[Internal Download] Could not parse streaming data. Response:', JSON.stringify(trackResponseData, null, 2).substring(0, 500));
+			console.error(`[${getTimestamp()}] [Internal Download] Could not parse streaming data. Response:`, JSON.stringify(trackResponseData, null, 2).substring(0, 500));
 			return json(
 				{ success: false, error: 'Could not parse track streaming data from response' },
 				{ status: 500 }
@@ -122,27 +128,27 @@ export const POST: RequestHandler = async ({ request }) => {
 		// Check common URL field names
 		if (typeof streamingData.originalTrackUrl === 'string') {
 			streamUrl = streamingData.originalTrackUrl;
-			console.log('[Internal Download] Using originalTrackUrl from API');
+			console.log(`[${getTimestamp()}] [Internal Download] Using originalTrackUrl from API`);
 		} else if (typeof streamingData.url === 'string') {
 			streamUrl = streamingData.url;
-			console.log('[Internal Download] Using url from API');
+			console.log(`[${getTimestamp()}] [Internal Download] Using url from API`);
 		} else if (typeof streamingData.streamUrl === 'string') {
 			streamUrl = streamingData.streamUrl;
-			console.log('[Internal Download] Using streamUrl from API');
+			console.log(`[${getTimestamp()}] [Internal Download] Using streamUrl from API`);
 		}
 		
 		// FALLBACK: Only parse manifest if no direct URL provided
 		if (!streamUrl && 'manifest' in streamingData && typeof streamingData.manifest === 'string') {
-			console.log('[Internal Download] No direct URL, falling back to manifest parsing');
+			console.log(`[${getTimestamp()}] [Internal Download] No direct URL, falling back to manifest parsing`);
 			const manifestBase64 = streamingData.manifest;
 			
 			// Decode manifest (base64)
 			let manifestContent: string;
 			try {
 				manifestContent = Buffer.from(manifestBase64, 'base64').toString('utf-8');
-				console.log('[Internal Download] Decoded manifest type:', manifestContent.substring(0, 50));
+				console.log(`[${getTimestamp()}] [Internal Download] Decoded manifest type:`, manifestContent.substring(0, 50));
 			} catch (decodeError) {
-				console.error('[Internal Download] Failed to decode manifest:', decodeError);
+				console.error(`[${getTimestamp()}] [Internal Download] Failed to decode manifest:`, decodeError);
 				return json(
 					{ success: false, error: 'Failed to decode streaming manifest' },
 					{ status: 500 }
@@ -159,7 +165,7 @@ export const POST: RequestHandler = async ({ request }) => {
 					const parsed = JSON.parse(manifestContent);
 					streamUrl = parsed.url || parsed.urls?.[0];
 				} catch (jsonError) {
-					console.warn('[Internal Download] Manifest is not valid JSON:', jsonError);
+					console.warn(`[${getTimestamp()}] [Internal Download] Manifest is not valid JSON:`, jsonError);
 				}
 			} else if (manifestContent.startsWith('<?xml')) {
 				// DASH XML format - extract BaseURL or media URL
@@ -167,7 +173,9 @@ export const POST: RequestHandler = async ({ request }) => {
 				const baseUrlMatch = manifestContent.match(/<BaseURL>([^<]+)<\/BaseURL>/);
 				if (baseUrlMatch) {
 					streamUrl = baseUrlMatch[1].trim();
-					console.log('[Internal Download] Extracted BaseURL from DASH manifest');
+					// Unescape XML entities (&amp; -> &, &quot; -> ", etc.)
+					streamUrl = streamUrl.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+					console.log(`[${getTimestamp()}] [Internal Download] Extracted BaseURL from DASH manifest`);
 				} else {
 					// Extract all URLs from the XML
 					const allUrls = manifestContent.match(/(https?:\/\/[^\s<>"']+)/g);
@@ -178,21 +186,25 @@ export const POST: RequestHandler = async ({ request }) => {
 							!url.includes('schemas') &&
 							!url.includes('xmlns')
 						);
+						// Unescape XML entities
 						if (streamUrl) {
-							console.log('[Internal Download] Extracted media URL from DASH');
+							streamUrl = streamUrl.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+						}
+						if (streamUrl) {
+								console.log(`[${getTimestamp()}] [Internal Download] Extracted media URL from DASH`);
 						}
 					}
 					
 					if (!streamUrl) {
-						console.error('[Internal Download] No media URL found in DASH manifest');
-						console.error('[Internal Download] Manifest sample:', manifestContent.substring(0, 800));
+								console.error(`[${getTimestamp()}] [Internal Download] No media URL found in DASH manifest`);
+								console.error(`[${getTimestamp()}] [Internal Download] Manifest sample:`, manifestContent.substring(0, 800));
 					}
 				}
 			}
 		}
 		
 		if (!streamUrl) {
-			console.error('[Internal Download] Could not extract URL from manifest. First 200 chars:', manifestContent.substring(0, 200));
+			console.error(`[${getTimestamp()}] [Internal Download] Could not extract URL from manifest. First 200 chars:`, manifestContent.substring(0, 200));
 			return json(
 				{ success: false, error: 'Could not extract stream URL from manifest' },
 				{ status: 404 }
@@ -203,9 +215,9 @@ export const POST: RequestHandler = async ({ request }) => {
 		try {
 			const urlObj = new URL(streamUrl);
 			const pathEnd = urlObj.pathname.length > 60 ? '...' : '';
-			console.log(`[Internal Download] Stream: ${urlObj.hostname}${urlObj.pathname.substring(0, 60)}${pathEnd}`);
+			console.log(`[${getTimestamp()}] [Internal Download] Stream:`, `${urlObj.hostname}${urlObj.pathname.substring(0, 60)}${pathEnd}`);
 		} catch {
-			console.error('[Internal Download] Invalid URL format:', streamUrl.substring(0, 100));
+			console.error(`[${getTimestamp()}] [Internal Download] Invalid URL format:`, streamUrl.substring(0, 100));
 			return json(
 				{ success: false, error: `Invalid stream URL format: ${streamUrl.substring(0, 100)}` },
 				{ status: 500 }
@@ -214,43 +226,109 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		// Download the audio stream through the proxy
 		// The server runs HTTPS, so NODE_TLS_REJECT_UNAUTHORIZED=0 allows self-signed cert
-		let audioResponse: Response;
-		try {
-			const port = process.env.PORT || 5000;
-			const proxiedUrl = `https://localhost:${port}/api/proxy?url=${encodeURIComponent(streamUrl)}`;
+		// Signed URLs from Tidal expire quickly, so we may need to retry with a fresh URL
+		let audioResponse: Response | null = null;
+		let lastError = 'Unknown error';
+		
+		for (let attempt = 1; attempt <= 2; attempt++) {
+			console.log(`[${getTimestamp()}] [Internal Download] Fetch attempt ${attempt}/2`);
 			
-			console.log('[Internal Download] ========== PROXY FETCH START ==========');
-			console.log('[Internal Download] NODE_TLS_REJECT_UNAUTHORIZED:', process.env.NODE_TLS_REJECT_UNAUTHORIZED);
-			console.log('[Internal Download] Proxied URL:', proxiedUrl.substring(0, 200));
-			console.log('[Internal Download] Calling fetch...');
+			if (attempt === 2) {
+				// Re-fetch track data to get a fresh signed URL
+					console.log(`[${getTimestamp()}] [Internal Download] Signed URL likely expired, fetching fresh track data...`);
+				try {
+					const freshTrackResponse = await fetch(`${apiBaseUrl}/track/?id=${trackId}&quality=${quality}`);
+					if (!freshTrackResponse.ok) {
+						return json(
+							{ success: false, error: 'Failed to refresh track metadata' },
+							{ status: 500 }
+						);
+					}
+					const freshData = await freshTrackResponse.json();
+					const freshStreamingData = (freshData as Record<string, Record<string, unknown>>)?.data;
+					
+					if (freshStreamingData && 'manifest' in freshStreamingData) {
+						const manifestBase64 = freshStreamingData.manifest as string;
+						const manifestContent = Buffer.from(manifestBase64, 'base64').toString('utf-8');
+						const baseUrlMatch = manifestContent.match(/<BaseURL>([^<]+)<\/BaseURL>/);
+						if (baseUrlMatch) {
+							streamUrl = baseUrlMatch[1].trim();
+						} else {
+							const allUrls = manifestContent.match(/(https?:\/\/[^\s<>"']+)/g);
+							if (allUrls) {
+								streamUrl = allUrls.find(url => 
+									!url.includes('w3.org') && !url.includes('schemas') && !url.includes('xmlns')
+								) || streamUrl;
+							}
+						}
+					}
+				} catch (refreshError) {
+					console.error(`[${getTimestamp()}] [Internal Download] Failed to refresh track data:`, refreshError);
+				}
+			}
 			
-			const fetchStart = Date.now();
-			audioResponse = await fetch(proxiedUrl);
-			const fetchDuration = Date.now() - fetchStart;
-			
-			console.log('[Internal Download] Fetch completed in', fetchDuration, 'ms');
-			console.log('[Internal Download] Response status:', audioResponse.status, audioResponse.statusText);
-			console.log('[Internal Download] ========== PROXY FETCH END ==========');
-		} catch (streamError) {
-			console.error('[Internal Download] ========== PROXY FETCH ERROR ==========');
-			console.error('[Internal Download] Error message:', streamError instanceof Error ? streamError.message : 'Unknown');
-			console.error('[Internal Download] Error stack:', streamError instanceof Error ? streamError.stack : 'No stack');
-			console.error('[Internal Download] ========================================');
+			try {
+				const port = process.env.PORT || 5000;
+				const proxiedUrl = `https://localhost:${port}/api/proxy?url=${encodeURIComponent(streamUrl)}`;
+				
+				console.log(`[${getTimestamp()}] [Internal Download] ========== PROXY FETCH START (Attempt ` + attempt + `) ==========`);
+				console.log(`[${getTimestamp()}] [Internal Download] Proxied URL:`, proxiedUrl.substring(0, 200));
+				console.log(`[${getTimestamp()}] [Internal Download] Calling fetch...`);
+				
+				const fetchStart = Date.now();
+				audioResponse = await fetch(proxiedUrl);
+				const fetchDuration = Date.now() - fetchStart;
+				
+				console.log(`[${getTimestamp()}] [Internal Download] Fetch completed in`, fetchDuration, 'ms');
+				console.log(`[${getTimestamp()}] [Internal Download] Response status:`, audioResponse.status, audioResponse.statusText);
+				console.log(`[${getTimestamp()}] [Internal Download] ========== PROXY FETCH END ==========`);
+				
+				// Success or non-retryable error
+				if (audioResponse.ok || (audioResponse.status !== 403 && attempt === 1)) {
+					break;
+				}
+				
+				// 403 on first attempt: prepare to retry
+				if (audioResponse.status === 403 && attempt === 1) {
+					console.log(`[${getTimestamp()}] [Internal Download] Got 403, will retry with fresh URL on next attempt`);
+					lastError = `HTTP ${audioResponse.status}: Signed URL expired`;
+					continue;
+				}
+				
+				// If we got here on second attempt, give up
+				break;
+			} catch (streamError) {
+				console.error(`[${getTimestamp()}] [Internal Download] ========== PROXY FETCH ERROR ==========`);
+				console.error(`[${getTimestamp()}] [Internal Download] Error message:`, streamError instanceof Error ? streamError.message : 'Unknown');
+				console.error(`[${getTimestamp()}] [Internal Download] Error stack:`, streamError instanceof Error ? streamError.stack : 'No stack');
+				console.error(`[${getTimestamp()}] [Internal Download] ========================================`);
+				lastError = streamError instanceof Error ? streamError.message : 'Network error';
+				
+				if (attempt === 2) {
+					return json(
+						{ success: false, error: `Failed to fetch audio stream: ${lastError}` },
+						{ status: 500 }
+					);
+				}
+			}
+		}
+		
+		if (!audioResponse) {
 			return json(
-				{ success: false, error: `Failed to fetch audio stream: ${streamError instanceof Error ? streamError.message : 'Network error'}` },
+				{ success: false, error: `Failed to fetch audio stream: ${lastError}` },
 				{ status: 500 }
 			);
 		}
 		if (!audioResponse.ok) {
-			console.error('[Internal Download] Proxy returned non-OK status:', audioResponse.status, audioResponse.statusText);
-			console.error('[Internal Download] Response headers:', Object.fromEntries(audioResponse.headers.entries()));
+			console.error(`[${getTimestamp()}] [Internal Download] Proxy returned non-OK status:`, audioResponse.status, audioResponse.statusText);
+			console.error(`[${getTimestamp()}] [Internal Download] Response headers:`, Object.fromEntries(audioResponse.headers.entries()));
 			
 			// Try to read error body
 			try {
 				const errorText = await audioResponse.text();
-				console.error('[Internal Download] Response body:', errorText.substring(0, 500));
+					console.error(`[${getTimestamp()}] [Internal Download] Response body:`, errorText.substring(0, 500));
 			} catch (e) {
-				console.error('[Internal Download] Could not read response body');
+					console.error(`[${getTimestamp()}] [Internal Download] Could not read response body`);
 			}
 			
 			return json(
@@ -261,13 +339,13 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		let arrayBuffer: ArrayBuffer;
 		try {
-			console.log('[Internal Download] Reading response body...');
+			console.log(`[${getTimestamp()}] [Internal Download] Reading response body...`);
 			const readStart = Date.now();
 			arrayBuffer = await audioResponse.arrayBuffer();
 			const readDuration = Date.now() - readStart;
-			console.log('[Internal Download] Body read in', readDuration, 'ms, size:', arrayBuffer.byteLength, 'bytes');
+			console.log(`[${getTimestamp()}] [Internal Download] Body read in`, readDuration, 'ms, size:', arrayBuffer.byteLength, 'bytes');
 		} catch (bufferError) {
-			console.error('[Internal Download] Failed to read response body:', bufferError);
+			console.error(`[${getTimestamp()}] [Internal Download] Failed to read response body:`, bufferError);
 			return json(
 				{ success: false, error: `Failed to read audio data: ${bufferError instanceof Error ? bufferError.message : 'Read error'}` },
 				{ status: 500 }
@@ -275,7 +353,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 		
 		const buffer = Buffer.from(arrayBuffer);
-		console.log('[Internal Download] Created buffer, size:', buffer.length, 'bytes');
+		console.log(`[${getTimestamp()}] [Internal Download] Created buffer, size:`, buffer.length, 'bytes');
 
 		if (buffer.length === 0) {
 			return json(
@@ -345,11 +423,11 @@ export const POST: RequestHandler = async ({ request }) => {
 		// Download cover art (non-blocking)
 		if (coverUrl) {
 			try {
-				console.log('[Internal Download] Downloading cover art...');
+				console.log(`[${getTimestamp()}] [Internal Download] Downloading cover art...`);
 				await downloadCoverToDir(targetDir, coverUrl, path.basename(finalPath));
-				console.log('[Internal Download] Cover art downloaded');
+				console.log(`[${getTimestamp()}] [Internal Download] Cover art downloaded`);
 			} catch (coverErr) {
-				console.warn('[Internal Download] Cover download failed:', coverErr);
+				console.warn(`[${getTimestamp()}] [Internal Download] Cover download failed:`, coverErr);
 			}
 		}
 
@@ -360,7 +438,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			size: buffer.length
 		});
 	} catch (error) {
-		console.error('[Internal Download] Error:', error);
+		console.error(`[${getTimestamp()}] [Internal Download] Error:`, error);
 		const message = error instanceof Error ? error.message : 'Unknown error';
 		return json(
 			{ success: false, error: message },

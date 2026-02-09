@@ -3,6 +3,12 @@ import { Buffer } from 'node:buffer';
 import type Redis from 'ioredis';
 import type { RequestHandler } from './$types';
 
+// Timestamp helper
+const getTimestamp = () => {
+	const now = new Date();
+	return now.toLocaleTimeString('en-US', { hour12: false });
+};
+
 import { disableRedisClient, getRedisClient } from '$lib/server/redis';
 import {
 	isUpstreamHealthy,
@@ -356,7 +362,7 @@ async function readCachedResponse(
 		const parsed = JSON.parse(raw) as unknown;
 		return isCachedProxyEntry(parsed) ? (parsed as CachedProxyEntry) : null;
 	} catch (error) {
-		console.error('Failed to read proxy cache entry:', error);
+		console.error(`[${getTimestamp()}] Failed to read proxy cache entry:`, error);
 		onFailure?.();
 		disableRedisClient(error);
 		return null;
@@ -374,7 +380,7 @@ async function writeCachedResponse(
 	try {
 		await redis.set(key, JSON.stringify(entry), 'EX', ttlSeconds);
 	} catch (error) {
-		console.error('Failed to store proxy cache entry:', error);
+		console.error(`[${getTimestamp()}] Failed to store proxy cache entry:`, error);
 		onFailure?.();
 		disableRedisClient(error);
 	}
@@ -486,18 +492,18 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 	const target = url.searchParams.get('url');
 	const origin = request.headers.get('origin');
 
-	console.log('========== PROXY REQUEST START ==========');
-	console.log('[Proxy] Target URL:', target);
-	console.log('[Proxy] Origin:', origin);
-	console.log('[Proxy] Request headers:', Object.fromEntries(request.headers.entries()));
+	console.log(`[${getTimestamp()}] ========== PROXY REQUEST START ==========`);
+	console.log(`[${getTimestamp()}] [Proxy] Target URL:`, target);
+	console.log(`[${getTimestamp()}] [Proxy] Origin:`, origin);
+	console.log(`[${getTimestamp()}] [Proxy] Request headers:`, Object.fromEntries(request.headers.entries()));
 
 	if (!allowOrigin(origin)) {
-		console.log('Proxy request blocked by origin check');
+		console.log(`[${getTimestamp()}] Proxy request blocked by origin check`);
 		return new Response('Forbidden', { status: 403 });
 	}
 
 	if (!target) {
-		console.log('Proxy request missing url parameter');
+		console.log(`[${getTimestamp()}] Proxy request missing url parameter`);
 		return new Response(JSON.stringify({ error: 'Missing url parameter' }), {
 			status: 400,
 			headers: { 'Content-Type': 'application/json' }
@@ -593,9 +599,9 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 	}
 
 		try {
-			console.log('[Proxy] ========== UPSTREAM FETCH START ==========');
-			console.log('[Proxy] Fetching:', parsedTarget.toString());
-			console.log('[Proxy] Request headers:', Object.fromEntries(upstreamHeaders.entries()));
+				console.log(`[${getTimestamp()}] [Proxy] ========== UPSTREAM FETCH START ==========`);
+			console.log(`[${getTimestamp()}] [Proxy] Fetching:`, parsedTarget.toString());
+			console.log(`[${getTimestamp()}] [Proxy] Request headers:`, Object.fromEntries(upstreamHeaders.entries()));
 			
 			const upstreamFetchStart = Date.now();
 			let upstream = await fetchWithRetry(
@@ -611,7 +617,7 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 			if (upstream.status === 416 && hasRangeRequest) {
 				const retryHeaders = new Headers(upstreamHeaders);
 				retryHeaders.delete('range');
-				console.warn('[Proxy] Received 416, retrying without Range header');
+				console.warn(`[${getTimestamp()}] [Proxy] Received 416, retrying without Range header`);
 				upstream = await fetchWithRetry(
 					parsedTarget,
 					{
@@ -622,9 +628,9 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 				);
 			}
 			
-			console.log('[Proxy] Upstream fetch completed in', upstreamFetchDuration, 'ms');
-			console.log('[Proxy] Response status:', upstream.status, upstream.statusText);
-			console.log('[Proxy] Response headers:', Object.fromEntries(upstream.headers.entries()));
+			console.log(`[${getTimestamp()}] [Proxy] Upstream fetch completed in`, upstreamFetchDuration, 'ms');
+			console.log(`[${getTimestamp()}] [Proxy] Response status:`, upstream.status, upstream.statusText);
+			console.log(`[${getTimestamp()}] [Proxy] Response headers:`, Object.fromEntries(upstream.headers.entries()));
 			
 		const upstreamHeaderEntries = Array.from(upstream.headers.entries());
 		const sanitizedHeaderEntries = sanitizeHeaderEntries(upstreamHeaderEntries);
@@ -634,10 +640,10 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 		const upstreamContentLength = upstream.headers.get('content-length');
 		const upstreamContentType = upstream.headers.get('content-type');
 		
-		console.log('[Proxy] Content-Type:', upstreamContentType);
-		console.log('[Proxy] Content-Length:', upstreamContentLength);
-		console.log('[Proxy] Cache-Control:', upstreamCacheControl);
-		console.log('[Proxy] ========== UPSTREAM FETCH END ==========');
+		console.log(`[${getTimestamp()}] [Proxy] Content-Type:`, upstreamContentType);
+		console.log(`[${getTimestamp()}] [Proxy] Content-Length:`, upstreamContentLength);
+		console.log(`[${getTimestamp()}] [Proxy] Cache-Control:`, upstreamCacheControl);
+		console.log(`[${getTimestamp()}] [Proxy] ========== UPSTREAM FETCH END ==========`);
 		const canStream =
 			Boolean(upstream.body) &&
 			!hasRangeRequest &&
@@ -672,12 +678,12 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 							});
 						}
 					} catch (error) {
-						console.error('Failed to buffer streamed proxy response:', error);
+								console.error(`[${getTimestamp()}] Failed to buffer streamed proxy response:`, error);
 					}
 				})();
 			} else {
 				void bufferReadableStream(streamForCache).catch((error) => {
-					console.error('Failed to drain streamed proxy response:', error);
+						console.error(`[${getTimestamp()}] Failed to drain streamed proxy response:`, error);
 				});
 			}
 
@@ -689,7 +695,7 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 		}
 
 		const bodyArrayBuffer = await upstream.arrayBuffer();
-		console.log('Proxy response body size:', bodyArrayBuffer.byteLength);
+		console.log(`[${getTimestamp()}] Proxy response body size:`, bodyArrayBuffer.byteLength);
 		const bodyBytes = new Uint8Array(bodyArrayBuffer);
 
 		if (redisHealthy && cacheKey && redis) {
@@ -737,14 +743,14 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 			headers
 		});
 	} catch (error) {
-		console.error('[Proxy] ========== PROXY ERROR ==========');
-		console.error('[Proxy] Error type:', error?.constructor?.name);
-		console.error('[Proxy] Error message:', error instanceof Error ? error.message : 'Unknown');
-		console.error('[Proxy] Error code:', (error as any)?.code);
-		console.error('[Proxy] Error cause:', (error as any)?.cause);
-		console.error('[Proxy] Error stack:', error instanceof Error ? error.stack : 'No stack');
-		console.error('[Proxy] Target URL:', parsedTarget.toString());
-		console.error('[Proxy] =====================================');
+		console.error(`[${getTimestamp()}] [Proxy] ========== PROXY ERROR ==========`);
+		console.error(`[${getTimestamp()}] [Proxy] Error type:`, error?.constructor?.name);
+		console.error(`[${getTimestamp()}] [Proxy] Error message:`, error instanceof Error ? error.message : 'Unknown');
+		console.error(`[${getTimestamp()}] [Proxy] Error code:`, (error as any)?.code);
+		console.error(`[${getTimestamp()}] [Proxy] Error cause:`, (error as any)?.cause);
+		console.error(`[${getTimestamp()}] [Proxy] Error stack:`, error instanceof Error ? error.stack : 'No stack');
+		console.error(`[${getTimestamp()}] [Proxy] Target URL:`, parsedTarget.toString());
+		console.error(`[${getTimestamp()}] [Proxy] =====================================`);
 		markUpstreamUnhealthy(parsedTarget.origin);
 		return new Response(
 			JSON.stringify({
