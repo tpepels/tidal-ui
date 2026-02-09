@@ -7,11 +7,14 @@ import {
 	dequeueJob,
 	updateJobStatus,
 	cleanupOldJobs,
+	cleanupStuckJobs,
+	categorizeError,
 	type QueuedJob,
 	type TrackJob,
 	type AlbumJob
 } from './downloadQueueManager';
 import { API_CONFIG } from '$lib/config';
+import * as rateLimiter from './rateLimiter';
 import type { AudioQuality } from '$lib/types';
 
 let isRunning = false;
@@ -129,9 +132,23 @@ async function downloadTrack(
 	trackTitle?: string,
 	trackNumber?: number,
 	coverUrl?: string
-): Promise<{ success: boolean; error?: string; filepath?: string }> {
+): Promise<{ success: boolean; error?: string; filepath?: string; retryable?: boolean }> {
 	try {
 		console.log(`[Worker] Downloading track ${trackId} (${quality})`);
+		
+		// Check rate limiting for the API target
+		const apiTarget = API_CONFIG.baseUrl || API_CONFIG.targets[0]?.baseUrl || 'unknown';
+		if (!rateLimiter.isRequestAllowed(apiTarget)) {
+			const status = rateLimiter.getStatus(apiTarget);
+			const waitSecs = Math.round(status.backoffRemainingMs / 1000);
+			const msg = `Rate limited. Wait ${waitSecs}s`;
+			console.warn(`[Worker] ${msg} for ${apiTarget}`);
+			return {
+				success: false,
+				error: msg,
+				retryable: true
+			};
+		}
 		
 		// Call the internal /api/internal/download-track endpoint which:
 		// - Fetches from TIDAL via the proxy
@@ -161,26 +178,41 @@ async function downloadTrack(
 			body: JSON.stringify(body)
 		});
 
+		// Record request success/failure for rate limiter
 		if (!response || !response.ok) {
+			// Categorize error to determine retry strategy
 			let errorText = '';
 			try {
-				const contentType = response.headers.get('content-type');
+				const contentType = response?.headers.get('content-type');
 				if (contentType?.includes('application/json')) {
-					const errorData = await response.json();
-					errorText = errorData.error || JSON.stringify(errorData);
+					const errorData = await response?.json();
+					errorText = errorData?.error || JSON.stringify(errorData);
 				} else {
-					errorText = await response.text();
+					errorText = await response?.text() || '';
 				}
 			} catch (e) {
 				errorText = 'Could not parse error response';
 			}
-			const errorMsg = `HTTP ${response.status}: ${errorText || 'No details'}`;
+			
+			const errorMsg = `HTTP ${response?.status}: ${errorText || 'No details'}`;
+			const errorCategory = categorizeError(errorMsg, response?.status);
+			
+			// Record error for rate limiting
+			const errorType = errorCategory.category === 'rate_limit' ? 'rate_limit' : 
+						   errorCategory.category === 'network' ? 'network' :
+						   errorCategory.category === 'server_error' ? 'server_error' : 'other';
+			rateLimiter.recordError(apiTarget, errorType);
+			
 			console.error(`[Worker] Track ${trackId} failed: ${errorMsg}`);
 			return { 
 				success: false, 
-				error: errorMsg
+				error: errorMsg,
+				retryable: errorCategory.isRetryable
 			};
 		}
+
+		// Record success
+		rateLimiter.recordSuccess(apiTarget);
 
 		let result: unknown;
 		try {
@@ -188,14 +220,16 @@ async function downloadTrack(
 		} catch (parseError) {
 			return {
 				success: false,
-				error: 'Failed to parse download response: ' + (parseError instanceof Error ? parseError.message : 'Invalid JSON')
+				error: 'Failed to parse download response: ' + (parseError instanceof Error ? parseError.message : 'Invalid JSON'),
+				retryable: false
 			};
 		}
 		
 		if (!result || typeof result !== 'object') {
 			return {
 				success: false,
-				error: 'Invalid response format from download endpoint'
+				error: 'Invalid response format from download endpoint',
+				retryable: false
 			};
 		}
 		
@@ -233,13 +267,15 @@ async function downloadTrack(
 }
 
 /**
- * Process a track job
+ * Process a track job with retry logic
  */
 async function processTrackJob(job: QueuedJob): Promise<void> {
 	const trackJob = job.job as TrackJob;
+	const startTime = Date.now();
+	
 	await updateJobStatus(job.id, { 
 		status: 'processing', 
-		startedAt: Date.now(),
+		startedAt: startTime,
 		progress: 0
 	});
 
@@ -254,17 +290,43 @@ async function processTrackJob(job: QueuedJob): Promise<void> {
 	);
 
 	if (result.success) {
+		const duration = Date.now() - startTime;
 		await updateJobStatus(job.id, {
 			status: 'completed',
 			progress: 1,
-			completedAt: Date.now()
+			completedAt: Date.now(),
+			downloadTimeMs: duration
 		});
 	} else {
-		await updateJobStatus(job.id, {
-			status: 'failed',
-			error: result.error,
-			completedAt: Date.now()
-		});
+		// Handle retryable errors
+		if (result.retryable && (!job.maxRetries || job.retryCount! < job.maxRetries)) {
+			const retryCount = (job.retryCount || 0) + 1;
+			const backoffMs = (job.job as TrackJob).type === 'track' ? 
+				Math.min(5000 * retryCount, 300000) : // Cap at 5 minutes
+				5000;
+			
+			console.log(`[Worker] Job ${job.id} retryable, scheduling retry in ${backoffMs}ms (attempt ${retryCount}/${job.maxRetries})`);
+			
+			await updateJobStatus(job.id, {
+				status: 'queued',
+				progress: 0,
+				error: result.error,
+				errorCategory: 'network', // Will be categorized properly on next attempt
+				retryCount,
+				nextRetryAt: Date.now() + backoffMs,
+				lastError: result.error
+			});
+		} else {
+			// Non-retryable or max retries exceeded
+			const errorCategory = result.retryable ? 'unknown' : 'api_error';
+			
+			await updateJobStatus(job.id, {
+				status: 'failed',
+				error: result.error,
+				errorCategory,
+				completedAt: Date.now()
+			});
+		}
 	}
 }
 
@@ -437,6 +499,19 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 
 		let completedTracks = 0;
 		let failedTracks = 0;
+		const startTime = Date.now();
+
+		// Initialize per-track progress
+		const trackProgress = tracks.map((track, idx) => ({
+			trackId: typeof track.id === 'number' ? track.id : 0,
+			trackTitle: (typeof track.title === 'string' ? track.title : undefined) || `Track ${idx + 1}`,
+			status: 'pending' as const
+		}));
+
+		// Update job with initial track progress
+		await updateJobStatus(job.id, {
+			trackProgress
+		});
 
 		// Download tracks sequentially to avoid overwhelming the server
 		for (let i = 0; i < tracks.length; i++) {
@@ -448,8 +523,13 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 			if (!trackId) {
 				console.warn(`[Worker] Skipping track ${i} - invalid ID`);
 				failedTracks++;
+				trackProgress[i].status = 'failed';
+				trackProgress[i].error = 'Invalid track ID';
 				continue;
 			}
+			
+			// Mark track as downloading
+			trackProgress[i].status = 'downloading';
 			
 			const result = await downloadTrack(
 				trackId,
@@ -463,35 +543,43 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 
 			if (result.success) {
 				completedTracks++;
+				trackProgress[i].status = 'completed';
 			} else {
 				failedTracks++;
+				trackProgress[i].status = 'failed';
+				trackProgress[i].error = result.error;
 			}
 
-			// Update progress
+			// Update progress with per-track details
 			await updateJobStatus(job.id, {
 				progress: (i + 1) / totalTracks,
-				completedTracks: completedTracks
+				completedTracks: completedTracks,
+				trackProgress
 			});
 		}
 
 		// Mark as completed or failed
+		const duration = Date.now() - startTime;
 		if (failedTracks === totalTracks) {
 			await updateJobStatus(job.id, {
 				status: 'failed',
 				error: 'All tracks failed',
-				completedAt: Date.now()
+				completedAt: Date.now(),
+				downloadTimeMs: duration
 			});
 		} else if (failedTracks > 0) {
 			await updateJobStatus(job.id, {
 				status: 'completed',
 				error: `${failedTracks} of ${totalTracks} tracks failed`,
 				completedAt: Date.now(),
+				downloadTimeMs: duration,
 				progress: 1
 			});
 		} else {
 			await updateJobStatus(job.id, {
 				status: 'completed',
 				completedAt: Date.now(),
+				downloadTimeMs: duration,
 				progress: 1
 			});
 		}
@@ -559,14 +647,31 @@ async function processJob(jobId: string, job: QueuedJob): Promise<void> {
  */
 async function workerLoop(): Promise<void> {
 	console.log(`[Worker] Main loop started, max concurrent: ${MAX_CONCURRENT}`);
-	
 	while (!stopRequested) {
 		try {
+			// Cleanup stuck jobs periodically
+			if (Math.random() < 0.05) {
+				const cleanedStuck = await cleanupStuckJobs(PROCESSING_TIMEOUT_MS);
+				if (cleanedStuck > 0) {
+					console.log(`[Worker] Cleaned ${cleanedStuck} stuck jobs`);
+				}
+			}
+			
 			// Check if we can process more jobs
 			if (activeSemaphore.size < MAX_CONCURRENT) {
 				const job = await dequeueJob();
 				
 				if (job) {
+					// Check for cancellation request before starting
+					if (job.cancellationRequested) {
+						await updateJobStatus(job.id, {
+							status: 'cancelled',
+							completedAt: Date.now()
+						});
+						console.log(`[Worker] Job ${job.id} cancelled before processing`);
+						continue;
+					}
+					
 					// Create a promise for this job and track it
 					const jobPromise = processJob(job.id, job)
 						.finally(() => {
@@ -584,34 +689,12 @@ async function workerLoop(): Promise<void> {
 				await new Promise(resolve => setTimeout(resolve, 500));
 			}
 
-			// Check for jobs stuck in processing (timeout)
-			const allJobs = await import('./downloadQueueManager').then(m => m.getAllJobs());
-			const now = Date.now();
-			for (const j of allJobs) {
-				if (j.status === 'processing' && j.startedAt) {
-					const duration = now - j.startedAt;
-					if (duration > PROCESSING_TIMEOUT_MS) {
-						console.warn(`[Worker] Job ${j.id} exceeded processing timeout (${duration}ms)`);
-						await updateJobStatus(j.id, {
-							status: 'failed',
-							error: `Processing timeout (${Math.round(duration / 1000)}s exceeded)`,
-							completedAt: now
-						});
-					}
-				}
-			}
-
-			// Clean up jobs marked for deletion (error === 'Deleted by user')
-			for (const j of allJobs) {
-				if (j.status === 'failed' && j.error === 'Deleted by user' && j.completedAt) {
-					const { deleteJob } = await import('./downloadQueueManager');
-					await deleteJob(j.id);
-				}
-			}
-
 			// Periodic cleanup (every 100 iterations ≈ 200 seconds)
 			if (Math.random() < 0.01) {
-				await cleanupOldJobs();
+				const cleaned = await cleanupOldJobs();
+				if (cleaned > 0) {
+					console.log(`[Worker] Periodic cleanup removed ${cleaned} old jobs`);
+				}
 			}
 		} catch (error) {
 			console.error('[Worker] Loop error:', error);

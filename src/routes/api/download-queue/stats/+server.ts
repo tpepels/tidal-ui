@@ -1,28 +1,35 @@
 /**
- * Queue and worker statistics
- * GET: Get queue stats and worker status
+ * Queue and worker statistics, rate limiting status, and analytics
+ * GET: Get comprehensive queue stats and metrics
  */
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getQueueStats } from '$lib/server/downloadQueueManager';
+import { getQueueStats, getMetrics } from '$lib/server/downloadQueueManager';
 import { getWorkerStatus } from '$lib/server/downloadQueueWorker';
+import * as rateLimiter from '$lib/server/rateLimiter';
 
 /**
  * GET /api/download-queue/stats
- * Get queue statistics and worker status
+ * Get comprehensive queue statistics, worker status, and rate limiting info
  */
 export const GET: RequestHandler = async () => {
 	try {
-		const [queueStats, workerStatus] = await Promise.all([
+		const [queueStats, metrics, workerStatus] = await Promise.all([
 			getQueueStats(),
+			getMetrics(),
 			Promise.resolve(getWorkerStatus())
 		]);
+
+		const rateLimitStatus = rateLimiter.getAllStatus();
 
 		return json({
 			success: true,
 			queue: queueStats,
-			worker: workerStatus
+			metrics,
+			worker: workerStatus,
+			rateLimiting: rateLimitStatus,
+			timestamp: new Date().toISOString()
 		});
 	} catch (error) {
 		console.error('[Queue API] Stats error:', error);

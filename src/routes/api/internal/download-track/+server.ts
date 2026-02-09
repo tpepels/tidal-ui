@@ -78,7 +78,9 @@ export const POST: RequestHandler = async ({ request }) => {
 		
 		let trackResponseData: unknown;
 		try {
-			trackResponseData = await trackResponse.json();			console.log('[Internal Download] Full track response structure:', JSON.stringify(responseData, null, 2).substring(0, 1500));		} catch (parseError) {
+			trackResponseData = await trackResponse.json();
+			console.log('[Internal Download] Full track response structure:', JSON.stringify(trackResponseData, null, 2).substring(0, 1500));
+		} catch (parseError) {
 			return json(
 				{ success: false, error: 'Failed to parse track response as JSON' },
 				{ status: 500 }
@@ -93,9 +95,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 		
 		// Parse track streaming data from response
-		// Response format: { version: "2.2", data: { trackId, manifest, ... } }
+		// Response format: { version: "2.2", data: { trackId, manifest, originalTrackUrl?, ... } }
 		let streamingData: Record<string, unknown> | undefined;
-		let manifestBase64: string | undefined;
 		
 		// Handle v2 API format
 		if (trackResponseData && typeof trackResponseData === 'object' && 'data' in trackResponseData) {
@@ -103,11 +104,6 @@ export const POST: RequestHandler = async ({ request }) => {
 			if (container.data && typeof container.data === 'object') {
 				streamingData = container.data as Record<string, unknown>;
 				console.log('[Internal Download] Found v2 API data:', Object.keys(streamingData));
-				
-				// Extract manifest
-				if ('manifest' in streamingData && typeof streamingData.manifest === 'string') {
-					manifestBase64 = streamingData.manifest;
-				}
 			}
 		}
 		
@@ -119,66 +115,78 @@ export const POST: RequestHandler = async ({ request }) => {
 			);
 		}
 		
-		if (!manifestBase64) {
-			console.error('[Internal Download] No manifest in response. Keys:', Object.keys(streamingData));
-			return json(
-				{ success: false, error: 'No streaming manifest in response' },
-				{ status: 404 }
-			);
-		}
-		
-		// Decode manifest (base64)
-		let manifestContent: string;
-		try {
-			manifestContent = Buffer.from(manifestBase64, 'base64').toString('utf-8');
-			console.log('[Internal Download] Decoded manifest type:', manifestContent.substring(0, 50));
-		} catch (decodeError) {
-			console.error('[Internal Download] Failed to decode manifest:', decodeError);
-			return json(
-				{ success: false, error: 'Failed to decode streaming manifest' },
-				{ status: 500 }
-			);
-		}
-		
-		// Extract stream URL from manifest
+		// CRITICAL: Check for proxied URL first (like browser code does)
+		// The proxy API should provide an already-authenticated URL
 		let streamUrl: string | undefined;
 		
-		// If manifest is plain URL
-		if (manifestContent.startsWith('http')) {
-			streamUrl = manifestContent.trim();
-		} else if (manifestContent.startsWith('{')) {
-			// JSON format
+		// Check common URL field names
+		if (typeof streamingData.originalTrackUrl === 'string') {
+			streamUrl = streamingData.originalTrackUrl;
+			console.log('[Internal Download] Using originalTrackUrl from API');
+		} else if (typeof streamingData.url === 'string') {
+			streamUrl = streamingData.url;
+			console.log('[Internal Download] Using url from API');
+		} else if (typeof streamingData.streamUrl === 'string') {
+			streamUrl = streamingData.streamUrl;
+			console.log('[Internal Download] Using streamUrl from API');
+		}
+		
+		// FALLBACK: Only parse manifest if no direct URL provided
+		if (!streamUrl && 'manifest' in streamingData && typeof streamingData.manifest === 'string') {
+			console.log('[Internal Download] No direct URL, falling back to manifest parsing');
+			const manifestBase64 = streamingData.manifest;
+			
+			// Decode manifest (base64)
+			let manifestContent: string;
 			try {
-				const parsed = JSON.parse(manifestContent);
-				streamUrl = parsed.url || parsed.urls?.[0];
-			} catch (jsonError) {
-				console.warn('[Internal Download] Manifest is not valid JSON:', jsonError);
+				manifestContent = Buffer.from(manifestBase64, 'base64').toString('utf-8');
+				console.log('[Internal Download] Decoded manifest type:', manifestContent.substring(0, 50));
+			} catch (decodeError) {
+				console.error('[Internal Download] Failed to decode manifest:', decodeError);
+				return json(
+					{ success: false, error: 'Failed to decode streaming manifest' },
+					{ status: 500 }
+				);
 			}
-		} else if (manifestContent.startsWith('<?xml')) {
-			// DASH XML format - extract BaseURL or media URL
-			// Try BaseURL tag first (most common)
-			const baseUrlMatch = manifestContent.match(/<BaseURL>([^<]+)<\/BaseURL>/);
-			if (baseUrlMatch) {
-				streamUrl = baseUrlMatch[1].trim();
-				console.log('[Internal Download] Extracted BaseURL from DASH manifest');
-			} else {
-				// Extract all URLs from the XML
-				const allUrls = manifestContent.match(/(https?:\/\/[^\s<>"']+)/g);
-				if (allUrls) {
-					// Filter out xmlns/schema URLs and keep actual media URLs
-					streamUrl = allUrls.find(url => 
-						!url.includes('w3.org') && 
-						!url.includes('schemas') &&
-						!url.includes('xmlns')
-					);
-					if (streamUrl) {
-						console.log('[Internal Download] Extracted media URL from DASH');
-					}
+			
+			// Extract stream URL from manifest
+			// If manifest is plain URL
+			if (manifestContent.startsWith('http')) {
+				streamUrl = manifestContent.trim();
+			} else if (manifestContent.startsWith('{')) {
+				// JSON format
+				try {
+					const parsed = JSON.parse(manifestContent);
+					streamUrl = parsed.url || parsed.urls?.[0];
+				} catch (jsonError) {
+					console.warn('[Internal Download] Manifest is not valid JSON:', jsonError);
 				}
-				
-				if (!streamUrl) {
-					console.error('[Internal Download] No media URL found in DASH manifest');
-					console.error('[Internal Download] Manifest sample:', manifestContent.substring(0, 800));
+			} else if (manifestContent.startsWith('<?xml')) {
+				// DASH XML format - extract BaseURL or media URL
+				// Try BaseURL tag first (most common)
+				const baseUrlMatch = manifestContent.match(/<BaseURL>([^<]+)<\/BaseURL>/);
+				if (baseUrlMatch) {
+					streamUrl = baseUrlMatch[1].trim();
+					console.log('[Internal Download] Extracted BaseURL from DASH manifest');
+				} else {
+					// Extract all URLs from the XML
+					const allUrls = manifestContent.match(/(https?:\/\/[^\s<>"']+)/g);
+					if (allUrls) {
+						// Filter out xmlns/schema URLs and keep actual media URLs
+						streamUrl = allUrls.find(url => 
+							!url.includes('w3.org') && 
+							!url.includes('schemas') &&
+							!url.includes('xmlns')
+						);
+						if (streamUrl) {
+							console.log('[Internal Download] Extracted media URL from DASH');
+						}
+					}
+					
+					if (!streamUrl) {
+						console.error('[Internal Download] No media URL found in DASH manifest');
+						console.error('[Internal Download] Manifest sample:', manifestContent.substring(0, 800));
+					}
 				}
 			}
 		}

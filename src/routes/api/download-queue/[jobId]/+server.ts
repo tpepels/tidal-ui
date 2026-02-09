@@ -1,12 +1,13 @@
 /**
  * Individual job operations
  * GET: Get job details
- * DELETE: Cancel/remove job
+ * DELETE: Delete completed/failed job
+ * PATCH: Request cancellation
  */
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getJob, updateJobStatus } from '$lib/server/downloadQueueManager';
+import { getJob, requestCancellation, deleteJob } from '$lib/server/downloadQueueManager';
 
 /**
  * GET /api/download-queue/:jobId
@@ -39,8 +40,50 @@ export const GET: RequestHandler = async ({ params }) => {
 };
 
 /**
+ * PATCH /api/download-queue/:jobId
+ * Request cancellation of a job
+ * 
+ * Body: { action: 'cancel' }
+ */
+export const PATCH: RequestHandler = async ({ params, request }) => {
+	try {
+		const { jobId } = params;
+		const body = await request.json();
+		const { action } = body as { action: string };
+
+		if (action === 'cancel') {
+			const cancelled = await requestCancellation(jobId);
+			if (!cancelled) {
+				return json(
+					{ success: false, error: 'Could not cancel job (not found or already completed)' },
+					{ status: 400 }
+				);
+			}
+
+			return json({
+				success: true,
+				message: 'Cancellation requested',
+				jobId
+			});
+		}
+
+		return json(
+			{ success: false, error: 'Unknown action' },
+			{ status: 400 }
+		);
+	} catch (error) {
+		console.error('[Queue API] PATCH job error:', error);
+		const message = error instanceof Error ? error.message : 'Unknown error';
+		return json(
+			{ success: false, error: message },
+			{ status: 500 }
+		);
+	}
+};
+
+/**
  * DELETE /api/download-queue/:jobId
- * Cancel a queued job or remove completed/failed job
+ * Permanently delete a completed/failed job from queue
  */
 export const DELETE: RequestHandler = async ({ params }) => {
 	try {
@@ -54,38 +97,29 @@ export const DELETE: RequestHandler = async ({ params }) => {
 			);
 		}
 
-		// For processing jobs: mark as cancelled but keep briefly for audit trail
-		// (will be cleaned up in next cleanup cycle)
-		if (job.status === 'processing') {
-			await updateJobStatus(jobId, {
-				status: 'failed',
-				error: 'Cancelled by user during processing',
-				completedAt: Date.now()
-			});
-			return json({
-				success: true,
-				message: 'Job cancellation requested (in-flight work may continue)',
-				jobId
-			});
+		// Can only delete completed or failed jobs
+		if (job.status === 'queued' || job.status === 'processing') {
+			return json(
+				{ 
+					success: false, 
+					error: `Cannot delete ${job.status} job. Use PATCH to cancel instead.` 
+				},
+				{ status: 400 }
+			);
 		}
 
-		// For queued/completed/failed jobs: mark as failed with deletion marker
-		if (job.status === 'queued' || job.status === 'completed' || job.status === 'failed') {
-			await updateJobStatus(jobId, {
-				status: 'failed',
-				error: 'Deleted by user',
-				completedAt: Date.now()
-			});
-			return json({
-				success: true,
-				message: 'Job marked for removal',
-				jobId
-			});
+		const deleted = await deleteJob(jobId);
+
+		if (!deleted) {
+			return json(
+				{ success: false, error: 'Could not delete job' },
+				{ status: 500 }
+			);
 		}
 
 		return json({
 			success: true,
-			message: 'Job status updated',
+			message: 'Job permanently deleted',
 			jobId
 		});
 	} catch (error) {
@@ -94,6 +128,5 @@ export const DELETE: RequestHandler = async ({ params }) => {
 		return json(
 			{ success: false, error: message },
 			{ status: 500 }
-		);
-	}
+		);	}
 };

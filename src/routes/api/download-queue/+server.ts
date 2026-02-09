@@ -11,11 +11,23 @@ import { enqueueJob, getAllJobs, type DownloadJob } from '$lib/server/downloadQu
 /**
  * POST /api/download-queue
  * Submit a new download job (track or album)
+ * 
+ * Body: {
+ *   job: TrackJob | AlbumJob,
+ *   priority?: 'low' | 'normal' | 'high',
+ *   maxRetries?: number,
+ *   checkDuplicate?: boolean
+ * }
  */
 export const POST: RequestHandler = async ({ request }) => {
 	try {
 		const body = await request.json();
-		const { job } = body as { job: DownloadJob };
+		const { job, priority = 'normal', maxRetries = 3, checkDuplicate = true } = body as {
+			job: DownloadJob;
+			priority?: 'low' | 'normal' | 'high';
+			maxRetries?: number;
+			checkDuplicate?: boolean;
+		};
 
 		if (!job || !job.type) {
 			return json(
@@ -44,7 +56,11 @@ export const POST: RequestHandler = async ({ request }) => {
 			}
 		}
 
-		const jobId = await enqueueJob(job);
+		const jobId = await enqueueJob(job, {
+			priority,
+			maxRetries,
+			checkDuplicate
+		});
 
 		return json({
 			success: true,
@@ -63,14 +79,23 @@ export const POST: RequestHandler = async ({ request }) => {
 
 /**
  * GET /api/download-queue
- * List all jobs with their status
+ * List all jobs with their status and progress
+ * 
+ * Query: ?status=queued|processing|completed|failed|cancelled
  */
-export const GET: RequestHandler = async () => {
+export const GET: RequestHandler = async ({ url }) => {
 	try {
-		const jobs = await getAllJobs();
+		const statusFilter = url.searchParams.get('status');
+		let jobs = await getAllJobs();
+
+		if (statusFilter) {
+			jobs = jobs.filter(j => j.status === statusFilter);
+		}
+
 		return json({
 			success: true,
-			jobs
+			jobs,
+			count: jobs.length
 		});
 	} catch (error) {
 		console.error('[Queue API] GET error:', error);
