@@ -10,17 +10,20 @@ export function decodeBase64Manifest(manifest: string): string {
 	const trimmed = manifest.trim();
 	if (!trimmed) return '';
 	
+	let result = trimmed;
+	
 	// If the manifest is a proxy-wrapped URL, extract the actual URL
-	if (trimmed.includes('/api/proxy?url=')) {
+	if (trimmed.startsWith('/api/proxy') || trimmed.includes('/api/proxy?url=')) {
 		try {
 			const urlObj = new URL(trimmed, 'http://localhost');
 			const encoded = urlObj.searchParams.get('url');
 			if (encoded) {
-				const decoded = decodeURIComponent(encoded);
+				result = decodeURIComponent(encoded);
 				console.log('[ManifestParser] Decoded proxy URL in manifest');
-				return decoded;
+				return result;
 			}
 		} catch (e) {
+			console.warn('[ManifestParser] Failed to parse proxy URL:', trimmed.substring(0, 100));
 			// Fall through to base64 decoding
 		}
 	}
@@ -34,11 +37,28 @@ export function decodeBase64Manifest(manifest: string): string {
 			if (pad === 3) value += '=';
 			return value;
 		})();
-		const decoded = atob(normalized);
-		return decoded || trimmed;
+		result = atob(normalized);
 	} catch {
-		return trimmed;
+		// Base64 decode failed, use original
+		result = trimmed;
 	}
+	
+	// After base64 decoding, check again for proxy URLs
+	if (result && (result.startsWith('/api/proxy') || result.includes('/api/proxy?url='))) {
+		try {
+			const urlObj = new URL(result, 'http://localhost');
+			const encoded = urlObj.searchParams.get('url');
+			if (encoded) {
+				const decoded = decodeURIComponent(encoded);
+				console.log('[ManifestParser] Decoded proxy URL after base64 decode');
+				return decoded;
+			}
+		} catch (e) {
+			console.warn('[ManifestParser] Failed to parse proxy URL after base64 decode:', result.substring(0, 100));
+		}
+	}
+	
+	return result;
 }
 
 function isValidMediaUrl(url: string): boolean {
