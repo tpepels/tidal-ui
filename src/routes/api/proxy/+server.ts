@@ -746,8 +746,8 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 		console.error(`[${getTimestamp()}] [Proxy] ========== PROXY ERROR ==========`);
 		console.error(`[${getTimestamp()}] [Proxy] Error type:`, error?.constructor?.name);
 		console.error(`[${getTimestamp()}] [Proxy] Error message:`, error instanceof Error ? error.message : 'Unknown');
-		console.error(`[${getTimestamp()}] [Proxy] Error code:`, (error as any)?.code);
-		console.error(`[${getTimestamp()}] [Proxy] Error cause:`, (error as any)?.cause);
+		console.error(`[${getTimestamp()}] [Proxy] Error code:`, (error as Record<string, unknown>)?.code);
+		console.error(`[${getTimestamp()}] [Proxy] Error cause:`, (error as Record<string, unknown>)?.cause);
 		console.error(`[${getTimestamp()}] [Proxy] Error stack:`, error instanceof Error ? error.stack : 'No stack');
 		console.error(`[${getTimestamp()}] [Proxy] Target URL:`, parsedTarget.toString());
 		console.error(`[${getTimestamp()}] [Proxy] =====================================`);

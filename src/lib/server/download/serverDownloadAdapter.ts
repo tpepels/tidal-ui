@@ -57,12 +57,21 @@ export async function downloadTrackServerSide(
 	} = params;
 
 	try {
+		// Wrap fetch to convert relative URLs to absolute (Node.js requires absolute URLs)
+		const wrappedFetch: typeof globalThis.fetch = (url, options) => {
+			const urlStr = typeof url === 'string' ? url : url.toString();
+			const absoluteUrl = urlStr.startsWith('/')
+				? `http://localhost:${process.env.PORT || 5000}${urlStr}`
+				: urlStr;
+			return fetchFn(absoluteUrl, options);
+		};
+
 		// Download audio using core logic
 		const result = await downloadTrackCore({
 			trackId,
 			quality,
 			apiClient,
-			fetchFn,
+			fetchFn: wrappedFetch,
 			options: {
 				skipMetadataEmbedding: true // Server-side doesn't embed metadata yet
 			}
