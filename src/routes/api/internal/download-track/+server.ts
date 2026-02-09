@@ -220,8 +220,14 @@ export const POST: RequestHandler = async ({ request }) => {
 			const baseUrl = process.env.INTERNAL_API_URL || `https://localhost:${process.env.PORT || 5000}`;
 			const proxiedUrl = `${baseUrl}/api/proxy?url=${encodeURIComponent(streamUrl)}`;
 			console.log('[Internal Download] Fetching through proxy:', proxiedUrl.substring(0, 150));
+			console.log('[Internal Download] Making request with NODE_TLS_REJECT_UNAUTHORIZED:', process.env.NODE_TLS_REJECT_UNAUTHORIZED);
+			
 			audioResponse = await fetch(proxiedUrl);
+			console.log('[Internal Download] Proxy fetch completed, status:', audioResponse.status);
 		} catch (streamError) {
+			console.error('[Internal Download] Proxy fetch error:', streamError);
+			console.error('[Internal Download] Error details:', streamError instanceof Error ? streamError.message : 'Unknown');
+			console.error('[Internal Download] Error stack:', streamError instanceof Error ? streamError.stack : 'No stack');
 			return json(
 				{ success: false, error: `Failed to fetch audio stream: ${streamError instanceof Error ? streamError.message : 'Network error'}` },
 				{ status: 500 }
