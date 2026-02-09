@@ -16,104 +16,19 @@ import {
 import { API_CONFIG } from '$lib/config';
 import * as rateLimiter from './rateLimiter';
 import type { AudioQuality } from '$lib/types';
+import { losslessAPI } from '$lib/api';
+import { downloadTrackServerSide } from './download/serverDownloadAdapter';
 
 let isRunning = false;
 let stopRequested = false;
 const MAX_CONCURRENT = 4;
 const POLL_INTERVAL_MS = 2000;
-const JOB_TIMEOUT_MS = 30000; // 30 second timeout per network call
 const PROCESSING_TIMEOUT_MS = 300000; // 5 minute max time in 'processing' state
 const activeSemaphore = new Map<string, Promise<void>>();
 
 /**
- * Build internal API URL - use HTTPS with self-signed cert handling
- */
-function getInternalApiUrl(): string {
-	if (process.env.INTERNAL_API_URL) {
-		console.log('[Worker] Using INTERNAL_API_URL:', process.env.INTERNAL_API_URL);
-		return process.env.INTERNAL_API_URL;
-	}
-	
-	const port = process.env.PORT || 5000;
-	const url = `https://localhost:${port}`;
-	console.log('[Worker] Using default internal API URL:', url, '(HTTPS with self-signed cert)');
-	return url;
-}
-
-
-
-/**
- * Wrapper for fetch with timeout and detailed error logging
- */
-async function fetchWithTimeout(
-	url: string,
-	options: RequestInit,
-	timeoutMs: number = JOB_TIMEOUT_MS
-): Promise<Response> {
-	const controller = new AbortController();
-	const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-	console.log(`[Worker] Fetch ${options.method || 'GET'} ${url}`);
-	
-	try {
-		// For HTTPS URLs with self-signed certs, use https module directly
-		if (url.startsWith('https://')) {
-			const https = await import('https');
-			const agent = new https.Agent({ rejectUnauthorized: false });
-			
-			return new Promise((resolve, reject) => {
-				const urlObj = new URL(url);
-				const reqOptions = {
-					method: options.method || 'GET',
-					agent,
-					signal: controller.signal,
-					headers: options.headers || {}
-				};
-				
-				const req = https.request(urlObj, reqOptions, (res) => {
-					let data = '';
-					res.on('data', chunk => data += chunk);
-					res.on('end', () => {
-						console.log(`[Worker] Response ${res.statusCode} from ${url}`);
-						
-						// Create a Response-like object
-						const response = new Response(data, {
-							status: res.statusCode,
-							headers: res.headers
-						});
-						resolve(response);
-					});
-				});
-				
-				req.on('error', reject);
-				
-				if (options.body) {
-					req.write(options.body);
-				}
-				req.end();
-			});
-		} else {
-			// HTTP URLs work normally
-			const response = await fetch(url, {
-				...options,
-				signal: controller.signal
-			});
-			
-			console.log(`[Worker] Response ${response.status} from ${url}`);
-			return response;
-		}
-	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		console.error(`[Worker] Fetch error for ${url}: ${message}`);
-		throw err;
-	} finally {
-		clearTimeout(timeoutId);
-	}
-}
-
-/**
- * Download a single track by calling the internal API
- * This reuses all the proven download logic from the API endpoint
+ * Download a single track using the server download adapter
+ * This bypasses HTTP entirely and calls the download core directly
  */
 async function downloadTrack(
 	trackId: number,
@@ -129,16 +44,8 @@ async function downloadTrack(
 		
 		const apiTarget = API_CONFIG.baseUrl || API_CONFIG.targets[0]?.baseUrl || 'unknown';
 		
-		// Call the internal /api/internal/download-track endpoint which:
-		// - Fetches from TIDAL via the proxy
-		// - Saves to server downloads directory
-		// - Embeds metadata
-		// - Downloads cover art
-		
-		const baseUrl = getInternalApiUrl();
-		const url = `${baseUrl}/api/internal/download-track`;
-		
-		const body = {
+		// Call the server adapter directly (NO HTTP)
+		const result = await downloadTrackServerSide({
 			trackId,
 			quality,
 			albumTitle,
@@ -146,38 +53,26 @@ async function downloadTrack(
 			trackTitle,
 			trackNumber,
 			coverUrl,
-			conflictResolution: 'overwrite_if_different' as const
-		};
-
-		const response = await fetchWithTimeout(url, {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify(body)
+			conflictResolution: 'overwrite_if_different',
+			apiClient: losslessAPI,
+			fetch: globalThis.fetch
 		});
 
-		// Record request success/failure for rate limiter
-		if (!response || !response.ok) {
+		if (result.success) {
+			// Record success for rate limiter
+			rateLimiter.recordSuccess(apiTarget);
+			console.log(`[Worker] Completed: ${result.filename || trackId}`);
+			return { 
+				success: true, 
+				filepath: result.filepath
+			};
+		} else {
 			// Categorize error to determine retry strategy
-			let errorText = '';
-			try {
-				const contentType = response?.headers.get('content-type');
-				if (contentType?.includes('application/json')) {
-					const errorData = await response?.json();
-					errorText = errorData?.error || JSON.stringify(errorData);
-				} else {
-					errorText = await response?.text() || '';
-				}
-			} catch {
-				errorText = 'Could not parse error response';
-			}
+			const errorMsg = result.error || 'Download failed';
+			const errorCategory = categorizeError(errorMsg, undefined);
 			
-			const errorMsg = `HTTP ${response?.status}: ${errorText || 'No details'}`;
-			const errorCategory = categorizeError(errorMsg, response?.status);
-			
-			// Only record rate limit errors (429) to prevent false positives
-			if (response?.status === 429) {
+			// Record rate limit errors
+			if (errorMsg.includes('429') || errorMsg.includes('Too Many Requests')) {
 				rateLimiter.recordError(apiTarget, 'rate_limit');
 			}
 			
@@ -188,59 +83,14 @@ async function downloadTrack(
 				retryable: errorCategory.isRetryable
 			};
 		}
-
-		// Record success only for successful downloads
-		rateLimiter.recordSuccess(apiTarget);
-
-		let result: unknown;
-		try {
-			result = await response.json();
-		} catch (parseError) {
-			return {
-				success: false,
-				error: 'Failed to parse download response: ' + (parseError instanceof Error ? parseError.message : 'Invalid JSON'),
-				retryable: false
-			};
-		}
-		
-		if (!result || typeof result !== 'object') {
-			return {
-				success: false,
-				error: 'Invalid response format from download endpoint',
-				retryable: false
-			};
-		}
-		
-		const resultObj = result as { success?: unknown; error?: unknown; filename?: unknown; filepath?: unknown };
-		
-		if (resultObj.success === true) {
-			console.log(`[Worker] Completed: ${resultObj.filename || trackId}`);
-			return { 
-				success: true, 
-				filepath: typeof resultObj.filepath === 'string' ? resultObj.filepath : undefined
-			};
-		} else {
-			return { 
-				success: false, 
-				error: typeof resultObj.error === 'string' ? resultObj.error : 'Download failed' 
-			};
-		}
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		let errorMsg = message;
-		
-		if (message.includes('abort') || message.includes('AbortError')) {
-			errorMsg = 'Timeout (30s)';
-		} else if (message.includes('ECONNREFUSED')) {
-			errorMsg = 'Connection refused - API not reachable';
-		} else if (message.includes('ENOTFOUND')) {
-			errorMsg = 'Host not found - DNS resolution failed';
-		} else if (message.includes('ETIMEDOUT')) {
-			errorMsg = 'Connection timeout';
-		}
-		
-		console.error(`[Worker] Track ${trackId} failed: ${errorMsg}`);
-		return { success: false, error: errorMsg };
+		console.error(`[Worker] Track ${trackId} failed: ${message}`);
+		return { 
+			success: false, 
+			error: message,
+			retryable: false
+		};
 	}
 }
 
