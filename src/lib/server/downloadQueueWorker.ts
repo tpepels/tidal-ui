@@ -61,20 +61,52 @@ async function fetchWithTimeout(
 	console.log(`[Worker] Fetch ${options.method || 'GET'} ${url}`);
 	
 	try {
-		const fetchOptions: any = {
-			...options,
-			signal: controller.signal
-		};
-		
-		// Add HTTPS agent if this is an HTTPS URL
+		// For HTTPS URLs with self-signed certs, use https module directly
 		if (url.startsWith('https://')) {
-			fetchOptions.agent = await getHttpsAgent();
+			const https = await import('https');
+			const agent = new https.Agent({ rejectUnauthorized: false });
+			
+			return new Promise((resolve, reject) => {
+				const urlObj = new URL(url);
+				const reqOptions = {
+					method: options.method || 'GET',
+					agent,
+					signal: controller.signal,
+					headers: options.headers || {}
+				};
+				
+				const req = https.request(urlObj, reqOptions, (res) => {
+					let data = '';
+					res.on('data', chunk => data += chunk);
+					res.on('end', () => {
+						console.log(`[Worker] Response ${res.statusCode} from ${url}`);
+						
+						// Create a Response-like object
+						const response = new Response(data, {
+							status: res.statusCode,
+							headers: res.headers
+						});
+						resolve(response);
+					});
+				});
+				
+				req.on('error', reject);
+				
+				if (options.body) {
+					req.write(options.body);
+				}
+				req.end();
+			});
+		} else {
+			// HTTP URLs work normally
+			const response = await fetch(url, {
+				...options,
+				signal: controller.signal
+			});
+			
+			console.log(`[Worker] Response ${response.status} from ${url}`);
+			return response;
 		}
-		
-		const response = await fetch(url, fetchOptions);
-		
-		console.log(`[Worker] Response ${response.status} from ${url}`);
-		return response;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		console.error(`[Worker] Fetch error for ${url}: ${message}`);

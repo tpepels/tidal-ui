@@ -5,21 +5,23 @@
 
 	interface QueueJob {
 		id: string;
-		jobType: 'track' | 'album';
 		status: 'queued' | 'processing' | 'completed' | 'failed';
 		job: {
-			trackId?: string;
+			type: 'track' | 'album';
+			trackId?: number;
 			trackTitle?: string;
 			artistName?: string;
 			albumTitle?: string;
-			albumId?: string;
+			albumId?: number;
 			quality?: string;
 		};
-		progress?: number;
-		createdAt?: number;
+		progress: number; // 0-1
+		createdAt: number;
 		startedAt?: number;
 		completedAt?: number;
 		error?: string;
+		trackCount?: number; // For albums
+		completedTracks?: number; // For albums
 	}
 
 	let isOpen = $state(false);
@@ -183,23 +185,33 @@
 								<div class="current-item">
 									<div class="current-item-header">
 										<div class="current-item-title">
-											{job.job.trackTitle || job.job.albumTitle || 'Unknown'}
+											{job.job.type === 'track' ? job.job.trackTitle : job.job.albumTitle || 'Unknown'}
 										</div>
 										<span class="badge badge-processing">PROCESSING</span>
 									</div>
-									<div class="current-item-meta">
-										<span>{job.job.artistName || 'Unknown Artist'}</span>
-										{#if job.job.quality}
+									{#if job.job.type === 'album'}
+										<div class="current-item-meta">
+											<span>{job.job.artistName}</span>
+											<span class="meta-separator">•</span>
+											<span class="meta-album-progress">{(job.completedTracks || 0)}/{job.trackCount || '?'} tracks</span>
 											<span class="meta-separator">•</span>
 											<span>{job.job.quality}</span>
-										{/if}
-									</div>
-									{#if job.progress}
-										<div class="progress-bar">
-											<div class="progress-fill" style="width: {job.progress}%"></div>
 										</div>
-										<div class="progress-text">{Math.round(job.progress)}%</div>
+									{:else}
+										<div class="current-item-meta">
+											<span>{job.job.artistName}</span>
+											{#if job.job.albumTitle}
+												<span class="meta-separator">•</span>
+												<span>{job.job.albumTitle}</span>
+											{/if}
+											<span class="meta-separator">•</span>
+											<span>{job.job.quality}</span>
+										</div>
 									{/if}
+									<div class="progress-bar">
+										<div class="progress-fill" style="width: {job.progress * 100}%"></div>
+									</div>
+									<div class="progress-text">{Math.round(job.progress * 100)}%</div>
 								</div>
 							{/each}
 						</div>
@@ -238,12 +250,18 @@
 											<div class="queue-item-details">
 												<div class="detail-row">
 													<span class="detail-label">Type:</span>
-													<span class="detail-value">{job.jobType === 'track' ? 'Single Track' : 'Album'}</span>
+													<span class="detail-value">{job.job.type === 'track' ? 'Single Track' : 'Album'}</span>
 												</div>
 												<div class="detail-row">
 													<span class="detail-label">Quality:</span>
-													<span class="detail-value">{job.job.quality || 'Unknown'}</span>
+													<span class="detail-value">{job.job.quality || 'Lossless'}</span>
 												</div>
+												{#if job.job.type === 'album' && job.trackCount}
+													<div class="detail-row">
+														<span class="detail-label">Progress:</span>
+														<span class="detail-value">{job.completedTracks || 0}/{job.trackCount} tracks</span>
+													</div>
+												{/if}
 												<div class="detail-row">
 													<span class="detail-label">Status:</span>
 													<span class="detail-value">{job.status}</span>
@@ -252,6 +270,12 @@
 													<div class="detail-row">
 														<span class="detail-label">Added:</span>
 														<span class="detail-value">{new Date(job.createdAt).toLocaleTimeString()}</span>
+													</div>
+												{/if}
+												{#if job.startedAt}
+													<div class="detail-row">
+														<span class="detail-label">Duration:</span>
+														<span class="detail-value">{Math.round((job.completedAt || Date.now()) - job.startedAt) / 1000}s</span>
 													</div>
 												{/if}
 											</div>
@@ -294,7 +318,10 @@
 									<div class="failed-item-click" onclick={() => expandedJobId = expandedJobId === job.id ? null : job.id}>
 										<div class="failed-item-main">
 											<div class="failed-item-info">
-												<div class="failed-item-title">{job.job.trackTitle || job.job.albumTitle || 'Unknown'}</div>
+												<div class="failed-item-title">
+													{job.job.type === 'track' ? job.job.trackTitle : job.job.albumTitle || 'Unknown'}
+												</div>
+												<div class="failed-item-artist">{job.job.artistName || 'Unknown'}</div>
 												<div class="failed-item-error-text">{job.error || 'Unknown error'}</div>
 											</div>
 											<span class="expand-icon">
@@ -755,6 +782,29 @@
 		text-overflow: ellipsis;
 	}
 
+	.queue-item-meta {
+		font-size: 10px;
+		color: var(--color-text-secondary);
+		display: flex;
+		gap: 6px;
+		margin-top: 4px;
+		flex-wrap: wrap;
+	}
+
+	.badge-small {
+		background: rgba(59, 130, 246, 0.15);
+		color: var(--color-primary);
+		padding: 2px 6px;
+		border-radius: 3px;
+		font-size: 9px;
+		font-weight: 600;
+	}
+
+	.meta-album-progress {
+		font-weight: 600;
+		color: #10b981;
+	}
+
 	.expand-icon {
 		display: flex;
 		align-items: center;
@@ -865,14 +915,21 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		margin-bottom: 2px;
+	}
+
+	.failed-item-artist {
+		font-size: 11px;
+		color: var(--color-text-secondary);
+		margin-bottom: 3px;
 	}
 
 	.failed-item-error-text {
 		font-size: 10px;
 		color: var(--color-error);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
+		white-space: normal;
+		word-break: break-word;
+		line-height: 1.3;
 	}
 
 	.failed-item-details {
