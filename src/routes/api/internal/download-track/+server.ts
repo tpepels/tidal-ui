@@ -213,13 +213,14 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 
 		// Download the audio stream through the proxy
-		// Call the internal proxy endpoint via HTTP to avoid self-signed cert issues
+		// The server runs HTTPS, so NODE_TLS_REJECT_UNAUTHORIZED=0 allows self-signed cert
 		let audioResponse: Response;
 		try {
 			const port = process.env.PORT || 5000;
-			const proxiedUrl = `http://localhost:${port}/api/proxy?url=${encodeURIComponent(streamUrl)}`;
+			const proxiedUrl = `https://localhost:${port}/api/proxy?url=${encodeURIComponent(streamUrl)}`;
 			
 			console.log('[Internal Download] ========== PROXY FETCH START ==========');
+			console.log('[Internal Download] NODE_TLS_REJECT_UNAUTHORIZED:', process.env.NODE_TLS_REJECT_UNAUTHORIZED);
 			console.log('[Internal Download] Proxied URL:', proxiedUrl.substring(0, 200));
 			console.log('[Internal Download] Calling fetch...');
 			
