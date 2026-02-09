@@ -5,7 +5,7 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import type { AudioQuality, TrackLookup } from '$lib/types';
+import type { AudioQuality, TrackLookup, Track, TrackInfo } from '$lib/types';
 import type { ApiClient } from '../../core/download/types';
 import { downloadTrackCore } from '../../core/download/downloadCore';
 import { detectAudioFormat } from '../../utils/audioFormat';
@@ -24,6 +24,47 @@ import {
 	getServerExtension,
 	downloadCoverToDir
 } from '../../../routes/api/download-track/_shared';
+
+/**
+ * Parse API response into TrackLookup format
+ * The API returns an array with separate entries for track metadata and stream info
+ */
+function parseTrackLookup(data: unknown): TrackLookup {
+	const entries = Array.isArray(data) ? data : [data];
+	let track: Track | undefined;
+	let info: TrackInfo | undefined;
+	let originalTrackUrl: string | undefined;
+
+	for (const entry of entries) {
+		if (!entry || typeof entry !== 'object') continue;
+		
+		// Check for track metadata (has album, artist, duration)
+		if (!track && 'album' in entry && 'artist' in entry && 'duration' in entry) {
+			track = entry as Track;
+			continue;
+		}
+		
+		// Check for stream info (has manifest)
+		if (!info && 'manifest' in entry) {
+			info = entry as TrackInfo;
+			continue;
+		}
+		
+		// Check for pre-signed URL
+		if (!originalTrackUrl && 'OriginalTrackUrl' in entry) {
+			const candidate = (entry as { OriginalTrackUrl?: unknown }).OriginalTrackUrl;
+			if (typeof candidate === 'string') {
+				originalTrackUrl = candidate;
+			}
+		}
+	}
+
+	if (!track || !info) {
+		throw new Error('Malformed track response: missing track or info');
+	}
+
+	return { track, info, originalTrackUrl };
+}
 
 
 /**
@@ -67,22 +108,14 @@ function createServerApiClient(fetchFn: typeof globalThis.fetch): ApiClient {
 						continue; // Try next target
 					}
 					
-					const data = await response.json() as TrackLookup;
+					// Parse JSON response
+					const rawData = await response.json();
+					
+					// Parse using the same logic as browser client
+					// API returns array with separate track and info objects
+					const data = parseTrackLookup(rawData);
+					
 					console.log(`[ServerApiClient] Successfully fetched track from ${target.name}`);
-					
-					// Validate response structure
-					if (!data || typeof data !== 'object') {
-						console.warn(`[ServerApiClient] Invalid response structure from ${target.name}`);
-						lastError = new Error(`Invalid response from ${target.name}`);
-						continue;
-					}
-					
-					// Log response structure for debugging
-					console.log(`[ServerApiClient] Response keys: ${Object.keys(data).join(', ')}`);
-					if (data.info) {
-						console.log(`[ServerApiClient] info keys: ${Object.keys(data.info).join(', ')}`);
-					}
-					
 					return data;
 					
 				} catch (error) {
