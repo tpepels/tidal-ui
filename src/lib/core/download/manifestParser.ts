@@ -167,7 +167,7 @@ export function parseManifest(manifest: string): ManifestParseResult {
 	}
 
 	// Try to extract a single stream URL
-	const streamUrl = extractStreamUrlFromManifest(manifest);
+	const streamUrl = extractStreamUrlFromManifest(decoded);
 	if (streamUrl) {
 		return {
 			type: 'single-url',
