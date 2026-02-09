@@ -119,12 +119,25 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 
 	function buildHeaders(
 		options: RequestInit | undefined,
-		target?: ApiClusterTarget
+		target?: ApiClusterTarget,
+		isCDNSegment: boolean = false
 	): Headers {
 		const headers = new Headers(options?.headers);
-		if (target && isCustomTarget(target)) {
+		
+		if (isCDNSegment) {
+			// CDN segments require browser-like headers to avoid 403s
+			headers.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+			headers.set('Referer', 'https://listen.tidal.com/');
+			headers.set('Origin', 'https://listen.tidal.com');
+			headers.set('Accept', '*/*');
+			headers.set('Accept-Language', 'en-US,en;q=0.9');
+			headers.set('Sec-Fetch-Dest', 'empty');
+			headers.set('Sec-Fetch-Mode', 'cors');
+			headers.set('Sec-Fetch-Site', 'cross-site');
+		} else if (target && isCustomTarget(target)) {
 			headers.set('X-Client', `BiniLossless/${APP_VERSION}`);
 		}
+		
 		return headers;
 	}
 
@@ -175,7 +188,7 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 			try {
 				const response = await globalThis.fetch(finalUrl, {
 					...options,
-					headers: buildHeaders(options, undefined)
+					headers: buildHeaders(options, undefined, true)
 				});
 				if (response.ok) {
 					return response;

@@ -440,7 +440,6 @@ export async function fetchWithCORS(
 			// Rotate the target list by moving first N targets to the end
 			const rotateCount = retryNum % uniqueTargets.length;
 			uniqueTargets = [...uniqueTargets.slice(rotateCount), ...uniqueTargets.slice(0, rotateCount)];
-			console.log(`[Config] Rotated targets by ${rotateCount} for retry ${retryNum}`);
 		} else {
 			// Standard skipTarget: filter out the named target
 			const filtered = uniqueTargets.filter(target => target.name !== options.skipTarget);
