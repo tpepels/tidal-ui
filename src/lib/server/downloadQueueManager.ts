@@ -3,38 +3,8 @@
  * Manages background download jobs that run independently of browser sessions
  */
 
-import Redis from 'ioredis';
 import type { AudioQuality } from '$lib/types';
-
-// Redis client for queue persistence
-let redis: Redis | null = null;
-let redisConnected = false;
-
-function getRedisClient(): Redis | null {
-	const redisDisabled = ['true', '1'].includes((process.env.REDIS_DISABLED || '').toLowerCase());
-	if (redisDisabled) {
-		return null;
-	}
-
-	if (redisConnected && redis) return redis;
-
-	try {
-		const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-		redis = new Redis(redisUrl);
-		redis.on('error', (err) => {
-			console.warn('[Queue] Redis connection error:', err);
-			redisConnected = false;
-		});
-		redis.on('connect', () => {
-			console.log('[Queue] Redis connected');
-			redisConnected = true;
-		});
-	} catch (err) {
-		console.warn('[Queue] Failed to initialize Redis:', err);
-		redis = null;
-	}
-	return redis;
-}
+import { getRedisClient } from './redis';
 
 /**
  * Initialize queue system: clean up stale processing jobs from crashes

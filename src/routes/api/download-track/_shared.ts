@@ -2,49 +2,13 @@ import type { AudioQuality, TrackLookup } from '$lib/types';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { createHash } from 'crypto';
-import Redis from 'ioredis';
+import { getRedisClient } from '$lib/server/redis';
 
 const STATE_FILE = path.join(process.cwd(), 'data', 'upload-state.json');
 const CHECKSUM_SAMPLE_BYTES = 1024 * 1024;
 const CHECKSUM_ALGORITHM = 'sha256';
 
-// Redis client for persistence
-let redis: Redis | null = null;
-let redisConnected = false;
 let cleanupIntervalStarted = false;
-
-function getRedisClient(): Redis | null {
-	const redisDisabled = ['true', '1'].includes((process.env.REDIS_DISABLED || '').toLowerCase());
-	if (redisDisabled) {
-		return null;
-	}
-
-	if (redisConnected) return redis;
-	if (redis) return redis; // Already initialized
-
-	try {
-		const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-		redis = new Redis(redisUrl);
-		redis.on('error', (err) => {
-			console.warn('Redis connection error:', err);
-			redisConnected = false;
-			redis = null; // Fallback to file
-		});
-		redis.on('close', () => {
-			redisConnected = false;
-		});
-		redis.on('end', () => {
-			redisConnected = false;
-		});
-		redis.on('connect', () => {
-			redisConnected = true;
-		});
-	} catch (err) {
-		console.warn('Failed to initialize Redis:', err);
-		redis = null;
-	}
-	return redis;
-}
 
 export interface DownloadError {
 	code: string;
