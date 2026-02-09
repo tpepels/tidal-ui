@@ -264,55 +264,10 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 	});
 
 	try {
-		const apiBaseUrl = API_CONFIG.baseUrl || API_CONFIG.targets[0]?.baseUrl;
-		if (!apiBaseUrl) {
-			throw new Error('No upstream API configured');
-		}
+		console.log(`[Worker] Album ${albumJob.albumId}: Fetching album data via losslessAPI`);
 
-		const albumUrl = `${apiBaseUrl}/album/?id=${albumJob.albumId}`;
-		console.log(`[Worker] Album ${albumJob.albumId}: Fetching album data from ${apiBaseUrl}`);
-
-		// --- Proper fetch with timeout ---
-		const controller = new AbortController();
-		const timeout = setTimeout(() => controller.abort(), 30_000);
-
-		let albumResponse: Response;
-		try {
-			albumResponse = await globalThis.fetch(albumUrl, { signal: controller.signal });
-		} finally {
-			clearTimeout(timeout);
-		}
-
-		if (!albumResponse.ok) {
-			let errorText = '';
-			try {
-				const contentType = albumResponse.headers.get('content-type') || '';
-				if (contentType.includes('application/json')) {
-				const errorData = await albumResponse.json() as Record<string, unknown>;
-				errorText =
-					errorData?.error
-						? String(errorData.error)
-							: JSON.stringify(errorData);
-				} else {
-					errorText = await albumResponse.text();
-				}
-			} catch {
-				errorText = 'Could not parse error response';
-			}
-			throw new Error(`Failed to fetch album: HTTP ${albumResponse.status}: ${errorText}`);
-		}
-
-		let responseData: unknown;
-		try {
-			responseData = await albumResponse.json();
-		} catch (parseError) {
-			throw new Error(
-				'Failed to parse album response as JSON: ' +
-					(parseError instanceof Error ? parseError.message : 'Unknown error')
-			);
-		}
-
-		const { album, tracks } = parseAlbumResponse(responseData);
+		// Use losslessAPI which has target rotation, proper timeouts, and retry logic
+		const { album, tracks } = await losslessAPI.getAlbum(albumJob.albumId);
 		const totalTracks = tracks.length;
 
 		if (totalTracks === 0) {
@@ -441,13 +396,15 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		let errorMsg = message;
 
 		if (message.includes('abort') || message.includes('AbortError')) {
-			errorMsg = 'Timeout fetching album data (30s)';
+			errorMsg = 'Request timeout while fetching album data';
 		} else if (message.includes('ECONNREFUSED')) {
 			errorMsg = 'Connection refused - API not reachable';
 		} else if (message.includes('ENOTFOUND')) {
 			errorMsg = 'Host not found - DNS resolution failed';
-		} else if (message.includes('ETIMEDOUT')) {
-			errorMsg = 'Connection timeout';
+		} else if (message.includes('ETIMEDOUT') || message.includes('timeout')) {
+			errorMsg = 'Connection timeout - API took too long to respond';
+		} else if (message.includes('All API targets failed')) {
+			errorMsg = 'All API targets failed - check network and target availability';
 		}
 
 		console.error(`[Worker] Album ${albumJob.albumId} failed: ${errorMsg}`);
