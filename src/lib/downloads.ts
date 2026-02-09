@@ -644,7 +644,7 @@ export async function downloadAlbum(
 	// Individual download mode - process in parallel (adaptive concurrency based on memory)
 
 	// Adaptive concurrency: reduce when memory usage is high
-	const maxConcurrent = isHighMemoryUsage() ? 1 : 2;
+	const maxConcurrent = isHighMemoryUsage() ? 2 : 4;
 	console.log(
 		`[Album Download] Using max ${maxConcurrent} concurrent downloads (memory: ${Math.round(getMemoryUsage() / 1024 / 1024)}MB)`
 	);

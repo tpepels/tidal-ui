@@ -148,7 +148,7 @@ export class DownloadOrchestrator {
 		// Initialize download queue with callbacks
 		this.downloadQueue = new DownloadQueue(
 			{
-				maxConcurrent: queueConfig?.maxConcurrent ?? 2,
+				maxConcurrent: queueConfig?.maxConcurrent ?? 4,
 				maxRetries: queueConfig?.maxRetries ?? 3,
 				autoRetryFailures: queueConfig?.autoRetryFailures ?? true
 			},

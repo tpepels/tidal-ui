@@ -43,7 +43,7 @@ export class DownloadQueue {
 	private isPaused: boolean = false;
 
 	constructor(config: DownloadQueueConfig = {}, callbacks: DownloadQueueCallbacks = {}) {
-		this.maxConcurrent = config.maxConcurrent ?? 2;
+		this.maxConcurrent = config.maxConcurrent ?? 4;
 		this.maxRetries = config.maxRetries ?? 3;
 		this.autoRetryFailures = config.autoRetryFailures ?? true;
 		this.callbacks = callbacks;

@@ -242,7 +242,7 @@
 			{/if}
 
 			<div class="download-manager-info">
-				<p>Downloads are processed sequentially (max 2 concurrent). Timeouts trigger auto-retry.</p>
+				<p>Downloads are processed sequentially (max 4 concurrent). Timeouts trigger auto-retry.</p>
 			</div>
 		</div>
 	{/if}
