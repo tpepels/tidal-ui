@@ -9,6 +9,7 @@ import type { AudioQuality } from '$lib/types';
 import type { ApiClient } from '../../core/download/types';
 import { downloadTrackCore } from '../../core/download/downloadCore';
 import { detectAudioFormat } from '../../utils/audioFormat';
+import { API_CONFIG } from '$lib/config';
 import { 
 	getDownloadDir, 
 	sanitizePath, 
@@ -57,13 +58,21 @@ export async function downloadTrackServerSide(
 	} = params;
 
 	try {
-		// Wrap fetch to convert relative URLs to absolute (Node.js requires absolute URLs)
+		// Create a fetch wrapper that constructs upstream URLs directly from configured base URLs
+		// No proxy loopback - fetch directly from the configured API endpoints
+		const baseUrl = API_CONFIG.baseUrl || API_CONFIG.targets[0]?.baseUrl || 'https://api.tidal.com';
+		
 		const wrappedFetch: typeof globalThis.fetch = (url, options) => {
-			const urlStr = typeof url === 'string' ? url : url.toString();
-			const absoluteUrl = urlStr.startsWith('/')
-				? `http://localhost:${process.env.PORT || 5000}${urlStr}`
-				: urlStr;
-			return fetchFn(absoluteUrl, options);
+			let finalUrl = typeof url === 'string' ? url : url.toString();
+			
+			// If it's a proxy wrapper URL (from apiClient), construct the actual upstream URL
+			// Examples: /track/?id=123&quality=LOSSLESS or /album/?id=456
+			if (finalUrl.startsWith('/')) {
+				// Construct absolute URL using configured API base URL
+				finalUrl = new URL(finalUrl, baseUrl).toString();
+			}
+			
+			return fetchFn(finalUrl, options);
 		};
 
 		// Download audio using core logic
