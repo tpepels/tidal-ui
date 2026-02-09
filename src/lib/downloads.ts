@@ -414,26 +414,44 @@ export async function downloadAlbum(
 		storage?: DownloadStorage;
 	}
 ): Promise<void> {
-	const storage = options?.storage ?? 'client';
+	const storage = options?.storage ?? 'server';
 	
-	// For server downloads, use the new queue-based orchestrator
+	// For server downloads, submit to the Redis-backed queue API
 	if (storage === 'server') {
-		const { downloadOrchestrator } = await import('./orchestrators');
-		const result = await downloadOrchestrator.downloadAlbum(album, {
-			quality,
-			storage: 'server',
-			convertAacToMp3: false, // Server doesn't convert
-			downloadCoversSeperately: options?.downloadCoverSeperately ?? false,
-			artistName: preferredArtistName
-		});
+		// Fetch album info
+		const { album: fetchedAlbum, tracks } = await losslessAPI.getAlbum(album.id);
+		const canonicalAlbum = fetchedAlbum ?? album;
 		
-		if (result.success) {
-			callbacks?.onTotalResolved?.(result.queuedCount);
-			// Note: Individual track progress callbacks won't work with queue system
-			// User should monitor via DownloadManager UI instead
-		} else {
-			throw new Error(result.error || 'Failed to queue album download');
+		if (!tracks || tracks.length === 0) {
+			throw new Error('No tracks found for album');
 		}
+
+		const artistName = preferredArtistName ?? canonicalAlbum.artist?.name ?? 'Unknown Artist';
+		
+		// Submit album job to server queue
+		const response = await fetch('/api/download-queue', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				job: {
+					type: 'album',
+					albumId: album.id,
+					quality,
+					artistName
+				}
+			})
+		});
+
+		if (!response.ok) {
+			const error = await response.text();
+			throw new Error(`Failed to queue album: ${error}`);
+		}
+
+		const result = await response.json();
+		callbacks?.onTotalResolved?.(tracks.length);
+		
+		// Note: Individual track progress callbacks won't work with queue system
+		// User should monitor via DownloadManager UI instead
 		return;
 	}
 	

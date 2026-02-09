@@ -1,58 +1,55 @@
 <script lang="ts">
 	import { downloadOrchestrator } from '$lib/orchestrators';
-	import { Play, Pause, Square, RotateCcw, AlertCircle, Trash2, RotateCw } from 'lucide-svelte';
+	import { serverQueue, queueStats, workerStatus, totalDownloads } from '$lib/stores/serverQueue.svelte';
+	import { Play, Pause, Square, RotateCcw, AlertCircle, Trash2, RotateCw, RefreshCw } from 'lucide-svelte';
 
 	let isOpen = $state(false);
-	let queueStatus = $state(downloadOrchestrator.getQueueStatus());
-	let failedDownloads = $state(downloadOrchestrator.getFailedDownloads());
+	let isLoading = $state(false);
 
-	$effect(() => {
-		// Update queue status and failed downloads periodically
-		const interval = setInterval(() => {
-			queueStatus = downloadOrchestrator.getQueueStatus();
-			failedDownloads = downloadOrchestrator.getFailedDownloads();
-		}, 500);
-
-		return () => clearInterval(interval);
+	// Use server queue data
+	let stats = $derived.by(() => {
+		const serverStats = $queueStats;
+		return {
+			running: $workerStatus.activeDownloads,
+			queued: serverStats.queued,
+			completed: serverStats.completed,
+			failed: serverStats.failed,
+			total: serverStats.total
+		};
 	});
 
-	const handlePause = () => {
-		downloadOrchestrator.pauseQueue();
-		queueStatus = downloadOrchestrator.getQueueStatus();
-	};
+	let totalItems = $derived($totalDownloads + stats.failed);
+	let hasActivity = $derived(totalItems > 0);
 
-	const handleResume = () => {
-		downloadOrchestrator.resumeQueue();
-		queueStatus = downloadOrchestrator.getQueueStatus();
-	};
+	// Start polling when component mounts
+	$effect(() => {
+		serverQueue.startPolling(500);
+		return () => serverQueue.stopPolling();
+	});
 
-	const handleStop = () => {
-		if (confirm('Stop all downloads and clear the queue?')) {
-			downloadOrchestrator.stopQueue();
-			queueStatus = downloadOrchestrator.getQueueStatus();
-		}
-	};
-
-	const handleRestart = () => {
-		downloadOrchestrator.restartQueue();
-		queueStatus = downloadOrchestrator.getQueueStatus();
-	};
-
-	const handleRetryAllFailed = async () => {
-		await downloadOrchestrator.retryAllFailedDownloads();
-		failedDownloads = downloadOrchestrator.getFailedDownloads();
-		queueStatus = downloadOrchestrator.getQueueStatus();
-	};
-
-	const handleClearFailed = () => {
+	const handleClearFailed = async () => {
 		if (confirm('Clear all failed downloads?')) {
-			downloadOrchestrator.clearFailedDownloads();
-			failedDownloads = downloadOrchestrator.getFailedDownloads();
+			isLoading = true;
+			try {
+				// TODO: Implement bulk delete of failed jobs
+				// const jobs = await getAllJobs();
+				// const failedJobs = jobs.filter(j => j.status === 'failed');
+				// await Promise.all(failedJobs.map(j => fetch(`/api/download-queue/${j.id}`, { method: 'DELETE' })));
+				// await serverQueue.poll();
+			} finally {
+				isLoading = false;
+			}
 		}
 	};
 
-	const totalItems = $derived(queueStatus.queued + queueStatus.running);
-	const hasActivity = $derived(totalItems > 0 || failedDownloads.length > 0);
+	const handleManualRefresh = async () => {
+		isLoading = true;
+		try {
+			await serverQueue.poll();
+		} finally {
+			isLoading = false;
+		}
+	};
 </script>
 
 <div class="download-manager-container">
@@ -65,7 +62,7 @@
 	>
 		{#if hasActivity}
 			<div class="download-manager-badge">
-				{totalItems + failedDownloads.length}
+				{totalItems}
 			</div>
 		{/if}
 		<span class="download-manager-icon">⬇</span>
@@ -89,68 +86,35 @@
 				<div class="download-manager-stats">
 					<div class="download-manager-stat">
 						<span class="stat-label">Running</span>
-						<span class="stat-value running">{queueStatus.running}</span>
+						<span class="stat-value running">{stats.running}</span>
 					</div>
 					<div class="download-manager-stat">
 						<span class="stat-label">Queued</span>
-						<span class="stat-value queued">{queueStatus.queued}</span>
+						<span class="stat-value queued">{stats.queued}</span>
 					</div>
 					<div class="download-manager-stat">
 						<span class="stat-label">Failed</span>
-						<span class="stat-value failed">{failedDownloads.length}</span>
+						<span class="stat-value failed">{stats.failed}</span>
 					</div>
 					<div class="download-manager-stat">
 						<span class="stat-label">Status</span>
-						<span class="stat-value status"
-							>{queueStatus.isPaused ? 'Paused' : 'Active'}</span
-						>
+						<span class="stat-value status">{$workerStatus.running ? 'Processing' : 'Idle'}</span>
 					</div>
 				</div>
 			</div>
 
 			<div class="download-manager-controls">
-				{#if queueStatus.isPaused}
-					<button
-						onclick={handleResume}
-						class="control-btn control-btn--primary"
-						type="button"
-						title="Resume downloads"
-					>
-						<Play size={16} />
-						<span>Resume</span>
-					</button>
-				{:else}
-					<button
-						onclick={handlePause}
-						class="control-btn control-btn--secondary"
-						type="button"
-						title="Pause queue"
-					>
-						<Pause size={16} />
-						<span>Pause</span>
-					</button>
-				{/if}
-
 				<button
-					onclick={handleRestart}
+					onclick={handleManualRefresh}
 					class="control-btn control-btn--secondary"
 					type="button"
-					title="Restart queue"
-					disabled={queueStatus.queued === 0 && queueStatus.running === 0}
+					title="Refresh queue status"
+					disabled={isLoading}
 				>
-					<RotateCcw size={16} />
-					<span>Restart</span>
-				</button>
-
-				<button
-					onclick={handleStop}
-					class="control-btn control-btn--danger"
-					type="button"
-					title="Stop all downloads"
-					disabled={queueStatus.queued === 0 && queueStatus.running === 0}
-				>
-					<Square size={16} />
-					<span>Stop</span>
+					<span class:rotating={isLoading}>
+						<RefreshCw size={16} />
+					</span>
+					<span>Refresh</span>
 				</button>
 			</div>
 		{#if !hasActivity}
@@ -159,102 +123,48 @@
 				<p class="empty-hint">Downloads will appear here when you start downloading tracks or albums</p>
 			</div>
 		{/if}
-			{#if queueStatus.running > 0 || queueStatus.queued > 0}
-				<div class="download-manager-section">
-					<h4 class="download-manager-subtitle">
-						Queue ({queueStatus.running + queueStatus.queued})
-					</h4>
-					<div class="download-manager-queue">
-						{#if queueStatus.albumGroups && queueStatus.albumGroups.length > 0}
-							<!-- Album-grouped view -->
-							{#each queueStatus.albumGroups as album (album.albumId)}
-								<div class="album-group">
-									<div class="album-group-header">
-										<span class="album-title" title="{album.albumTitle} by {album.artistName}">
-											{album.albumTitle}
-										</span>
-										<span class="album-badge">
-											{album.trackCount} track{album.trackCount !== 1 ? 's' : ''}
-										</span>
-									</div>
-									<div class="album-artist">{album.artistName}</div>
-								</div>
-							{/each}
-						{:else}
-							<!-- Flat track view (fallback for individual tracks) -->
-							<div class="queue-item queue-item--header">
-								<span class="queue-item-title">Track</span>
-								<span class="queue-item-status">Status</span>
-							</div>
-							{#each queueStatus.queuedItems.slice(0, 5) as item (item.id)}
-								<div class="queue-item">
-									<span class="queue-item-title" title={String(item.trackId)}>
-										{item.trackId}
-									</span>
-									<span
-										class="queue-item-status {item.retryCount > 0
-											? 'retrying'
-											: 'pending'}"
-									>
-										{item.retryCount > 0
-											? `Retry ${item.retryCount}/${item.maxRetries}`
-											: 'Queued'}
-									</span>
-								</div>
-							{/each}
-							{#if queueStatus.queuedItems.length > 5}
-								<div class="queue-item queue-item--more">
-									<span>+{queueStatus.queuedItems.length - 5} more</span>
-								</div>
-							{/if}
+		{#if stats.running > 0 || stats.queued > 0}
+			<div class="download-manager-section">
+				<h4 class="download-manager-subtitle">
+					Queue ({stats.running + stats.queued})
+				</h4>
+				<div class="download-manager-queue">
+					<p class="queue-info">
+						{#if stats.running > 0}
+							<strong>{stats.running}</strong> download{stats.running !== 1 ? 's' : ''} in progress
 						{/if}
+						{#if stats.running > 0 && stats.queued > 0} • {/if}
+						{#if stats.queued > 0}
+							<strong>{stats.queued}</strong> queued
+						{/if}
+					</p>
+				</div>
+			</div>
+		{/if}
+
+{#if stats.failed > 0}
+			<div class="download-manager-section">
+				<div class="download-manager-subtitle-row">
+					<h4 class="download-manager-subtitle">
+						<AlertCircle size={14} />
+						Failed ({stats.failed})
+					</h4>
+					<div class="download-manager-failed-actions">
+						<button
+							onclick={handleClearFailed}
+							class="failed-action-btn failed-action-btn--clear"
+							type="button"
+							title="Clear failed list"
+							disabled={isLoading}
+						>
+							<Trash2 size={14} />
+						</button>
 					</div>
 				</div>
-			{/if}
-
-			{#if failedDownloads.length > 0}
-				<div class="download-manager-section">
-					<div class="download-manager-subtitle-row">
-						<h4 class="download-manager-subtitle">
-							<AlertCircle size={14} />
-							Failed ({failedDownloads.length})
-						</h4>
-						<div class="download-manager-failed-actions">
-							<button
-								onclick={handleRetryAllFailed}
-								class="failed-action-btn failed-action-btn--retry"
-								type="button"
-								title="Retry all failed"
-							>
-								<RotateCw size={14} />
-								<span>Retry All</span>
-							</button>
-							<button
-								onclick={handleClearFailed}
-								class="failed-action-btn failed-action-btn--clear"
-								type="button"
-								title="Clear failed list"
-							>
-								<Trash2 size={14} />
-							</button>
-						</div>
-					</div>
-					<div class="download-manager-failed">
-						{#each failedDownloads.slice(0, 5) as failed (failed.taskId)}
-							<div class="failed-item">
-								<div class="failed-item-info">
-									<span class="failed-item-title" title={failed.track.title}
-										>{failed.track.title}</span
-									>
-									<span class="failed-item-error">{failed.error}</span>
-								</div>
-							</div>
-						{/each}
-						{#if failedDownloads.length > 5}
-							<div class="failed-item failed-item--more">
-								<span>+{failedDownloads.length - 5} more failed downloads</span>
-							</div>
-						{/if}
+				<div class="download-manager-failed">
+					<p class="failed-info">
+						{stats.failed} download{stats.failed !== 1 ? 's' : ''} failed. Server queue will retain failed jobs for manual retry.
+					</p>
 					</div>
 				</div>
 			{/if}
@@ -811,6 +721,21 @@
 	.download-manager-toggle:not(.has-activity):hover {
 		opacity: 1;
 		background: rgba(255, 255, 255, 0.15);
+	}
+
+	/* Rotating animation for refresh button */
+	.rotating {
+		display: inline-block;
+		animation: spin 1s linear infinite;
+	}
+
+	@keyframes spin {
+		from {
+			transform: rotate(0deg);
+		}
+		to {
+			transform: rotate(360deg);
+		}
 	}
 
 	/* Responsive */
