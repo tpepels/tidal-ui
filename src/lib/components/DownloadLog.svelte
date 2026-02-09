@@ -1,13 +1,8 @@
 <script lang="ts">
 	import { downloadLogStore } from '$lib/stores/downloadLog';
-	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { getSessionHeaders } from '$lib/core/session';
 	import { X, Copy, Trash2, Heart } from 'lucide-svelte';
 	import { tick } from 'svelte';
-
-	$: activeDownloads = $downloadUiStore.tasks.filter((task) => task.status === 'running');
-	$: hasServerDownloads = activeDownloads.some((task) => task.storage === 'server');
-	$: compactLabel = hasServerDownloads ? 'Saving to server' : 'Downloading';
 
 	let scrollContainer: HTMLDivElement | null = null;
 	let healthData: {
@@ -91,8 +86,8 @@
 	}
 </script>
 
-<!-- Compact progress indicator (visible when downloading and log is closed) -->
-{#if activeDownloads.length > 0 && !$downloadLogStore.isVisible}
+<!-- Compact progress indicator disabled - use DownloadManager instead -->
+<!-- {#if activeDownloads.length > 0 && !$downloadLogStore.isVisible}
 	<div class="download-progress-compact">
 		<div class="download-progress-compact-header">
 			<span class="download-progress-compact-title">
@@ -127,7 +122,7 @@
 			{/if}
 		</div>
 	</div>
-{/if}
+{/if} -->
 
 <!-- Full download log (only when toggled) -->
 <div class="download-log-container" class:is-visible={$downloadLogStore.isVisible} on:click|stopPropagation role="presentation">

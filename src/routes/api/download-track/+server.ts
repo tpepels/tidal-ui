@@ -51,7 +51,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					return json({ error: 'Invalid blob format' }, { status: 400 });
 				const buffer = Buffer.from(blobParts[1], 'base64');
 				if (buffer.length === 0) return json({ error: 'Empty blob' }, { status: 400 });
-				if (buffer.length > MAX_FILE_SIZE)
+			if (MAX_FILE_SIZE > 0 && buffer.length > MAX_FILE_SIZE)
 					return json(
 						{ error: `File too large: maximum ${MAX_FILE_SIZE} bytes allowed` },
 						{ status: 400 }

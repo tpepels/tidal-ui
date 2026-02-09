@@ -117,7 +117,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			endUpload(uploadId);
 			return json({ error }, { status: 400 });
 		}
-		if (chunkState.totalSize > MAX_FILE_SIZE) {
+		if (MAX_FILE_SIZE > 0 && chunkState.totalSize > MAX_FILE_SIZE) {
 			const uploadData = pendingUploads.get(uploadId);
 			const trackDesc = uploadData ? `track ID ${uploadData.trackId} (${uploadData.trackTitle || 'Unknown'})` : 'unknown track';
 			await fs.unlink(chunkState.tempFilePath).catch(() => {});
