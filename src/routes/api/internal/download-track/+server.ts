@@ -30,13 +30,14 @@ import * as fs from 'fs/promises';
 export const POST: RequestHandler = async ({ request }) => {
 	try {
 		const body = await request.json();
-		const { trackId, quality, albumTitle, artistName, trackTitle, trackNumber, conflictResolution } = body as {
+		const { trackId, quality, albumTitle, artistName, trackTitle, trackNumber, coverUrl, conflictResolution } = body as {
 			trackId: number;
 			quality: AudioQuality;
 			albumTitle?: string;
 			artistName?: string;
 			trackTitle?: string;
 			trackNumber?: number;
+			coverUrl?: string;
 			conflictResolution?: 'overwrite' | 'skip' | 'overwrite_if_different';
 		};
 
@@ -155,26 +156,36 @@ export const POST: RequestHandler = async ({ request }) => {
 				console.warn('[Internal Download] Manifest is not valid JSON:', jsonError);
 			}
 		} else if (manifestContent.startsWith('<?xml')) {
-			// DASH XML format - extract BaseURL
+			// DASH XML format - extract BaseURL or media URL
+			// Try BaseURL tag first (most common)
 			const baseUrlMatch = manifestContent.match(/<BaseURL>([^<]+)<\/BaseURL>/);
 			if (baseUrlMatch) {
 				streamUrl = baseUrlMatch[1].trim();
 				console.log('[Internal Download] Extracted BaseURL from DASH manifest');
 			} else {
-				// Try alternate DASH format with media attribute
-				const mediaMatch = manifestContent.match(/media="([^"]+\.flac[^"]*)"/i);
+				// Try media attribute
+				const mediaMatch = manifestContent.match(/media="([^"]+\.(flac|mp4|m4a)[^"]*)"/i);
 				if (mediaMatch) {
 					streamUrl = mediaMatch[1];
-					console.log('[Internal Download] Extracted media URL from DASH');
+					console.log('[Internal Download] Extracted media attribute from DASH');
 				} else {
-					// Fallback: find any http/https URL in the XML
-					const urlMatch = manifestContent.match(/(https?:\/\/[^\s<>"]+)/);
-					if (urlMatch) {
-						streamUrl = urlMatch[1];
-						console.log('[Internal Download] Extracted URL via fallback regex');
-					} else {
-						// Log more of the manifest to debug
-						console.error('[Internal Download] Full manifest (first 1000 chars):', manifestContent.substring(0, 1000));
+					// Fallback: find URLs that look like media URLs (not xmlns)
+					// Skip xmlns URLs and look for actual media URLs
+					const allUrls = manifestContent.match(/(https?:\/\/[^\s<>"]+)/g);
+					if (allUrls) {
+						// Filter out xmlns/schema URLs and keep actual media URLs
+						streamUrl = allUrls.find(url => 
+							!url.includes('w3.org') && 
+							!url.includes('schemas') &&
+							!url.includes('xmlns')
+						);
+						if (streamUrl) {
+							console.log('[Internal Download] Extracted media URL via filtered search');
+						}
+					}
+					
+					if (!streamUrl) {
+						console.error('[Internal Download] No media URL found. Sample of manifest:', manifestContent.substring(0, 500));
 					}
 				}
 			}
@@ -188,12 +199,17 @@ export const POST: RequestHandler = async ({ request }) => {
 			);
 		}
 		
-		// Log just the domain and path, not full URL
+		// Validate and log the stream URL
 		try {
 			const urlObj = new URL(streamUrl);
-			console.log(`[Internal Download] Stream URL: ${urlObj.hostname}${urlObj.pathname.substring(0, 40)}...`);
-		} catch {
-			console.log('[Internal Download] Stream URL:', streamUrl.substring(0, 80));
+			const pathEnd = urlObj.pathname.length > 60 ? '...' : '';
+			console.log(`[Internal Download] Stream: ${urlObj.hostname}${urlObj.pathname.substring(0, 60)}${pathEnd}`);
+		} catch (urlError) {
+			console.error('[Internal Download] Invalid URL format:', streamUrl.substring(0, 100));
+			return json(
+				{ success: false, error: `Invalid stream URL format: ${streamUrl.substring(0, 100)}` },
+				{ status: 500 }
+			);
 		}
 
 		// Download the audio stream
@@ -291,14 +307,11 @@ export const POST: RequestHandler = async ({ request }) => {
 		// Future: build metadata object from request params or fetch track metadata separately
 
 		// Download cover art (non-blocking)
-		// Note: streaming response doesn't include cover art info
-		// TODO: Pass cover URL from album data in future
-		if (streamingData.album?.cover) {
+		if (coverUrl) {
 			try {
-				// Build cover URL from cover ID (https://resources.tidal.com/...)
-				const coverId = streamingData.album.cover as string;
-				const coverUrl = `https://resources.tidal.com/images/${coverId.replace(/-/g, '/')}/${'1280'}x${'1280'}.jpg`;
+				console.log('[Internal Download] Downloading cover art...');
 				await downloadCoverToDir(targetDir, coverUrl, path.basename(finalPath));
+				console.log('[Internal Download] Cover art downloaded');
 			} catch (coverErr) {
 				console.warn('[Internal Download] Cover download failed:', coverErr);
 			}

@@ -90,6 +90,7 @@ export interface TrackJob {
 	artistName?: string;
 	trackTitle?: string;
 	trackNumber?: number;
+	coverUrl?: string;
 }
 
 export interface AlbumJob {

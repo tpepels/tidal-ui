@@ -127,7 +127,8 @@ async function downloadTrack(
 	albumTitle?: string,
 	artistName?: string,
 	trackTitle?: string,
-	trackNumber?: number
+	trackNumber?: number,
+	coverUrl?: string
 ): Promise<{ success: boolean; error?: string; filepath?: string }> {
 	try {
 		console.log(`[Worker] Downloading track ${trackId} (${quality})`);
@@ -148,6 +149,7 @@ async function downloadTrack(
 			artistName,
 			trackTitle,
 			trackNumber,
+			coverUrl,
 			conflictResolution: 'overwrite_if_different' as const
 		};
 
@@ -247,7 +249,8 @@ async function processTrackJob(job: QueuedJob): Promise<void> {
 		trackJob.albumTitle,
 		trackJob.artistName,
 		trackJob.trackTitle,
-		trackJob.trackNumber
+		trackJob.trackNumber,
+		trackJob.coverUrl
 	);
 
 	if (result.success) {
@@ -422,6 +425,15 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 				: undefined) || 
 			'Unknown Artist';
 		const albumTitle = (typeof album.title === 'string' ? album.title : undefined) || 'Unknown Album';
+		
+		// Extract cover art URL
+		let coverUrl: string | undefined;
+		if (album.cover && typeof album.cover === 'string') {
+			// Build cover URL from cover ID (format: uuid)
+			const coverId = album.cover;
+			coverUrl = `https://resources.tidal.com/images/${coverId.replace(/-/g, '/')}/1280x1280.jpg`;
+			console.log(`[Worker] Found cover art: ${coverId}`);
+		}
 
 		let completedTracks = 0;
 		let failedTracks = 0;
@@ -445,7 +457,8 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 				albumTitle,
 				artistName,
 				trackTitle,
-				trackNumber
+				trackNumber,
+				coverUrl
 			);
 
 			if (result.success) {
