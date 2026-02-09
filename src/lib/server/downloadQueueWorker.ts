@@ -272,10 +272,7 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		const albumUrl = `${apiBaseUrl}/album/?id=${albumJob.albumId}`;
 		console.log(`[Worker] Album ${albumJob.albumId}: Fetching album data from ${apiBaseUrl}`);
 		
-		const albumResponse = await fetchWithTimeout(albumUrl, {});
-		
-		if (!albumResponse.ok) {
-			let errorText = '';
+	const albumResponse = await fetch(albumUrl);
 			try {
 				const contentType = albumResponse.headers.get('content-type');
 				if (contentType?.includes('application/json')) {
@@ -333,7 +330,8 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		const trackProgress = tracks.map((track, idx) => ({
 			trackId: typeof track.id === 'number' ? track.id : 0,
 			trackTitle: (typeof track.title === 'string' ? track.title : undefined) || `Track ${idx + 1}`,
-			status: 'pending' as const
+			status: 'pending' as 'pending' | 'downloading' | 'completed' | 'failed',
+			error: undefined as string | undefined
 		}));
 
 		// Update job with initial track progress
@@ -420,11 +418,11 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		if (message.includes('abort') || message.includes('AbortError')) {
 			errorMsg = 'Timeout fetching album data (30s)';
 		} else if (message.includes('ECONNREFUSED')) {
-			errorMsg = 'Connection refused - API not reachable at ' + getInternalApiUrl();
+			errorMsg = 'Connection refused - API not reachable';
 		} else if (message.includes('ENOTFOUND')) {
-			errorMsg = 'Host not found - DNS resolution failed for ' + getInternalApiUrl();
+			errorMsg = 'Host not found - DNS resolution failed';
 		} else if (message.includes('ETIMEDOUT')) {
-			errorMsg = 'Connection timeout reaching ' + getInternalApiUrl();
+			errorMsg = 'Connection timeout';
 		}
 		
 		console.error(`[Worker] Album ${albumJob.albumId} failed: ${errorMsg}`);
