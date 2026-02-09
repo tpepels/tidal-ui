@@ -246,7 +246,8 @@ async function processTrackJob(job: QueuedJob): Promise<void> {
 		trackJob.quality,
 		trackJob.albumTitle,
 		trackJob.artistName,
-		trackJob.trackTitle
+		trackJob.trackTitle,
+		trackJob.trackNumber
 	);
 
 	if (result.success) {
