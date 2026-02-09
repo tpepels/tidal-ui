@@ -30,12 +30,13 @@ import * as fs from 'fs/promises';
 export const POST: RequestHandler = async ({ request }) => {
 	try {
 		const body = await request.json();
-		const { trackId, quality, albumTitle, artistName, trackTitle, conflictResolution } = body as {
+		const { trackId, quality, albumTitle, artistName, trackTitle, trackNumber, conflictResolution } = body as {
 			trackId: number;
 			quality: AudioQuality;
 			albumTitle?: string;
 			artistName?: string;
 			trackTitle?: string;
+			trackNumber?: number;
 			conflictResolution?: 'overwrite' | 'skip' | 'overwrite_if_different';
 		};
 
@@ -165,6 +166,16 @@ export const POST: RequestHandler = async ({ request }) => {
 				if (mediaMatch) {
 					streamUrl = mediaMatch[1];
 					console.log('[Internal Download] Extracted media URL from DASH');
+				} else {
+					// Fallback: find any http/https URL in the XML
+					const urlMatch = manifestContent.match(/(https?:\/\/[^\s<>"]+)/);
+					if (urlMatch) {
+						streamUrl = urlMatch[1];
+						console.log('[Internal Download] Extracted URL via fallback regex');
+					} else {
+						// Log more of the manifest to debug
+						console.error('[Internal Download] Full manifest (first 1000 chars):', manifestContent.substring(0, 1000));
+					}
 				}
 			}
 		}
@@ -242,7 +253,8 @@ export const POST: RequestHandler = async ({ request }) => {
 			finalTrackTitle,
 			trackId,
 			ext,
-			streamingData
+			streamingData,
+			trackNumber
 		);
 
 		const baseDir = getDownloadDir();

@@ -126,7 +126,8 @@ async function downloadTrack(
 	quality: AudioQuality,
 	albumTitle?: string,
 	artistName?: string,
-	trackTitle?: string
+	trackTitle?: string,
+	trackNumber?: number
 ): Promise<{ success: boolean; error?: string; filepath?: string }> {
 	try {
 		console.log(`[Worker] Downloading track ${trackId} (${quality})`);
@@ -146,6 +147,7 @@ async function downloadTrack(
 			albumTitle,
 			artistName,
 			trackTitle,
+			trackNumber,
 			conflictResolution: 'overwrite_if_different' as const
 		};
 
@@ -428,6 +430,7 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 			const track = tracks[i];
 			const trackId = typeof track.id === 'number' ? track.id : 0;
 			const trackTitle = (typeof track.title === 'string' ? track.title : undefined) || 'Unknown Track';
+			const trackNumber = typeof track.trackNumber === 'number' ? track.trackNumber : (i + 1);
 			
 			if (!trackId) {
 				console.warn(`[Worker] Skipping track ${i} - invalid ID`);
@@ -440,7 +443,8 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 				albumJob.quality,
 				albumTitle,
 				artistName,
-				trackTitle
+				trackTitle,
+				trackNumber
 			);
 
 			if (result.success) {

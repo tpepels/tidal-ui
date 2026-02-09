@@ -698,7 +698,8 @@ export const buildServerFilename = (
 	trackTitle: string | undefined,
 	trackId: number,
 	ext: string,
-	trackMetadata?: { track?: { trackNumber?: number; volumeNumber?: number; album?: { numberOfVolumes?: number } } }
+	trackMetadata?: { track?: { trackNumber?: number; volumeNumber?: number; album?: { numberOfVolumes?: number } } },
+	trackNumberOverride?: number
 ): string => {
 	if (!trackTitle) {
 		return `track-${trackId}.${ext}`;
@@ -707,16 +708,17 @@ export const buildServerFilename = (
 	const artist = sanitizePath(artistName || 'Unknown');
 	const title = sanitizePath(trackTitle);
 
-	const trackNumber = Number(trackMetadata?.track?.trackNumber);
+	// Use override if provided, otherwise extract from metadata
+	const trackNumber = trackNumberOverride ?? Number(trackMetadata?.track?.trackNumber);
 	const volumeNumber = Number(trackMetadata?.track?.volumeNumber);
 	const numberOfVolumes = Number(trackMetadata?.track?.album?.numberOfVolumes);
 
 	let trackPart = '';
 	if (Number.isFinite(trackNumber) && trackNumber > 0) {
 		if (numberOfVolumes > 1 && Number.isFinite(volumeNumber) && volumeNumber > 0) {
-			trackPart = `${volumeNumber}-${trackNumber} `;
+			trackPart = `${volumeNumber}-${trackNumber.toString().padStart(2, '0')} `;
 		} else {
-			trackPart = `${trackNumber} `;
+			trackPart = `${trackNumber.toString().padStart(2, '0')} `;
 		}
 	}
 
