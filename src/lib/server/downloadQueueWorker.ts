@@ -17,7 +17,33 @@ let isRunning = false;
 let stopRequested = false;
 const MAX_CONCURRENT = 4;
 const POLL_INTERVAL_MS = 2000;
+const JOB_TIMEOUT_MS = 30000; // 30 second timeout per network call
+const PROCESSING_TIMEOUT_MS = 300000; // 5 minute max time in 'processing' state
 let activeDownloads = 0;
+const activeSemaphore = new Map<string, Promise<void>>();
+
+/**
+ * Wrapper for fetch with timeout
+ */
+async function fetchWithTimeout(
+	url: string,
+	options: RequestInit,
+	timeoutMs: number = JOB_TIMEOUT_MS
+): Promise<Response> {
+	const controller = new AbortController();
+	const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+	try {
+		return await fetch(url, {
+			...options,
+			signal: controller.signal,
+			// @ts-ignore - Node.js https agent for self-signed certs
+			agent: new (await import('https')).Agent({ rejectUnauthorized: false })
+		});
+	} finally {
+		clearTimeout(timeoutId);
+	}
+}
 
 /**
  * Download a single track by calling the internal API
@@ -53,14 +79,12 @@ async function downloadTrack(
 			conflictResolution: 'overwrite_if_different' as const
 		};
 
-		const response = await fetch(url, {
+		const response = await fetchWithTimeout(url, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json'
 			},
-			body: JSON.stringify(body),
-			// @ts-ignore - Node.js https agent for self-signed certs
-			agent: new (await import('https')).Agent({ rejectUnauthorized: false })
+			body: JSON.stringify(body)
 		});
 
 		if (!response.ok) {
@@ -87,6 +111,9 @@ async function downloadTrack(
 		}
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
+		if (message.includes('abort')) {
+			return { success: false, error: 'Download timeout (30s)' };
+		}
 		console.error(`[Worker] Track ${trackId} failed:`, message);
 		return { success: false, error: message };
 	}
@@ -142,10 +169,10 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		// Use INTERNAL_API_URL if set (for Docker/NAT), otherwise use localhost
 		const port = process.env.PORT || 5000;
 		const baseUrl = process.env.INTERNAL_API_URL || `https://localhost:${port}`;
-		const albumResponse = await fetch(`${baseUrl}/api/tidal?endpoint=/albums/${albumJob.albumId}`, {
-			// @ts-ignore - Node.js https agent for self-signed certs
-			agent: new (await import('https')).Agent({ rejectUnauthorized: false })
-		});
+		const albumResponse = await fetchWithTimeout(
+			`${baseUrl}/api/tidal?endpoint=/albums/${albumJob.albumId}`,
+			{}
+		);
 		
 		if (!albumResponse.ok) {
 			throw new Error(`Failed to fetch album: HTTP ${albumResponse.status}`);
@@ -225,43 +252,92 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 }
 
 /**
- * Process a single job
+ * Process a single job with proper error handling
  */
-async function processJob(job: QueuedJob): Promise<void> {
-	activeDownloads++;
+async function processJob(jobId: string, job: QueuedJob): Promise<void> {
+	const startTime = Date.now();
+	
 	try {
 		if (job.job.type === 'track') {
-					await processTrackJob(job);
-				} else if (job.job.type === 'album') {
-					await processAlbumJob(job);
+			await processTrackJob(job);
+		} else if (job.job.type === 'album') {
+			await processAlbumJob(job);
 		}
-	} finally {
-		activeDownloads--;
+
+		// Check if processing took too long (shouldn't happen, but log it)
+		const duration = Date.now() - startTime;
+		if (duration > PROCESSING_TIMEOUT_MS) {
+			console.warn(`[Worker] Job ${jobId} took ${duration}ms (over timeout)`);
+		}
+	} catch (error) {
+		const message = error instanceof Error ? error.message : 'Unknown error';
+		console.error(`[Worker] Job ${jobId} processing error:`, message);
+		
+		// Mark as failed if not already marked
+		const currentJob = await import('./downloadQueueManager').then(m => m.getJob(jobId));
+		if (currentJob && currentJob.status === 'processing') {
+			await updateJobStatus(jobId, {
+				status: 'failed',
+				error: message,
+				completedAt: Date.now()
+			});
+		}
 	}
 }
 
 /**
- * Main worker loop
+ * Main worker loop - properly handles concurrency and timeouts
  */
 async function workerLoop(): Promise<void> {
+	console.log(`[Worker] Main loop started, max concurrent: ${MAX_CONCURRENT}`);
+	
 	while (!stopRequested) {
 		try {
 			// Check if we can process more jobs
-			if (activeDownloads < MAX_CONCURRENT) {
+			if (activeSemaphore.size < MAX_CONCURRENT) {
 				const job = await dequeueJob();
 				
 				if (job) {
-					// Process job without awaiting (allows concurrent processing)
-					processJob(job).catch(err => {
-						console.error('[Worker] Job processing error:', err);
-					});
+					// Create a promise for this job and track it
+					const jobPromise = processJob(job.id, job)
+						.finally(() => {
+							activeSemaphore.delete(job.id);
+						});
+					
+					activeSemaphore.set(job.id, jobPromise);
+					console.log(`[Worker] Started job ${job.id}, active: ${activeSemaphore.size}/${MAX_CONCURRENT}`);
 				} else {
 					// No jobs, wait before polling again
 					await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
 				}
 			} else {
-				// Max concurrent reached, wait
+				// Max concurrent reached, wait a bit
 				await new Promise(resolve => setTimeout(resolve, 500));
+			}
+
+			// Check for jobs stuck in processing (timeout)
+			const allJobs = await import('./downloadQueueManager').then(m => m.getAllJobs());
+			const now = Date.now();
+			for (const j of allJobs) {
+				if (j.status === 'processing' && j.startedAt) {
+					const duration = now - j.startedAt;
+					if (duration > PROCESSING_TIMEOUT_MS) {
+						console.warn(`[Worker] Job ${j.id} exceeded processing timeout (${duration}ms)`);
+						await updateJobStatus(j.id, {
+							status: 'failed',
+							error: `Processing timeout (${Math.round(duration / 1000)}s exceeded)`,
+							completedAt: now
+						});
+					}
+				}
+			}
+
+			// Clean up jobs marked for deletion (error === 'Deleted by user')
+			for (const j of allJobs) {
+				if (j.status === 'failed' && j.error === 'Deleted by user' && j.completedAt) {
+					const { deleteJob } = await import('./downloadQueueManager');
+					await deleteJob(j.id);
+				}
 			}
 
 			// Periodic cleanup (every 100 iterations ≈ 200 seconds)
@@ -275,11 +351,21 @@ async function workerLoop(): Promise<void> {
 	}
 
 	// Wait for active downloads to finish
-	while (activeDownloads > 0) {
-		console.log(`[Worker] Waiting for ${activeDownloads} active downloads to finish...`);
-		await new Promise(resolve => setTimeout(resolve, 1000));
+	let maxWaitCycles = 300; // Max 5 minutes wait
+	while (activeSemaphore.size > 0 && maxWaitCycles > 0) {
+		console.log(`[Worker] Waiting for ${activeSemaphore.size} active downloads to finish...`);
+		await Promise.all(activeSemaphore.values()).catch(err => {
+			console.error('[Worker] Wait error:', err);
+		});
+		maxWaitCycles--;
+		if (activeSemaphore.size > 0) {
+			await new Promise(resolve => setTimeout(resolve, 1000));
+		}
 	}
 
+	if (activeSemaphore.size > 0) {
+		console.warn(`[Worker] Stopped with ${activeSemaphore.size} jobs still processing`);
+	}
 	console.log('[Worker] Stopped');
 	isRunning = false;
 }
@@ -287,13 +373,18 @@ async function workerLoop(): Promise<void> {
 /**
  * Start the background worker
  */
-export function startWorker(): void {
+export async function startWorker(): Promise<void> {
 	if (isRunning) {
 		console.log('[Worker] Already running');
 		return;
 	}
 
 	console.log('[Worker] Starting...');
+	
+	// Initialize queue (recover from crashes)
+	const { initializeQueue } = await import('./downloadQueueManager');
+	await initializeQueue();
+	
 	isRunning = true;
 	stopRequested = false;
 	workerLoop();
@@ -326,7 +417,7 @@ export function getWorkerStatus(): {
 } {
 	return {
 		running: isRunning,
-		activeDownloads,
+		activeDownloads: activeSemaphore.size,
 		maxConcurrent: MAX_CONCURRENT
 	};
 }

@@ -5,8 +5,9 @@ import { dev } from '$app/environment';
 // Start background download worker
 if (!dev) {
 	// Only run worker in production (avoid conflicts during dev hot-reload)
-	startWorker();
-	console.log('[Server] Background download worker started');
+	startWorker()
+		.then(() => console.log('[Server] Background download worker started'))
+		.catch(err => console.error('[Server] Failed to start worker:', err));
 } else {
 	console.log('[Server] Background download worker disabled in dev mode');
 }

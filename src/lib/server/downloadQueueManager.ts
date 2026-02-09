@@ -36,6 +36,49 @@ function getRedisClient(): Redis | null {
 	return redis;
 }
 
+/**
+ * Initialize queue system: clean up stale processing jobs from crashes
+ */
+export async function initializeQueue(): Promise<void> {
+	console.log('[Queue] Initializing...');
+	const client = getRedisClient();
+	
+	if (client && redisConnected) {
+		try {
+			const jobs = await client.hgetall(QUEUE_KEY);
+			let recovered = 0;
+
+			for (const [jobId, value] of Object.entries(jobs)) {
+				const job = JSON.parse(value) as QueuedJob;
+				
+				if (job.status === 'processing') {
+					console.log(`[Queue] Recovering job ${jobId} from crash (was processing)`);
+					// Mark as failed with recovery message
+					await client.hset(
+						QUEUE_KEY,
+						jobId,
+						JSON.stringify({
+							...job,
+							status: 'failed' as const,
+							error: 'Recovered from server crash while processing',
+							completedAt: Date.now()
+						})
+					);
+					recovered++;
+				}
+			}
+
+			if (recovered > 0) {
+				console.log(`[Queue] Recovered ${recovered} jobs from crash`);
+			}
+		} catch (err) {
+			console.warn('[Queue] Initialization error:', err);
+		}
+	}
+
+	console.log('[Queue] Initialization complete');
+}
+
 export type JobType = 'track' | 'album';
 export type JobStatus = 'queued' | 'processing' | 'completed' | 'failed';
 
@@ -270,7 +313,35 @@ export async function cleanupOldJobs(olderThanMs: number = 24 * 60 * 60 * 1000):
 	}
 
 	if (cleaned > 0) {
-		console.log(`[Queue] Cleaned up ${cleaned} old jobs`);
+		console.log(`[Queue] Cleaned up ${cleaned} old jobs (older than ${Math.round(olderThanMs / 1000)}s)`);
 	}
 	return cleaned;
+}
+
+/**
+ * Delete a job from the queue (permanent removal, for failed jobs marked for deletion)
+ */
+export async function deleteJob(jobId: string): Promise<boolean> {
+	const client = getRedisClient();
+	
+	if (client && redisConnected) {
+		try {
+			const result = await client.hdel(QUEUE_KEY, jobId);
+			if (result > 0) {
+				console.log(`[Queue] Job ${jobId} permanently deleted`);
+				return true;
+			}
+		} catch (err) {
+			console.warn('[Queue] Redis delete failed:', err);
+		}
+	}
+
+	// Fallback to memory
+	if (memoryQueue.has(jobId)) {
+		memoryQueue.delete(jobId);
+		console.log(`[Queue] Job ${jobId} deleted from memory`);
+		return true;
+	}
+	
+	return false;
 }

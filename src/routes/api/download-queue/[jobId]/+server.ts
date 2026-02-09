@@ -54,32 +54,39 @@ export const DELETE: RequestHandler = async ({ params }) => {
 			);
 		}
 
-		// If job is processing, mark as failed
+		// For processing jobs: mark as cancelled but keep briefly for audit trail
+		// (will be cleaned up in next cleanup cycle)
 		if (job.status === 'processing') {
 			await updateJobStatus(jobId, {
 				status: 'failed',
-				error: 'Cancelled by user',
+				error: 'Cancelled by user during processing',
 				completedAt: Date.now()
 			});
 			return json({
 				success: true,
-				message: 'Job cancelled'
+				message: 'Job cancellation requested (in-flight work may continue)',
+				jobId
 			});
 		}
 
-		// For queued/completed/failed, update status to indicate deletion
-		// The cleanup handler will remove it
-		if (job.status === 'queued') {
+		// For queued/completed/failed jobs: mark as failed with deletion marker
+		if (job.status === 'queued' || job.status === 'completed' || job.status === 'failed') {
 			await updateJobStatus(jobId, {
 				status: 'failed',
-				error: 'Cancelled by user',
+				error: 'Deleted by user',
 				completedAt: Date.now()
+			});
+			return json({
+				success: true,
+				message: 'Job marked for removal',
+				jobId
 			});
 		}
 
 		return json({
 			success: true,
-			message: 'Job removed'
+			message: 'Job status updated',
+			jobId
 		});
 	} catch (error) {
 		console.error('[Queue API] DELETE job error:', error);
