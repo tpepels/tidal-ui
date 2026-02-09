@@ -7,7 +7,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import type { AudioQuality } from '$lib/types';
-import { API_CONFIG } from '$lib/config';
+import { API_CONFIG, fetchWithCORS } from '$lib/config';
 import {
 	getDownloadDir,
 	sanitizePath,
@@ -18,7 +18,7 @@ import {
 	getServerExtension,
 	downloadCoverToDir
 } from '../../download-track/_shared';
-import { embedMetadataToFile } from '$lib/server/metadataEmbedder';
+
 import * as path from 'path';
 import * as fs from 'fs/promises';
 
@@ -80,7 +80,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		try {
 			trackResponseData = await trackResponse.json();
 			console.log('[Internal Download] Full track response structure:', JSON.stringify(trackResponseData, null, 2).substring(0, 1500));
-		} catch (parseError) {
+		} catch {
 			return json(
 				{ success: false, error: 'Failed to parse track response as JSON' },
 				{ status: 500 }
@@ -204,7 +204,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			const urlObj = new URL(streamUrl);
 			const pathEnd = urlObj.pathname.length > 60 ? '...' : '';
 			console.log(`[Internal Download] Stream: ${urlObj.hostname}${urlObj.pathname.substring(0, 60)}${pathEnd}`);
-		} catch (urlError) {
+		} catch {
 			console.error('[Internal Download] Invalid URL format:', streamUrl.substring(0, 100));
 			return json(
 				{ success: false, error: `Invalid stream URL format: ${streamUrl.substring(0, 100)}` },
@@ -212,10 +212,11 @@ export const POST: RequestHandler = async ({ request }) => {
 			);
 		}
 
-		// Download the audio stream
+		// Download the audio stream through the proxy (same as client does)
 		let audioResponse: Response;
 		try {
-			audioResponse = await fetch(streamUrl);
+			// Use fetchWithCORS which handles proxy routing just like client code
+			audioResponse = await fetchWithCORS(streamUrl);
 		} catch (streamError) {
 			return json(
 				{ success: false, error: `Failed to fetch audio stream: ${streamError instanceof Error ? streamError.message : 'Network error'}` },

@@ -1,7 +1,6 @@
 <script lang="ts">
-	import { downloadOrchestrator } from '$lib/orchestrators';
 	import { serverQueue, queueStats, workerStatus, totalDownloads } from '$lib/stores/serverQueue.svelte';
-	import { Play, Pause, Square, RotateCcw, AlertCircle, Trash2, RotateCw, RefreshCw, ChevronDown, ChevronUp } from 'lucide-svelte';
+	import { Trash2, RefreshCw, ChevronDown, ChevronUp } from 'lucide-svelte';
 
 	interface QueueJob {
 		id: string;

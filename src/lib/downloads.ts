@@ -2,17 +2,14 @@ import { losslessAPI } from './api';
 import type { Album, Track, AudioQuality } from './types';
 import type { DownloadMode, DownloadStorage } from './stores/downloadPreferences';
 
-import { downloadLogStore } from './stores/downloadLog';
-import { downloadUiStore } from './stores/downloadUi';
 import { downloadTrackServerSide as downloadTrackServerSideImpl } from './server-upload/uploadService';
 import { formatArtists } from './utils/formatters';
-const loadJSZip = async () => (await import('jszip')).default;
 
 const BASE_DELAY_MS = 1000;
 
 export const downloadTrackServerSide = downloadTrackServerSideImpl;
 
-function detectImageFormat(data: Uint8Array): { extension: string; mimeType: string } | null {
+export function detectImageFormat(data: Uint8Array): { extension: string; mimeType: string } | null {
 	if (!data || data.length < 4) {
 		return null;
 	}
@@ -371,7 +368,7 @@ export async function downloadTrackToServer(
 }
 
 // Helper: Process array of async tasks in parallel with concurrency limit
-async function parallelMap<T, R>(
+export async function parallelMap<T, R>(
 	items: T[],
 	asyncFn: (item: T, index: number) => Promise<R>,
 	maxConcurrent: number = 3
@@ -447,7 +444,7 @@ export async function downloadAlbum(
 			throw new Error(`Failed to queue album: ${error}`);
 		}
 
-		const result = await response.json();
+		await response.json();
 		callbacks?.onTotalResolved?.(tracks.length);
 		
 		// Note: Individual track progress callbacks won't work with queue system
@@ -455,4 +452,3 @@ export async function downloadAlbum(
 		return;
 	}
 }
-		let completed = 0;

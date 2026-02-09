@@ -23,7 +23,6 @@ const MAX_CONCURRENT = 4;
 const POLL_INTERVAL_MS = 2000;
 const JOB_TIMEOUT_MS = 30000; // 30 second timeout per network call
 const PROCESSING_TIMEOUT_MS = 300000; // 5 minute max time in 'processing' state
-let activeDownloads = 0;
 const activeSemaphore = new Map<string, Promise<void>>();
 
 /**
@@ -41,15 +40,7 @@ function getInternalApiUrl(): string {
 	return url;
 }
 
-/**
- * Get Node.js HTTPS agent for self-signed certificates
- */
-async function getHttpsAgent() {
-	const https = await import('https');
-	return new https.Agent({ 
-		rejectUnauthorized: false // Allow self-signed certs on localhost
-	});
-}
+
 
 /**
  * Wrapper for fetch with timeout and detailed error logging
@@ -111,10 +102,10 @@ async function fetchWithTimeout(
 			console.log(`[Worker] Response ${response.status} from ${url}`);
 			return response;
 		}
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
 		console.error(`[Worker] Fetch error for ${url}: ${message}`);
-		throw error;
+		throw err;
 	} finally {
 		clearTimeout(timeoutId);
 	}
@@ -136,19 +127,7 @@ async function downloadTrack(
 	try {
 		console.log(`[Worker] Downloading track ${trackId} (${quality})`);
 		
-		// Check rate limiting for the API target
 		const apiTarget = API_CONFIG.baseUrl || API_CONFIG.targets[0]?.baseUrl || 'unknown';
-		if (!rateLimiter.isRequestAllowed(apiTarget)) {
-			const status = rateLimiter.getStatus(apiTarget);
-			const waitSecs = Math.round(status.backoffRemainingMs / 1000);
-			const msg = `Rate limited. Wait ${waitSecs}s`;
-			console.warn(`[Worker] ${msg} for ${apiTarget}`);
-			return {
-				success: false,
-				error: msg,
-				retryable: true
-			};
-		}
 		
 		// Call the internal /api/internal/download-track endpoint which:
 		// - Fetches from TIDAL via the proxy
@@ -190,18 +169,17 @@ async function downloadTrack(
 				} else {
 					errorText = await response?.text() || '';
 				}
-			} catch (e) {
+			} catch {
 				errorText = 'Could not parse error response';
 			}
 			
 			const errorMsg = `HTTP ${response?.status}: ${errorText || 'No details'}`;
 			const errorCategory = categorizeError(errorMsg, response?.status);
 			
-			// Record error for rate limiting
-			const errorType = errorCategory.category === 'rate_limit' ? 'rate_limit' : 
-						   errorCategory.category === 'network' ? 'network' :
-						   errorCategory.category === 'server_error' ? 'server_error' : 'other';
-			rateLimiter.recordError(apiTarget, errorType);
+			// Only record rate limit errors (429) to prevent false positives
+			if (response?.status === 429) {
+				rateLimiter.recordError(apiTarget, 'rate_limit');
+			}
 			
 			console.error(`[Worker] Track ${trackId} failed: ${errorMsg}`);
 			return { 
@@ -211,7 +189,7 @@ async function downloadTrack(
 			};
 		}
 
-		// Record success
+		// Record success only for successful downloads
 		rateLimiter.recordSuccess(apiTarget);
 
 		let result: unknown;
@@ -456,7 +434,7 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 				} else {
 					errorText = await albumResponse.text();
 				}
-			} catch (e) {
+			} catch {
 				errorText = 'Could not parse error response';
 			}
 			throw new Error(`Failed to fetch album: HTTP ${albumResponse.status}: ${errorText}`);

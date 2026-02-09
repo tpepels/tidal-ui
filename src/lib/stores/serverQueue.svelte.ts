@@ -44,7 +44,7 @@ const initialState: ServerQueueState = {
 
 // Create the store
 function createServerQueueStore() {
-	const { subscribe, set, update } = writable<ServerQueueState>(initialState);
+	const { subscribe, update } = writable<ServerQueueState>(initialState);
 
 	// Polling interval
 	let pollInterval: NodeJS.Timeout | null = null;
@@ -59,7 +59,7 @@ function createServerQueueStore() {
 			const data = await response.json();
 
 			if (data.success) {
-				update(state => ({
+				update(() => ({
 					...data,
 					lastUpdated: Date.now(),
 					error: undefined
