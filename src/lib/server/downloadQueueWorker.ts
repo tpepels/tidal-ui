@@ -11,6 +11,7 @@ import {
 	type TrackJob,
 	type AlbumJob
 } from './downloadQueueManager';
+import { losslessAPI } from '$lib/api';
 import type { AudioQuality } from '$lib/types';
 
 let isRunning = false;
@@ -256,30 +257,10 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 	});
 
 	try {
-		// Fetch album tracks via the API
-		const baseUrl = getInternalApiUrl();
-		const albumUrl = `${baseUrl}/api/tidal?endpoint=/albums/${albumJob.albumId}`;
+		// Fetch album tracks using losslessAPI
+		console.log(`[Worker] Album ${albumJob.albumId}: Fetching album data...`);
 		
-		console.log(`[Worker] Album ${albumJob.albumId}: Fetching album data from ${albumUrl}`);
-		const albumResponse = await fetchWithTimeout(albumUrl, {});
-		
-		if (!albumResponse.ok) {
-			let errorText = '';
-			try {
-				const contentType = albumResponse.headers.get('content-type');
-				if (contentType?.includes('application/json')) {
-					const errorData = await albumResponse.json();
-					errorText = errorData.error || JSON.stringify(errorData);
-				} else {
-					errorText = await albumResponse.text();
-				}
-			} catch (e) {
-				errorText = 'Could not parse error response';
-			}
-			throw new Error(`Failed to fetch album: HTTP ${albumResponse.status}: ${errorText}`);
-		}
-		
-		const { album, tracks } = await albumResponse.json();
+		const { album, tracks } = await losslessAPI.getAlbum(albumJob.albumId);
 		const totalTracks = tracks.length;
 
 		await updateJobStatus(job.id, {
