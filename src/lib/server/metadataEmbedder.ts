@@ -66,14 +66,20 @@ const findFfmpeg = (): string | null => {
  * Returns the final file path, which may differ from the input if the
  * container format was changed (e.g. .m4a -> .flac).
  */
+export interface MetadataOverrides {
+	albumTitle?: string;
+	albumArtist?: string;
+}
+
 export async function embedMetadataToFile(
 	filePath: string,
-	lookup: TrackLookup
+	lookup: TrackLookup,
+	overrides?: MetadataOverrides
 ): Promise<string> {
 	const ffmpegPath = findFfmpeg();
 	if (!ffmpegPath) return filePath;
 
-	const metadata = buildMetadataObject(lookup);
+	const metadata = buildMetadataObject(lookup, overrides);
 	const entries = Object.entries(metadata);
 	if (entries.length === 0) {
 		console.warn('[Server Metadata] No metadata entries to embed for:', filePath);
@@ -162,11 +168,20 @@ function runFfmpeg(ffmpegPath: string, args: string[]): Promise<string> {
 /**
  * Build metadata key-value pairs from a TrackLookup object.
  */
-function buildMetadataObject(lookup: TrackLookup) {
+function buildMetadataObject(lookup: TrackLookup, overrides?: MetadataOverrides) {
 	const { track } = lookup;
 	const album = track.album;
 	const mainArtist = formatArtistsForMetadata(track.artists);
+	const overrideAlbumTitle =
+		overrides?.albumTitle && overrides.albumTitle.trim().length > 0
+			? overrides.albumTitle.trim()
+			: undefined;
+	const overrideAlbumArtist =
+		overrides?.albumArtist && overrides.albumArtist.trim().length > 0
+			? overrides.albumArtist.trim()
+			: undefined;
 	const albumArtist =
+		overrideAlbumArtist ??
 		album?.artist?.name ??
 		(album?.artists && album.artists.length > 0 ? album.artists[0]?.name : undefined) ??
 		track.artists?.[0]?.name;
@@ -177,7 +192,7 @@ function buildMetadataObject(lookup: TrackLookup) {
 	if (track.title) metadata.title = track.title;
 	if (mainArtist) metadata.artist = mainArtist;
 	if (albumArtist) metadata.album_artist = albumArtist;
-	if (album?.title) metadata.album = album.title;
+	if (overrideAlbumTitle || album?.title) metadata.album = overrideAlbumTitle ?? album.title;
 
 	// Track and disc numbers
 	const trackNumber = Number(track.trackNumber);

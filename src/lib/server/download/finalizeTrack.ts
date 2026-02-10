@@ -240,7 +240,31 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 	let metadataEmbedded = false;
 	if (trackLookup) {
 		try {
-			finalOutputPath = await embedMetadataToFile(finalOutputPath, trackLookup);
+			const overrideAlbumTitle = albumTitle && albumTitle.trim().length > 0 ? albumTitle.trim() : undefined;
+			const overrideAlbumArtist = artistName && artistName.trim().length > 0 ? artistName.trim() : undefined;
+			const metadataOverrides =
+				overrideAlbumTitle || overrideAlbumArtist
+					? { albumTitle: overrideAlbumTitle, albumArtist: overrideAlbumArtist }
+					: undefined;
+			if (metadataOverrides) {
+				const trackAlbumTitle = trackLookup.track?.album?.title;
+				const trackAlbumArtist =
+					trackLookup.track?.album?.artist?.name ??
+					(trackLookup.track?.album?.artists && trackLookup.track.album.artists.length > 0
+						? trackLookup.track.album.artists[0]?.name
+						: undefined);
+				if (overrideAlbumTitle && trackAlbumTitle && overrideAlbumTitle !== trackAlbumTitle) {
+					console.log(
+						`[Server Metadata] Normalizing album title for track ${trackId}: "${trackAlbumTitle}" -> "${overrideAlbumTitle}"`
+					);
+				}
+				if (overrideAlbumArtist && trackAlbumArtist && overrideAlbumArtist !== trackAlbumArtist) {
+					console.log(
+						`[Server Metadata] Normalizing album artist for track ${trackId}: "${trackAlbumArtist}" -> "${overrideAlbumArtist}"`
+					);
+				}
+			}
+			finalOutputPath = await embedMetadataToFile(finalOutputPath, trackLookup, metadataOverrides);
 			metadataEmbedded = true;
 		} catch {
 			metadataEmbedded = false;
