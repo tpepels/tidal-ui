@@ -223,48 +223,57 @@ export function createConsoleMetricsHandler(): ObservabilityHandler {
 		const timestamp = new Date(event.timestamp).toISOString();
 		
 		switch (event.type) {
-			case 'download_start':
+			case 'download_start': {
 				console.log(
-					`[📥 Download Start] Track ${event.trackId} (${event.quality}) from ${event.target}` +
+					`[${timestamp}] [📥 Download Start] Track ${event.trackId} (${event.quality}) from ${event.target}` +
 					(event.attemptNumber ? ` [Attempt ${event.attemptNumber}]` : '')
 				);
 				break;
+			}
 
-			case 'download_success':
+			case 'download_success': {
 				const mbDownloaded = (event.bytesDownloaded / 1024 / 1024).toFixed(2);
 				console.log(
-					`[✅ Download Success] Track ${event.trackId}: ${mbDownloaded} MB in ${event.durationMs}ms (${event.target})` +
+					`[${timestamp}] [✅ Download Success] Track ${event.trackId}: ${mbDownloaded} MB in ${event.durationMs}ms (${event.target})` +
 					(event.attemptNumber ? ` [Attempt ${event.attemptNumber}]` : '')
 				);
 				break;
+			}
 
-			case 'download_failure':
+			case 'download_failure': {
 				console.warn(
-					`[❌ Download Failure] Track ${event.trackId}: ${event.error}` +
+					`[${timestamp}] [❌ Download Failure] Track ${event.trackId}: ${event.error}` +
 					(event.target ? ` (${event.target})` : '') +
 					(event.attemptNumber ? ` [Attempt ${event.attemptNumber}]` : '') +
 					(event.isRetriable ? ' [Will retry]' : ' [Permanent failure]')
 				);
 				break;
+			}
 
-			case 'target_health_change':
+			case 'target_health_change': {
 				const statusEmoji = event.status === 'healthy' ? '✅' : '❌';
 				console.log(
-					`[${statusEmoji} Target Health] ${event.target}: ${event.status}` +
+					`[${timestamp}] [${statusEmoji} Target Health] ${event.target}: ${event.status}` +
 					(event.consecutiveFailures ? ` (${event.consecutiveFailures} failures)` : '') +
 					(event.reason ? ` - ${event.reason}` : '')
 				);
 				break;
+			}
 
-			case 'circuit_breaker_event':
+			case 'circuit_breaker_event': {
 				const action =
-					event.action === 'open' ? '🔴 Circuit Open' : event.action === 'close' ? '🟢 Circuit Closed' : '🟡 Circuit Reset';
+					event.action === 'open'
+						? '🔴 Circuit Open'
+						: event.action === 'close'
+							? '🟢 Circuit Closed'
+							: '🟡 Circuit Reset';
 				console.log(
-					`[${action}] Target ${event.target}` +
+					`[${timestamp}] [${action}] Target ${event.target}` +
 					(event.consecutiveFailures ? ` (${event.consecutiveFailures} failures)` : '') +
 					(event.reason ? ` - ${event.reason}` : '')
 				);
 				break;
+			}
 		}
 	};
 }

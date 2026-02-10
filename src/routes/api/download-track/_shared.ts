@@ -101,6 +101,7 @@ export const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || '0'); // 0 = 
 export const MAX_CHUNK_SIZE = parseInt(process.env.MAX_CHUNK_SIZE || '10485760'); // 10MB default
 export const MAX_COVER_BYTES = 10 * 1024 * 1024;
 const ALLOWED_COVER_HOSTS = new Set(['resources.tidal.com']);
+const inflightCoverDownloads = new Map<string, Promise<boolean>>();
 
 export const isAllowedCoverUrl = (value: string): boolean => {
 	try {
@@ -123,7 +124,23 @@ export const downloadCoverToDir = async (
 		console.warn('[Server Download] Cover URL rejected:', coverUrl);
 		return false;
 	}
+	const coverPath = path.join(targetDir, filename);
 	try {
+		const stats = await fs.stat(coverPath);
+		if (stats.size > 0) {
+			console.log('[Server Download] Cover already exists, skipping:', coverPath);
+			return true;
+		}
+	} catch {
+		// File does not exist yet; proceed to download.
+	}
+
+	const inflight = inflightCoverDownloads.get(coverPath);
+	if (inflight) {
+		return inflight;
+	}
+
+	const downloadPromise = (async () => {
 		console.log('[Server Download] Downloading cover from:', coverUrl);
 		const coverResponse = await fetch(coverUrl, {
 			headers: {
@@ -159,13 +176,20 @@ export const downloadCoverToDir = async (
 			return false;
 		}
 
-		const coverPath = path.join(targetDir, filename);
 		await fs.writeFile(coverPath, Buffer.from(coverBuffer));
 		console.log('[Server Download] Cover saved to:', coverPath);
 		return true;
+	})();
+
+	inflightCoverDownloads.set(coverPath, downloadPromise);
+
+	try {
+		return await downloadPromise;
 	} catch (coverError) {
 		console.warn('[Server Download] Cover download failed:', coverError);
 		return false;
+	} finally {
+		inflightCoverDownloads.delete(coverPath);
 	}
 };
 
@@ -655,7 +679,7 @@ export const getServerExtension = (
 /**
  * Build a filename for server-side downloads that includes track numbers for ordering.
  * Album title is already part of the directory structure, so it's not duplicated in the filename.
- * Format: "Artist - 01 Title.ext" or "Artist - 01-03 Title.ext" for multi-volume
+ * Format: "01 Artist - Title.ext" or "01-03 Artist - Title.ext" for multi-volume
  */
 export const buildServerFilename = (
 	artistName: string | undefined,
@@ -686,7 +710,7 @@ export const buildServerFilename = (
 		}
 	}
 
-	return `${artist} - ${trackPart}${title}.${ext}`;
+	return `${trackPart}${artist} - ${title}.${ext}`;
 };
 
 // Handle file conflicts based on resolution strategy

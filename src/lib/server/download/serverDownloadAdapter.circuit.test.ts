@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { __test } from './serverDownloadAdapter';
+import type { Mock } from 'vitest';
+
+type FetchMock = Mock<Parameters<typeof fetch>, ReturnType<typeof fetch>>;
 
 const targetUrl = 'https://api.tidal.com/v2/test';
 
@@ -14,16 +17,16 @@ describe('serverDownloadAdapter circuit breaker', () => {
 
   it('skips target after 3 consecutive failures and recovers after timeout', async () => {
     // Mock fetch to fail 3 times then succeed after timeout
-    const fetchMock = vi.fn()
-      // first three attempts -> 500
+    const fetchMock: FetchMock = vi.fn()
+      // first four attempts -> 500
+      .mockResolvedValueOnce({ ok: false, status: 500 } as Response)
       .mockResolvedValueOnce({ ok: false, status: 500 } as Response)
       .mockResolvedValueOnce({ ok: false, status: 500 } as Response)
       .mockResolvedValueOnce({ ok: false, status: 500 } as Response)
       // after reset -> ok
       .mockResolvedValue({ ok: true } as Response);
 
-    // @ts-expect-error override
-    globalThis.fetch = fetchMock;
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const fetchFn = await __test.createServerFetch();
 

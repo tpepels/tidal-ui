@@ -8,26 +8,19 @@ import {
 	pendingUploads,
 	chunkUploads,
 	startCleanupInterval,
-	getDownloadDir,
 	getTempDir,
 	sanitizePath,
 	ensureDir,
-	resolveFileConflict,
 	canStartUpload,
 	startUpload,
 	endUpload,
 	cleanupExpiredUploads,
 	MAX_FILE_SIZE,
 	MAX_CHUNK_SIZE,
-	downloadCoverToDir,
-	validateChecksum,
-	retryFs,
-	detectAudioFormatFromBuffer,
-	getServerExtension,
-	buildServerFilename
+	validateChecksum
 } from './_shared';
-import { embedMetadataToFile } from '$lib/server/metadataEmbedder';
 import { createDownloadOperationLogger, downloadLogger } from '$lib/server/observability';
+import { finalizeTrack } from '$lib/server/download/finalizeTrack';
 
 // Start the cleanup interval when the module loads (with await to ensure state is loaded)
 const initPromise = startCleanupInterval();
@@ -51,7 +44,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					return json({ error: 'Invalid blob format' }, { status: 400 });
 				const buffer = Buffer.from(blobParts[1], 'base64');
 				if (buffer.length === 0) return json({ error: 'Empty blob' }, { status: 400 });
-			if (MAX_FILE_SIZE > 0 && buffer.length > MAX_FILE_SIZE)
+				if (MAX_FILE_SIZE > 0 && buffer.length > MAX_FILE_SIZE)
 					return json(
 						{ error: `File too large: maximum ${MAX_FILE_SIZE} bytes allowed` },
 						{ status: 400 }
@@ -95,106 +88,48 @@ export const POST: RequestHandler = async ({ request, url }) => {
 						{ error: 'Invalid trackMetadata: must be an object or undefined' },
 						{ status: 400 }
 					);
-				const detectedFormat = detectAudioFormatFromBuffer(buffer);
-				const ext = getServerExtension(body.quality, detectedFormat);
-				const filename = buildServerFilename(
-					body.artistName,
-					body.trackTitle,
-					body.trackId,
-					ext,
-					body.trackMetadata
-				);
-				const baseDir = getDownloadDir();
-				const artistDir = sanitizePath(body.artistName || 'Unknown Artist');
-				const albumDir = sanitizePath(body.albumTitle || 'Unknown Album');
-				const targetDir = path.join(baseDir, artistDir, albumDir);
-				await ensureDir(targetDir);
-				const initialFilepath = path.join(targetDir, filename);
-			const { finalPath: initialFinalPath, action } = await resolveFileConflict(
-				initialFilepath,
-				body.conflictResolution || pendingUpload?.conflictResolution || 'overwrite',
-				buffer.length,
-				pendingUpload?.checksum
-			);
-			let finalPath = initialFinalPath;
-				if (action === 'skip') {
-					const finalFilename = path.basename(finalPath);
-					if (bodyUploadId) {
-						endUpload(bodyUploadId);
-					}
-					return json(
-						{
-							success: true,
-							filepath: finalPath,
-							filename: finalFilename,
-							action,
-							message: `File already exists, skipped: ${artistDir}/${albumDir}/${finalFilename}`,
-							coverDownloaded: false
-						},
-						{ status: 201 }
-					);
-				}
-				try {
-					await retryFs(() => fs.writeFile(finalPath, buffer));
-				} catch (err: unknown) {
-					const error = err as NodeJS.ErrnoException;
-					downloadLogger.error('Direct blob write error', {
-						phase: 'finalize',
-						uploadId: bodyUploadId,
-						trackId: body.trackId,
-						error: error.message,
-						errorCode: error.code
-					});
-					if (error.code === 'ENOSPC')
-						return json({ error: 'Not enough disk space' }, { status: 507 });
-					if (error.code === 'EACCES') return json({ error: 'Permission denied' }, { status: 403 });
-					return json({ error: 'File write failed' }, { status: 500 });
-				}
-
-				// Embed metadata into the file if track metadata is provided
 				const trackMetadata = body.trackMetadata ?? pendingUpload?.trackMetadata;
-				if (trackMetadata) {
-					try {
-						finalPath = await embedMetadataToFile(finalPath, trackMetadata);
-						downloadLogger.debug('Metadata embedded successfully', {
-							phase: 'finalize',
-							uploadId: bodyUploadId,
-							trackId: body.trackId
-						});
-					} catch (metadataError) {
-						downloadLogger.warn('Metadata embedding failed, continuing with raw file', {
-							phase: 'finalize',
-							uploadId: bodyUploadId,
-							trackId: body.trackId,
-							error: metadataError instanceof Error ? metadataError.message : String(metadataError)
-						});
-						// Continue with raw file - better than no download
-					}
-				}
+				const finalizeResult = await finalizeTrack({
+					trackId: body.trackId,
+					quality: body.quality,
+					albumTitle: body.albumTitle,
+					artistName: body.artistName,
+					trackTitle: body.trackTitle,
+					trackLookup: trackMetadata,
+					buffer,
+					conflictResolution: body.conflictResolution || pendingUpload?.conflictResolution || 'overwrite',
+					checksum: pendingUpload?.checksum,
+					detectedMimeType: body.detectedMimeType ?? pendingUpload?.detectedMimeType,
+					downloadCoverSeperately: body.downloadCoverSeperately ?? pendingUpload?.downloadCoverSeperately,
+					coverUrl: body.coverUrl ?? pendingUpload?.coverUrl
+				});
 
-				// Download album cover if requested
-				let coverDownloaded = false;
-				if (body.downloadCoverSeperately && body.coverUrl) {
-					coverDownloaded = await downloadCoverToDir(body.coverUrl, targetDir);
-				}
-				const finalFilename = path.basename(finalPath);
-				let message = `File saved to ${artistDir}/${albumDir}/${finalFilename}`;
-				if (coverDownloaded) {
-					message += ' (with cover)';
-				}
-				if (action === 'rename')
-					message = `File renamed and saved to ${artistDir}/${albumDir}/${finalFilename}`;
 				if (bodyUploadId) {
 					endUpload(bodyUploadId);
 				}
+
+				if (!finalizeResult.success) {
+					return json({ error: finalizeResult.error }, { status: finalizeResult.status });
+				}
+
+				const artistDir = sanitizePath(body.artistName || 'Unknown Artist');
+				const albumDir = sanitizePath(body.albumTitle || 'Unknown Album');
+				let message = `File saved to ${artistDir}/${albumDir}/${finalizeResult.filename}`;
+				if (finalizeResult.coverDownloaded) {
+					message += ' (with cover)';
+				}
+				if (finalizeResult.action === 'rename') {
+					message = `File renamed and saved to ${artistDir}/${albumDir}/${finalizeResult.filename}`;
+				}
+
 				return json(
 					{
 						success: true,
-						filepath: finalPath,
-						filename: finalFilename,
-						action,
+						filepath: finalizeResult.filepath,
+						filename: finalizeResult.filename,
+						action: finalizeResult.action,
 						message,
-						coverDownloaded
+						coverDownloaded: finalizeResult.coverDownloaded
 					},
 					{ status: 201 }
 				);
@@ -409,21 +344,6 @@ export const POST: RequestHandler = async ({ request, url }) => {
 			const { trackId, quality, albumTitle, artistName, trackTitle, conflictResolution } =
 				uploadData;
 			const buffer = Buffer.from(arrayBuffer);
-			const detectedFormat = detectAudioFormatFromBuffer(buffer);
-			const ext = getServerExtension(quality, detectedFormat);
-			const filename = buildServerFilename(
-				artistName,
-				trackTitle,
-				trackId,
-				ext,
-				uploadData.trackMetadata
-			);
-			const baseDir = getDownloadDir();
-			const artistDir = sanitizePath(artistName || 'Unknown Artist');
-			const albumDir = sanitizePath(albumTitle || 'Unknown Album');
-			const targetDir = path.join(baseDir, artistDir, albumDir);
-			await ensureDir(targetDir);
-			const initialFilepath = path.join(targetDir, filename);
 			if (MAX_FILE_SIZE > 0 && buffer.length > MAX_FILE_SIZE) {
 				return json(
 					{ error: `File too large (${(buffer.length / 1024 / 1024).toFixed(2)}MB) for track "${trackTitle || 'Unknown'}" by ${artistName || 'Unknown'}: maximum ${MAX_FILE_SIZE} bytes allowed` },
@@ -436,70 +356,41 @@ export const POST: RequestHandler = async ({ request, url }) => {
 			if (uploadData.checksum && !(await validateChecksum(buffer, uploadData.checksum))) {
 				return json({ error: 'Checksum validation failed' }, { status: 400 });
 			}
-			const { finalPath: initialFinalPath, action } = await resolveFileConflict(
-				initialFilepath,
+			const finalizeResult = await finalizeTrack({
+				trackId,
+				quality,
+				albumTitle,
+				artistName,
+				trackTitle,
+				trackLookup: uploadData.trackMetadata,
+				buffer,
 				conflictResolution,
-				buffer.length,
-				uploadData.checksum
-			);
-			let finalPath = initialFinalPath;
-				if (action === 'skip') {
-					const finalFilename = path.basename(finalPath);
-					endUpload(uploadId);
-					return json(
-						{
-							success: true,
-							filepath: finalPath,
-							filename: finalFilename,
-							action,
-							message: `File already exists, skipped: ${artistDir}/${albumDir}/${finalFilename}`
-						},
-						{ status: 201 }
-					);
-				}
-				try {
-					await retryFs(() => fs.writeFile(finalPath, buffer));
-				} catch (err: unknown) {
-				const error = err as NodeJS.ErrnoException;
-				downloadLogger.error('Blob upload write error', {
-					uploadId,
-					trackId,
-					phase: 'finalize',
-					error: error.message,
-					errorCode: error.code
-				});
-				if (error.code === 'ENOSPC')
-					return json({ error: 'Not enough disk space' }, { status: 507 });
-				if (error.code === 'EACCES') return json({ error: 'Permission denied' }, { status: 403 });
-				return json({ error: 'File write failed' }, { status: 500 });
-			}
+				checksum: uploadData.checksum,
+				detectedMimeType: uploadData.detectedMimeType,
+				downloadCoverSeperately: uploadData.downloadCoverSeperately,
+				coverUrl: uploadData.coverUrl
+			});
 
-			// Embed metadata into the file if track metadata is provided
-			if (uploadData.trackMetadata) {
-				try {
-					finalPath = await embedMetadataToFile(finalPath, uploadData.trackMetadata);
-					downloadLogger.debug('Metadata embedded successfully', {
-						phase: 'finalize',
-						uploadId,
-						trackId
-					});
-				} catch (metadataError) {
-					downloadLogger.warn('Metadata embedding failed, continuing with raw file', {
-						phase: 'finalize',
-						uploadId,
-						trackId,
-						error: metadataError instanceof Error ? metadataError.message : String(metadataError)
-					});
-					// Continue with raw file - better than no download
+			if (!finalizeResult.success) {
+				if (!finalizeResult.error.recoverable) {
+					endUpload(uploadId);
 				}
+				return json({ error: finalizeResult.error }, { status: finalizeResult.status });
 			}
 
 			endUpload(uploadId);
-			const finalFilename = path.basename(finalPath);
-			let message = `File saved to ${artistDir}/${albumDir}/${finalFilename}`;
-			if (action === 'rename') message = `File renamed`;
+			const artistDir = sanitizePath(artistName || 'Unknown Artist');
+			const albumDir = sanitizePath(albumTitle || 'Unknown Album');
+			let message = `File saved to ${artistDir}/${albumDir}/${finalizeResult.filename}`;
+			if (finalizeResult.action === 'rename') message = `File renamed`;
 			return json(
-				{ success: true, filepath: finalPath, filename: finalFilename, action, message },
+				{
+					success: true,
+					filepath: finalizeResult.filepath,
+					filename: finalizeResult.filename,
+					action: finalizeResult.action,
+					message
+				},
 				{ status: 201 }
 			);
 		}

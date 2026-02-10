@@ -231,7 +231,7 @@
 									<button
 										type="button"
 										class="queue-item-click"
-										on:click={() => expandedJobId = expandedJobId === job.id ? null : job.id}
+										onclick={() => expandedJobId = expandedJobId === job.id ? null : job.id}
 										aria-expanded={expandedJobId === job.id}
 									>
 										<div class="queue-item-main">
@@ -323,7 +323,7 @@
 									<button
 										type="button"
 										class="failed-item-click"
-										on:click={() => expandedJobId = expandedJobId === job.id ? null : job.id}
+										onclick={() => expandedJobId = expandedJobId === job.id ? null : job.id}
 										aria-expanded={expandedJobId === job.id}
 									>
 										<div class="failed-item-main">

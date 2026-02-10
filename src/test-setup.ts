@@ -159,6 +159,19 @@ vi.mock('$lib/config', () => ({
 		useProxy: false,
 		proxyUrl: ''
 	},
+	ensureWeightedTargets: vi.fn(() => [
+		{
+			name: 'local',
+			baseUrl: 'http://localhost:3000',
+			weight: 1,
+			cumulativeWeight: 1
+		}
+	]),
+	getPrimaryTarget: vi.fn(() => ({
+		name: 'local',
+		baseUrl: 'http://localhost:3000',
+		weight: 1
+	})),
 	fetchWithCORS: vi.fn((url: string, options?: RequestInit) => fetch(url, options)),
 	selectApiTargetForRegion: vi.fn(() => ({
 		name: 'local',

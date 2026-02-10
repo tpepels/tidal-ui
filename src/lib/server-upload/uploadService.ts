@@ -241,7 +241,10 @@ export const downloadTrackServerSide = async (
 						quality,
 						albumTitle,
 						artistName,
-						trackTitle
+						trackTitle,
+						trackNumber: track?.trackNumber,
+						trackMetadata,
+						detectedMimeType: options?.detectedMimeType
 					}),
 					timeout: 5000,
 					signal: options?.signal,

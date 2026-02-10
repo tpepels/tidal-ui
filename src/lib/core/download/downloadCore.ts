@@ -9,7 +9,7 @@ import type {
 	DownloadResult,
 	FetchFunction
 } from './types';
-import type { AudioQuality } from '$lib/types';
+import type { AudioQuality, TrackLookup } from '$lib/types';
 import { parseManifest } from './manifestParser';
 import { downloadSegmentedDash } from './segmentDownloader';
 import { 
@@ -25,7 +25,6 @@ export function setDownloadDebugLogging(enabled: boolean): void {
 
 function debugLog(...args: unknown[]): void {
 	if (downloadDebugEnabled) {
-		// eslint-disable-next-line no-console
 		console.log(...args);
 	}
 }
@@ -35,7 +34,7 @@ const MAX_MANIFEST_RETRIES = 3; // Try manifest from different targets
 
 // Cache for in-flight manifest requests to deduplicate concurrent fetches
 // Key: trackId-quality, Value: Promise<TrackLookup>
-const inflightManifestRequests = new Map<string, Promise<any>>();
+const inflightManifestRequests = new Map<string, Promise<TrackLookup>>();
 
 /**
  * Exponential backoff: 1s, 2s, 4s between retries

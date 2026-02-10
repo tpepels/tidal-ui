@@ -1,10 +1,12 @@
 import type { Handle } from '@sveltejs/kit';
 import { startWorker } from '$lib/server/downloadQueueWorker';
+import { env } from '$env/dynamic/private';
 import { dev } from '$app/environment';
 
-// Start background download worker
-if (!dev) {
-	// Only run worker in production (avoid conflicts during dev hot-reload)
+// Start background download worker (enabled by default, disable with ENABLE_DEV_WORKER=false)
+const enableWorker = env.ENABLE_DEV_WORKER !== 'false';
+
+if (enableWorker) {
 	startWorker()
 		.then(() => console.log('[Server] Background download worker started'))
 		.catch(err => console.error('[Server] Failed to start worker:', err));

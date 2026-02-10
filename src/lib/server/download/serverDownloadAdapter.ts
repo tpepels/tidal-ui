@@ -1,14 +1,11 @@
 /**
- * Server download adapter - wraps core download logic with server-specific filesystem operations
- * This is called DIRECTLY by the worker - no HTTP involved
+ * Server download adapter - wraps core download logic with server-specific fetch handling.
+ * This is called DIRECTLY by the worker and returns a buffer + lookup for finalization.
  */
 
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import { spawn } from 'child_process';
 import type { AudioQuality } from '$lib/types';
 import type { ApiClient } from '../../core/download/types';
-import { downloadTrackCore } from '../../core/download/downloadCore';
+import { downloadTrackWithRetry } from '../../core/download/downloadCore';
 import { detectAudioFormat } from '../../utils/audioFormat';
 import { 
 	API_CONFIG,
@@ -17,68 +14,11 @@ import {
 } from '$lib/config';
 import type { ApiClusterTarget } from '$lib/config';
 import { APP_VERSION } from '$lib/version';
-import { 
-	getDownloadDir, 
-	sanitizePath, 
-	ensureDir,
-	resolveFileConflict,
-	buildServerFilename,
-	getServerExtension,
-	downloadCoverToDir
-} from '../../../routes/api/download-track/_shared';
+import type { TrackLookup } from '$lib/types';
 import {
 	recordTargetHealthChange,
 	recordCircuitBreakerEvent
 } from '$lib/observability/downloadMetrics';
-
-async function writeBasicMetadata(
-	filePath: string,
-	fields: { title?: string; artist?: string; album?: string; trackNumber?: number; coverPath?: string }
-): Promise<void> {
-	const hasFields = fields.title || fields.artist || fields.album || fields.trackNumber;
-	if (!hasFields) return;
-
-	const tmpPath = `${filePath}.tmp`;
-	const args = ['-y', '-i', filePath, '-map', '0:a'];
-
-	let hasCover = false;
-	if (fields.coverPath) {
-		try {
-			await fs.access(fields.coverPath);
-			hasCover = true;
-			args.push('-i', fields.coverPath);
-		} catch {
-			hasCover = false;
-		}
-	}
-
-	args.push('-c', 'copy');
-
-	if (hasCover) {
-		args.push('-map', '1', '-disposition:v', 'attached_pic', '-metadata:s:v', 'title=Cover', '-metadata:s:v', 'comment=Cover');
-	}
-
-	if (fields.title) args.push('-metadata', `title=${fields.title}`);
-	if (fields.artist) args.push('-metadata', `artist=${fields.artist}`);
-	if (fields.album) args.push('-metadata', `album=${fields.album}`);
-	if (fields.trackNumber) args.push('-metadata', `track=${fields.trackNumber}`);
-
-	args.push(tmpPath);
-
-	await new Promise<void>((resolve, reject) => {
-		const child = spawn('ffmpeg', args, { stdio: 'ignore' });
-		child.on('error', reject);
-		child.on('exit', (code) => {
-			if (code === 0) {
-				resolve();
-			} else {
-				reject(new Error(`ffmpeg exited with code ${code}`));
-			}
-		});
-	});
-
-	await fs.rename(tmpPath, filePath);
-}
 
 /**
  * Server-side fetch that constructs direct upstream URLs with target rotation
@@ -222,8 +162,23 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 		});
 	}
 
-	return async (url: string, options?: RequestInit) => {
-		let finalUrl = url;
+	return async (input: RequestInfo | URL, options?: RequestInit) => {
+		const initialUrl =
+			typeof input === 'string'
+				? input
+				: input instanceof URL
+					? input.toString()
+					: input.url;
+		const mergedOptions =
+			input instanceof Request
+				? {
+						method: input.method,
+						headers: input.headers,
+						body: input.body as BodyInit | null,
+						...options
+					}
+				: options;
+		let finalUrl = initialUrl;
 
 		// If it's a proxy-wrapped URL, extract the actual upstream URL
 		if (finalUrl.includes('/api/proxy?url=')) {
@@ -234,7 +189,7 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 					finalUrl = decodeURIComponent(encoded);
 					console.log(`[ServerFetch] Decoded proxy URL: ${finalUrl.substring(0, 80)}...`);
 				}
-			} catch (e) {
+			} catch {
 				console.warn(`[ServerFetch] Failed to decode proxy URL`);
 			}
 		}
@@ -258,8 +213,8 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 		if (isCDNSegmentUrl) {
 			try {
 				const response = await globalThis.fetch(finalUrl, {
-					...options,
-					headers: buildHeaders(options, undefined, true)
+					...mergedOptions,
+					headers: buildHeaders(mergedOptions, undefined, true)
 				});
 				if (response.ok) {
 					return response;
@@ -299,7 +254,7 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 				// If URL is already absolute, try to rotate between known targets
 				if (finalUrl.startsWith('http')) {
 					let targetUrl = finalUrl;
-					let targetForHeaders = target;
+					let targetForHeaders: ApiClusterTarget | undefined = target;
 					try {
 						const parsed = new URL(finalUrl);
 						const originTarget = getTargetForOrigin(parsed.origin);
@@ -317,8 +272,8 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 					}
 
 					const response = await globalThis.fetch(targetUrl, {
-						...options,
-						headers: buildHeaders(options, targetForHeaders)
+						...mergedOptions,
+						headers: buildHeaders(mergedOptions, targetForHeaders)
 					});
 					if (response.ok) {
 						resetConsecutiveFailures(target.name);
@@ -339,8 +294,8 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 				console.log(`[ServerFetch] Trying ${target.name}: ${upstreamUrl.substring(0, 80)}...`);
 				
 				const response = await globalThis.fetch(upstreamUrl, {
-					...options,
-					headers: buildHeaders(options, target)
+					...mergedOptions,
+					headers: buildHeaders(mergedOptions, target)
 				});
 				if (response.ok) {
 					resetConsecutiveFailures(target.name);
@@ -382,11 +337,13 @@ export interface ServerDownloadParams {
 
 export interface ServerDownloadResult {
 	success: boolean;
-	filepath?: string;
-	filename?: string;
-	action?: 'overwrite' | 'skip' | 'rename';
+	buffer?: Buffer;
+	mimeType?: string;
+	detectedFormat?: { extension: string; mimeType?: string };
+	trackLookup?: TrackLookup;
+	receivedBytes?: number;
+	totalBytes?: number;
 	error?: string;
-	coverDownloaded?: boolean;
 }
 
 export async function downloadTrackServerSide(
@@ -395,130 +352,38 @@ export async function downloadTrackServerSide(
 	const {
 		trackId,
 		quality,
-		albumTitle,
-		artistName,
-		trackTitle,
-		trackNumber,
-		coverUrl,
-		conflictResolution = 'overwrite',
 		apiClient // losslessAPI - we'll use it for getTrack() parsing only
 	} = params;
 
 	try {
-		// Fetch track metadata first so we can reuse tags without double-fetching later
-		const trackLookup = await apiClient.getTrack(trackId, quality);
-		const lookupTrackNumber = Number(trackLookup.track.trackNumber) || undefined;
-		const lookupAlbumTitle = trackLookup.track.album?.title;
-		const lookupArtistName = trackLookup.track.artist?.name;
-		const lookupCoverId = trackLookup.track.album?.cover;
-		const finalTrackNumber = trackNumber ?? lookupTrackNumber;
-		const effectiveAlbumTitle = albumTitle || lookupAlbumTitle;
-		const effectiveArtistName = artistName || lookupArtistName;
-		let effectiveCoverUrl = coverUrl;
-		if (!effectiveCoverUrl && lookupCoverId) {
-			effectiveCoverUrl = `https://resources.tidal.com/images/${lookupCoverId.replace(/-/g, '/')}/1280x1280.jpg`;
-		}
-
 		// Create server-side fetch with target rotation
-		// This replaces losslessAPI.fetch which constructs proxy URLs
 		const fetchFn = await createServerFetch();
-		
-		// Download audio using core logic
-		const result = await downloadTrackCore({
+
+		// Download audio using core logic (fetch-only)
+		const result = await downloadTrackWithRetry({
 			trackId,
 			quality,
-			apiClient, // Uses apiClient.getTrack() for response parsing (properly tested)
-			fetchFn,   // Uses our server fetch that constructs direct upstream URLs with target rotation
+			apiClient,
+			fetchFn,
 			options: {
-				skipMetadataEmbedding: true // Server-side doesn't embed metadata yet
+				skipMetadataEmbedding: true
 			}
 		});
 
-		console.log(`[ServerDownload] Downloaded ${result.receivedBytes} bytes for track ${trackId}`);
-
-		// Convert to Buffer
 		const buffer = Buffer.from(result.buffer);
-
-		// Detect format and determine extension
 		const detectedFormat = detectAudioFormat(new Uint8Array(buffer));
-		const ext = getServerExtension(quality, detectedFormat);
 
-		// Build filename with track number for ordering
-		const filename = buildServerFilename(
-			effectiveArtistName,
-			trackTitle,
-			trackId,
-			ext,
-			{ track: { trackNumber: finalTrackNumber, volumeNumber: trackLookup.track.volumeNumber, album: { numberOfVolumes: trackLookup.track.album?.numberOfVolumes } } },
-			finalTrackNumber
-		);
+		// Fetch track metadata for embedding + naming downstream (only after successful download)
+		const trackLookup = await apiClient.getTrack(trackId, quality);
 
-		// Determine directory structure
-		const baseDir = getDownloadDir();		const artistDir = sanitizePath(effectiveArtistName || 'Unknown Artist');
-		const albumDir = sanitizePath(effectiveAlbumTitle || 'Unknown Album');
-		const targetDir = path.join(baseDir, artistDir, albumDir);
-		await ensureDir(targetDir);
-
-		const initialFilepath = path.join(targetDir, filename);
-
-		// Handle file conflicts
-		const { finalPath, action } = await resolveFileConflict(
-			initialFilepath,
-			conflictResolution,
-			buffer.length,
-			undefined // No checksum validation for now
-		);
-
-		if (action === 'skip') {
-			const finalFilename = path.basename(finalPath);
-			return {
-				success: true,
-				filepath: finalPath,
-				filename: finalFilename,
-				action,
-				coverDownloaded: false
-			};
-		}
-
-		// Write file to disk
-		await fs.writeFile(finalPath, buffer);
-
-		// Download cover art if requested (before metadata so we can embed it)
-		let coverDownloaded = false;
-		let embeddedCoverPath: string | undefined;
-		if (effectiveCoverUrl) {
-			try {
-				coverDownloaded = await downloadCoverToDir(effectiveCoverUrl, targetDir);
-				if (coverDownloaded) {
-					embeddedCoverPath = path.join(targetDir, 'cover.jpg');
-					console.log(`[ServerDownload] Cover art downloaded`);
-				}
-			} catch (coverErr) {
-				console.warn(`[ServerDownload] Cover download failed:`, coverErr);
-			}
-		}
-
-		// Embed basic metadata (best-effort)
-		try {
-			await writeBasicMetadata(finalPath, {
-				title: trackTitle,
-				artist: effectiveArtistName,
-				album: effectiveAlbumTitle,
-				trackNumber: finalTrackNumber,
-				coverPath: embeddedCoverPath
-			});
-		} catch (metaErr) {
-			console.warn('[ServerDownload] Metadata write skipped:', metaErr);
-		}
-		console.log(`[ServerDownload] Saved to: ${finalPath}`);
-
-		const finalFilename = path.basename(finalPath);
 		return {
 			success: true,
-			filepath: finalPath,
-			filename: finalFilename,
-			action,
-			coverDownloaded
+			buffer,
+			mimeType: result.mimeType,
+			detectedFormat: detectedFormat ?? undefined,
+			trackLookup,
+			receivedBytes: result.receivedBytes,
+			totalBytes: result.totalBytes
 		};
 	} catch (error) {
 		const errorMsg = error instanceof Error ? error.message : String(error);

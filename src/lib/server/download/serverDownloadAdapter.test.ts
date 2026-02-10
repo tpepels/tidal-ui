@@ -1,14 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { __test as adapterTest } from './serverDownloadAdapter';
+import type { Mock } from 'vitest';
+
+type FetchMock = Mock<Parameters<typeof fetch>, ReturnType<typeof fetch>>;
 
 describe('serverDownloadAdapter header propagation', () => {
   const cdnUrl = 'https://sp-ad-cf.audio.tidal.com/mediatracks/example/segment.m4s';
-  let fetchMock: ReturnType<typeof vi.fn>;
+  let fetchMock: FetchMock;
 
   beforeEach(() => {
-    fetchMock = vi.fn(async () => ({ ok: true } as Response));
-    // @ts-expect-error override for test
-    globalThis.fetch = fetchMock;
+    fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>(async () => ({
+      ok: true
+    } as Response));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
   });
 
   afterEach(() => {

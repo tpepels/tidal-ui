@@ -11,17 +11,53 @@ export async function downloadSegmentedDash(
 	fetchFn: FetchFunction,
 	options?: DownloadOptions
 ): Promise<DownloadResult> {
+	const DEFAULT_SEGMENT_TIMEOUT_MS = 20000;
+	const segmentTimeoutMs = options?.segmentTimeoutMs ?? DEFAULT_SEGMENT_TIMEOUT_MS;
 	const urls = [initializationUrl, ...segmentUrls];
 	const chunks: Uint8Array[] = [];
 	let receivedBytes = 0;
 
 	for (const url of urls) {
-		const response = await fetchFn(url, {
-			signal: options?.signal,
-			headers: options?.headers
-		});
+		let didTimeout = false;
+		const controller = new AbortController();
+		const timeout = setTimeout(() => {
+			didTimeout = true;
+			controller.abort();
+		}, segmentTimeoutMs);
+		const onAbort = () => {
+			didTimeout = false;
+			controller.abort();
+		};
+		if (options?.signal) {
+			if (options.signal.aborted) {
+				clearTimeout(timeout);
+				throw new Error('Download aborted');
+			}
+			options.signal.addEventListener('abort', onAbort, { once: true });
+		}
+
+		let response: Response;
+		try {
+			response = await fetchFn(url, {
+				signal: controller.signal,
+				headers: options?.headers
+			});
+		} catch (error) {
+			if (didTimeout) {
+				throw new Error(`Segment fetch timeout after ${segmentTimeoutMs}ms`);
+			}
+			if (options?.signal?.aborted) {
+				throw new Error('Download aborted');
+			}
+			throw error instanceof Error ? error : new Error(String(error));
+		} finally {
+			clearTimeout(timeout);
+			if (options?.signal) {
+				options.signal.removeEventListener('abort', onAbort);
+			}
+		}
 		if (!response.ok) {
-			throw new Error(`Failed to fetch DASH segment (status ${response.status}): ${url}`);
+			throw new Error(`Failed to fetch CDN segment (status ${response.status}): ${url}`);
 		}
 		const buffer = await response.arrayBuffer();
 		const chunk = new Uint8Array(buffer);

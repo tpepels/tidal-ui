@@ -1,6 +1,49 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { downloadTrackCore, setDownloadDebugLogging } from './downloadCore';
-import type { ApiClient, DownloadOptions } from './types';
+import type { ApiClient, DownloadOptions, FetchFunction } from './types';
+import type { AudioQuality, Track, TrackInfo, TrackLookup } from '$lib/types';
+import type { Mock } from 'vitest';
+
+const baseTrack = (trackId: number, quality: AudioQuality): Track => ({
+	id: trackId,
+	title: 'Test Track',
+	duration: 180,
+	version: null,
+	popularity: 0,
+	editable: false,
+	explicit: false,
+	trackNumber: 1,
+	volumeNumber: 1,
+	url: 'https://example.com',
+	audioQuality: quality,
+	audioModes: ['STEREO'],
+	allowStreaming: true,
+	streamReady: true,
+	premiumStreamingOnly: false,
+	artist: { id: 1, name: 'Test Artist', type: 'MAIN' },
+	artists: [{ id: 1, name: 'Test Artist', type: 'MAIN' }],
+	album: { id: 1, title: 'Test Album', cover: '', videoCover: null }
+});
+
+const baseInfo = (trackId: number, quality: AudioQuality, manifest: string): TrackInfo => ({
+	trackId,
+	audioQuality: quality,
+	audioMode: 'STEREO',
+	manifest,
+	manifestMimeType: 'audio/flac',
+	assetPresentation: 'FULL'
+});
+
+const buildLookup = (params: {
+	trackId: number;
+	quality: AudioQuality;
+	manifest: string;
+	originalTrackUrl?: string | null;
+}): TrackLookup => ({
+	track: baseTrack(params.trackId, params.quality),
+	info: baseInfo(params.trackId, params.quality, params.manifest),
+	...(params.originalTrackUrl ? { originalTrackUrl: params.originalTrackUrl } : {})
+});
 
 // Mock response helper
 function createMockResponse(data: Buffer, ok: boolean = true): Response {
@@ -44,31 +87,25 @@ function createMockResponse(data: Buffer, ok: boolean = true): Response {
 
 describe('downloadTrackCore', () => {
 	let mockApiClient: ApiClient;
-	let fetchFn: ReturnType<typeof vi.fn>;
+	let fetchFn: Mock<Parameters<FetchFunction>, ReturnType<FetchFunction>>;
 	let audioBuffer: Buffer;
 
 	beforeEach(() => {
 		audioBuffer = Buffer.alloc(2_000_000, 'audio data'); // 2MB
 		
-		fetchFn = vi.fn(async () => createMockResponse(audioBuffer));
+		fetchFn = vi.fn<Parameters<FetchFunction>, ReturnType<FetchFunction>>(
+			async () => createMockResponse(audioBuffer)
+		);
 		
 		mockApiClient = {
-			getTrack: vi.fn(async (trackId: number, quality: string) => ({
-				trackId,
-				quality,
-				originalTrackUrl: null,
-				info: {
-					manifest: btoa('https://example.com/audio.flac'),
-					albumId: 123,
-					albumTitle: 'Test Album',
-					artistId: 456,
-					artistName: 'Test Artist',
-					trackTitle: 'Test Track',
-					duration: 180,
-					explicit: false,
-					copyright: 'Test'
-				}
-			}))
+			getTrack: vi.fn(async (trackId: number, quality: AudioQuality) =>
+				buildLookup({
+					trackId,
+					quality,
+					originalTrackUrl: null,
+					manifest: btoa('https://example.com/audio.flac')
+				})
+			)
 		};
 	});
 
@@ -93,22 +130,14 @@ describe('downloadTrackCore', () => {
 	});
 
 	it('should use originalTrackUrl if available', async () => {
-		mockApiClient.getTrack = vi.fn(async () => ({
-			trackId: 1,
-			quality: 'LOSSLESS',
-			originalTrackUrl: 'https://example.com/original.flac',
-			info: {
-				manifest: btoa('https://example.com/fallback.flac'),
-				albumId: 123,
-				albumTitle: 'Test Album',
-				artistId: 456,
-				artistName: 'Test Artist',
-				trackTitle: 'Test Track',
-				duration: 180,
-				explicit: false,
-				copyright: 'Test'
-			}
-		}));
+		mockApiClient.getTrack = vi.fn(async () =>
+			buildLookup({
+				trackId: 1,
+				quality: 'LOSSLESS',
+				originalTrackUrl: 'https://example.com/original.flac',
+				manifest: btoa('https://example.com/fallback.flac')
+			})
+		);
 
 		await downloadTrackCore({
 			trackId: 1,
@@ -125,25 +154,17 @@ describe('downloadTrackCore', () => {
 	});
 
 	it('should fall back to manifest if originalTrackUrl fails', async () => {
-		mockApiClient.getTrack = vi.fn(async () => ({
-			trackId: 1,
-			quality: 'LOSSLESS',
-			originalTrackUrl: 'https://example.com/original.flac',
-			info: {
-				manifest: btoa('https://example.com/fallback.flac'),
-				albumId: 123,
-				albumTitle: 'Test Album',
-				artistId: 456,
-				artistName: 'Test Artist',
-				trackTitle: 'Test Track',
-				duration: 180,
-				explicit: false,
-				copyright: 'Test'
-			}
-		}));
+		mockApiClient.getTrack = vi.fn(async () =>
+			buildLookup({
+				trackId: 1,
+				quality: 'LOSSLESS',
+				originalTrackUrl: 'https://example.com/original.flac',
+				manifest: btoa('https://example.com/fallback.flac')
+			})
+		);
 
 		// First call fails, second succeeds
-		fetchFn = vi.fn()
+		fetchFn = vi.fn<Parameters<FetchFunction>, ReturnType<FetchFunction>>()
 			.mockRejectedValueOnce(new Error('Network error'))
 			.mockResolvedValueOnce(createMockResponse(audioBuffer));
 
@@ -163,22 +184,14 @@ describe('downloadTrackCore', () => {
 		const upstreamUrl = 'https://example.com/audio.flac';
 		const proxyUrl = '/api/proxy?url=' + encodeURIComponent(upstreamUrl);
 		
-		mockApiClient.getTrack = vi.fn(async () => ({
-			trackId: 1,
-			quality: 'LOSSLESS',
-			originalTrackUrl: null,
-			info: {
-				manifest: proxyUrl,
-				albumId: 123,
-				albumTitle: 'Test Album',
-				artistId: 456,
-				artistName: 'Test Artist',
-				trackTitle: 'Test Track',
-				duration: 180,
-				explicit: false,
-				copyright: 'Test'
-			}
-		}));
+		mockApiClient.getTrack = vi.fn(async () =>
+			buildLookup({
+				trackId: 1,
+				quality: 'LOSSLESS',
+				originalTrackUrl: null,
+				manifest: proxyUrl
+			})
+		);
 
 		const result = await downloadTrackCore({
 			trackId: 1,
@@ -197,7 +210,9 @@ describe('downloadTrackCore', () => {
 
 	it('should reject files smaller than 1KB minimum', async () => {
 		const smallBuffer = Buffer.alloc(500, 'small');
-		fetchFn = vi.fn(async () => createMockResponse(smallBuffer));
+		fetchFn = vi.fn<Parameters<FetchFunction>, ReturnType<FetchFunction>>(
+			async () => createMockResponse(smallBuffer)
+		);
 
 		const promise = downloadTrackCore({
 			trackId: 1,
@@ -210,22 +225,14 @@ describe('downloadTrackCore', () => {
 	});
 
 	it('should throw error if manifest type is unknown', async () => {
-		mockApiClient.getTrack = vi.fn(async () => ({
-			trackId: 1,
-			quality: 'LOSSLESS',
-			originalTrackUrl: null,
-			info: {
-				manifest: 'invalid-garbage-data',
-				albumId: 123,
-				albumTitle: 'Test Album',
-				artistId: 456,
-				artistName: 'Test Artist',
-				trackTitle: 'Test Track',
-				duration: 180,
-				explicit: false,
-				copyright: 'Test'
-			}
-		}));
+		mockApiClient.getTrack = vi.fn(async () =>
+			buildLookup({
+				trackId: 1,
+				quality: 'LOSSLESS',
+				originalTrackUrl: null,
+				manifest: 'invalid-garbage-data'
+			})
+		);
 
 		const promise = downloadTrackCore({
 			trackId: 1,

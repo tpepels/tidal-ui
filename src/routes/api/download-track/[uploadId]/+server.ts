@@ -1,19 +1,13 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
-import * as path from 'path';
-import * as fs from 'fs/promises';
 import {
 	pendingUploads,
-	getDownloadDir,
 	sanitizePath,
-	ensureDir,
-	resolveFileConflict,
 	MAX_FILE_SIZE,
 	validateChecksum,
-	downloadCoverToDir,
-	retryFs,
 	endUpload
 } from '../_shared';
+import { finalizeTrack } from '$lib/server/download/finalizeTrack';
 
 export const POST: RequestHandler = async ({ request, params }) => {
 	try {
@@ -50,35 +44,6 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			coverUrl
 		} = uploadData;
 
-		// Determine file extension based on quality
-		let ext = 'm4a';
-		if (quality === 'HI_RES_LOSSLESS' || quality === 'LOSSLESS') {
-			ext = 'flac';
-		} else if (quality === 'HIGH') {
-			ext = 'm4a';
-		} else {
-			ext = 'm4a';
-		}
-
-		// Generate filename using track title if available, otherwise use track ID
-		let filename: string;
-		if (trackTitle) {
-			const sanitizedTitle = sanitizePath(trackTitle);
-			const sanitizedArtist = sanitizePath(artistName || 'Unknown');
-			filename = `${sanitizedArtist} - ${sanitizedTitle}.${ext}`;
-		} else {
-			filename = `track-${trackId}.${ext}`;
-		}
-
-		// Organize by artist/album directory structure
-		const baseDir = getDownloadDir();
-		const artistDir = sanitizePath(artistName || 'Unknown Artist');
-		const albumDir = sanitizePath(albumTitle || 'Unknown Album');
-		const targetDir = path.join(baseDir, artistDir, albumDir);
-
-		// Ensure target directory exists
-		await ensureDir(targetDir);
-
 		const buffer = Buffer.from(arrayBuffer);
 		if (MAX_FILE_SIZE > 0 && buffer.length > MAX_FILE_SIZE) {
 			const trackDesc = `track ID ${trackId} (${trackTitle || 'Unknown'})`;
@@ -94,52 +59,46 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			return json({ error: 'Checksum validation failed' }, { status: 400 });
 		}
 
-		// Full filepath
-		const initialFilepath = path.join(targetDir, filename);
-		const { finalPath, action } = await resolveFileConflict(
-			initialFilepath,
-			conflictResolution || 'overwrite_if_different',
-			buffer.length,
-			checksum
-		);
-		if (action === 'skip') {
-			const finalFilename = path.basename(finalPath);
-			endUpload(uploadId);
-			return json(
-				{
-					success: true,
-					filepath: finalPath,
-					filename: finalFilename,
-					action,
-					message: `File already exists, skipped: ${artistDir}/${albumDir}/${finalFilename}`
-				},
-				{ status: 201 }
-			);
-		}
+		const finalizeResult = await finalizeTrack({
+			trackId,
+			quality,
+			albumTitle,
+			artistName,
+			trackTitle,
+			trackLookup: uploadData.trackMetadata,
+			buffer,
+			conflictResolution: conflictResolution || 'overwrite_if_different',
+			checksum,
+			detectedMimeType: uploadData.detectedMimeType,
+			downloadCoverSeperately,
+			coverUrl
+		});
 
-		// Write blob directly to file
-		// Note: Metadata is already embedded client-side by losslessAPI.fetchTrackBlob()
-		await retryFs(() => fs.writeFile(finalPath, buffer));
-
-		let coverDownloaded = false;
-		if (downloadCoverSeperately && coverUrl) {
-			coverDownloaded = await downloadCoverToDir(coverUrl, targetDir);
+		if (!finalizeResult.success) {
+			if (!finalizeResult.error.recoverable) {
+				endUpload(uploadId);
+			}
+			return json({ error: finalizeResult.error }, { status: finalizeResult.status });
 		}
 
 		// Clean up the upload session
 		endUpload(uploadId);
 
+		const artistDir = sanitizePath(artistName || 'Unknown Artist');
+		const albumDir = sanitizePath(albumTitle || 'Unknown Album');
+		const message =
+			finalizeResult.action === 'rename'
+				? `File renamed and saved to ${artistDir}/${albumDir}/${finalizeResult.filename}`
+				: `File saved to ${artistDir}/${albumDir}/${finalizeResult.filename}`
+					+ (finalizeResult.coverDownloaded ? ' (with cover)' : '');
+
 		return json(
 			{
 				success: true,
-				filepath: finalPath,
-				filename: path.basename(finalPath),
-				action,
-				message:
-					action === 'rename'
-						? `File renamed and saved to ${artistDir}/${albumDir}/${path.basename(finalPath)}`
-						: `File saved to ${artistDir}/${albumDir}/${path.basename(finalPath)}`
-							+ (coverDownloaded ? ' (with cover)' : '')
+				filepath: finalizeResult.filepath,
+				filename: finalizeResult.filename,
+				action: finalizeResult.action,
+				message
 			},
 			{ status: 201 }
 		);

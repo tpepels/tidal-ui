@@ -150,6 +150,31 @@ describe('manifestParser', () => {
 			expect(result.segmentUrls).toBeDefined();
 		});
 
+		it('should preserve base URL query parameters for DASH segments', () => {
+			const dashManifest = `<?xml version="1.0"?>
+<MPD>
+	<BaseURL>https://cdn.example.com/path/?Key-Pair-Id=abc&amp;Policy=def</BaseURL>
+	<Period>
+		<AdaptationSet>
+			<Representation mimeType="audio/mp4" codecs="ac-3">
+				<SegmentTemplate media="segment_$Number$.m4s" initialization="init.mp4" startNumber="1">
+					<SegmentTimeline>
+						<S d="2" r="0" />
+					</SegmentTimeline>
+				</SegmentTemplate>
+			</Representation>
+		</AdaptationSet>
+	</Period>
+</MPD>`;
+			const base64 = btoa(dashManifest);
+			const result = parseManifest(base64);
+			expect(result.type).toBe('segmented-dash');
+			expect(result.initializationUrl).toContain('Key-Pair-Id=abc');
+			expect(result.initializationUrl).toContain('Policy=def');
+			expect(result.segmentUrls?.[0]).toContain('Key-Pair-Id=abc');
+			expect(result.segmentUrls?.[0]).toContain('Policy=def');
+		});
+
 		it('should handle unknown manifest type', () => {
 			const result = parseManifest('garbage-data');
 			expect(result.type).toBe('unknown');

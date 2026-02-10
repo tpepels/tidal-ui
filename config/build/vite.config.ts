@@ -40,6 +40,8 @@ export default defineConfig(({ mode, ssrBuild }) => {
 	};
 
 	return {
+		logLevel: (env.VITE_LOG_LEVEL as 'info' | 'warn' | 'error' | 'silent' | undefined) || 'info',
+		clearScreen: false,
 		plugins,
 		resolve: {
 			alias: {

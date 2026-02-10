@@ -232,7 +232,8 @@ export class DownloadOrchestrator {
 				return {
 					success: false,
 					error: {
-						code: 'QUEUE_SUBMISSION_FAILED',
+						code: 'SERVER_ERROR',
+						retry: true,
 						message: `Failed to queue track: ${error}`,
 						userMessage: 'Failed to queue track for download'
 					}
@@ -255,7 +256,8 @@ export class DownloadOrchestrator {
 		return {
 			success: false,
 			error: {
-				code: 'QUEUE_SUBMISSION_FAILED',
+				code: 'SERVER_ERROR',
+				retry: true,
 				message: errorMsg,
 				userMessage: 'Failed to submit track to download queue'
 			}

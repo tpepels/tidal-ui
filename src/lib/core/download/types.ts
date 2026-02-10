@@ -16,6 +16,7 @@ export interface DownloadOptions {
 	skipMetadataEmbedding?: boolean;
 	convertAacToMp3?: boolean;
 	headers?: HeadersInit;
+	segmentTimeoutMs?: number;
 }
 
 export interface ManifestParseResult {

@@ -22,7 +22,7 @@ export function decodeBase64Manifest(manifest: string): string {
 				console.log('[ManifestParser] Decoded proxy URL in manifest');
 				return result;
 			}
-		} catch (e) {
+		} catch {
 			console.warn('[ManifestParser] Failed to parse proxy URL:', trimmed.substring(0, 100));
 			// Fall through to base64 decoding
 		}
@@ -53,7 +53,7 @@ export function decodeBase64Manifest(manifest: string): string {
 				console.log('[ManifestParser] Decoded proxy URL after base64 decode');
 				return decoded;
 			}
-		} catch (e) {
+		} catch {
 			console.warn('[ManifestParser] Failed to parse proxy URL after base64 decode:', result.substring(0, 100));
 		}
 	}
@@ -76,6 +76,11 @@ function unescapeXmlEntities(text: string): string {
 		.replace(/&quot;/g, '"')
 		.replace(/&lt;/g, '<')
 		.replace(/&gt;/g, '>');
+}
+
+function normalizeSegmentTemplateValue(value: string | null | undefined): string | null {
+	if (!value) return null;
+	return unescapeXmlEntities(value.trim());
 }
 
 function isProxyUrl(value: string): boolean {
@@ -229,15 +234,15 @@ export function parseMpdSegmentTemplate(manifestText: string): (SegmentTemplate 
 			if (!template) return null;
 
 			const baseUrlElement = doc.getElementsByTagName('BaseURL')[0];
-			const baseUrl = baseUrlElement?.textContent?.trim();
+			const baseUrl = normalizeSegmentTemplateValue(baseUrlElement?.textContent ?? null) ?? undefined;
 
 			const representation = doc.getElementsByTagName('Representation')[0];
 			const codec = representation?.getAttribute('codecs')?.trim();
 
 			if (!template) return null;
 
-			const initializationUrl = template.getAttribute('initialization')?.trim();
-			const mediaUrlTemplate = template.getAttribute('media')?.trim();
+			const initializationUrl = normalizeSegmentTemplateValue(template.getAttribute('initialization'));
+			const mediaUrlTemplate = normalizeSegmentTemplateValue(template.getAttribute('media'));
 			if (!initializationUrl || !mediaUrlTemplate) return null;
 
 			const startNumber = Number.parseInt(template.getAttribute('startNumber') ?? '1', 10);
@@ -268,8 +273,8 @@ export function parseMpdSegmentTemplate(manifestText: string): (SegmentTemplate 
 	};
 
 	const parseWithRegex = () => {
-		const initializationUrl = /initialization="([^"]+)"/i.exec(trimmed)?.[1]?.trim();
-		const mediaUrlTemplate = /media="([^"]+)"/i.exec(trimmed)?.[1]?.trim();
+		const initializationUrl = normalizeSegmentTemplateValue(/initialization="([^"]+)"/i.exec(trimmed)?.[1]);
+		const mediaUrlTemplate = normalizeSegmentTemplateValue(/media="([^"]+)"/i.exec(trimmed)?.[1]);
 		if (!initializationUrl || !mediaUrlTemplate) return null;
 
 		const startNumberMatch = /startNumber="(\d+)"/i.exec(trimmed);
@@ -288,7 +293,7 @@ export function parseMpdSegmentTemplate(manifestText: string): (SegmentTemplate 
 
 		// Extract BaseURL with regex
 		const baseUrlMatch = /<BaseURL>([^<]+)<\/BaseURL>/i.exec(trimmed);
-		const baseUrl = baseUrlMatch?.[1]?.trim();
+		const baseUrl = normalizeSegmentTemplateValue(baseUrlMatch?.[1] ?? null) ?? undefined;
 
 		return {
 			initializationUrl,
@@ -306,15 +311,21 @@ function buildMpdSegmentUrls(
 	template: SegmentTemplate & { baseUrl?: string; codec?: string }
 ): { initializationUrl: string; segmentUrls: string[] } | null {
 	const resolveUrl = (url: string): string => {
-		if (/^https?:\/\//i.test(url)) return url;
+		const cleaned = unescapeXmlEntities(url);
+		if (/^https?:\/\//i.test(cleaned)) return cleaned;
 		if (template.baseUrl) {
 			try {
-				return new URL(url, template.baseUrl).toString();
+				const base = new URL(unescapeXmlEntities(template.baseUrl));
+				const resolved = new URL(cleaned, base);
+				if (!resolved.search && base.search) {
+					resolved.search = base.search;
+				}
+				return resolved.toString();
 			} catch {
-				return `${template.baseUrl.replace(/\/+$/, '')}/${url.replace(/^\/+/, '')}`;
+				return `${unescapeXmlEntities(template.baseUrl).replace(/\/+$/, '')}/${cleaned.replace(/^\/+/, '')}`;
 			}
 		}
-		return url;
+		return cleaned;
 	};
 
 	const initializationUrl = resolveUrl(template.initializationUrl);

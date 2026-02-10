@@ -170,6 +170,7 @@ export interface QueuedJob {
 	createdAt: number;
 	startedAt?: number;
 	completedAt?: number;
+	lastUpdatedAt?: number;
 	trackCount?: number; // For albums
 	completedTracks?: number; // For albums
 	// Retry logic
@@ -375,13 +376,14 @@ export async function updateJobStatus(
 	updates: Partial<QueuedJob>
 ): Promise<void> {
 	const client = await getConnectedRedis();
+	const stampedUpdates = { ...updates, lastUpdatedAt: Date.now() };
 	
 	if (client) {
 		try {
 			const existing = await client.hget(QUEUE_KEY, jobId);
 			if (existing) {
 				const job = JSON.parse(existing) as QueuedJob;
-				const updated = { ...job, ...updates };
+				const updated = { ...job, ...stampedUpdates };
 				await client.hset(QUEUE_KEY, jobId, JSON.stringify(updated));
 				
 				// Remove from processing set if completed/failed
@@ -398,7 +400,7 @@ export async function updateJobStatus(
 	// Fallback to memory
 	const job = memoryQueue.get(jobId);
 	if (job) {
-		Object.assign(job, updates);
+		Object.assign(job, stampedUpdates);
 		if (job.status === 'completed' || job.status === 'failed') {
 			processingJobs.delete(jobId);
 		}
@@ -568,7 +570,8 @@ export async function cleanupStuckJobs(timeoutMs: number = 300000): Promise<numb
 
 	for (const job of jobs) {
 		if (job.status === 'processing' && job.startedAt) {
-			const processingTime = now - job.startedAt;
+			const lastUpdate = job.lastUpdatedAt ?? job.startedAt;
+			const processingTime = now - lastUpdate;
 			
 			if (processingTime > timeoutMs) {
 				const minutes = Math.round(processingTime / 60000);

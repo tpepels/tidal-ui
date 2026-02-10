@@ -2,18 +2,21 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import type { AudioQuality } from '$lib/types';
-import { getDownloadDir, sanitizePath } from '../download-track/_shared';
+import type { AudioQuality, TrackLookup } from '$lib/types';
+import { buildServerFilename, getDownloadDir, getServerExtension, sanitizePath } from '../download-track/_shared';
 
 export const POST: RequestHandler = async ({ request }) => {
 	try {
 		const body = await request.json();
-		const { trackId, quality, albumTitle, artistName, trackTitle } = body as {
+		const { trackId, quality, albumTitle, artistName, trackTitle, trackNumber, trackMetadata, detectedMimeType } = body as {
 			trackId: number;
 			quality: AudioQuality;
 			albumTitle?: string;
 			artistName?: string;
 			trackTitle?: string;
+			trackNumber?: number;
+			trackMetadata?: TrackLookup;
+			detectedMimeType?: string;
 		};
 
 		if (typeof trackId !== 'number' || trackId <= 0 || !quality) {
@@ -23,24 +26,22 @@ export const POST: RequestHandler = async ({ request }) => {
 		if (!validQualities.includes(quality)) {
 			return json({ error: 'Invalid quality' }, { status: 400 });
 		}
-
-		// Determine file extension based on quality
-		let ext = 'm4a';
-		if (quality === 'HI_RES_LOSSLESS' || quality === 'LOSSLESS') {
-			ext = 'flac';
-		} else if (quality === 'HIGH') {
-			ext = 'm4a';
+		if (trackMetadata !== undefined && (typeof trackMetadata !== 'object' || trackMetadata === null)) {
+			return json({ error: 'Invalid trackMetadata' }, { status: 400 });
 		}
 
-		// Generate filename
-		let filename: string;
-		if (trackTitle) {
-			const sanitizedTitle = sanitizePath(trackTitle);
-			const sanitizedArtist = sanitizePath(artistName || 'Unknown');
-			filename = `${sanitizedArtist} - ${sanitizedTitle}.${ext}`;
-		} else {
-			filename = `track-${trackId}.${ext}`;
-		}
+		// Determine file extension based on server rules
+		const ext = getServerExtension(quality, null, detectedMimeType);
+
+		// Generate filename using canonical server naming
+		const filename = buildServerFilename(
+			artistName,
+			trackTitle,
+			trackId,
+			ext,
+			trackMetadata,
+			trackNumber
+		);
 
 		// Check if file exists in expected location
 		const baseDir = getDownloadDir();

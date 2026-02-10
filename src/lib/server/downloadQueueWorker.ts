@@ -3,6 +3,7 @@
  * Runs independently of browser sessions
  */
 
+import * as path from 'path';
 import {
 	dequeueJob,
 	updateJobStatus,
@@ -18,10 +19,17 @@ import * as rateLimiter from './rateLimiter';
 import type { AudioQuality } from '$lib/types';
 import { losslessAPI } from '$lib/api';
 import { downloadTrackServerSide } from './download/serverDownloadAdapter';
+import { finalizeTrack } from '$lib/server/download/finalizeTrack';
+import {
+	downloadCoverToDir,
+	ensureDir,
+	getDownloadDir,
+	sanitizePath
+} from '../../routes/api/download-track/_shared';
 
 let isRunning = false;
 let stopRequested = false;
-const MAX_CONCURRENT = 4;
+const MAX_CONCURRENT = Math.max(1, Number(process.env.WORKER_MAX_CONCURRENT || 6));
 const POLL_INTERVAL_MS = 2000;
 const PROCESSING_TIMEOUT_MS = 300000; // 5 minute max time in 'processing' state
 const activeSemaphore = new Map<string, Promise<void>>();
@@ -55,7 +63,8 @@ async function downloadTrack(
 	artistName?: string,
 	trackTitle?: string,
 	trackNumber?: number,
-	coverUrl?: string
+	coverUrl?: string,
+	options?: { downloadCover?: boolean }
 ): Promise<{ success: boolean; error?: string; filepath?: string; retryable?: boolean }> {
 	try {
 		console.log(`[Worker] Downloading track ${trackId} (${quality})`);
@@ -76,31 +85,72 @@ async function downloadTrack(
 			apiClient: losslessAPI // Main branch's API client with all the tested logic
 		});
 
-		if (result.success) {
-			// Record success for rate limiter
-			rateLimiter.recordSuccess(apiTarget);
-			console.log(`[Worker] Completed: ${result.filename || trackId}`);
-			return { 
-				success: true, 
-				filepath: result.filepath
-			};
-		} else {
-			// Categorize error to determine retry strategy
+		if (!result.success || !result.buffer || !result.trackLookup) {
 			const errorMsg = result.error || 'Download failed';
 			const errorCategory = categorizeError(errorMsg, undefined);
-			
-			// Record rate limit errors
+
 			if (errorMsg.includes('429') || errorMsg.includes('Too Many Requests')) {
 				rateLimiter.recordError(apiTarget, 'rate_limit');
 			}
-			
+
 			console.error(`[Worker] Track ${trackId} failed: ${errorMsg}`);
-			return { 
-				success: false, 
+			return {
+				success: false,
 				error: errorMsg,
 				retryable: errorCategory.isRetryable
 			};
 		}
+
+		const resolvedArtist =
+			artistName ||
+			result.trackLookup.track.artist?.name ||
+			'Unknown Artist';
+		const resolvedAlbum =
+			albumTitle ||
+			result.trackLookup.track.album?.title ||
+			'Unknown Album';
+		const lookupTitle = result.trackLookup.track.title;
+		const lookupVersion = result.trackLookup.track.version;
+		const computedTitle = lookupTitle
+			? lookupVersion
+				? `${lookupTitle} (${lookupVersion})`
+				: lookupTitle
+			: undefined;
+		const resolvedTitle = trackTitle || computedTitle || 'Unknown Track';
+		const resolvedTrackNumber =
+			trackNumber || Number(result.trackLookup.track.trackNumber) || undefined;
+
+		const finalizeResult = await finalizeTrack({
+			trackId,
+			quality,
+			albumTitle: resolvedAlbum,
+			artistName: resolvedArtist,
+			trackTitle: resolvedTitle,
+			trackNumber: resolvedTrackNumber,
+			trackLookup: result.trackLookup,
+			buffer: result.buffer,
+			conflictResolution: 'overwrite_if_different',
+			detectedMimeType: result.mimeType,
+			downloadCoverSeperately: options?.downloadCover ?? true,
+			coverUrl
+		});
+
+		if (!finalizeResult.success) {
+			console.error(`[Worker] Track ${trackId} finalize failed: ${finalizeResult.error.message}`);
+			return {
+				success: false,
+				error: finalizeResult.error.message,
+				retryable: finalizeResult.error.recoverable
+			};
+		}
+
+		// Record success for rate limiter
+		rateLimiter.recordSuccess(apiTarget);
+		console.log(`[Worker] Completed: ${finalizeResult.filename || trackId}`);
+		return {
+			success: true,
+			filepath: finalizeResult.filepath
+		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		console.error(`[Worker] Track ${trackId} failed: ${message}`);
@@ -387,6 +437,19 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 			console.log(`[Worker] Found cover art: ${coverId}`);
 		}
 
+		if (coverUrl) {
+			const coverDir = path.join(
+				getDownloadDir(),
+				sanitizePath(artistName),
+				sanitizePath(albumTitle)
+			);
+			await ensureDir(coverDir);
+			const coverResult = await downloadCoverToDir(coverUrl, coverDir);
+			if (coverResult) {
+				console.log(`[Worker] Album ${albumJob.albumId}: cover downloaded once`);
+			}
+		}
+
 		let completedTracks = 0;
 		let failedTracks = 0;
 		const startTime = Date.now();
@@ -408,50 +471,99 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		// UI must handle failed albums with clear indication and retry/delete options.
 		// This is intentional to maintain data integrity.
 		
-		for (let i = 0; i < tracks.length; i++) {
-			const track = tracks[i];
-			const trackId = typeof track.id === 'number' ? track.id : 0;
-			const trackTitle =
-				(typeof track.title === 'string' ? track.title : undefined) ||
-				'Unknown Track';
-			const trackNumber =
-				typeof track.trackNumber === 'number' ? track.trackNumber : i + 1;
-
-			if (!trackId) {
-				console.warn(`[Worker] Skipping track ${i} - invalid ID`);
-				failedTracks++;
-				trackProgress[i].status = 'failed';
-				trackProgress[i].error = 'Invalid track ID';
-				continue;
-			}
-
-			trackProgress[i].status = 'downloading';
-
-			const result = await downloadTrack(
-				trackId,
-				albumJob.quality,
-				albumTitle,
-				artistName,
-				trackTitle,
-				trackNumber,
-				coverUrl
+		const requestedConcurrency = Number(process.env.ALBUM_TRACK_CONCURRENCY || 6);
+		const albumConcurrency = Math.max(
+			1,
+			Math.min(MAX_CONCURRENT, Number.isFinite(requestedConcurrency) ? requestedConcurrency : 6, tracks.length)
+		);
+		console.log(
+			`[Worker] Album ${albumJob.albumId}: track concurrency ${albumConcurrency}/${MAX_CONCURRENT} (total ${totalTracks})`
+		);
+		if (Number.isFinite(requestedConcurrency) && requestedConcurrency > MAX_CONCURRENT) {
+			console.log(
+				`[Worker] Album ${albumJob.albumId}: ALBUM_TRACK_CONCURRENCY=${requestedConcurrency} capped by WORKER_MAX_CONCURRENT=${MAX_CONCURRENT}`
 			);
-
-			if (result.success) {
-				completedTracks++;
-				trackProgress[i].status = 'completed';
-			} else {
-				failedTracks++;
-				trackProgress[i].status = 'failed';
-				trackProgress[i].error = result.error;
-			}
-
-			await updateJobStatus(job.id, {
-				progress: (i + 1) / totalTracks,
-				completedTracks,
-				trackProgress
-			});
 		}
+
+		let nextIndex = 0;
+		let inFlight = 0;
+		const processNextTrack = async (): Promise<void> => {
+			while (true) {
+				const i = nextIndex++;
+				if (i >= tracks.length) return;
+
+				const track = tracks[i];
+				const trackId = typeof track.id === 'number' ? track.id : 0;
+				const trackTitle =
+					(typeof track.title === 'string' ? track.title : undefined) ||
+					'Unknown Track';
+				const trackNumber =
+					typeof track.trackNumber === 'number' ? track.trackNumber : i + 1;
+
+				if (!trackId) {
+					console.warn(`[Worker] Skipping track ${i} - invalid ID`);
+					failedTracks++;
+					trackProgress[i].status = 'failed';
+					trackProgress[i].error = 'Invalid track ID';
+					const processed = completedTracks + failedTracks;
+					await updateJobStatus(job.id, {
+						progress: processed / totalTracks,
+						completedTracks,
+						trackProgress
+					});
+					continue;
+				}
+
+				trackProgress[i].status = 'downloading';
+				await updateJobStatus(job.id, { trackProgress });
+
+				inFlight += 1;
+				console.log(
+					`[Worker] Album ${albumJob.albumId}: in-flight ${inFlight}/${albumConcurrency} (track ${trackId})`
+				);
+
+				let result: { success: boolean; error?: string };
+				try {
+					result = await downloadTrack(
+						trackId,
+						albumJob.quality,
+						albumTitle,
+						artistName,
+						trackTitle,
+						trackNumber,
+						coverUrl,
+						{ downloadCover: false }
+					);
+				} finally {
+					inFlight = Math.max(0, inFlight - 1);
+					console.log(
+						`[Worker] Album ${albumJob.albumId}: in-flight ${inFlight}/${albumConcurrency} (track ${trackId} done)`
+					);
+				}
+
+				if (result.success) {
+					completedTracks++;
+					trackProgress[i].status = 'completed';
+				} else {
+					failedTracks++;
+					trackProgress[i].status = 'failed';
+					trackProgress[i].error = result.error;
+				}
+
+				const processed = completedTracks + failedTracks;
+				await updateJobStatus(job.id, {
+					progress: processed / totalTracks,
+					completedTracks,
+					trackProgress
+				});
+			}
+		};
+
+		const workers = Array.from(
+			{ length: Math.min(albumConcurrency, tracks.length) },
+			() => processNextTrack()
+		);
+		await Promise.all(workers);
 
 		const duration = Date.now() - startTime;
 
