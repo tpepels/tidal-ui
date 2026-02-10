@@ -89,16 +89,11 @@
 		}
 	};
 
-	// Auto-refresh jobs when panel opens or stats change
+	// Auto-refresh jobs while the panel is open
 	$effect(() => {
 		if (isOpen) {
 			fetchQueueJobs();
-		}
-	});
-
-	$effect(() => {
-		if (isOpen && (stats.running > 0 || stats.queued > 0)) {
-			const interval = setInterval(fetchQueueJobs, 1000);
+			const interval = setInterval(fetchQueueJobs, 5000);
 			return () => clearInterval(interval);
 		}
 	});
