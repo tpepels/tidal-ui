@@ -45,7 +45,7 @@ describe('download-track/_shared invariants', () => {
 			}
 		);
 
-		expect(filename).toBe('2-03 AC_DC - Song_ 1.flac');
+		expect(filename).toBe('2-3 AC_DC - Song_ 1.flac');
 	});
 
 	it('buildServerFilename falls back to track id when title is missing', () => {

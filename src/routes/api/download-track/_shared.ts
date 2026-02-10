@@ -704,9 +704,9 @@ export const buildServerFilename = (
 	let trackPart = '';
 	if (Number.isFinite(trackNumber) && trackNumber > 0) {
 		if (numberOfVolumes > 1 && Number.isFinite(volumeNumber) && volumeNumber > 0) {
-			trackPart = `${volumeNumber}-${trackNumber.toString().padStart(2, '0')} `;
+			trackPart = `${volumeNumber}-${trackNumber} `;
 		} else {
-			trackPart = `${trackNumber.toString().padStart(2, '0')} `;
+			trackPart = `${trackNumber} `;
 		}
 	}
 

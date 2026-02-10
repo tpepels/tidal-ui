@@ -19,6 +19,7 @@ import {
 	recordTargetHealthChange,
 	recordCircuitBreakerEvent
 } from '$lib/observability/downloadMetrics';
+import * as rateLimiter from '../rateLimiter';
 
 /**
  * Server-side fetch that constructs direct upstream URLs with target rotation
@@ -241,11 +242,17 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 
 		const healthyTargets = uniqueTargets.filter(target => isTargetHealthy(target.name));
 		const circuitClosedTargets = healthyTargets.filter(target => isTargetCircuitClosed(target.name));
-		const targetList = circuitClosedTargets.length > 0 
-			? circuitClosedTargets 
-			: healthyTargets.length > 0 
-				? healthyTargets 
-				: uniqueTargets;
+		const rateAllowedTargets = circuitClosedTargets.filter(target => rateLimiter.isRequestAllowed(target.name));
+		if (rateAllowedTargets.length === 0 && circuitClosedTargets.length > 0) {
+			console.warn('[ServerFetch] All API targets are rate-limited; falling back to full list.');
+		}
+		const targetList = rateAllowedTargets.length > 0
+			? rateAllowedTargets
+			: circuitClosedTargets.length > 0 
+				? circuitClosedTargets 
+				: healthyTargets.length > 0 
+					? healthyTargets 
+					: uniqueTargets;
 
 		let lastError: Error | null = null;
 
@@ -276,11 +283,19 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 						headers: buildHeaders(mergedOptions, targetForHeaders)
 					});
 					if (response.ok) {
+						rateLimiter.recordSuccess(target.name);
 						resetConsecutiveFailures(target.name);
 						return response;
 					}
 					const bodySnippet = await readErrorSnippet(response);
 					markTargetUnhealthy(target.name);
+					if (response.status === 429) {
+						rateLimiter.recordError(target.name, 'rate_limit');
+					} else if (response.status >= 500) {
+						rateLimiter.recordError(target.name, 'server_error');
+					} else {
+						rateLimiter.recordError(target.name, 'other');
+					}
 					lastError = new Error(
 						bodySnippet
 							? `HTTP ${response.status} from ${target.name}: ${bodySnippet}`
@@ -298,17 +313,26 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 					headers: buildHeaders(mergedOptions, target)
 				});
 				if (response.ok) {
+					rateLimiter.recordSuccess(target.name);
 					resetConsecutiveFailures(target.name);
 					return response;
 				}
 				const bodySnippet = await readErrorSnippet(response);
 				markTargetUnhealthy(target.name);
+				if (response.status === 429) {
+					rateLimiter.recordError(target.name, 'rate_limit');
+				} else if (response.status >= 500) {
+					rateLimiter.recordError(target.name, 'server_error');
+				} else {
+					rateLimiter.recordError(target.name, 'other');
+				}
 				lastError = new Error(
 					bodySnippet
 						? `HTTP ${response.status} from ${target.name}: ${bodySnippet}`
 						: `HTTP ${response.status} from ${target.name}`
 				);
 			} catch (error) {
+				rateLimiter.recordError(target.name, 'network');
 				markTargetUnhealthy(target.name);
 				lastError = error instanceof Error ? error : new Error(String(error));
 				console.warn(`[ServerFetch] Error with ${target.name}:`, lastError.message);

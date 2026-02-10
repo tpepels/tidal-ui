@@ -39,6 +39,7 @@ const HEALTH_BACKOFF_MS = {
 	timeout: 2 * 60 * 1000 // 2 minutes
 };
 const targetHealth = new Map<string, number>();
+let albumTargetCursor = 0;
 const DEFAULT_SEGMENT_TIMEOUT_MS = 20000;
 const SEGMENT_TIMEOUT_MS = (() => {
 	const raw =
@@ -59,6 +60,12 @@ function markTargetDown(name: string, reason: string, timeoutMs: number): void {
 	targetHealth.set(name, until);
 	const seconds = Math.round(timeoutMs / 1000);
 	console.warn(`[Worker] Marking target ${name} down for ${seconds}s (${reason})`);
+}
+
+function rotateTargets<T>(targets: T[], offset: number): T[] {
+	if (targets.length === 0) return targets;
+	const shift = ((offset % targets.length) + targets.length) % targets.length;
+	return [...targets.slice(shift), ...targets.slice(0, shift)];
 }
 
 /**
@@ -361,6 +368,10 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 
 		const healthyTargets = targets.filter(t => !isTargetTemporarilyDown(t.name));
 		const selectedTargets = healthyTargets.length > 0 ? healthyTargets : targets;
+		const rateAllowedTargets = selectedTargets.filter(t => rateLimiter.isRequestAllowed(t.name));
+		if (rateAllowedTargets.length === 0 && selectedTargets.length > 0) {
+			console.warn('[Worker] All API targets are rate-limited; falling back to full list.');
+		}
 
 		if (selectedTargets.length === 0) {
 			throw new Error('No API targets available for album fetch');
@@ -368,11 +379,15 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		
 		let albumData: { album: Record<string, unknown>; tracks: Array<Record<string, unknown>> } | null = null;
 		let lastError: Error | null = null;
+		const rotatedTargets = rotateTargets(
+			rateAllowedTargets.length > 0 ? rateAllowedTargets : selectedTargets,
+			albumTargetCursor++
+		);
 		
 		// Try up to 3 targets with 10s timeout per target (30s max total)
-		const maxAttempts = Math.min(3, selectedTargets.length);
+		const maxAttempts = Math.min(3, rotatedTargets.length);
 		for (let i = 0; i < maxAttempts; i++) {
-			const target = selectedTargets[i];
+			const target = rotatedTargets[i];
 			try {
 				const albumUrl = `${target.baseUrl}/album/?id=${albumJob.albumId}`;
 				console.log(`[Worker] Album ${albumJob.albumId}: Trying ${target.name} (${target.baseUrl})`);
@@ -397,9 +412,19 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 					lastError = new Error(bodySnippet ? `${statusSummary} - ${bodySnippet}` : statusSummary);
 
 					if (albumResponse.status === 429) {
-						markTargetDown(target.name, 'rate limited', HEALTH_BACKOFF_MS.rateLimit);
+						const { backoffMs } = rateLimiter.recordError(target.name, 'rate_limit');
+						markTargetDown(
+							target.name,
+							'rate limited',
+							backoffMs > 0 ? backoffMs : HEALTH_BACKOFF_MS.rateLimit
+						);
 					} else if (albumResponse.status >= 500) {
-						markTargetDown(target.name, 'server error', HEALTH_BACKOFF_MS.serverError);
+						const { backoffMs } = rateLimiter.recordError(target.name, 'server_error');
+						markTargetDown(
+							target.name,
+							'server error',
+							backoffMs > 0 ? backoffMs : HEALTH_BACKOFF_MS.serverError
+						);
 					}
 
 					continue;
@@ -407,6 +432,7 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 				
 				const responseData = await albumResponse.json();
 				albumData = parseAlbumResponse(responseData);
+				rateLimiter.recordSuccess(target.name);
 				console.log(`[Worker] Album ${albumJob.albumId}: Successfully fetched from ${target.name}`);
 				break; // Success!
 			} catch (error) {
@@ -414,9 +440,19 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 				console.warn(`[Worker] Target ${target.name} failed: ${lastError.message}`);
 
 				if (lastError.name === 'AbortError') {
-					markTargetDown(target.name, 'timeout', HEALTH_BACKOFF_MS.timeout);
+					const { backoffMs } = rateLimiter.recordError(target.name, 'network');
+					markTargetDown(
+						target.name,
+						'timeout',
+						backoffMs > 0 ? backoffMs : HEALTH_BACKOFF_MS.timeout
+					);
 				} else {
-					markTargetDown(target.name, 'network error', HEALTH_BACKOFF_MS.serverError);
+					const { backoffMs } = rateLimiter.recordError(target.name, 'network');
+					markTargetDown(
+						target.name,
+						'network error',
+						backoffMs > 0 ? backoffMs : HEALTH_BACKOFF_MS.serverError
+					);
 				}
 				// Continue to next target
 			}
