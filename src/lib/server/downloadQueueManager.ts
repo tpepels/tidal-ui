@@ -53,6 +53,7 @@ export type JobType = 'track' | 'album';
 export type JobStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
 export type JobPriority = 'low' | 'normal' | 'high';
 export type ErrorCategory = 'network' | 'api_error' | 'rate_limit' | 'auth' | 'not_found' | 'server_error' | 'unknown';
+export type QueueSource = 'redis' | 'memory';
 
 /**
  * Error categorization for retry logic
@@ -199,6 +200,38 @@ const memoryQueue = new Map<string, QueuedJob>();
 const processingJobs = new Set<string>();
 
 const QUEUE_KEY = 'tidal:downloadQueue';
+
+function getRedisWarning(): string {
+	return 'Redis unavailable or disabled; using in-memory queue. If the worker runs in a separate process, the UI may not reflect active jobs.';
+}
+
+/**
+ * Get a snapshot of the queue with source info.
+ */
+export async function getQueueSnapshot(): Promise<{
+	jobs: QueuedJob[];
+	source: QueueSource;
+	warning?: string;
+}> {
+	const client = await getConnectedRedis();
+	if (client) {
+		try {
+			const jobs = await client.hgetall(QUEUE_KEY);
+			return {
+				jobs: Object.values(jobs).map((value) => JSON.parse(value) as QueuedJob),
+				source: 'redis'
+			};
+		} catch (err) {
+			console.warn('[Queue] Redis getAll failed:', err);
+		}
+	}
+
+	return {
+		jobs: Array.from(memoryQueue.values()),
+		source: 'memory',
+		warning: getRedisWarning()
+	};
+}
 
 /**
  * Add a job to the queue with duplicate detection
@@ -432,18 +465,8 @@ export async function getJob(jobId: string): Promise<QueuedJob | null> {
  * Get all jobs
  */
 export async function getAllJobs(): Promise<QueuedJob[]> {
-	const client = await getConnectedRedis();
-	if (client) {
-		try {
-			const jobs = await client.hgetall(QUEUE_KEY);
-			return Object.values(jobs).map(v => JSON.parse(v) as QueuedJob);
-		} catch (err) {
-			console.warn('[Queue] Redis getAll failed:', err);
-		}
-	}
-
-	// Fallback to memory
-	return Array.from(memoryQueue.values());
+	const snapshot = await getQueueSnapshot();
+	return snapshot.jobs;
 }
 
 /**
@@ -456,7 +479,7 @@ export async function getQueueStats(): Promise<{
 	failed: number;
 	total: number;
 }> {
-	const jobs = await getAllJobs();
+	const { jobs } = await getQueueSnapshot();
 	return {
 		queued: jobs.filter(j => j.status === 'queued').length,
 		processing: jobs.filter(j => j.status === 'processing').length,

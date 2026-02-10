@@ -22,6 +22,7 @@ export interface WorkerStatus {
 export interface ServerQueueState {
 	queue: ServerQueueStatus;
 	worker: WorkerStatus;
+	queueSource?: 'redis' | 'memory';
 	lastUpdated: number;
 	error?: string;
 }
@@ -39,6 +40,7 @@ const initialState: ServerQueueState = {
 		activeDownloads: 0,
 		maxConcurrent: 4
 	},
+	queueSource: undefined,
 	lastUpdated: 0
 };
 

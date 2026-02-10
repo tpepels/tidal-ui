@@ -5,7 +5,7 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getQueueStats, getMetrics } from '$lib/server/downloadQueueManager';
+import { getQueueSnapshot, getMetrics } from '$lib/server/downloadQueueManager';
 import { getWorkerStatus } from '$lib/server/downloadQueueWorker';
 import * as rateLimiter from '$lib/server/rateLimiter';
 
@@ -15,17 +15,26 @@ import * as rateLimiter from '$lib/server/rateLimiter';
  */
 export const GET: RequestHandler = async () => {
 	try {
-		const [queueStats, metrics, workerStatus] = await Promise.all([
-			getQueueStats(),
+		const [snapshot, metrics, workerStatus] = await Promise.all([
+			getQueueSnapshot(),
 			getMetrics(),
 			Promise.resolve(getWorkerStatus())
 		]);
 
 		const rateLimitStatus = rateLimiter.getAllStatus();
+		const jobs = snapshot.jobs;
+		const queueStats = {
+			queued: jobs.filter(j => j.status === 'queued').length,
+			processing: jobs.filter(j => j.status === 'processing').length,
+			completed: jobs.filter(j => j.status === 'completed').length,
+			failed: jobs.filter(j => j.status === 'failed').length,
+			total: jobs.length
+		};
 
 		return json({
 			success: true,
 			queue: queueStats,
+			queueSource: snapshot.source,
 			metrics,
 			worker: workerStatus,
 			rateLimiting: rateLimitStatus,

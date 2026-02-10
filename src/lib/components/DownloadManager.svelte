@@ -42,6 +42,16 @@
 
 	let totalItems = $derived($totalDownloads + stats.failed);
 	let hasActivity = $derived(totalItems > 0);
+	let redisStatus = $derived.by(() => {
+		const source = $serverQueue.queueSource;
+		if (source === 'redis') {
+			return { label: 'Redis: connected', state: 'ok' as const };
+		}
+		if (source === 'memory') {
+			return { label: 'Redis: unavailable', state: 'warn' as const };
+		}
+		return { label: 'Redis: unknown', state: 'unknown' as const };
+	});
 
 	// Start polling when component mounts
 	$effect(() => {
@@ -139,7 +149,13 @@
 			<div class="download-manager-header">
 				<div>
 					<h3 class="download-manager-title">Download Manager</h3>
-					<p class="download-manager-subtitle-text">{stats.running} downloading • {stats.queued} queued</p>
+					<p class="download-manager-subtitle-text">
+						{stats.running} downloading • {stats.queued} queued • source: {$serverQueue.queueSource ?? 'unknown'}
+					</p>
+					<div class="download-manager-redis" data-state={redisStatus.state}>
+						<span class="download-manager-redis-dot"></span>
+						<span>{redisStatus.label}</span>
+					</div>
 				</div>
 				<button
 					onclick={() => (isOpen = false)}
@@ -150,6 +166,18 @@
 					✕
 				</button>
 			</div>
+
+			{#if $serverQueue.error}
+				<div class="download-manager-error">
+					Queue polling failed: {$serverQueue.error}
+				</div>
+			{/if}
+
+			{#if $serverQueue.queueSource === 'memory'}
+				<div class="download-manager-warning">
+					Redis unavailable; using in-memory queue. UI may be stale if the worker runs in another process.
+				</div>
+			{/if}
 
 			<!-- Stats bar -->
 			<div class="download-manager-stats-bar">
@@ -522,6 +550,35 @@
 		color: var(--color-text-secondary);
 	}
 
+	.download-manager-redis {
+		margin-top: 6px;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 11px;
+		color: var(--color-text-secondary);
+	}
+
+	.download-manager-redis-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 999px;
+		background: #94a3b8;
+		display: inline-block;
+	}
+
+	.download-manager-redis[data-state='ok'] .download-manager-redis-dot {
+		background: #10b981;
+	}
+
+	.download-manager-redis[data-state='warn'] .download-manager-redis-dot {
+		background: #f59e0b;
+	}
+
+	.download-manager-redis[data-state='unknown'] .download-manager-redis-dot {
+		background: #64748b;
+	}
+
 	.download-manager-close {
 		all: unset;
 		cursor: pointer;
@@ -540,6 +597,26 @@
 	.download-manager-close:hover {
 		background: var(--color-bg-secondary);
 		color: var(--color-text-primary);
+	}
+
+	.download-manager-error {
+		margin: 0 16px 12px;
+		padding: 10px 12px;
+		border-radius: 10px;
+		background: rgba(239, 68, 68, 0.16);
+		color: #fecaca;
+		font-size: 12px;
+		line-height: 1.4;
+	}
+
+	.download-manager-warning {
+		margin: 0 16px 12px;
+		padding: 10px 12px;
+		border-radius: 10px;
+		background: rgba(245, 158, 11, 0.16);
+		color: #fde68a;
+		font-size: 12px;
+		line-height: 1.4;
 	}
 
 	/* Stats bar */

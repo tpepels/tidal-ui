@@ -320,6 +320,8 @@ function isLikelyProxyErrorPayload(payload: unknown): boolean {
 	return false;
 }
 
+// NOTE: This function consumes the provided response body.
+// Callers should pass in a cloned response if they need to keep the original readable.
 async function isUnexpectedProxyResponse(response: Response): Promise<boolean> {
 	if (!response.ok) {
 		return false;
@@ -334,7 +336,7 @@ async function isUnexpectedProxyResponse(response: Response): Promise<boolean> {
 	}
 
 	try {
-		const payload = await response.clone().json();
+		const payload = await response.json();
 		return isLikelyProxyErrorPayload(payload);
 	} catch {
 		return false;
@@ -529,7 +531,7 @@ export async function fetchWithCORS(
 				operationType
 			});
 			if (response.ok) {
-				const unexpected = await isUnexpectedProxyResponse(response);
+				const unexpected = await isUnexpectedProxyResponse(response.clone());
 				if (!unexpected) {
 					return response;
 				}

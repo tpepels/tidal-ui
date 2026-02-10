@@ -6,7 +6,7 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { enqueueJob, getAllJobs, type DownloadJob } from '$lib/server/downloadQueueManager';
+import { enqueueJob, getQueueSnapshot, type DownloadJob } from '$lib/server/downloadQueueManager';
 
 /**
  * POST /api/download-queue
@@ -86,7 +86,8 @@ export const POST: RequestHandler = async ({ request }) => {
 export const GET: RequestHandler = async ({ url }) => {
 	try {
 		const statusFilter = url.searchParams.get('status');
-		let jobs = await getAllJobs();
+		const snapshot = await getQueueSnapshot();
+		let jobs = snapshot.jobs;
 
 		if (statusFilter) {
 			jobs = jobs.filter(j => j.status === statusFilter);
@@ -95,7 +96,8 @@ export const GET: RequestHandler = async ({ url }) => {
 		return json({
 			success: true,
 			jobs,
-			count: jobs.length
+			count: jobs.length,
+			warning: snapshot.warning
 		});
 	} catch (error) {
 		console.error('[Queue API] GET error:', error);
