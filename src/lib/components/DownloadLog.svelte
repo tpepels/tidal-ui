@@ -86,43 +86,7 @@
 	}
 </script>
 
-<!-- Compact progress indicator disabled - use DownloadManager instead -->
-<!-- {#if activeDownloads.length > 0 && !$downloadLogStore.isVisible}
-	<div class="download-progress-compact">
-		<div class="download-progress-compact-header">
-			<span class="download-progress-compact-title">
-				<span class="download-progress-compact-label">{compactLabel}</span>
-				<span class="download-progress-compact-count">
-					{activeDownloads.length} track{activeDownloads.length > 1 ? 's' : ''}
-				</span>
-			</span>
-			<button
-				type="button"
-				class="download-progress-compact-toggle"
-				on:click={() => downloadLogStore.toggle()}
-				title={$downloadLogStore.isVisible ? 'Hide details' : 'Show details'}
-			>
-				{$downloadLogStore.isVisible ? '▼' : '▶'}
-			</button>
-		</div>
-		<div class="download-progress-compact-tasks">
-			{#each activeDownloads.slice(0, 3) as task (task.id)}
-				<div class="download-progress-compact-task">
-					<span class="download-progress-compact-task-title" title="{task.title}">{task.title}</span>
-					<div class="download-progress-compact-bar">
-						<div class="download-progress-compact-bar-fill" style="width: {task.progress * 100}%"></div>
-					</div>
-					<span class="download-progress-compact-percent">{Math.round(task.progress * 100)}%</span>
-				</div>
-			{/each}
-			{#if activeDownloads.length > 3}
-				<div class="download-progress-compact-more">
-					+{activeDownloads.length - 3} more...
-				</div>
-			{/if}
-		</div>
-	</div>
-{/if} -->
+<!-- Compact progress indicator removed (superseded by DownloadManager). -->
 
 <!-- Full download log (only when toggled) -->
 <div class="download-log-container" class:is-visible={$downloadLogStore.isVisible} on:click|stopPropagation role="presentation">
