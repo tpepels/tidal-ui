@@ -61,11 +61,13 @@ export const POST: RequestHandler = async ({ request }) => {
 			maxRetries,
 			checkDuplicate
 		});
+		const snapshot = await getQueueSnapshot();
 
 		return json({
 			success: true,
 			jobId,
-			message: `${job.type} job queued successfully`
+			message: `${job.type} job queued successfully`,
+			warning: snapshot.warning
 		});
 	} catch (error) {
 		console.error('[Queue API] POST error:', error);

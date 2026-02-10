@@ -42,6 +42,7 @@
 
 	let totalItems = $derived($totalDownloads + stats.failed);
 	let hasActivity = $derived(totalItems > 0);
+	let workerWarning = $derived(!$workerStatus.running && totalItems > 0);
 	let redisStatus = $derived.by(() => {
 		const source = $serverQueue.queueSource;
 		if (source === 'redis') {
@@ -170,6 +171,18 @@
 			{#if $serverQueue.error}
 				<div class="download-manager-error">
 					Queue polling failed: {$serverQueue.error}
+				</div>
+			{/if}
+
+			{#if $serverQueue.warning}
+				<div class="download-manager-warning">
+					{$serverQueue.warning}
+				</div>
+			{/if}
+
+			{#if workerWarning}
+				<div class="download-manager-warning">
+					Worker is not running; queued jobs will not start until the worker is active.
 				</div>
 			{/if}
 

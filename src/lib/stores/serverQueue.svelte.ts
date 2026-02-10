@@ -25,6 +25,7 @@ export interface ServerQueueState {
 	queueSource?: 'redis' | 'memory';
 	lastUpdated: number;
 	error?: string;
+	warning?: string;
 }
 
 const initialState: ServerQueueState = {
@@ -65,6 +66,12 @@ function createServerQueueStore() {
 					...data,
 					lastUpdated: Date.now(),
 					error: undefined
+				}));
+			} else {
+				update(state => ({
+					...state,
+					error: data.error || 'Queue polling failed',
+					lastUpdated: Date.now()
 				}));
 			}
 		} catch (error) {

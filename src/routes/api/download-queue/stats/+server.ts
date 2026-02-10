@@ -35,6 +35,7 @@ export const GET: RequestHandler = async () => {
 			success: true,
 			queue: queueStats,
 			queueSource: snapshot.source,
+			warning: snapshot.warning,
 			metrics,
 			worker: workerStatus,
 			rateLimiting: rateLimitStatus,
