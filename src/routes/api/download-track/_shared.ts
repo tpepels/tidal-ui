@@ -504,6 +504,18 @@ export const getDownloadDir = (): string => {
 	return process.env.DOWNLOAD_DIR || '/tmp/tidal-ui-downloads';
 };
 
+const DEFAULT_DIR_COMPONENT_MAX_LENGTH = 80;
+const DIR_COMPONENT_MAX_LENGTH = (() => {
+	const raw =
+		process.env.DOWNLOAD_DIR_COMPONENT_MAX_LENGTH ||
+		process.env.DIR_COMPONENT_MAX_LENGTH ||
+		'';
+	const parsed = Number(raw);
+	return Number.isFinite(parsed) && parsed >= 16
+		? parsed
+		: DEFAULT_DIR_COMPONENT_MAX_LENGTH;
+})();
+
 // Sanitize filename/path components - keep spaces for readability but escape problematic characters
 export const sanitizePath = (input: string | null | undefined): string => {
 	if (!input) return 'Unknown';
@@ -519,6 +531,22 @@ export const sanitizePath = (input: string | null | undefined): string => {
 			.replace(/[\s]+/g, ' ') // Multiple spaces to single space
 			.trim()
 	);
+};
+
+const truncatePathComponent = (value: string, maxLength: number): string => {
+	if (value.length <= maxLength) return value;
+	const hash = createHash(CHECKSUM_ALGORITHM).update(value).digest('hex').slice(0, 6);
+	const suffix = `~${hash}`;
+	const prefixLength = Math.max(1, maxLength - suffix.length);
+	const trimmed = value.slice(0, prefixLength).replace(/[.\s]+$/g, '').trimEnd();
+	const prefix = trimmed.length > 0 ? trimmed : value.slice(0, prefixLength);
+	return `${prefix}${suffix}`;
+};
+
+// Sanitize directory components with length limits to avoid overly long paths
+export const sanitizeDirName = (input: string | null | undefined): string => {
+	const sanitized = sanitizePath(input);
+	return truncatePathComponent(sanitized, DIR_COMPONENT_MAX_LENGTH);
 };
 
 // Generate MD5 checksum for file integrity

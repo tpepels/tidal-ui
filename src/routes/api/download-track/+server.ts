@@ -9,7 +9,7 @@ import {
 	chunkUploads,
 	startCleanupInterval,
 	getTempDir,
-	sanitizePath,
+	sanitizeDirName,
 	ensureDir,
 	canStartUpload,
 	startUpload,
@@ -112,8 +112,8 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					return json({ error: finalizeResult.error }, { status: finalizeResult.status });
 				}
 
-				const artistDir = sanitizePath(body.artistName || 'Unknown Artist');
-				const albumDir = sanitizePath(body.albumTitle || 'Unknown Album');
+				const artistDir = sanitizeDirName(body.artistName || 'Unknown Artist');
+				const albumDir = sanitizeDirName(body.albumTitle || 'Unknown Album');
 				let message = `File saved to ${artistDir}/${albumDir}/${finalizeResult.filename}`;
 				if (finalizeResult.coverDownloaded) {
 					message += ' (with cover)';
@@ -379,8 +379,8 @@ export const POST: RequestHandler = async ({ request, url }) => {
 			}
 
 			endUpload(uploadId);
-			const artistDir = sanitizePath(artistName || 'Unknown Artist');
-			const albumDir = sanitizePath(albumTitle || 'Unknown Album');
+			const artistDir = sanitizeDirName(artistName || 'Unknown Artist');
+			const albumDir = sanitizeDirName(albumTitle || 'Unknown Album');
 			let message = `File saved to ${artistDir}/${albumDir}/${finalizeResult.filename}`;
 			if (finalizeResult.action === 'rename') message = `File renamed`;
 			return json(

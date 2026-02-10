@@ -4,7 +4,7 @@ import * as fs from 'fs/promises';
 import {
 	chunkUploads,
 	pendingUploads,
-	sanitizePath,
+	sanitizeDirName,
 	createDownloadError,
 	ERROR_CODES,
 	endUpload,
@@ -203,8 +203,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 
 			endUpload(uploadId);
 
-			const artistDir = sanitizePath(artistName || 'Unknown Artist');
-			const albumDir = sanitizePath(albumTitle || 'Unknown Album');
+			const artistDir = sanitizeDirName(artistName || 'Unknown Artist');
+			const albumDir = sanitizeDirName(albumTitle || 'Unknown Album');
 			let message = `File saved to ${artistDir}/${albumDir}/${finalizeResult.filename}`;
 			if (finalizeResult.action === 'rename') {
 				message = `File renamed and saved to ${artistDir}/${albumDir}/${finalizeResult.filename}`;

@@ -5,6 +5,7 @@ import * as path from 'path';
 import {
 	buildServerFilename,
 	sanitizePath,
+	sanitizeDirName,
 	getServerExtension,
 	detectAudioFormatFromBuffer,
 	resolveFileConflict,
@@ -56,6 +57,13 @@ describe('download-track/_shared invariants', () => {
 	it('sanitizePath removes forbidden characters and trims whitespace', () => {
 		const value = sanitizePath('  AC/DC: Greatest..  ');
 		expect(value).toBe('AC_DC_ Greatest__');
+	});
+
+	it('sanitizeDirName truncates long directory names with a hash suffix', () => {
+		const longValue = 'A'.repeat(200);
+		const value = sanitizeDirName(longValue);
+		expect(value.length).toBeLessThanOrEqual(80);
+		expect(value).toMatch(/~[0-9a-f]{6}$/);
 	});
 
 	it('getServerExtension prefers detected format over quality', () => {

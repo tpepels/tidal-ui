@@ -4,7 +4,7 @@ import type { AudioQuality, TrackLookup } from '$lib/types';
 import { embedMetadataToFile } from '$lib/server/metadataEmbedder';
 import {
 	buildServerFilename,
-	sanitizePath,
+	sanitizeDirName,
 	ensureDir,
 	getDownloadDir,
 	getTempDir,
@@ -156,8 +156,8 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 	);
 
 	const baseDir = getDownloadDir();
-	const artistDir = sanitizePath(artistName || 'Unknown Artist');
-	const albumDir = sanitizePath(albumTitle || 'Unknown Album');
+	const artistDir = sanitizeDirName(artistName || 'Unknown Artist');
+	const albumDir = sanitizeDirName(albumTitle || 'Unknown Album');
 	const targetDir = path.join(baseDir, artistDir, albumDir);
 	await ensureDir(targetDir);
 	const initialFilepath = path.join(targetDir, filename);

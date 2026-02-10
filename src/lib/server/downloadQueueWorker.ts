@@ -24,7 +24,7 @@ import {
 	downloadCoverToDir,
 	ensureDir,
 	getDownloadDir,
-	sanitizePath
+	sanitizeDirName
 } from '../../routes/api/download-track/_shared';
 
 let isRunning = false;
@@ -49,6 +49,12 @@ const SEGMENT_TIMEOUT_MS = (() => {
 	const parsed = Number(raw);
 	return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SEGMENT_TIMEOUT_MS;
 })();
+
+function formatMegabytes(bytes: number | undefined): string {
+	if (!Number.isFinite(bytes) || !bytes) return '0 MB';
+	const mb = (bytes as number) / (1024 * 1024);
+	return `${mb.toFixed(2)} MB`;
+}
 
 function isTargetTemporarilyDown(name: string): boolean {
 	const downUntil = targetHealth.get(name);
@@ -122,7 +128,7 @@ async function downloadTrack(
 		}
 		const downloadDurationMs = Date.now() - downloadStart;
 		console.log(
-			`[Worker] Track ${trackId} download completed in ${downloadDurationMs}ms (${result.receivedBytes ?? 0} bytes)`
+			`[Worker] Track ${trackId} download completed in ${downloadDurationMs}ms (${formatMegabytes(result.receivedBytes)})`
 		);
 
 		const resolvedArtist =
@@ -498,8 +504,8 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		if (coverUrl) {
 			const coverDir = path.join(
 				getDownloadDir(),
-				sanitizePath(artistName),
-				sanitizePath(albumTitle)
+				sanitizeDirName(artistName),
+				sanitizeDirName(albumTitle)
 			);
 			await ensureDir(coverDir);
 			const coverResult = await downloadCoverToDir(coverUrl, coverDir);

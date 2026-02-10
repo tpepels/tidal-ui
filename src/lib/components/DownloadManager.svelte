@@ -43,6 +43,20 @@
 	let totalItems = $derived($totalDownloads + stats.failed);
 	let hasActivity = $derived(totalItems > 0);
 	let workerWarning = $derived(!$workerStatus.running && totalItems > 0);
+	let completedAlbums = $derived(
+		queueJobs.filter(j => j.status === 'completed' && j.job.type === 'album').length
+	);
+	let completedFiles = $derived(
+		queueJobs
+			.filter(j => j.status === 'completed')
+			.reduce((sum, job) => {
+				if (job.job.type === 'album') {
+					const count = job.completedTracks ?? job.trackCount ?? 0;
+					return sum + count;
+				}
+				return sum + 1;
+			}, 0)
+	);
 	let redisStatus = $derived.by(() => {
 		const source = $serverQueue.queueSource;
 		if (source === 'redis') {
@@ -83,7 +97,7 @@
 	});
 
 	$effect(() => {
-		if (isOpen && stats.running > 0) {
+		if (isOpen && (stats.running > 0 || stats.queued > 0)) {
 			const interval = setInterval(fetchQueueJobs, 1000);
 			return () => clearInterval(interval);
 		}
@@ -347,7 +361,13 @@
 							<span class="section-count">{stats.completed}</span>
 						</h4>
 						<div class="completion-summary">
-							<p>{stats.completed} file{stats.completed !== 1 ? 's' : ''} successfully downloaded</p>
+							{#if completedAlbums > 0}
+								<p>
+									{completedAlbums} album{completedAlbums !== 1 ? 's' : ''} • {completedFiles} file{completedFiles !== 1 ? 's' : ''} successfully downloaded
+								</p>
+							{:else}
+								<p>{completedFiles} file{completedFiles !== 1 ? 's' : ''} successfully downloaded</p>
+							{/if}
 						</div>
 					</div>
 				{/if}

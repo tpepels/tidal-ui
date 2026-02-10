@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import {
 	pendingUploads,
-	sanitizePath,
+	sanitizeDirName,
 	MAX_FILE_SIZE,
 	validateChecksum,
 	endUpload
@@ -84,8 +84,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		// Clean up the upload session
 		endUpload(uploadId);
 
-		const artistDir = sanitizePath(artistName || 'Unknown Artist');
-		const albumDir = sanitizePath(albumTitle || 'Unknown Album');
+		const artistDir = sanitizeDirName(artistName || 'Unknown Artist');
+		const albumDir = sanitizeDirName(albumTitle || 'Unknown Album');
 		const message =
 			finalizeResult.action === 'rename'
 				? `File renamed and saved to ${artistDir}/${albumDir}/${finalizeResult.filename}`

@@ -3,7 +3,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { AudioQuality, TrackLookup } from '$lib/types';
-import { buildServerFilename, getDownloadDir, getServerExtension, sanitizePath } from '../download-track/_shared';
+import { buildServerFilename, getDownloadDir, getServerExtension, sanitizeDirName } from '../download-track/_shared';
 
 export const POST: RequestHandler = async ({ request }) => {
 	try {
@@ -45,8 +45,8 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		// Check if file exists in expected location
 		const baseDir = getDownloadDir();
-		const artistDir = sanitizePath(artistName || 'Unknown Artist');
-		const albumDir = sanitizePath(albumTitle || 'Unknown Album');
+		const artistDir = sanitizeDirName(artistName || 'Unknown Artist');
+		const albumDir = sanitizeDirName(albumTitle || 'Unknown Album');
 		const expectedPath = path.join(baseDir, artistDir, albumDir, filename);
 
 		try {
