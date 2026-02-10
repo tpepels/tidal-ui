@@ -1,7 +1,6 @@
 import type { Handle } from '@sveltejs/kit';
 import { startWorker } from '$lib/server/downloadQueueWorker';
 import { env } from '$env/dynamic/private';
-import { dev } from '$app/environment';
 
 // Start background download worker (enabled by default, disable with ENABLE_DEV_WORKER=false)
 const enableWorker = env.ENABLE_DEV_WORKER !== 'false';

@@ -332,6 +332,7 @@ export interface ServerDownloadParams {
 	coverUrl?: string;
 	conflictResolution?: 'overwrite' | 'skip' | 'overwrite_if_different';
 	apiClient: ApiClient; // Pass losslessAPI - it has fetchWithCORS with target rotation
+	segmentTimeoutMs?: number;
 	// Note: No fetch parameter - apiClient handles all fetching with proper rotation
 }
 
@@ -352,12 +353,24 @@ export async function downloadTrackServerSide(
 	const {
 		trackId,
 		quality,
-		apiClient // losslessAPI - we'll use it for getTrack() parsing only
+		apiClient, // losslessAPI - we'll use it for getTrack() parsing only
+		segmentTimeoutMs
 	} = params;
 
 	try {
 		// Create server-side fetch with target rotation
 		const fetchFn = await createServerFetch();
+		const resolvedSegmentTimeoutMs =
+			Number.isFinite(segmentTimeoutMs) && Number(segmentTimeoutMs) > 0
+				? Number(segmentTimeoutMs)
+				: (() => {
+						const raw =
+							process.env.SEGMENT_TIMEOUT_MS ||
+							process.env.DOWNLOAD_SEGMENT_TIMEOUT_MS ||
+							'';
+						const parsed = Number(raw);
+						return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+					})();
 
 		// Download audio using core logic (fetch-only)
 		const result = await downloadTrackWithRetry({
@@ -366,7 +379,8 @@ export async function downloadTrackServerSide(
 			apiClient,
 			fetchFn,
 			options: {
-				skipMetadataEmbedding: true
+				skipMetadataEmbedding: true,
+				...(resolvedSegmentTimeoutMs ? { segmentTimeoutMs: resolvedSegmentTimeoutMs } : {})
 			}
 		});
 

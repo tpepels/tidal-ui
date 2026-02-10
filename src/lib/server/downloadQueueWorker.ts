@@ -39,6 +39,15 @@ const HEALTH_BACKOFF_MS = {
 	timeout: 2 * 60 * 1000 // 2 minutes
 };
 const targetHealth = new Map<string, number>();
+const DEFAULT_SEGMENT_TIMEOUT_MS = 20000;
+const SEGMENT_TIMEOUT_MS = (() => {
+	const raw =
+		process.env.SEGMENT_TIMEOUT_MS ||
+		process.env.DOWNLOAD_SEGMENT_TIMEOUT_MS ||
+		'';
+	const parsed = Number(raw);
+	return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SEGMENT_TIMEOUT_MS;
+})();
 
 function isTargetTemporarilyDown(name: string): boolean {
 	const downUntil = targetHealth.get(name);
@@ -67,9 +76,12 @@ async function downloadTrack(
 	options?: { downloadCover?: boolean }
 ): Promise<{ success: boolean; error?: string; filepath?: string; retryable?: boolean }> {
 	try {
-		console.log(`[Worker] Downloading track ${trackId} (${quality})`);
+		console.log(
+			`[Worker] Downloading track ${trackId} (${quality}) [segment timeout ${SEGMENT_TIMEOUT_MS}ms]`
+		);
 		
 		const apiTarget = API_CONFIG.baseUrl || API_CONFIG.targets[0]?.baseUrl || 'unknown';
+		const downloadStart = Date.now();
 		
 		// Call the server adapter directly (NO HTTP)
 		// Pass losslessAPI which uses fetchWithCORS for proper target rotation
@@ -82,7 +94,8 @@ async function downloadTrack(
 			trackNumber,
 			coverUrl,
 			conflictResolution: 'overwrite_if_different',
-			apiClient: losslessAPI // Main branch's API client with all the tested logic
+			apiClient: losslessAPI, // Main branch's API client with all the tested logic
+			segmentTimeoutMs: SEGMENT_TIMEOUT_MS
 		});
 
 		if (!result.success || !result.buffer || !result.trackLookup) {
@@ -100,6 +113,10 @@ async function downloadTrack(
 				retryable: errorCategory.isRetryable
 			};
 		}
+		const downloadDurationMs = Date.now() - downloadStart;
+		console.log(
+			`[Worker] Track ${trackId} download completed in ${downloadDurationMs}ms (${result.receivedBytes ?? 0} bytes)`
+		);
 
 		const resolvedArtist =
 			artistName ||
@@ -120,6 +137,7 @@ async function downloadTrack(
 		const resolvedTrackNumber =
 			trackNumber || Number(result.trackLookup.track.trackNumber) || undefined;
 
+		const finalizeStart = Date.now();
 		const finalizeResult = await finalizeTrack({
 			trackId,
 			quality,
@@ -134,6 +152,10 @@ async function downloadTrack(
 			downloadCoverSeperately: options?.downloadCover ?? true,
 			coverUrl
 		});
+		const finalizeDurationMs = Date.now() - finalizeStart;
+		console.log(
+			`[Worker] Track ${trackId} finalize completed in ${finalizeDurationMs}ms`
+		);
 
 		if (!finalizeResult.success) {
 			console.error(`[Worker] Track ${trackId} finalize failed: ${finalizeResult.error.message}`);
