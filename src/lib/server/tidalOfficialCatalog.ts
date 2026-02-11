@@ -4,7 +4,7 @@ const TIDAL_AUTH_URL = 'https://auth.tidal.com/v1/oauth2/token';
 const TIDAL_API_BASE = 'https://openapi.tidal.com/v2';
 const TOKEN_REFRESH_SKEW_MS = 60_000;
 const MAX_PAGES = 12;
-const PAGE_LIMIT = 100;
+const ALBUM_BATCH_SIZE = 50;
 
 type TokenState = {
 	accessToken: string;
@@ -55,7 +55,7 @@ function parseAlbumFromRecord(record: unknown): Album | null {
 	const releaseDate = parseString(
 		attributes.releaseDate ?? attributes.release_date ?? record.releaseDate ?? record.release_date
 	);
-	const type = parseString(attributes.type ?? record.type);
+	const type = parseString(attributes.type ?? attributes.albumType ?? record.type);
 	const audioQuality = parseString(
 		attributes.audioQuality ??
 			attributes.audio_quality ??
@@ -67,8 +67,10 @@ function parseAlbumFromRecord(record: unknown): Album | null {
 	const numberOfTracks =
 		parseNumericId(
 			attributes.numberOfTracks ??
+				attributes.numberOfItems ??
 				attributes.number_of_tracks ??
 				record.numberOfTracks ??
+				record.numberOfItems ??
 				record.number_of_tracks
 		) ?? undefined;
 	const popularity = parseNumericId(attributes.popularity ?? record.popularity) ?? undefined;
@@ -114,30 +116,47 @@ function extractAlbumRecords(payload: unknown): unknown[] {
 	return records;
 }
 
+function extractAlbumIdsFromRelationshipData(payload: unknown): number[] {
+	if (!isJsonObject(payload)) return [];
+	const data = payload.data;
+	if (!Array.isArray(data)) return [];
+	const ids = new Set<number>();
+	for (const entry of data) {
+		if (!isJsonObject(entry)) continue;
+		const id = parseNumericId(entry.id);
+		if (id !== null) ids.add(id);
+	}
+	return Array.from(ids);
+}
+
+function extractAlbumIdsFromArtistResource(payload: unknown): number[] {
+	if (!isJsonObject(payload)) return [];
+	const data = payload.data;
+	if (!isJsonObject(data)) return [];
+	const relationships = isJsonObject(data.relationships) ? data.relationships : undefined;
+	const albumsRelationship = isJsonObject(relationships?.albums) ? relationships.albums : undefined;
+	const albumData = albumsRelationship?.data;
+	if (!Array.isArray(albumData)) return [];
+	const ids = new Set<number>();
+	for (const entry of albumData) {
+		if (!isJsonObject(entry)) continue;
+		const id = parseNumericId(entry.id);
+		if (id !== null) ids.add(id);
+	}
+	return Array.from(ids);
+}
+
 function getPaginationHint(payload: unknown): {
 	nextUrl?: string;
-	total?: number;
-	offset?: number;
-	limit?: number;
+	nextCursor?: string;
 } {
 	if (!isJsonObject(payload)) return {};
 
 	const links = isJsonObject(payload.links) ? payload.links : undefined;
 	const meta = isJsonObject(payload.meta) ? payload.meta : undefined;
-	const data = isJsonObject(payload.data) ? payload.data : undefined;
-
 	const nextUrl = parseString(links?.next);
-	const total =
-		parseNumericId(meta?.totalNumberOfItems ?? meta?.total ?? data?.totalNumberOfItems ?? data?.total) ??
-		undefined;
-	const offset =
-		parseNumericId(meta?.offset ?? data?.offset ?? (isJsonObject(payload.albums) ? payload.albums.offset : undefined)) ??
-		undefined;
-	const limit =
-		parseNumericId(meta?.limit ?? data?.limit ?? (isJsonObject(payload.albums) ? payload.albums.limit : undefined)) ??
-		undefined;
-
-	return { nextUrl, total, offset, limit };
+	const nextCursor = parseString((isJsonObject(links?.meta) ? links.meta.nextCursor : undefined) ?? meta?.nextCursor);
+	return { nextUrl, nextCursor };
 }
 
 async function requestAccessToken(): Promise<string> {
@@ -230,22 +249,76 @@ function isSingle(album: Album): boolean {
 	return type.includes('SINGLE');
 }
 
-async function fetchAlbumsFromEndpoint(
-	endpoint: string,
+function createAuthHeaders(token: string): Headers {
+	return new Headers({
+		authorization: `Bearer ${token}`,
+		accept: 'application/vnd.tidal.v1+json, application/vnd.api+json, application/json',
+		'content-type': 'application/vnd.tidal.v1+json'
+	});
+}
+
+function mergeAlbums(
+	collected: Map<number, Album>,
+	seenVariants: Set<string>,
+	candidates: Album[]
+): void {
+	for (const album of candidates) {
+		if (!album || isSingle(album)) continue;
+		const variantKey = buildAlbumVariantKey(album);
+		if (seenVariants.has(variantKey)) continue;
+		seenVariants.add(variantKey);
+		collected.set(album.id, album);
+	}
+}
+
+async function fetchAlbumsByIds(
+	token: string,
+	countryCode: string,
+	albumIds: number[]
+): Promise<Album[]> {
+	if (albumIds.length === 0) return [];
+	const albums: Album[] = [];
+	for (let start = 0; start < albumIds.length; start += ALBUM_BATCH_SIZE) {
+		const chunk = albumIds.slice(start, start + ALBUM_BATCH_SIZE);
+		const query = new URLSearchParams();
+		query.set('countryCode', countryCode);
+		query.append('include', 'artists');
+		query.set('filter[id]', chunk.join(','));
+		const url = `${TIDAL_API_BASE}/albums?${query.toString()}`;
+		const response = await fetch(url, {
+			method: 'GET',
+			headers: createAuthHeaders(token)
+		});
+		if (!response.ok) {
+			continue;
+		}
+		const payload = await response.json();
+		const parsed = extractAlbumRecords(payload)
+			.map((record) => parseAlbumFromRecord(record))
+			.filter((album): album is Album => album !== null);
+		albums.push(...parsed);
+	}
+	return albums;
+}
+
+async function fetchAlbumsFromRelationshipsEndpoint(
+	artistId: number,
 	token: string,
 	countryCode: string
 ): Promise<Album[]> {
 	const collected = new Map<number, Album>();
 	const seenVariants = new Set<string>();
-	let nextUrl: string | null = `${endpoint}?countryCode=${encodeURIComponent(countryCode)}&limit=${PAGE_LIMIT}&offset=0&include=albums`;
+	let nextUrl: string | null = `${TIDAL_API_BASE}/artists/${artistId}/relationships/albums?countryCode=${encodeURIComponent(countryCode)}&include=albums`;
+	let pageCount = 0;
+	let relationshipIdCount = 0;
+	let includedAlbumCount = 0;
+	let hydratedAlbumCount = 0;
 
 	for (let page = 0; page < MAX_PAGES && nextUrl; page += 1) {
+		pageCount += 1;
 		const response = await fetch(nextUrl, {
 			method: 'GET',
-			headers: {
-				authorization: `Bearer ${token}`,
-				accept: 'application/json, application/vnd.api+json'
-			}
+			headers: createAuthHeaders(token)
 		});
 
 		if (response.status === 404) {
@@ -257,14 +330,19 @@ async function fetchAlbumsFromEndpoint(
 		}
 
 		const payload = await response.json();
-		const records = extractAlbumRecords(payload);
-		for (const record of records) {
-			const album = parseAlbumFromRecord(record);
-			if (!album || isSingle(album)) continue;
-			const variantKey = buildAlbumVariantKey(album);
-			if (seenVariants.has(variantKey)) continue;
-			seenVariants.add(variantKey);
-			collected.set(album.id, album);
+		const fromIncluded = extractAlbumRecords(payload)
+			.map((record) => parseAlbumFromRecord(record))
+			.filter((album): album is Album => album !== null);
+		includedAlbumCount += fromIncluded.length;
+		mergeAlbums(collected, seenVariants, fromIncluded);
+
+		const relationshipAlbumIds = extractAlbumIdsFromRelationshipData(payload);
+		relationshipIdCount += relationshipAlbumIds.length;
+		const missingIds = relationshipAlbumIds.filter((id) => !collected.has(id));
+		if (missingIds.length > 0) {
+			const fetchedByIds = await fetchAlbumsByIds(token, countryCode, missingIds);
+			hydratedAlbumCount += fetchedByIds.length;
+			mergeAlbums(collected, seenVariants, fetchedByIds);
 		}
 
 		const pagination = getPaginationHint(payload);
@@ -274,24 +352,54 @@ async function fetchAlbumsFromEndpoint(
 				: new URL(pagination.nextUrl, TIDAL_API_BASE).toString();
 			continue;
 		}
-
-		if (
-			typeof pagination.total === 'number' &&
-			typeof pagination.limit === 'number' &&
-			typeof pagination.offset === 'number'
-		) {
-			const nextOffset = pagination.offset + pagination.limit;
-			nextUrl =
-				nextOffset < pagination.total
-					? `${endpoint}?countryCode=${encodeURIComponent(countryCode)}&limit=${pagination.limit}&offset=${nextOffset}&include=albums`
-					: null;
+		if (pagination.nextCursor) {
+			nextUrl = `${TIDAL_API_BASE}/artists/${artistId}/relationships/albums?countryCode=${encodeURIComponent(countryCode)}&include=albums&page%5Bcursor%5D=${encodeURIComponent(pagination.nextCursor)}`;
 			continue;
 		}
 
 		nextUrl = null;
 	}
 
+	console.info(
+		`[TidalOpenApi] Artist ${artistId}: relationships pagination pages=${pageCount}, relationshipIds=${relationshipIdCount}, includedAlbums=${includedAlbumCount}, hydratedById=${hydratedAlbumCount}, merged=${collected.size}`
+	);
+
 	return Array.from(collected.values()).sort(compareAlbumByAge);
+}
+
+async function fetchAlbumsFromArtistIncludeEndpoint(
+	artistId: number,
+	token: string,
+	countryCode: string
+): Promise<Album[]> {
+	const url = `${TIDAL_API_BASE}/artists/${artistId}?countryCode=${encodeURIComponent(countryCode)}&include=albums`;
+	const response = await fetch(url, {
+		method: 'GET',
+		headers: createAuthHeaders(token)
+	});
+	if (!response.ok) {
+		const detail = (await response.text()).slice(0, 200);
+		console.warn(
+			`[TidalOpenApi] Artist ${artistId}: include=albums fallback failed (${response.status}) ${detail}`
+		);
+		return [];
+	}
+
+	const payload = await response.json();
+	const fromIncluded = extractAlbumRecords(payload)
+		.map((record) => parseAlbumFromRecord(record))
+		.filter((album): album is Album => album !== null);
+	const relationshipAlbumIds = extractAlbumIdsFromArtistResource(payload);
+	const missingIds = relationshipAlbumIds.filter((id) => !fromIncluded.some((album) => album.id === id));
+	const hydrated = missingIds.length > 0 ? await fetchAlbumsByIds(token, countryCode, missingIds) : [];
+	const merged = new Map<number, Album>();
+	const seenVariants = new Set<string>();
+	mergeAlbums(merged, seenVariants, fromIncluded);
+	mergeAlbums(merged, seenVariants, hydrated);
+	console.info(
+		`[TidalOpenApi] Artist ${artistId}: include=albums fallback included=${fromIncluded.length}, relationshipIds=${relationshipAlbumIds.length}, hydratedById=${hydrated.length}, merged=${merged.size}`
+	);
+	return Array.from(merged.values()).sort(compareAlbumByAge);
 }
 
 export async function fetchOfficialArtistAlbums(
@@ -299,17 +407,9 @@ export async function fetchOfficialArtistAlbums(
 	countryCode = process.env.TIDAL_COUNTRY_CODE || 'US'
 ): Promise<Album[]> {
 	const token = await requestAccessToken();
-	const endpoints = [
-		`${TIDAL_API_BASE}/artists/${artistId}/albums`,
-		`${TIDAL_API_BASE}/artists/${artistId}/relationships/albums`
-	];
-
-	for (const endpoint of endpoints) {
-		const albums = await fetchAlbumsFromEndpoint(endpoint, token, countryCode);
-		if (albums.length > 0) {
-			return albums;
-		}
+	const fromRelationships = await fetchAlbumsFromRelationshipsEndpoint(artistId, token, countryCode);
+	if (fromRelationships.length > 0) {
+		return fromRelationships;
 	}
-
-	return [];
+	return fetchAlbumsFromArtistIncludeEndpoint(artistId, token, countryCode);
 }
