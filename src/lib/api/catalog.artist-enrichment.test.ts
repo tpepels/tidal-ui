@@ -342,4 +342,73 @@ describe('catalog.getArtist enrichment', () => {
 		expect(albumIds).toContain(3002);
 		expect(albumIds).not.toContain(3001);
 	});
+
+	it('runs official enrichment in the same pipeline when enabled', async () => {
+		const sourcePayload = buildSourcePayload();
+		const searchPayload = {
+			version: '2.4',
+			data: {
+				albums: {
+					limit: 25,
+					offset: 0,
+					totalNumberOfItems: 0,
+					items: []
+				}
+			}
+		};
+
+		const fetchMock = vi.fn(async (url: string) => {
+			if (url.includes('/artist/?f=1684')) return jsonResponse(sourcePayload);
+			if (url.includes('/search/?al=')) return jsonResponse(searchPayload);
+			throw new Error(`Unexpected URL: ${url}`);
+		});
+
+		const officialFetchMock = vi.fn(async (input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+			if (url === 'https://app.local/api/artist/1684/official-discography') {
+				return jsonResponse({
+					enabled: true,
+					albums: [
+						{
+							id: 777001,
+							title: 'Official API Album',
+							cover: 'cover-official',
+							videoCover: null,
+							type: 'ALBUM',
+							audioQuality: 'LOSSLESS',
+							discographySource: 'official_tidal'
+						}
+					],
+					count: 1
+				});
+			}
+			throw new Error(`Unexpected official URL: ${url}`);
+		});
+
+		const context: CatalogApiContext = {
+			baseUrl: 'https://example.test',
+			fetch: fetchMock,
+			ensureNotRateLimited: vi.fn()
+		};
+
+		const originalFetch = globalThis.fetch;
+		vi.stubGlobal('fetch', officialFetchMock);
+		try {
+			const result = await getArtist(context, 1684, {
+				officialEnrichment: true,
+				officialOrigin: 'https://app.local'
+			});
+
+			const officialAlbum = result.albums.find((album) => album.id === 777001);
+			expect(officialAlbum).toBeDefined();
+			expect(officialAlbum?.discographySource).toBe('official_tidal');
+			expect(
+				result.discographyInfo?.enrichmentDiagnostics?.passes.some(
+					(pass) => pass.name === 'official-tidal'
+				)
+			).toBe(true);
+		} finally {
+			vi.stubGlobal('fetch', originalFetch);
+		}
+	});
 });

@@ -166,6 +166,48 @@ export type ArtistFetchProgress = {
 	percent?: number;
 };
 
+type ArtistFetchOptions = {
+	onProgress?: (progress: ArtistFetchProgress) => void;
+	officialEnrichment?: boolean;
+	officialOrigin?: string;
+};
+
+type OfficialDiscographyResponse = {
+	enabled?: boolean;
+	albums?: Album[];
+	error?: string;
+	reason?: string;
+	count?: number;
+};
+
+async function fetchOfficialDiscography(
+	artistId: number,
+	options?: ArtistFetchOptions
+): Promise<Album[] | null> {
+	if (!options?.officialEnrichment) {
+		return null;
+	}
+
+	const origin = options.officialOrigin?.trim();
+	if (!origin) {
+		return null;
+	}
+
+	try {
+		const response = await fetch(`${origin}/api/artist/${artistId}/official-discography`);
+		if (!response.ok) {
+			return null;
+		}
+		const payload = (await response.json()) as OfficialDiscographyResponse;
+		if (!payload.enabled || !Array.isArray(payload.albums)) {
+			return [];
+		}
+		return payload.albums;
+	} catch {
+		return null;
+	}
+}
+
 async function readJsonWithProgress(
 	response: Response,
 	onProgress?: (progress: ArtistFetchProgress) => void
@@ -226,7 +268,7 @@ async function readJsonWithProgress(
 export async function getArtist(
 	context: CatalogApiContext,
 	id: number,
-	options?: { onProgress?: (progress: ArtistFetchProgress) => void }
+	options?: ArtistFetchOptions
 ): Promise<ArtistDetails> {
 	const response = await context.fetch(`${context.baseUrl}/artist/?f=${id}`);
 	context.ensureNotRateLimited(response);
@@ -479,7 +521,7 @@ export async function getArtist(
 	}
 
 	const MAX_ENRICHMENT_QUERIES = 4;
-	type EnrichmentPassName = 'artist-name';
+	type EnrichmentPassName = 'artist-name' | 'official-tidal';
 	type EnrichmentPassResult = {
 		name: EnrichmentPassName;
 		query: string;
@@ -625,8 +667,26 @@ export async function getArtist(
 		console.warn(`[Catalog] Artist enrichment search failed for ${id}:`, error);
 	}
 
-	const truncatedPass = [...enrichmentPasses].reverse().find((pass) => isPassTruncated(pass));
-	const successfulPasses = enrichmentPasses.filter(
+	try {
+		const officialAlbums = await fetchOfficialDiscography(id, options);
+		if (Array.isArray(officialAlbums) && officialAlbums.length > 0) {
+			const officialResult = addEnrichmentAlbums(officialAlbums);
+			enrichmentPasses.push({
+				name: 'official-tidal',
+				query: 'official-discography',
+				total: officialAlbums.length,
+				returned: officialAlbums.length,
+				accepted: officialResult.accepted,
+				newlyAdded: officialResult.newlyAdded
+			});
+		}
+	} catch (error) {
+		console.warn(`[Catalog] Official artist enrichment failed for ${id}:`, error);
+	}
+
+	const searchPasses = enrichmentPasses.filter((pass) => pass.name === 'artist-name');
+	const truncatedPass = [...searchPasses].reverse().find((pass) => isPassTruncated(pass));
+	const successfulPasses = searchPasses.filter(
 		(pass) => pass.returned > 0 || pass.accepted > 0 || typeof pass.total === 'number'
 	);
 	const enrichmentSearchTotal = truncatedPass?.total;

@@ -958,7 +958,13 @@ class LosslessAPI {
 		id: number,
 		options?: { onProgress?: (progress: { receivedBytes: number; totalBytes?: number; percent?: number }) => void }
 	): Promise<ArtistDetails> {
-		return getArtist(this.getCatalogContext(), id, options);
+		const officialOrigin =
+			typeof window !== 'undefined' && window.location?.origin ? window.location.origin : undefined;
+		return getArtist(this.getCatalogContext(), id, {
+			...options,
+			officialEnrichment: Boolean(officialOrigin),
+			officialOrigin
+		});
 	}
 
 	/**

@@ -72,7 +72,7 @@ export interface ArtistDetails extends Artist {
 			duplicateQueriesSkipped: number;
 			budgetExhausted: boolean;
 			passes: Array<{
-				name: 'artist-name';
+				name: 'artist-name' | 'official-tidal';
 				query: string;
 				returned: number;
 				accepted: number;
