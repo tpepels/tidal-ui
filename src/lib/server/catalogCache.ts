@@ -4,8 +4,8 @@ import type { Album } from '$lib/types';
 import { getConnectedRedis } from '$lib/server/redis';
 
 const OFFICIAL_CACHE_PREFIX = 'tidal:catalog:official-discography:v1:';
-const DEFAULT_CACHE_TTL_SECONDS = getEnvNumber('TIDAL_OFFICIAL_DISCOGRAPHY_CACHE_TTL_SECONDS', 3600);
-const EMPTY_CACHE_TTL_SECONDS = getEnvNumber('TIDAL_OFFICIAL_DISCOGRAPHY_EMPTY_TTL_SECONDS', 300);
+const DEFAULT_CACHE_TTL_SECONDS = getEnvNumber('TIDAL_OFFICIAL_DISCOGRAPHY_CACHE_TTL_SECONDS', 172800);
+const EMPTY_CACHE_TTL_SECONDS = getEnvNumber('TIDAL_OFFICIAL_DISCOGRAPHY_EMPTY_TTL_SECONDS', 172800);
 const SCAN_BATCH_SIZE = 200;
 
 type OfficialDiscographyCacheEntry = {
@@ -139,4 +139,3 @@ export async function clearOfficialDiscographyRedisCache(): Promise<number> {
 		return 0;
 	}
 }
-
