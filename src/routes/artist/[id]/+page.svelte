@@ -69,6 +69,66 @@
 		return total && total > 0 ? total + 1 : (total ?? 0);
 	}
 
+	function parseNumericId(value: unknown): number | null {
+		if (typeof value === 'number' && Number.isFinite(value)) return value;
+		if (typeof value === 'string' && value.trim().length > 0) {
+			const parsed = Number(value);
+			if (Number.isFinite(parsed)) return parsed;
+		}
+		return null;
+	}
+
+	function albumDedupeKey(album: Album): string {
+		const candidate = album as Album & { upc?: string; url?: string };
+		if (candidate.upc && candidate.upc.trim().length > 0) {
+			return `upc:${candidate.upc.trim().toLowerCase()}`;
+		}
+		if (candidate.url && candidate.url.trim().length > 0) {
+			return `url:${candidate.url.trim().toLowerCase()}`;
+		}
+		return `id:${album.id}`;
+	}
+
+	function albumScore(album: Album): number {
+		let score = 0;
+		if (album.cover) score += 2;
+		if (album.releaseDate) score += 1;
+		if (album.numberOfTracks) score += 1;
+		if (album.audioQuality) score += 1;
+		return score;
+	}
+
+	function normalizeArtistDetails(data: ArtistDetails): ArtistDetails {
+		const normalizedAlbumsInput = Array.isArray(data.albums) ? data.albums : [];
+		const dedupedAlbums = new Map<string, Album>();
+		for (const album of normalizedAlbumsInput) {
+			const parsedId = parseNumericId((album as { id?: unknown }).id);
+			if (parsedId === null) continue;
+			const normalizedAlbum = { ...album, id: parsedId };
+			const key = albumDedupeKey(normalizedAlbum);
+			const existing = dedupedAlbums.get(key);
+			if (!existing || albumScore(normalizedAlbum) > albumScore(existing)) {
+				dedupedAlbums.set(key, normalizedAlbum);
+			}
+		}
+
+		const normalizedTracksInput = Array.isArray(data.tracks) ? data.tracks : [];
+		const dedupedTracks = new Map<number, (typeof normalizedTracksInput)[number]>();
+		for (const track of normalizedTracksInput) {
+			const parsedId = parseNumericId((track as { id?: unknown }).id);
+			if (parsedId === null) continue;
+			if (!dedupedTracks.has(parsedId)) {
+				dedupedTracks.set(parsedId, { ...track, id: parsedId });
+			}
+		}
+
+		return {
+			...data,
+			albums: Array.from(dedupedAlbums.values()),
+			tracks: Array.from(dedupedTracks.values())
+		};
+	}
+
 	function patchAlbumDownloadState(albumId: number, patch: Partial<AlbumDownloadState>) {
 		const previous = albumDownloadStates[albumId] ?? {
 			downloading: false,
@@ -228,13 +288,15 @@
 		albumDownloadStates = {};
 
 		if (cachedArtist) {
-			artist = cachedArtist;
-			artistImage = cachedArtist.picture
-				? losslessAPI.getArtistPictureUrl(cachedArtist.picture)
+			const normalizedCached = normalizeArtistDetails(cachedArtist);
+			artistCacheStore.set(normalizedCached);
+			artist = normalizedCached;
+			artistImage = normalizedCached.picture
+				? losslessAPI.getArtistPictureUrl(normalizedCached.picture)
 				: null;
 			isLoading = false;
 			breadcrumbStore.setBreadcrumbs([
-				{ label: cachedArtist.name, href: `/artist/${cachedArtist.id}` }
+				{ label: normalizedCached.name, href: `/artist/${normalizedCached.id}` }
 			]);
 			return;
 		}
@@ -244,15 +306,16 @@
 			artist = null;
 			artistImage = null;
 			const data = await losslessAPI.getArtist(id);
+			const normalizedData = normalizeArtistDetails(data);
 			if (requestToken !== activeRequestToken) {
 				return;
 			}
-			artist = data;
-			artistCacheStore.set(data);
+			artist = normalizedData;
+			artistCacheStore.set(normalizedData);
 
 			// Set breadcrumbs
 			breadcrumbStore.setBreadcrumbs([
-				{ label: data.name, href: `/artist/${data.id}` }
+				{ label: normalizedData.name, href: `/artist/${normalizedData.id}` }
 			]);
 
 			// Get artist picture

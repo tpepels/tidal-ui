@@ -17,6 +17,27 @@ export type SearchApiContext = {
 	ensureNotRateLimited: (response: Response) => void;
 };
 
+const parseNumericId = (value: unknown): number | null => {
+	if (typeof value === 'number' && Number.isFinite(value)) return value;
+	if (typeof value === 'string' && value.trim().length > 0) {
+		const parsed = Number(value);
+		if (Number.isFinite(parsed)) return parsed;
+	}
+	return null;
+};
+
+const dedupeByKey = <T>(items: T[], keyFn: (item: T) => string): T[] => {
+	const seen = new Set<string>();
+	const deduped: T[] = [];
+	for (const item of items) {
+		const key = keyFn(item);
+		if (seen.has(key)) continue;
+		seen.add(key);
+		deduped.push(item);
+	}
+	return deduped;
+};
+
 export async function searchTracks(
 	context: SearchApiContext,
 	query: string,
@@ -68,7 +89,17 @@ export async function searchTracks(
 
 		const result = {
 			...normalized,
-			items: normalized.items.map((track) => prepareTrack(track))
+			items: dedupeByKey(
+				normalized.items.map((track) => {
+					const prepared = prepareTrack(track);
+					const parsedId = parseNumericId((prepared as { id?: unknown }).id);
+					return parsedId !== null ? { ...prepared, id: parsedId } : prepared;
+				}),
+				(track) => {
+					const parsedId = parseNumericId((track as { id?: unknown }).id);
+					return parsedId !== null ? `id:${parsedId}` : `fallback:${(track as { title?: string }).title ?? ''}`;
+				}
+			)
 		};
 
 		operation.complete(result);
@@ -99,7 +130,19 @@ export async function searchArtists(
 
 	return {
 		...normalized,
-		items: normalized.items.map((artist) => prepareArtist(artist))
+		items: dedupeByKey(
+			normalized.items.map((artist) => {
+				const prepared = prepareArtist(artist);
+				const parsedId = parseNumericId((prepared as { id?: unknown }).id);
+				return parsedId !== null ? { ...prepared, id: parsedId } : prepared;
+			}),
+			(artist) => {
+				const parsedId = parseNumericId((artist as { id?: unknown }).id);
+				return parsedId !== null
+					? `id:${parsedId}`
+					: `fallback:${((artist as { name?: string }).name ?? '').trim().toLowerCase()}`;
+			}
+		)
 	};
 }
 
@@ -123,7 +166,43 @@ export async function searchAlbums(
 
 	return {
 		...normalized,
-		items: normalized.items.map((album) => prepareAlbum(album))
+		items: dedupeByKey(
+			normalized.items.map((album) => {
+				const prepared = prepareAlbum(album);
+				const parsedId = parseNumericId((prepared as { id?: unknown }).id);
+				return parsedId !== null ? { ...prepared, id: parsedId } : prepared;
+			}),
+			(album) => {
+				const candidate = album as {
+					id?: unknown;
+					upc?: unknown;
+					url?: unknown;
+					title?: unknown;
+					releaseDate?: unknown;
+					artist?: { name?: unknown } | undefined;
+				};
+				if (typeof candidate.upc === 'string' && candidate.upc.trim().length > 0) {
+					return `upc:${candidate.upc.trim().toLowerCase()}`;
+				}
+				if (typeof candidate.url === 'string' && candidate.url.trim().length > 0) {
+					return `url:${candidate.url.trim().toLowerCase()}`;
+				}
+				const parsedId = parseNumericId(candidate.id);
+				if (parsedId !== null) {
+					return `id:${parsedId}`;
+				}
+				const title = typeof candidate.title === 'string' ? candidate.title.trim().toLowerCase() : '';
+				const year =
+					typeof candidate.releaseDate === 'string' && candidate.releaseDate.length >= 4
+						? candidate.releaseDate.slice(0, 4)
+						: '';
+				const artistName =
+					typeof candidate.artist?.name === 'string'
+						? candidate.artist.name.trim().toLowerCase()
+						: '';
+				return `fallback:${artistName}|${title}|${year}`;
+			}
+		)
 	};
 }
 

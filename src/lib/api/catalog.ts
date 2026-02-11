@@ -297,14 +297,14 @@ export async function getArtist(
 	const addAlbum = (candidate: Album | undefined) => {
 		if (!candidate) return;
 		const rawId = (candidate as { id?: unknown }).id;
-		const id =
+		const albumId =
 			typeof rawId === 'number'
 				? rawId
 				: typeof rawId === 'string' && rawId.trim().length > 0
 					? Number(rawId)
 					: Number.NaN;
-		if (!Number.isFinite(id)) return;
-		const normalized = prepareAlbum({ ...candidate, id });
+		if (!Number.isFinite(albumId)) return;
+		const normalized = prepareAlbum({ ...candidate, id: albumId });
 		const existing = albumMap.get(normalized.id);
 		if (existing) {
 			const merged = {
@@ -347,7 +347,10 @@ export async function getArtist(
 			const candidate = 'item' in entry ? (entry as { item?: unknown }).item : entry;
 			if (isAlbumLike(candidate)) {
 				addAlbum(candidate as Album);
-				const normalizedAlbum = albumMap.get((candidate as Album).id);
+				const candidateId = Number((candidate as { id?: unknown }).id);
+				const normalizedAlbum = Number.isFinite(candidateId)
+					? albumMap.get(candidateId)
+					: undefined;
 				recordArtist(normalizedAlbum?.artist ?? normalizedAlbum?.artists?.[0], id);
 				continue;
 			}
@@ -497,10 +500,10 @@ export async function getArtist(
 		if (album.upc && album.upc.trim().length > 0) {
 			return `upc:${album.upc.trim()}`;
 		}
-		const title = album.title.trim().toLowerCase();
-		const year = album.releaseDate ? album.releaseDate.slice(0, 4) : '';
-		const tracks = album.numberOfTracks ? String(album.numberOfTracks) : '';
-		return `title:${title}|year:${year}|tracks:${tracks}`;
+		if (album.url && album.url.trim().length > 0) {
+			return `url:${album.url.trim().toLowerCase()}`;
+		}
+		return `id:${album.id}`;
 	};
 
 	const dedupedAlbums = (() => {

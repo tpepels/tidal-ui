@@ -142,19 +142,19 @@ export async function executeTabSearch(
 						break;
 					}
 					case 'albums': {
-						const response = await losslessAPI.searchAlbums(trimmedQuery);
+						const response = await losslessAPI.searchAlbums(trimmedQuery, region);
 						const items = Array.isArray(response?.items) ? response.items : [];
 						results = { ...emptyResults, albums: items };
 						break;
 					}
 					case 'artists': {
-						const response = await losslessAPI.searchArtists(trimmedQuery);
+						const response = await losslessAPI.searchArtists(trimmedQuery, region);
 						const items = Array.isArray(response?.items) ? response.items : [];
 						results = { ...emptyResults, artists: items };
 						break;
 					}
 					case 'playlists': {
-						const response = await losslessAPI.searchPlaylists(trimmedQuery);
+						const response = await losslessAPI.searchPlaylists(trimmedQuery, region);
 						const items = Array.isArray(response?.items) ? response.items : [];
 						results = { ...emptyResults, playlists: items };
 						break;
