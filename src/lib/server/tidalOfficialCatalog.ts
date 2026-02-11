@@ -159,6 +159,19 @@ function getPaginationHint(payload: unknown): {
 	return { nextUrl, nextCursor };
 }
 
+function resolveNextPageUrl(nextUrl: string): string {
+	if (nextUrl.startsWith('http://') || nextUrl.startsWith('https://')) {
+		return nextUrl;
+	}
+	if (nextUrl.startsWith('/v2/')) {
+		return `https://openapi.tidal.com${nextUrl}`;
+	}
+	if (nextUrl.startsWith('/')) {
+		return `https://openapi.tidal.com/v2${nextUrl}`;
+	}
+	return new URL(nextUrl, `${TIDAL_API_BASE}/`).toString();
+}
+
 async function requestAccessToken(): Promise<string> {
 	const credentials = getClientCredentials();
 	if (!credentials) {
@@ -322,7 +335,13 @@ async function fetchAlbumsFromRelationshipsEndpoint(
 		});
 
 		if (response.status === 404) {
-			return [];
+			if (page === 0) {
+				return [];
+			}
+			console.warn(
+				`[TidalOpenApi] Artist ${artistId}: pagination returned 404 on page ${page + 1}, keeping ${collected.size} collected albums`
+			);
+			break;
 		}
 		if (!response.ok) {
 			const detail = (await response.text()).slice(0, 200);
@@ -347,9 +366,7 @@ async function fetchAlbumsFromRelationshipsEndpoint(
 
 		const pagination = getPaginationHint(payload);
 		if (pagination.nextUrl) {
-			nextUrl = pagination.nextUrl.startsWith('http')
-				? pagination.nextUrl
-				: new URL(pagination.nextUrl, TIDAL_API_BASE).toString();
+			nextUrl = resolveNextPageUrl(pagination.nextUrl);
 			continue;
 		}
 		if (pagination.nextCursor) {
