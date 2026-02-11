@@ -93,7 +93,7 @@ describe('groupDiscography', () => {
 		expect(grouped[0]?.versions.map((album) => album.id).sort((a, b) => a - b)).toEqual([41, 42]);
 	});
 
-	it('prefers higher-popularity representative for same-title merged releases', () => {
+	it('prefers newer representative for same-title merged releases', () => {
 		const albums: Album[] = [
 			buildAlbum({
 				id: 51,
@@ -113,6 +113,6 @@ describe('groupDiscography', () => {
 
 		const grouped = groupDiscography(albums, 'LOSSLESS');
 		expect(grouped).toHaveLength(1);
-		expect(grouped[0]?.representative.id).toBe(52);
+		expect(grouped[0]?.representative.id).toBe(51);
 	});
 });

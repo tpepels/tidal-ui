@@ -110,6 +110,7 @@ export interface Album {
 	vibrantColor?: string;
 	streamReady?: boolean;
 	allowStreaming?: boolean;
+	discographySource?: 'official_tidal';
 	mediaMetadata?: {
 		tags: string[];
 	};

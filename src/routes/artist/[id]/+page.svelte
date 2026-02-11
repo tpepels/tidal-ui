@@ -138,6 +138,84 @@
 		return score;
 	}
 
+	function normalizeAlbumVariantTitle(value?: string): string {
+		return (value ?? '')
+			.trim()
+			.toLowerCase()
+			.replace(/\s+/g, ' ');
+	}
+
+	function normalizeAlbumVariantQuality(value?: string): string {
+		const normalized = (value ?? '').trim().toUpperCase();
+		return normalized.length > 0 ? normalized : 'UNKNOWN';
+	}
+
+	function buildAlbumVariantKey(album: Pick<Album, 'id' | 'title' | 'audioQuality'>): string {
+		const title = normalizeAlbumVariantTitle(album.title);
+		const quality = normalizeAlbumVariantQuality(album.audioQuality);
+		return title.length > 0 ? `title:${title}|quality:${quality}` : `id:${album.id}|quality:${quality}`;
+	}
+
+	function isSingle(album: Album): boolean {
+		const type = (album.type ?? '').toUpperCase();
+		return type.includes('SINGLE');
+	}
+
+	function compareAlbumsByAge(a: Album, b: Album): number {
+		const timestampA = a.releaseDate ? Date.parse(a.releaseDate) : Number.NaN;
+		const timestampB = b.releaseDate ? Date.parse(b.releaseDate) : Number.NaN;
+		if (Number.isFinite(timestampA) && Number.isFinite(timestampB) && timestampA !== timestampB) {
+			return timestampB - timestampA;
+		}
+		if (Number.isFinite(timestampA) && !Number.isFinite(timestampB)) return -1;
+		if (!Number.isFinite(timestampA) && Number.isFinite(timestampB)) return 1;
+		return (b.popularity ?? 0) - (a.popularity ?? 0);
+	}
+
+	function mergeOfficialAlbums(base: ArtistDetails, officialAlbums: Album[]): ArtistDetails {
+		if (officialAlbums.length === 0) return base;
+
+		const byId = new Map<number, Album>();
+		const seenVariants = new Set<string>();
+
+		for (const existing of base.albums) {
+			byId.set(existing.id, existing);
+			seenVariants.add(buildAlbumVariantKey(existing));
+		}
+
+		let added = 0;
+		for (const incoming of officialAlbums) {
+			const parsedId = parseNumericId((incoming as { id?: unknown }).id);
+			if (parsedId === null) continue;
+			const normalized = { ...incoming, id: parsedId, discographySource: 'official_tidal' as const };
+			if (isSingle(normalized)) continue;
+			const variantKey = buildAlbumVariantKey(normalized);
+			if (seenVariants.has(variantKey)) continue;
+			seenVariants.add(variantKey);
+			const existing = byId.get(parsedId);
+			if (!existing || albumScore(normalized) > albumScore(existing)) {
+				byId.set(parsedId, normalized);
+				if (!existing) {
+					added += 1;
+				}
+			}
+		}
+
+		if (added === 0) return base;
+		const mergedAlbums = Array.from(byId.values()).sort(compareAlbumsByAge);
+		return {
+			...base,
+			albums: mergedAlbums,
+			discographyInfo: base.discographyInfo
+				? {
+						...base.discographyInfo,
+						enrichedAlbumCount: base.discographyInfo.enrichedAlbumCount + added,
+						enrichmentApplied: true
+					}
+				: base.discographyInfo
+		};
+	}
+
 	function normalizeArtistDetails(data: ArtistDetails): ArtistDetails {
 		const normalizedAlbumsInput = Array.isArray(data.albums) ? data.albums : [];
 		const dedupedAlbums = new Map<number, Album>();
@@ -362,6 +440,27 @@
 			// Get artist picture
 			if (artist.picture) {
 				artistImage = losslessAPI.getArtistPictureUrl(artist.picture);
+			}
+
+			try {
+				const officialResponse = await fetch(`/api/artist/${id}/official-discography`);
+				if (requestToken !== activeRequestToken) {
+					return;
+				}
+				if (officialResponse.ok) {
+					const officialPayload = (await officialResponse.json()) as {
+						enabled?: boolean;
+						albums?: Album[];
+						count?: number;
+					};
+					if (officialPayload.enabled && Array.isArray(officialPayload.albums)) {
+						const merged = mergeOfficialAlbums(normalizedData, officialPayload.albums);
+						artist = merged;
+						artistCacheStore.set(merged);
+					}
+				}
+			} catch (officialError) {
+				console.warn(`[ArtistPage] Official discography enrichment failed for ${id}:`, officialError);
 			}
 		} catch (err) {
 			if (requestToken === activeRequestToken) {
@@ -646,9 +745,20 @@
 									<div class="grid gap-4 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
 										{#each section.entries as entry (`${entry.key}:${downloadQuality}`)}
 											{@const album = entry.representative}
+											{@const hasOfficialTidalSource = entry.versions.some(
+												(version) => version.discographySource === 'official_tidal'
+											)}
 											<div
 												class="group relative flex h-full flex-col rounded-xl border border-gray-800 bg-gray-900/40 p-4 text-center transition-colors hover:border-blue-700 hover:bg-gray-900"
 											>
+												{#if hasOfficialTidalSource}
+													<span
+														class="absolute top-3 left-3 z-30 rounded-full border border-emerald-600/60 bg-emerald-900/70 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-emerald-200"
+														title="Loaded from official TIDAL API enrichment"
+													>
+														TIDAL
+													</span>
+												{/if}
 												<button
 													onclick={(event) => handleAlbumDownload(album, event)}
 													type="button"

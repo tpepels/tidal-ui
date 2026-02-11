@@ -47,8 +47,6 @@ function albumRecencyScore(album: Album): number {
 }
 
 function compareAlbumFallback(a: Album, b: Album): number {
-	const popularity = (b.popularity ?? 0) - (a.popularity ?? 0);
-	if (popularity !== 0) return popularity;
 	const recencyA = albumRecencyScore(a);
 	const recencyB = albumRecencyScore(b);
 	const hasRecencyA = Number.isFinite(recencyA);
@@ -58,6 +56,8 @@ function compareAlbumFallback(a: Album, b: Album): number {
 	}
 	if (hasRecencyA && !hasRecencyB) return -1;
 	if (!hasRecencyA && hasRecencyB) return 1;
+	const popularity = (b.popularity ?? 0) - (a.popularity ?? 0);
+	if (popularity !== 0) return popularity;
 	return scoreAlbum(b) - scoreAlbum(a);
 }
 
