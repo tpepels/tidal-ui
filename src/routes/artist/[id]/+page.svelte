@@ -36,6 +36,7 @@
 		(enrichmentDiagnostics?.passes ?? [])
 			.filter(
 				(pass) =>
+					pass.name === 'official-tidal' ||
 					pass.accepted > 0 ||
 					pass.returned > 0 ||
 					pass.newlyAdded > 0 ||
@@ -46,6 +47,7 @@
 	const zeroResultEnrichmentPasses = $derived(
 		(enrichmentDiagnostics?.passes ?? []).filter(
 			(pass) =>
+				pass.name !== 'official-tidal' &&
 				pass.accepted === 0 &&
 				pass.returned === 0 &&
 				pass.newlyAdded === 0 &&
@@ -113,6 +115,16 @@
 	function formatEnrichmentPassName(name: 'artist-name' | 'official-tidal'): string {
 		if (name === 'official-tidal') return 'Official TIDAL API';
 		return 'Artist-name search';
+	}
+
+	function formatEnrichmentPassStatus(pass: {
+		name: 'artist-name' | 'official-tidal';
+		query: string;
+	}): string | null {
+		if (pass.name !== 'official-tidal') return null;
+		if (pass.query === 'official-discography') return 'active';
+		const [, detail = 'unavailable'] = pass.query.split(':', 2);
+		return detail.replace(/_/g, ' ');
 	}
 
 	function displayTrackTotal(total?: number | null): number {
@@ -598,6 +610,9 @@
 											matched
 											{#if pass.newlyAdded > 0}
 												, +{pass.newlyAdded} added
+											{/if}
+											{#if formatEnrichmentPassStatus(pass)}
+												({formatEnrichmentPassStatus(pass)})
 											{/if}
 										</p>
 									{/each}

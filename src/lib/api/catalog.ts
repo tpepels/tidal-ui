@@ -180,31 +180,41 @@ type OfficialDiscographyResponse = {
 	count?: number;
 };
 
+type OfficialDiscographyFetchResult = {
+	status: 'disabled' | 'error' | 'ok';
+	albums: Album[];
+	detail?: string;
+};
+
 async function fetchOfficialDiscography(
 	artistId: number,
 	options?: ArtistFetchOptions
-): Promise<Album[] | null> {
+): Promise<OfficialDiscographyFetchResult> {
 	if (!options?.officialEnrichment) {
-		return null;
+		return { status: 'disabled', albums: [], detail: 'disabled' };
 	}
 
 	const origin = options.officialOrigin?.trim();
 	if (!origin) {
-		return null;
+		return { status: 'disabled', albums: [], detail: 'missing_origin' };
 	}
 
 	try {
 		const response = await fetch(`${origin}/api/artist/${artistId}/official-discography`);
 		if (!response.ok) {
-			return null;
+			return { status: 'error', albums: [], detail: `http_${response.status}` };
 		}
 		const payload = (await response.json()) as OfficialDiscographyResponse;
-		if (!payload.enabled || !Array.isArray(payload.albums)) {
-			return [];
+		if (!payload.enabled) {
+			return { status: 'disabled', albums: [], detail: payload.reason ?? 'not_enabled' };
 		}
-		return payload.albums;
-	} catch {
-		return null;
+		if (!Array.isArray(payload.albums)) {
+			return { status: 'error', albums: [], detail: 'malformed_payload' };
+		}
+		return { status: 'ok', albums: payload.albums };
+	} catch (error) {
+		const detail = error instanceof Error ? error.message : 'fetch_failed';
+		return { status: 'error', albums: [], detail };
 	}
 }
 
@@ -668,12 +678,19 @@ export async function getArtist(
 	}
 
 	try {
-		const officialAlbums = await fetchOfficialDiscography(id, options);
-		if (Array.isArray(officialAlbums) && officialAlbums.length > 0) {
-			const officialResult = addEnrichmentAlbums(officialAlbums);
+		const officialFetch = await fetchOfficialDiscography(id, options);
+		if (options?.officialEnrichment) {
+			const officialAlbums = officialFetch.albums;
+			const officialResult =
+				officialFetch.status === 'ok' && officialAlbums.length > 0
+					? addEnrichmentAlbums(officialAlbums)
+					: { accepted: 0, newlyAdded: 0 };
 			enrichmentPasses.push({
 				name: 'official-tidal',
-				query: 'official-discography',
+				query:
+					officialFetch.status === 'ok'
+						? 'official-discography'
+						: `official-discography:${officialFetch.detail ?? officialFetch.status}`,
 				total: officialAlbums.length,
 				returned: officialAlbums.length,
 				accepted: officialResult.accepted,

@@ -10,8 +10,10 @@ export const GET: RequestHandler = async ({ params }) => {
 	if (!Number.isFinite(artistId) || artistId <= 0) {
 		return json({ error: 'Invalid artist id' }, { status: 400 });
 	}
+	console.info(`[TidalOpenApi] Artist ${artistId}: official discography request`);
 
 	if (!isTidalOfficialApiConfigured()) {
+		console.warn(`[TidalOpenApi] Artist ${artistId}: disabled (missing credentials)`);
 		return json({
 			enabled: false,
 			albums: [],
@@ -21,6 +23,7 @@ export const GET: RequestHandler = async ({ params }) => {
 
 	try {
 		const albums = await fetchOfficialArtistAlbums(artistId);
+		console.info(`[TidalOpenApi] Artist ${artistId}: fetched ${albums.length} official album(s)`);
 		return json({
 			enabled: true,
 			albums,
