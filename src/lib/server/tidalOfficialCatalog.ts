@@ -13,6 +13,7 @@ const PAGE_FETCH_MAX_RETRIES = Number.parseInt(process.env.TIDAL_PAGE_FETCH_MAX_
 const PAGE_FETCH_BASE_BACKOFF_MS = Number.parseInt(process.env.TIDAL_PAGE_FETCH_BASE_BACKOFF_MS ?? '1000', 10);
 const PAGE_FETCH_MAX_BACKOFF_MS = Number.parseInt(process.env.TIDAL_PAGE_FETCH_MAX_BACKOFF_MS ?? '15000', 10);
 const PAGE_FETCH_JITTER_MS = Number.parseInt(process.env.TIDAL_PAGE_FETCH_JITTER_MS ?? '300', 10);
+const PAGE_FETCH_BETWEEN_PAGES_MS = Number.parseInt(process.env.TIDAL_PAGE_FETCH_BETWEEN_PAGES_MS ?? '200', 10);
 const RETRYABLE_PAGE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 const TIDAL_OPEN_API_DEBUG = ['1', 'true', 'yes'].includes(
 	(process.env.TIDAL_OPEN_API_DEBUG ?? '').toLowerCase()
@@ -546,6 +547,9 @@ async function fetchAlbumsFromRelationshipsEndpoint(
 
 	for (let page = 0; page < MAX_PAGES && nextUrl; page += 1) {
 		pageCount += 1;
+		if (page > 0 && PAGE_FETCH_BETWEEN_PAGES_MS > 0) {
+			await wait(PAGE_FETCH_BETWEEN_PAGES_MS);
+		}
 		debugLog(`[TidalOpenApi] Artist ${artistId}: relationships page ${page + 1} GET ${nextUrl}`);
 		const response = await fetchWithRetryForPage(nextUrl, createAuthHeaders(token), artistId, page + 1);
 
