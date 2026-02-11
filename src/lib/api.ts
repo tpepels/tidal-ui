@@ -2155,8 +2155,16 @@ class LosslessAPI {
 	/**
 	 * Get cover URL
 	 */
-	getCoverUrl(coverId: string, size: '1280' | '640' | '320' | '160' | '80' = '640'): string {
-		return `https://resources.tidal.com/images/${coverId.replace(/-/g, '/')}/${size}x${size}.jpg`;
+	getCoverUrl(
+		coverId: string,
+		size: '1280' | '640' | '320' | '160' | '80' = '640',
+		options?: { proxy?: boolean }
+	): string {
+		const url = `https://resources.tidal.com/images/${coverId.replace(/-/g, '/')}/${size}x${size}.jpg`;
+		if (!options?.proxy || typeof window === 'undefined' || !API_CONFIG.proxyUrl) {
+			return url;
+		}
+		return `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(url)}`;
 	}
 
 	/**

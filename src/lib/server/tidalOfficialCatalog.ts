@@ -42,10 +42,85 @@ function parseNumericId(value: unknown): number | null {
 	return null;
 }
 
+const TIDAL_OPEN_API_TRACE_ALBUM_ID = parseNumericId(process.env.TIDAL_OPEN_API_TRACE_ALBUM_ID);
+
 function parseString(value: unknown): string | undefined {
 	if (typeof value !== 'string') return undefined;
 	const trimmed = value.trim();
 	return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function parseCoverIdFromResourceUrl(url: string): string | undefined {
+	try {
+		const parsed = new URL(url);
+		if (parsed.hostname !== 'resources.tidal.com') return undefined;
+		const segments = parsed.pathname.split('/').filter(Boolean);
+		const imagesIndex = segments.findIndex((segment) => segment === 'images');
+		if (imagesIndex < 0) return undefined;
+		const imageIdSegments = segments.slice(imagesIndex + 1, -1);
+		if (imageIdSegments.length === 0) return undefined;
+		return imageIdSegments.join('/');
+	} catch {
+		return undefined;
+	}
+}
+
+function buildArtworkCoverMap(payload: unknown): Map<string, string> {
+	const byArtworkId = new Map<string, string>();
+	if (!isJsonObject(payload) || !Array.isArray(payload.included)) {
+		return byArtworkId;
+	}
+	for (const entry of payload.included) {
+		if (!isJsonObject(entry)) continue;
+		const type = parseString(entry.type)?.toLowerCase();
+		if (type !== 'artworks' && type !== 'artwork') continue;
+		const artworkId = parseString(entry.id);
+		if (!artworkId) continue;
+		const attributes = isJsonObject(entry.attributes) ? entry.attributes : undefined;
+		const files = Array.isArray(attributes?.files) ? attributes.files : [];
+		let selectedCoverId: string | undefined;
+		for (const fileEntry of files) {
+			if (!isJsonObject(fileEntry)) continue;
+			const href = parseString(fileEntry.href);
+			if (!href) continue;
+			const parsedCoverId = parseCoverIdFromResourceUrl(href);
+			if (!parsedCoverId) continue;
+			selectedCoverId = parsedCoverId;
+			// Prefer larger assets when available.
+			const meta = isJsonObject(fileEntry.meta) ? fileEntry.meta : undefined;
+			const width = parseNumericId(meta?.width) ?? 0;
+			if (width >= 1280) {
+				break;
+			}
+		}
+		if (selectedCoverId) {
+			byArtworkId.set(artworkId, selectedCoverId);
+		}
+	}
+	return byArtworkId;
+}
+
+function parseCoverFromRecord(record: unknown, artworkCoverMap?: Map<string, string>): string | null {
+	if (!isJsonObject(record)) return null;
+	const attributes = isJsonObject(record.attributes) ? record.attributes : record;
+	const fromAttributes = parseString(attributes.cover ?? record.cover);
+	if (fromAttributes) return fromAttributes;
+
+	if (!artworkCoverMap || artworkCoverMap.size === 0) return null;
+	const relationships = isJsonObject(record.relationships) ? record.relationships : undefined;
+	const coverArt = isJsonObject(relationships?.coverArt) ? relationships.coverArt : undefined;
+	const coverData = coverArt?.data;
+	const coverEntries = Array.isArray(coverData) ? coverData : isJsonObject(coverData) ? [coverData] : [];
+	for (const entry of coverEntries) {
+		if (!isJsonObject(entry)) continue;
+		const artworkId = parseString(entry.id);
+		if (!artworkId) continue;
+		const resolved = artworkCoverMap.get(artworkId);
+		if (resolved) {
+			return resolved;
+		}
+	}
+	return null;
 }
 
 function debugLog(message: string): void {
@@ -54,7 +129,13 @@ function debugLog(message: string): void {
 	}
 }
 
-function parseAlbumFromRecord(record: unknown): Album | null {
+function traceAlbumLog(message: string): void {
+	if (TIDAL_OPEN_API_TRACE_ALBUM_ID !== null) {
+		console.info(message);
+	}
+}
+
+function parseAlbumFromRecord(record: unknown, artworkCoverMap?: Map<string, string>): Album | null {
 	if (!isJsonObject(record)) return null;
 	const attributes = isJsonObject(record.attributes) ? record.attributes : record;
 	const id = parseNumericId(record.id ?? attributes.id);
@@ -71,7 +152,7 @@ function parseAlbumFromRecord(record: unknown): Album | null {
 			record.audioQuality ??
 			record.audio_quality
 	);
-	const cover = parseString(attributes.cover ?? record.cover) ?? '';
+	const cover = parseCoverFromRecord(record, artworkCoverMap) ?? '';
 	const videoCover = parseString(attributes.videoCover ?? attributes.video_cover ?? record.videoCover) ?? null;
 	const numberOfTracks =
 		parseNumericId(
@@ -288,23 +369,39 @@ function createAuthHeaders(token: string): Headers {
 function mergeAlbums(
 	collected: Map<number, Album>,
 	seenVariants: Set<string>,
-	candidates: Album[]
+	candidates: Album[],
+	sourceLabel = 'unknown'
 ): MergeStats {
 	const stats: MergeStats = { added: 0, skippedSingles: 0, skippedDuplicates: 0 };
 	for (const album of candidates) {
 		if (!album) continue;
 		if (isSingle(album)) {
 			stats.skippedSingles += 1;
+			if (TIDAL_OPEN_API_TRACE_ALBUM_ID !== null && album.id === TIDAL_OPEN_API_TRACE_ALBUM_ID) {
+				traceAlbumLog(
+					`[TidalOpenApi][trace ${TIDAL_OPEN_API_TRACE_ALBUM_ID}] skipped as SINGLE at ${sourceLabel}: ${album.title}`
+				);
+			}
 			continue;
 		}
 		const variantKey = buildAlbumVariantKey(album);
 		if (seenVariants.has(variantKey)) {
 			stats.skippedDuplicates += 1;
+			if (TIDAL_OPEN_API_TRACE_ALBUM_ID !== null && album.id === TIDAL_OPEN_API_TRACE_ALBUM_ID) {
+				traceAlbumLog(
+					`[TidalOpenApi][trace ${TIDAL_OPEN_API_TRACE_ALBUM_ID}] skipped as duplicate variant at ${sourceLabel}: key=${variantKey}`
+				);
+			}
 			continue;
 		}
 		seenVariants.add(variantKey);
 		collected.set(album.id, album);
 		stats.added += 1;
+		if (TIDAL_OPEN_API_TRACE_ALBUM_ID !== null && album.id === TIDAL_OPEN_API_TRACE_ALBUM_ID) {
+			traceAlbumLog(
+				`[TidalOpenApi][trace ${TIDAL_OPEN_API_TRACE_ALBUM_ID}] added at ${sourceLabel}: ${album.title} (quality=${album.audioQuality ?? 'UNKNOWN'}, type=${album.type ?? 'UNKNOWN'})`
+			);
+		}
 	}
 	return stats;
 }
@@ -321,6 +418,7 @@ async function fetchAlbumsByIds(
 		const query = new URLSearchParams();
 		query.set('countryCode', countryCode);
 		query.append('include', 'artists');
+		query.append('include', 'coverArt');
 		query.set('filter[id]', chunk.join(','));
 		const url = `${TIDAL_API_BASE}/albums?${query.toString()}`;
 		const response = await fetch(url, {
@@ -334,8 +432,9 @@ async function fetchAlbumsByIds(
 			continue;
 		}
 		const payload = await response.json();
+		const artworkCoverMap = buildArtworkCoverMap(payload);
 		const parsed = extractAlbumRecords(payload)
-			.map((record) => parseAlbumFromRecord(record))
+			.map((record) => parseAlbumFromRecord(record, artworkCoverMap))
 			.filter((album): album is Album => album !== null);
 		debugLog(
 			`[TidalOpenApi] /albums batch fetched ids=${chunk.length} parsed=${parsed.length} sampleIds=${chunk.slice(0, 5).join(',')}`
@@ -386,26 +485,45 @@ async function fetchAlbumsFromRelationshipsEndpoint(
 		}
 
 		const payload = await response.json();
+		const artworkCoverMap = buildArtworkCoverMap(payload);
 		const fromIncluded = extractAlbumRecords(payload)
-			.map((record) => parseAlbumFromRecord(record))
+			.map((record) => parseAlbumFromRecord(record, artworkCoverMap))
 			.filter((album): album is Album => album !== null);
 		includedAlbumCount += fromIncluded.length;
-		const fromIncludedMerge = mergeAlbums(collected, seenVariants, fromIncluded);
-		skippedSinglesCount += fromIncludedMerge.skippedSingles;
-		skippedDuplicateCount += fromIncludedMerge.skippedDuplicates;
 
 		const relationshipAlbumIds = extractAlbumIdsFromRelationshipData(payload);
 		relationshipIdCount += relationshipAlbumIds.length;
-		const missingIds = relationshipAlbumIds.filter((id) => !collected.has(id));
-		if (missingIds.length > 0) {
-			const fetchedByIds = await fetchAlbumsByIds(token, countryCode, missingIds);
+		if (
+			TIDAL_OPEN_API_TRACE_ALBUM_ID !== null &&
+			relationshipAlbumIds.includes(TIDAL_OPEN_API_TRACE_ALBUM_ID)
+		) {
+			traceAlbumLog(
+				`[TidalOpenApi][trace ${TIDAL_OPEN_API_TRACE_ALBUM_ID}] seen in relationship IDs on page ${page + 1}`
+			);
+		}
+		if (relationshipAlbumIds.length > 0) {
+			const fetchedByIds = await fetchAlbumsByIds(token, countryCode, relationshipAlbumIds);
 			hydratedAlbumCount += fetchedByIds.length;
-			const hydratedMerge = mergeAlbums(collected, seenVariants, fetchedByIds);
+			const hydratedMerge = mergeAlbums(
+				collected,
+				seenVariants,
+				fetchedByIds,
+				`relationships:hydrated:page-${page + 1}`
+			);
 			skippedSinglesCount += hydratedMerge.skippedSingles;
 			skippedDuplicateCount += hydratedMerge.skippedDuplicates;
 		}
+		const fromIncludedMerge = mergeAlbums(
+			collected,
+			seenVariants,
+			fromIncluded,
+			`relationships:included:page-${page + 1}`
+		);
+		skippedSinglesCount += fromIncludedMerge.skippedSingles;
+		skippedDuplicateCount += fromIncludedMerge.skippedDuplicates;
+		const unresolvedIds = relationshipAlbumIds.filter((id) => !collected.has(id));
 		debugLog(
-			`[TidalOpenApi] Artist ${artistId}: relationships page ${page + 1} data=${Array.isArray(payload.data) ? payload.data.length : 0}, included=${Array.isArray(payload.included) ? payload.included.length : 0}, relationshipIds=${relationshipAlbumIds.length}, missingIds=${missingIds.length}, mergedTotal=${collected.size}`
+			`[TidalOpenApi] Artist ${artistId}: relationships page ${page + 1} data=${Array.isArray(payload.data) ? payload.data.length : 0}, included=${Array.isArray(payload.included) ? payload.included.length : 0}, relationshipIds=${relationshipAlbumIds.length}, unresolvedIds=${unresolvedIds.length}, mergedTotal=${collected.size}`
 		);
 
 		const pagination = getPaginationHint(payload);
@@ -449,16 +567,16 @@ async function fetchAlbumsFromArtistIncludeEndpoint(
 	}
 
 	const payload = await response.json();
+	const artworkCoverMap = buildArtworkCoverMap(payload);
 	const fromIncluded = extractAlbumRecords(payload)
-		.map((record) => parseAlbumFromRecord(record))
+		.map((record) => parseAlbumFromRecord(record, artworkCoverMap))
 		.filter((album): album is Album => album !== null);
 	const relationshipAlbumIds = extractAlbumIdsFromArtistResource(payload);
-	const missingIds = relationshipAlbumIds.filter((id) => !fromIncluded.some((album) => album.id === id));
-	const hydrated = missingIds.length > 0 ? await fetchAlbumsByIds(token, countryCode, missingIds) : [];
+	const hydrated = relationshipAlbumIds.length > 0 ? await fetchAlbumsByIds(token, countryCode, relationshipAlbumIds) : [];
 	const merged = new Map<number, Album>();
 	const seenVariants = new Set<string>();
-	const fromIncludedMerge = mergeAlbums(merged, seenVariants, fromIncluded);
-	const hydratedMerge = mergeAlbums(merged, seenVariants, hydrated);
+	const hydratedMerge = mergeAlbums(merged, seenVariants, hydrated, 'fallback:hydrated');
+	const fromIncludedMerge = mergeAlbums(merged, seenVariants, fromIncluded, 'fallback:included');
 	console.info(
 		`[TidalOpenApi] Artist ${artistId}: include=albums fallback included=${fromIncluded.length}, relationshipIds=${relationshipAlbumIds.length}, hydratedById=${hydrated.length}, skippedSingles=${fromIncludedMerge.skippedSingles + hydratedMerge.skippedSingles}, skippedDuplicates=${fromIncludedMerge.skippedDuplicates + hydratedMerge.skippedDuplicates}, merged=${merged.size}`
 	);

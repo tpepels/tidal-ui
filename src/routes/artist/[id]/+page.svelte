@@ -664,6 +664,9 @@
 											{@const hasOfficialTidalSource = entry.versions.some(
 												(version) => version.discographySource === 'official_tidal'
 											)}
+											{@const coverImageUrl = losslessAPI.getCoverUrl(album.cover, '640', {
+												proxy: hasOfficialTidalSource
+											})}
 											<div
 												class="group relative flex h-full flex-col rounded-xl border border-gray-800 bg-gray-900/40 p-4 text-center transition-colors hover:border-blue-700 hover:bg-gray-900"
 											>
@@ -697,7 +700,7 @@
 													>
 														{#if album.cover}
 															<img
-																src={losslessAPI.getCoverUrl(album.cover, '640')}
+																src={coverImageUrl}
 																alt={album.title}
 																class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
 															/>
