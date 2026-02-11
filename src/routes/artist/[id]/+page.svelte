@@ -20,6 +20,7 @@
 	const artistId = $derived($page.params.id);
 	const topTracks = $derived(artist?.tracks ?? []);
 	const discography = $derived(artist?.albums ?? []);
+	const discographyInfo = $derived(artist?.discographyInfo ?? null);
 	const downloadQuality = $derived($downloadPreferencesStore.downloadQuality as AudioQuality);
 	const downloadMode = $derived($downloadPreferencesStore.mode);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
@@ -80,13 +81,16 @@
 
 	function albumDedupeKey(album: Album): string {
 		const candidate = album as Album & { upc?: string; url?: string };
+		if (Number.isFinite(album.id)) {
+			return `id:${album.id}`;
+		}
 		if (candidate.upc && candidate.upc.trim().length > 0) {
 			return `upc:${candidate.upc.trim().toLowerCase()}`;
 		}
 		if (candidate.url && candidate.url.trim().length > 0) {
 			return `url:${candidate.url.trim().toLowerCase()}`;
 		}
-		return `id:${album.id}`;
+		return `fallback:${(album.title ?? '').trim().toLowerCase()}`;
 	}
 
 	function albumScore(album: Album): number {
@@ -280,6 +284,7 @@
 	async function loadArtist(id: number) {
 		const requestToken = ++activeRequestToken;
 		const cachedArtist = artistCacheStore.get(id);
+		const hasCachedArtist = Boolean(cachedArtist);
 
 		error = null;
 		isDownloadingDiscography = false;
@@ -298,13 +303,14 @@
 			breadcrumbStore.setBreadcrumbs([
 				{ label: normalizedCached.name, href: `/artist/${normalizedCached.id}` }
 			]);
-			return;
 		}
 
 		try {
-			isLoading = true;
-			artist = null;
-			artistImage = null;
+			if (!hasCachedArtist) {
+				isLoading = true;
+				artist = null;
+				artistImage = null;
+			}
 			const data = await losslessAPI.getArtist(id);
 			const normalizedData = normalizeArtistDetails(data);
 			if (requestToken !== activeRequestToken) {
@@ -517,6 +523,14 @@
 						</button>
 					</div>
 				</div>
+				{#if discographyInfo?.mayBeIncomplete}
+					<div class="mt-3 rounded-lg border border-amber-700/40 bg-amber-900/20 p-3 text-sm text-amber-200">
+						<p class="font-semibold">Discography may be incomplete from source data.</p>
+						{#if discographyInfo.reason}
+							<p class="mt-1 text-xs text-amber-100/90">{discographyInfo.reason}.</p>
+						{/if}
+					</div>
+				{/if}
 				{#if discographyError}
 					<p class="mt-2 text-sm text-red-400" role="alert">{discographyError}</p>
 				{/if}

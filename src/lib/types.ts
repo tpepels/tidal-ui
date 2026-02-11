@@ -56,6 +56,17 @@ export interface Artist {
 export interface ArtistDetails extends Artist {
 	albums: Album[];
 	tracks: Track[];
+	discographyInfo?: {
+		mayBeIncomplete: boolean;
+		reason?: string;
+		sourceAlbumCount: number;
+		trackDerivedAlbumCount: number;
+		enrichedAlbumCount: number;
+		enrichmentApplied: boolean;
+		searchAlbumCount: number;
+		searchTotalCount?: number;
+		searchReturnedCount?: number;
+	};
 }
 
 // ============================================================================

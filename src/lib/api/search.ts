@@ -181,15 +181,15 @@ export async function searchAlbums(
 					releaseDate?: unknown;
 					artist?: { name?: unknown } | undefined;
 				};
-				if (typeof candidate.upc === 'string' && candidate.upc.trim().length > 0) {
-					return `upc:${candidate.upc.trim().toLowerCase()}`;
+				const parsedId = parseNumericId(candidate.id);
+				if (parsedId !== null) {
+					return `id:${parsedId}`;
 				}
 				if (typeof candidate.url === 'string' && candidate.url.trim().length > 0) {
 					return `url:${candidate.url.trim().toLowerCase()}`;
 				}
-				const parsedId = parseNumericId(candidate.id);
-				if (parsedId !== null) {
-					return `id:${parsedId}`;
+				if (typeof candidate.upc === 'string' && candidate.upc.trim().length > 0) {
+					return `upc:${candidate.upc.trim().toLowerCase()}`;
 				}
 				const title = typeof candidate.title === 'string' ? candidate.title.trim().toLowerCase() : '';
 				const year =

@@ -24,6 +24,12 @@ export interface ServerQueueState {
 	worker: WorkerStatus;
 	queueSource?: 'redis' | 'memory';
 	lastUpdated: number;
+	lastAttemptAt: number;
+	nextPollAt: number;
+	pollIntervalMs: number;
+	pollingError?: string;
+	backendError?: string;
+	backendWarning?: string;
 	error?: string;
 	warning?: string;
 }
@@ -42,7 +48,10 @@ const initialState: ServerQueueState = {
 		maxConcurrent: 4
 	},
 	queueSource: undefined,
-	lastUpdated: 0
+	lastUpdated: 0,
+	lastAttemptAt: 0,
+	nextPollAt: 0,
+	pollIntervalMs: 500
 };
 
 // Create the store
@@ -51,8 +60,20 @@ function createServerQueueStore() {
 
 	// Polling interval
 	let pollInterval: NodeJS.Timeout | null = null;
+	let pollingIntervalMs = 500;
+	let pollInFlight = false;
 
 	async function poll() {
+		if (pollInFlight) {
+			return;
+		}
+		pollInFlight = true;
+		const attemptAt = Date.now();
+		update((state) => ({
+			...state,
+			lastAttemptAt: attemptAt
+		}));
+
 		try {
 			const response = await fetch('/api/download-queue/stats');
 			if (!response.ok) {
@@ -65,22 +86,43 @@ function createServerQueueStore() {
 				update(() => ({
 					...data,
 					lastUpdated: Date.now(),
-					error: undefined
+					lastAttemptAt: attemptAt,
+					nextPollAt: Date.now() + pollingIntervalMs,
+					pollIntervalMs: pollingIntervalMs,
+					pollingError: undefined,
+					backendError: undefined,
+					backendWarning: data.warning,
+					error: undefined,
+					warning: data.warning
 				}));
 			} else {
 				update(state => ({
 					...state,
+					lastAttemptAt: attemptAt,
+					nextPollAt: Date.now() + pollingIntervalMs,
+					pollIntervalMs: pollingIntervalMs,
+					backendError: data.error || 'Queue polling failed',
+					pollingError: undefined,
+					backendWarning: data.warning,
 					error: data.error || 'Queue polling failed',
-					lastUpdated: Date.now()
+					warning: data.warning
 				}));
 			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
 			update(state => ({
 				...state,
+				lastAttemptAt: attemptAt,
+				nextPollAt: Date.now() + pollingIntervalMs,
+				pollIntervalMs: pollingIntervalMs,
+				pollingError: message,
+				backendError: undefined,
+				backendWarning: undefined,
 				error: message,
-				lastUpdated: Date.now()
+				warning: undefined
 			}));
+		} finally {
+			pollInFlight = false;
 		}
 	}
 
@@ -88,14 +130,30 @@ function createServerQueueStore() {
 		subscribe,
 		startPolling: (intervalMs: number = 500) => {
 			if (pollInterval) clearInterval(pollInterval);
+			pollingIntervalMs = intervalMs;
+			update((state) => ({
+				...state,
+				pollIntervalMs: intervalMs,
+				nextPollAt: Date.now() + intervalMs
+			}));
 			poll(); // Initial fetch
-			pollInterval = setInterval(poll, intervalMs);
+			pollInterval = setInterval(() => {
+				update((state) => ({
+					...state,
+					nextPollAt: Date.now() + pollingIntervalMs
+				}));
+				void poll();
+			}, intervalMs);
 		},
 		stopPolling: () => {
 			if (pollInterval) {
 				clearInterval(pollInterval);
 				pollInterval = null;
 			}
+			update((state) => ({
+				...state,
+				nextPollAt: 0
+			}));
 		},
 		poll
 	};

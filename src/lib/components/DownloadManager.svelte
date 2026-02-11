@@ -27,6 +27,16 @@
 	let isLoading = $state(false);
 	let queueJobs = $state<QueueJob[]>([]);
 	let expandedJobId = $state<string | null>(null);
+	let isCompactViewport = $state(false);
+	type JobTypeFilter = 'all' | 'albums' | 'tracks';
+	type CollapsibleSection = 'active' | 'queue' | 'failed';
+	let queueTypeFilter = $state<JobTypeFilter>('all');
+	let completedTypeFilter = $state<JobTypeFilter>('all');
+	let sectionExpanded = $state<Record<CollapsibleSection, boolean>>({
+		active: true,
+		queue: true,
+		failed: true
+	});
 
 	// Use server queue data
 	let stats = $derived.by(() => {
@@ -43,12 +53,23 @@
 	let totalItems = $derived($totalDownloads + stats.failed);
 	let hasActivity = $derived(totalItems > 0);
 	let workerWarning = $derived(!$workerStatus.running && totalItems > 0);
+	const matchesTypeFilter = (job: QueueJob, filter: JobTypeFilter): boolean => {
+		if (filter === 'all') return true;
+		return filter === 'albums' ? job.job.type === 'album' : job.job.type === 'track';
+	};
+	let processingJobs = $derived(queueJobs.filter(j => j.status === 'processing'));
+	let queuedJobs = $derived(queueJobs.filter(j => j.status === 'queued'));
+	let completedJobs = $derived(queueJobs.filter(j => j.status === 'completed'));
+	let failedJobs = $derived(queueJobs.filter(j => j.status === 'failed'));
+	let filteredQueuedJobs = $derived(queuedJobs.filter(job => matchesTypeFilter(job, queueTypeFilter)));
+	let filteredCompletedJobs = $derived(
+		completedJobs.filter(job => matchesTypeFilter(job, completedTypeFilter))
+	);
 	let completedAlbums = $derived(
-		queueJobs.filter(j => j.status === 'completed' && j.job.type === 'album').length
+		completedJobs.filter(j => j.job.type === 'album').length
 	);
 	let completedFiles = $derived(
-		queueJobs
-			.filter(j => j.status === 'completed')
+		completedJobs
 			.reduce((sum, job) => {
 				if (job.job.type === 'album') {
 					const count = job.completedTracks ?? job.trackCount ?? 0;
@@ -67,11 +88,64 @@
 		}
 		return { label: 'Redis: unknown', state: 'unknown' as const };
 	});
+	let lastUpdatedLabel = $derived.by(() => {
+		const ts = $serverQueue.lastUpdated;
+		if (!ts) return 'never';
+		return new Date(ts).toLocaleTimeString();
+	});
+	let nowTs = $state(Date.now());
+	let pollCountdownSeconds = $derived.by(() => {
+		const next = $serverQueue.nextPollAt;
+		if (!next) return 0;
+		return Math.max(0, Math.ceil((next - nowTs) / 1000));
+	});
+	let staleThresholdMs = $derived.by(() => {
+		const interval = $serverQueue.pollIntervalMs || 500;
+		return Math.max(15000, interval * 3);
+	});
+	let isPollingStale = $derived.by(() => {
+		const last = $serverQueue.lastUpdated;
+		if (!last) return false;
+		return nowTs - last > staleThresholdMs;
+	});
+	let pollStatusLabel = $derived.by(() => {
+		if ($serverQueue.pollingError) {
+			return `Retry in ${pollCountdownSeconds}s`;
+		}
+		if ($serverQueue.nextPollAt > 0) {
+			return `Next poll in ${pollCountdownSeconds}s`;
+		}
+		return 'Polling paused';
+	});
+	const toggleSection = (section: CollapsibleSection) => {
+		sectionExpanded = {
+			...sectionExpanded,
+			[section]: !sectionExpanded[section]
+		};
+	};
 
 	// Start polling when component mounts
 	$effect(() => {
 		serverQueue.startPolling(500);
 		return () => serverQueue.stopPolling();
+	});
+
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		const updateViewportMode = () => {
+			isCompactViewport = window.innerWidth <= 900;
+		};
+		updateViewportMode();
+		window.addEventListener('resize', updateViewportMode);
+		return () => window.removeEventListener('resize', updateViewportMode);
+	});
+
+	$effect(() => {
+		if (!isOpen) return;
+		const interval = setInterval(() => {
+			nowTs = Date.now();
+		}, 500);
+		return () => clearInterval(interval);
 	});
 
 	// Fetch queue jobs details
@@ -155,16 +229,31 @@
 	</button>
 
 	{#if isOpen}
-		<div class="download-manager-panel">
+		<div class="download-manager-panel" class:compact-mode={isCompactViewport}>
 			<div class="download-manager-header">
 				<div>
 					<h3 class="download-manager-title">Download Manager</h3>
 					<p class="download-manager-subtitle-text">
-						{stats.running} downloading • {stats.queued} queued • source: {$serverQueue.queueSource ?? 'unknown'}
+						Live server queue status for tracks and albums
 					</p>
-					<div class="download-manager-redis" data-state={redisStatus.state}>
-						<span class="download-manager-redis-dot"></span>
-						<span>{redisStatus.label}</span>
+					<div class="download-manager-meta-row">
+						<div class="download-manager-redis" data-state={redisStatus.state}>
+							<span class="download-manager-redis-dot"></span>
+							<span>{redisStatus.label}</span>
+						</div>
+						<span class="download-manager-meta-separator">•</span>
+						<span class="download-manager-last-updated">Updated {lastUpdatedLabel}</span>
+						<span class="download-manager-meta-separator">•</span>
+						<span class="download-manager-poll-status" data-stale={isPollingStale}>
+							{pollStatusLabel}
+							{#if isPollingStale}
+								<span class="poll-stale-chip">STALE</span>
+							{/if}
+						</span>
+						{#if isCompactViewport}
+							<span class="download-manager-meta-separator">•</span>
+							<span class="download-manager-compact-indicator">Compact rows</span>
+						{/if}
 					</div>
 				</div>
 				<button
@@ -177,15 +266,21 @@
 				</button>
 			</div>
 
-			{#if $serverQueue.error}
+			{#if $serverQueue.pollingError}
 				<div class="download-manager-error">
-					Queue polling failed: {$serverQueue.error}
+					Transport error while polling queue: {$serverQueue.pollingError}. {pollStatusLabel}.
 				</div>
 			{/if}
 
-			{#if $serverQueue.warning}
+			{#if $serverQueue.backendError}
+				<div class="download-manager-error">
+					Queue backend error: {$serverQueue.backendError}
+				</div>
+			{/if}
+
+			{#if $serverQueue.backendWarning}
 				<div class="download-manager-warning">
-					{$serverQueue.warning}
+					Queue backend warning: {$serverQueue.backendWarning}
 				</div>
 			{/if}
 
@@ -195,29 +290,38 @@
 				</div>
 			{/if}
 
+			{#if isPollingStale && !$serverQueue.pollingError}
+				<div class="download-manager-warning">
+					Queue UI may be stale. Last successful update was at {lastUpdatedLabel}.
+				</div>
+			{/if}
+
 			{#if $serverQueue.queueSource === 'memory'}
 				<div class="download-manager-warning">
 					Redis unavailable; using in-memory queue. UI may be stale if the worker runs in another process.
 				</div>
 			{/if}
 
-			<!-- Stats bar -->
-			<div class="download-manager-stats-bar">
-				<div class="stat-item stat-running">
-					<span class="stat-number">{stats.running}</span>
-					<span class="stat-label">Running</span>
+			<div class="download-manager-top-strip">
+				<div class="top-strip-item top-strip-item--running">
+					<span class="top-strip-label">Running</span>
+					<span class="top-strip-value">{stats.running}</span>
 				</div>
-				<div class="stat-item stat-queued">
-					<span class="stat-number">{stats.queued}</span>
-					<span class="stat-label">Queued</span>
+				<div class="top-strip-item top-strip-item--queued">
+					<span class="top-strip-label">Queued</span>
+					<span class="top-strip-value">{stats.queued}</span>
 				</div>
-				<div class="stat-item stat-completed">
-					<span class="stat-number">{stats.completed}</span>
-					<span class="stat-label">Completed</span>
+				<div class="top-strip-item top-strip-item--failed">
+					<span class="top-strip-label">Failed</span>
+					<span class="top-strip-value">{stats.failed}</span>
 				</div>
-				<div class="stat-item stat-failed">
-					<span class="stat-number">{stats.failed}</span>
-					<span class="stat-label">Failed</span>
+				<div class="top-strip-item">
+					<span class="top-strip-label">Queue source</span>
+					<span class="top-strip-value top-strip-value--text">{$serverQueue.queueSource ?? 'unknown'}</span>
+				</div>
+				<div class="top-strip-item">
+					<span class="top-strip-label">Last update</span>
+					<span class="top-strip-value top-strip-value--text">{lastUpdatedLabel}</span>
 				</div>
 			</div>
 
@@ -225,13 +329,30 @@
 				<!-- Current/Active Downloads -->
 				{#if stats.running > 0}
 					<div class="section current-section">
-						<h4 class="section-title">
-							<span class="section-title-icon rotating"><RefreshCw size={14} strokeWidth={2} /></span>
-							<span>Currently Downloading</span>
-							<span class="section-count">{stats.running}</span>
-						</h4>
-						<div class="current-items">
-							{#each queueJobs.filter(j => j.status === 'processing') as job (job.id)}
+						<button
+							type="button"
+							class="section-toggle"
+							onclick={() => toggleSection('active')}
+							aria-expanded={sectionExpanded.active}
+						>
+							<span class="section-title-main section-title">
+								<span class="section-title-icon rotating"><RefreshCw size={14} strokeWidth={2} /></span>
+								<span>Active Downloads</span>
+							</span>
+							<span class="section-title-actions">
+								<span class="section-count">{stats.running}</span>
+								<span class="section-chevron">
+									{#if sectionExpanded.active}
+										<ChevronUp size={16} />
+									{:else}
+										<ChevronDown size={16} />
+									{/if}
+								</span>
+							</span>
+						</button>
+						{#if sectionExpanded.active}
+							<div class="current-items">
+								{#each processingJobs as job (job.id)}
 								<div class="current-item">
 									<div class="current-item-header">
 										<div class="current-item-title">
@@ -263,88 +384,142 @@
 									</div>
 									<div class="progress-text">{Math.round(job.progress * 100)}%</div>
 								</div>
-							{/each}
-						</div>
+								{/each}
+							</div>
+						{/if}
 					</div>
 				{/if}
 
 				<!-- Queued items -->
 				{#if stats.queued > 0}
 					<div class="section">
-						<h4 class="section-title">
-							<span>📋 Queue</span>
-							<span class="section-count">{stats.queued}</span>
-						</h4>
-						<div class="queue-list">
-							{#each queueJobs.filter(j => j.status === 'queued').slice(0, 5) as job (job.id)}
-								<div class="queue-item-card">
+						<button
+							type="button"
+							class="section-toggle"
+							onclick={() => toggleSection('queue')}
+							aria-expanded={sectionExpanded.queue}
+						>
+							<span class="section-title-main section-title">
+								<span>Queue</span>
+							</span>
+							<span class="section-title-actions">
+								<span class="section-count">{stats.queued}</span>
+								<span class="section-chevron">
+									{#if sectionExpanded.queue}
+										<ChevronUp size={16} />
+									{:else}
+										<ChevronDown size={16} />
+									{/if}
+								</span>
+							</span>
+						</button>
+						{#if sectionExpanded.queue}
+							<div class="section-filter-row">
+								<div class="section-filter-label">Show</div>
+								<div class="filter-pills" role="tablist" aria-label="Queue filters">
 									<button
 										type="button"
-										class="queue-item-click"
-										onclick={() => expandedJobId = expandedJobId === job.id ? null : job.id}
-										aria-expanded={expandedJobId === job.id}
+										class="filter-pill"
+										class:is-active={queueTypeFilter === 'all'}
+										onclick={() => (queueTypeFilter = 'all')}
 									>
-										<div class="queue-item-main">
-											<div class="queue-item-info">
-												<div class="queue-item-title">{job.job.trackTitle || job.job.albumTitle || 'Unknown'}</div>
-												<div class="queue-item-artist">{job.job.artistName || 'Unknown Artist'}</div>
-												{#if job.job.albumTitle && job.job.trackTitle}
-													<div class="queue-item-album">{job.job.albumTitle}</div>
-												{/if}
-											</div>
-											<span class="expand-icon">
-												{#if expandedJobId === job.id}
-													<ChevronUp size={16} />
-												{:else}
-													<ChevronDown size={16} />
-												{/if}
-											</span>
-										</div>
-
-										{#if expandedJobId === job.id}
-											<div class="queue-item-details">
-												<div class="detail-row">
-													<span class="detail-label">Type:</span>
-													<span class="detail-value">{job.job.type === 'track' ? 'Single Track' : 'Album'}</span>
-												</div>
-												<div class="detail-row">
-													<span class="detail-label">Quality:</span>
-													<span class="detail-value">{job.job.quality || 'Lossless'}</span>
-												</div>
-												{#if job.job.type === 'album' && job.trackCount}
-													<div class="detail-row">
-														<span class="detail-label">Progress:</span>
-														<span class="detail-value">{job.completedTracks || 0}/{job.trackCount} tracks</span>
-													</div>
-												{/if}
-												<div class="detail-row">
-													<span class="detail-label">Status:</span>
-													<span class="detail-value">{job.status}</span>
-												</div>
-												{#if job.createdAt}
-													<div class="detail-row">
-														<span class="detail-label">Added:</span>
-														<span class="detail-value">{new Date(job.createdAt).toLocaleTimeString()}</span>
-													</div>
-												{/if}
-												{#if job.startedAt}
-													<div class="detail-row">
-														<span class="detail-label">Duration:</span>
-														<span class="detail-value">{Math.round((job.completedAt || Date.now()) - job.startedAt) / 1000}s</span>
-													</div>
-												{/if}
-											</div>
-										{/if}
+										All
+									</button>
+									<button
+										type="button"
+										class="filter-pill"
+										class:is-active={queueTypeFilter === 'albums'}
+										onclick={() => (queueTypeFilter = 'albums')}
+									>
+										Albums
+									</button>
+									<button
+										type="button"
+										class="filter-pill"
+										class:is-active={queueTypeFilter === 'tracks'}
+										onclick={() => (queueTypeFilter = 'tracks')}
+									>
+										Tracks
 									</button>
 								</div>
-							{/each}
+							</div>
+							<div class="queue-list">
+								{#if filteredQueuedJobs.length === 0}
+									<div class="filter-empty-state">
+										No {queueTypeFilter === 'all' ? 'queued' : queueTypeFilter} jobs in queue right now.
+									</div>
+								{:else}
+									{#each filteredQueuedJobs.slice(0, 5) as job (job.id)}
+										<div class="queue-item-card">
+											<button
+												type="button"
+												class="queue-item-click"
+												onclick={() => expandedJobId = expandedJobId === job.id ? null : job.id}
+												aria-expanded={expandedJobId === job.id}
+											>
+												<div class="queue-item-main">
+													<div class="queue-item-info">
+														<div class="queue-item-title">{job.job.trackTitle || job.job.albumTitle || 'Unknown'}</div>
+														<div class="queue-item-artist">{job.job.artistName || 'Unknown Artist'}</div>
+														{#if job.job.albumTitle && job.job.trackTitle}
+															<div class="queue-item-album">{job.job.albumTitle}</div>
+														{/if}
+													</div>
+													<span class="expand-icon">
+														{#if expandedJobId === job.id}
+															<ChevronUp size={16} />
+														{:else}
+															<ChevronDown size={16} />
+														{/if}
+													</span>
+												</div>
 
-							{#if stats.queued > 5}
-								<div class="queue-more-hint">
-									+{stats.queued - 5} more in queue
-								</div>
-							{/if}
-						</div>
+												{#if expandedJobId === job.id}
+													<div class="queue-item-details">
+														<div class="detail-row">
+															<span class="detail-label">Type:</span>
+															<span class="detail-value">{job.job.type === 'track' ? 'Single Track' : 'Album'}</span>
+														</div>
+														<div class="detail-row">
+															<span class="detail-label">Quality:</span>
+															<span class="detail-value">{job.job.quality || 'Lossless'}</span>
+														</div>
+														{#if job.job.type === 'album' && job.trackCount}
+															<div class="detail-row">
+																<span class="detail-label">Progress:</span>
+																<span class="detail-value">{job.completedTracks || 0}/{job.trackCount} tracks</span>
+															</div>
+														{/if}
+														<div class="detail-row">
+															<span class="detail-label">Status:</span>
+															<span class="detail-value">{job.status}</span>
+														</div>
+														{#if job.createdAt}
+															<div class="detail-row">
+																<span class="detail-label">Added:</span>
+																<span class="detail-value">{new Date(job.createdAt).toLocaleTimeString()}</span>
+															</div>
+														{/if}
+														{#if job.startedAt}
+															<div class="detail-row">
+																<span class="detail-label">Duration:</span>
+																<span class="detail-value">{Math.round((job.completedAt || Date.now()) - job.startedAt) / 1000}s</span>
+															</div>
+														{/if}
+													</div>
+												{/if}
+											</button>
+										</div>
+									{/each}
+								{/if}
+
+								{#if filteredQueuedJobs.length > 5}
+									<div class="queue-more-hint">
+										+{filteredQueuedJobs.length - 5} more in queue
+									</div>
+								{/if}
+							</div>
+						{/if}
 					</div>
 				{/if}
 
@@ -352,7 +527,7 @@
 				{#if stats.completed > 0}
 					<div class="section">
 						<h4 class="section-title">
-							<span>✓ Completed</span>
+							<span>Completed</span>
 							<span class="section-count">{stats.completed}</span>
 						</h4>
 						<div class="completion-summary">
@@ -364,79 +539,157 @@
 								<p>{completedFiles} file{completedFiles !== 1 ? 's' : ''} successfully downloaded</p>
 							{/if}
 						</div>
+						<div class="section-filter-row">
+							<div class="section-filter-label">Show</div>
+							<div class="filter-pills" role="tablist" aria-label="Completed filters">
+								<button
+									type="button"
+									class="filter-pill"
+									class:is-active={completedTypeFilter === 'all'}
+									onclick={() => (completedTypeFilter = 'all')}
+								>
+									All
+								</button>
+								<button
+									type="button"
+									class="filter-pill"
+									class:is-active={completedTypeFilter === 'albums'}
+									onclick={() => (completedTypeFilter = 'albums')}
+								>
+									Albums
+								</button>
+								<button
+									type="button"
+									class="filter-pill"
+									class:is-active={completedTypeFilter === 'tracks'}
+									onclick={() => (completedTypeFilter = 'tracks')}
+								>
+									Tracks
+								</button>
+							</div>
+						</div>
+						<div class="completed-list">
+							{#if filteredCompletedJobs.length === 0}
+								<div class="filter-empty-state">
+									No completed {completedTypeFilter === 'all' ? '' : `${completedTypeFilter} `}jobs yet.
+								</div>
+							{:else}
+								{#each filteredCompletedJobs.slice(0, 5) as job (job.id)}
+									<div class="completed-item">
+										<div class="completed-item-title">
+											{job.job.trackTitle || job.job.albumTitle || 'Unknown'}
+										</div>
+										<div class="completed-item-meta">
+											<span>{job.job.artistName || 'Unknown Artist'}</span>
+											<span class="meta-separator">•</span>
+											<span>{job.job.type === 'album' ? 'Album' : 'Track'}</span>
+											{#if job.completedAt}
+												<span class="meta-separator">•</span>
+												<span>{new Date(job.completedAt).toLocaleTimeString()}</span>
+											{/if}
+										</div>
+									</div>
+								{/each}
+							{/if}
+
+							{#if filteredCompletedJobs.length > 5}
+								<div class="queue-more-hint">
+									+{filteredCompletedJobs.length - 5} more completed
+								</div>
+							{/if}
+						</div>
 					</div>
 				{/if}
 
 				<!-- Failed -->
 				{#if stats.failed > 0}
 					<div class="section">
-						<h4 class="section-title error-title">
-							<span>⚠️ Failed ({stats.failed})</span>
-						</h4>
-						<div class="failed-list">
-							{#each queueJobs.filter(j => j.status === 'failed').slice(0, 3) as job (job.id)}
-								<div class="failed-item-card">
-									<button
-										type="button"
-										class="failed-item-click"
-										onclick={() => expandedJobId = expandedJobId === job.id ? null : job.id}
-										aria-expanded={expandedJobId === job.id}
-									>
-										<div class="failed-item-main">
-											<div class="failed-item-info">
-												<div class="failed-item-title">
-													{job.job.type === 'track' ? job.job.trackTitle : job.job.albumTitle || 'Unknown'}
+						<button
+							type="button"
+							class="section-toggle"
+							onclick={() => toggleSection('failed')}
+							aria-expanded={sectionExpanded.failed}
+						>
+							<span class="section-title-main section-title error-title">
+								<span>Failed</span>
+							</span>
+							<span class="section-title-actions">
+								<span class="section-count">{stats.failed}</span>
+								<span class="section-chevron">
+									{#if sectionExpanded.failed}
+										<ChevronUp size={16} />
+									{:else}
+										<ChevronDown size={16} />
+									{/if}
+								</span>
+							</span>
+						</button>
+						{#if sectionExpanded.failed}
+							<div class="failed-list">
+								{#each failedJobs.slice(0, 3) as job (job.id)}
+									<div class="failed-item-card">
+										<button
+											type="button"
+											class="failed-item-click"
+											onclick={() => expandedJobId = expandedJobId === job.id ? null : job.id}
+											aria-expanded={expandedJobId === job.id}
+										>
+											<div class="failed-item-main">
+												<div class="failed-item-info">
+													<div class="failed-item-title">
+														{job.job.type === 'track' ? job.job.trackTitle : job.job.albumTitle || 'Unknown'}
+													</div>
+													<div class="failed-item-artist">{job.job.artistName || 'Unknown'}</div>
+													<div class="failed-item-error-text">{job.error || 'Unknown error'}</div>
 												</div>
-												<div class="failed-item-artist">{job.job.artistName || 'Unknown'}</div>
-												<div class="failed-item-error-text">{job.error || 'Unknown error'}</div>
+												<span class="expand-icon">
+													{#if expandedJobId === job.id}
+														<ChevronUp size={16} />
+													{:else}
+														<ChevronDown size={16} />
+													{/if}
+												</span>
 											</div>
-											<span class="expand-icon">
-												{#if expandedJobId === job.id}
-													<ChevronUp size={16} />
-												{:else}
-													<ChevronDown size={16} />
-												{/if}
-											</span>
-										</div>
 
-										{#if expandedJobId === job.id}
-											<div class="failed-item-details">
-												<div class="detail-row">
-													<span class="detail-label">Job ID:</span>
-													<span class="detail-value" style="font-family: monospace; font-size: 11px;">{job.id}</span>
+											{#if expandedJobId === job.id}
+												<div class="failed-item-details">
+													<div class="detail-row">
+														<span class="detail-label">Job ID:</span>
+														<span class="detail-value" style="font-family: monospace; font-size: 11px;">{job.id}</span>
+													</div>
+													<div class="detail-row">
+														<span class="detail-label">Type:</span>
+														<span class="detail-value">{job.job.type === 'track' ? 'Single Track' : 'Album'}</span>
+													</div>
+													<div class="detail-row">
+														<span class="detail-label">Artist:</span>
+														<span class="detail-value">{job.job.artistName || 'Unknown'}</span>
+													</div>
 												</div>
-												<div class="detail-row">
-													<span class="detail-label">Type:</span>
-													<span class="detail-value">{job.job.type === 'track' ? 'Single Track' : 'Album'}</span>
-												</div>
-												<div class="detail-row">
-													<span class="detail-label">Artist:</span>
-													<span class="detail-value">{job.job.artistName || 'Unknown'}</span>
-												</div>
-											</div>
-										{/if}
-									</button>
-								</div>
-							{/each}
+											{/if}
+										</button>
+									</div>
+								{/each}
 
-							{#if stats.failed > 3}
-								<div class="queue-more-hint">
-									+{stats.failed - 3} more failed items
-								</div>
-							{/if}
-						</div>
-						<div class="failed-actions">
-							<button
-								onclick={handleClearFailed}
-								class="control-btn control-btn--danger"
-								type="button"
-								title="Clear failed downloads"
-								disabled={isLoading}
-							>
-								<Trash2 size={14} />
-								<span>Clear Failed</span>
-							</button>
-						</div>
+								{#if failedJobs.length > 3}
+									<div class="queue-more-hint">
+										+{failedJobs.length - 3} more failed items
+									</div>
+								{/if}
+							</div>
+							<div class="failed-actions">
+								<button
+									onclick={handleClearFailed}
+									class="control-btn control-btn--danger"
+									type="button"
+									title="Clear failed downloads"
+									disabled={isLoading}
+								>
+									<Trash2 size={14} />
+									<span>Clear Failed</span>
+								</button>
+							</div>
+						{/if}
 					</div>
 				{/if}
 
@@ -444,7 +697,14 @@
 				{#if stats.running === 0 && stats.queued === 0 && stats.completed === 0 && stats.failed === 0}
 					<div class="download-manager-empty">
 						<p class="empty-message">No downloads yet</p>
-						<p class="empty-hint">Start downloading tracks or albums to see them here</p>
+						<p class="empty-hint">Queue a track or album and it will appear here in real time.</p>
+						<div class="empty-cta-actions">
+							<a href="/" class="empty-cta-btn">Open Search</a>
+						</div>
+						<div class="empty-steps">
+							<div class="empty-step">1. Open an album page and click <strong>Download Album</strong>.</div>
+							<div class="empty-step">2. Open a track page and click <strong>Download</strong>.</div>
+						</div>
 					</div>
 				{/if}
 			</div>
@@ -530,7 +790,7 @@
 		bottom: calc(20px + var(--player-height, 0px) + 80px + env(safe-area-inset-bottom, 0px));
 		right: 20px;
 		z-index: 99998;
-		width: 600px;
+		width: 680px;
 		max-height: 80vh;
 		max-height: 80dvh;
 		border-radius: 12px;
@@ -578,8 +838,55 @@
 		color: var(--color-text-secondary);
 	}
 
-	.download-manager-redis {
+	.download-manager-meta-row {
 		margin-top: 6px;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex-wrap: wrap;
+	}
+
+	.download-manager-meta-separator {
+		font-size: 11px;
+		color: var(--color-text-secondary);
+		opacity: 0.7;
+	}
+
+	.download-manager-last-updated {
+		font-size: 11px;
+		color: var(--color-text-secondary);
+	}
+
+	.download-manager-poll-status {
+		font-size: 11px;
+		color: var(--color-text-secondary);
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+	}
+
+	.download-manager-poll-status[data-stale='true'] {
+		color: #fbbf24;
+	}
+
+	.poll-stale-chip {
+		font-size: 9px;
+		line-height: 1;
+		padding: 3px 5px;
+		border-radius: 999px;
+		letter-spacing: 0.3px;
+		font-weight: 700;
+		color: #fef3c7;
+		background: rgba(245, 158, 11, 0.28);
+		border: 1px solid rgba(245, 158, 11, 0.5);
+	}
+
+	.download-manager-compact-indicator {
+		font-size: 11px;
+		color: #bfdbfe;
+	}
+
+	.download-manager-redis {
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
@@ -647,36 +954,29 @@
 		line-height: 1.4;
 	}
 
-	/* Stats bar */
-	.download-manager-stats-bar {
+	.download-manager-top-strip {
 		display: grid;
-		grid-template-columns: repeat(4, 1fr);
-		gap: 1px;
+		grid-template-columns: repeat(5, minmax(0, 1fr));
+		gap: 8px;
 		border-top: 1px solid var(--color-border);
 		border-bottom: 1px solid var(--color-border);
-		padding: 0;
-		background: var(--color-border);
+		padding: 12px 16px;
+		background: rgba(255, 255, 255, 0.02);
 		flex-shrink: 0;
 	}
 
-	.stat-item {
+	.top-strip-item {
 		display: flex;
 		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		padding: 12px 8px;
-		background: var(--color-bg-primary);
-		text-align: center;
-		gap: 4px;
+		gap: 6px;
+		padding: 10px;
+		border-radius: 8px;
+		background: rgba(255, 255, 255, 0.04);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		min-width: 0;
 	}
 
-	.stat-number {
-		font-size: 18px;
-		font-weight: 700;
-		color: var(--color-text-primary);
-	}
-
-	.stat-label {
+	.top-strip-label {
 		font-size: 10px;
 		color: var(--color-text-secondary);
 		text-transform: uppercase;
@@ -684,19 +984,30 @@
 		font-weight: 600;
 	}
 
-	.stat-running .stat-number {
+	.top-strip-value {
+		font-size: 22px;
+		font-weight: 700;
+		color: var(--color-text-primary);
+		line-height: 1;
+	}
+
+	.top-strip-value--text {
+		font-size: 13px;
+		font-weight: 600;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.top-strip-item--running .top-strip-value {
 		color: #10b981;
 	}
 
-	.stat-queued .stat-number {
+	.top-strip-item--queued .top-strip-value {
 		color: #f59e0b;
 	}
 
-	.stat-completed .stat-number {
-		color: #06b6d4;
-	}
-
-	.stat-failed .stat-number {
+	.top-strip-item--failed .top-strip-value {
 		color: #ef4444;
 	}
 
@@ -725,7 +1036,7 @@
 
 	.section-title {
 		margin: 0;
-		font-size: 12px;
+		font-size: 13px;
 		font-weight: 700;
 		color: var(--color-text-secondary);
 		text-transform: uppercase;
@@ -734,6 +1045,42 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 8px;
+	}
+
+	.section-toggle {
+		all: unset;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		width: 100%;
+		cursor: pointer;
+		border-radius: 8px;
+		padding: 4px 6px;
+		box-sizing: border-box;
+		min-height: 40px;
+	}
+
+	.section-toggle:hover {
+		background: rgba(255, 255, 255, 0.04);
+	}
+
+	.section-title-main {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.section-title-actions {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.section-chevron {
+		display: inline-flex;
+		align-items: center;
+		color: var(--color-text-secondary);
 	}
 
 	.section-title-icon {
@@ -751,9 +1098,9 @@
 
 	.section-count {
 		background: var(--color-bg-secondary);
-		padding: 2px 8px;
+		padding: 3px 8px;
 		border-radius: 10px;
-		font-size: 11px;
+		font-size: 12px;
 		font-weight: 600;
 		color: var(--color-text-primary);
 	}
@@ -839,6 +1186,62 @@
 		text-align: right;
 	}
 
+	.section-filter-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 10px;
+	}
+
+	.section-filter-label {
+		font-size: 10px;
+		text-transform: uppercase;
+		letter-spacing: 0.3px;
+		color: var(--color-text-secondary);
+		font-weight: 600;
+	}
+
+	.filter-pills {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+	}
+
+	.filter-pill {
+		all: unset;
+		cursor: pointer;
+		padding: 4px 10px;
+		border-radius: 999px;
+		font-size: 11px;
+		color: var(--color-text-secondary);
+		border: 1px solid var(--color-border);
+		background: rgba(255, 255, 255, 0.02);
+		min-height: 34px;
+		display: inline-flex;
+		align-items: center;
+	}
+
+	.filter-pill:hover {
+		background: rgba(255, 255, 255, 0.08);
+		color: var(--color-text-primary);
+	}
+
+	.filter-pill.is-active {
+		background: rgba(59, 130, 246, 0.2);
+		border-color: rgba(59, 130, 246, 0.4);
+		color: #bfdbfe;
+	}
+
+	.filter-empty-state {
+		border: 1px dashed var(--color-border);
+		border-radius: 8px;
+		padding: 12px;
+		font-size: 12px;
+		color: var(--color-text-secondary);
+		text-align: center;
+		background: rgba(255, 255, 255, 0.02);
+	}
+
 	/* Queue list */
 	.queue-list {
 		display: flex;
@@ -858,13 +1261,14 @@
 	.queue-item-click,
 	.failed-item-click {
 		cursor: pointer;
-		padding: 10px;
+		padding: 12px;
 		transition: background 0.2s;
 		background: none;
 		border: none;
 		text-align: left;
 		width: 100%;
 		color: inherit;
+		min-height: 44px;
 	}
 
 	.queue-item-click:hover,
@@ -980,6 +1384,38 @@
 		margin: 0;
 	}
 
+	.completed-list {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.completed-item {
+		padding: 10px;
+		border-radius: 8px;
+		border: 1px solid rgba(6, 182, 212, 0.18);
+		background: rgba(6, 182, 212, 0.05);
+	}
+
+	.completed-item-title {
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--color-text-primary);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.completed-item-meta {
+		margin-top: 4px;
+		font-size: 11px;
+		color: var(--color-text-secondary);
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex-wrap: wrap;
+	}
+
 	/* Failed items */
 	.failed-list {
 		display: flex;
@@ -1076,6 +1512,8 @@
 		transition: all 0.2s;
 		white-space: nowrap;
 		border: 1px solid transparent;
+		min-height: 40px;
+		box-sizing: border-box;
 	}
 
 	.control-btn--secondary {
@@ -1130,6 +1568,41 @@
 		max-width: 280px;
 	}
 
+	.empty-cta-actions {
+		margin-top: 14px;
+	}
+
+	.empty-cta-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 8px 12px;
+		border-radius: 8px;
+		border: 1px solid rgba(59, 130, 246, 0.4);
+		background: rgba(59, 130, 246, 0.14);
+		color: #bfdbfe;
+		font-size: 12px;
+		font-weight: 600;
+		text-decoration: none;
+		transition: all 0.2s;
+	}
+
+	.empty-cta-btn:hover {
+		background: rgba(59, 130, 246, 0.24);
+	}
+
+	.empty-steps {
+		margin-top: 12px;
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.empty-step {
+		font-size: 12px;
+		color: var(--color-text-secondary);
+	}
+
 	/* Footer */
 	.download-manager-footer {
 		padding: 12px 16px;
@@ -1138,6 +1611,36 @@
 		gap: 8px;
 		flex-shrink: 0;
 		background: var(--color-bg-secondary);
+		position: sticky;
+		bottom: 0;
+		z-index: 2;
+		backdrop-filter: blur(4px);
+	}
+
+	.download-manager-panel.compact-mode .download-manager-content {
+		gap: 10px;
+		padding: 12px;
+	}
+
+	.download-manager-panel.compact-mode .current-item,
+	.download-manager-panel.compact-mode .queue-item-click,
+	.download-manager-panel.compact-mode .failed-item-click,
+	.download-manager-panel.compact-mode .completed-item {
+		padding: 8px;
+	}
+
+	.download-manager-panel.compact-mode .current-item-title,
+	.download-manager-panel.compact-mode .queue-item-title,
+	.download-manager-panel.compact-mode .failed-item-title,
+	.download-manager-panel.compact-mode .completed-item-title {
+		font-size: 12px;
+	}
+
+	.download-manager-panel.compact-mode .current-item-meta,
+	.download-manager-panel.compact-mode .queue-item-artist,
+	.download-manager-panel.compact-mode .failed-item-artist,
+	.download-manager-panel.compact-mode .completed-item-meta {
+		font-size: 10px;
 	}
 
 	.rotating {
@@ -1190,13 +1693,24 @@
 
 	@media (max-width: 640px) {
 		.download-manager-panel {
-			width: calc(100vw - 30px);
-			right: 15px;
-			max-height: 60vh;
+			left: 8px;
+			right: 8px;
+			width: auto;
+			max-height: 68vh;
+			max-height: 68dvh;
 		}
 
-		.download-manager-stats-bar {
+		.download-manager-top-strip {
 			grid-template-columns: repeat(2, 1fr);
+		}
+
+		.section-filter-row {
+			flex-direction: column;
+			align-items: flex-start;
+		}
+
+		.filter-pills {
+			flex-wrap: wrap;
 		}
 
 		.control-btn span {
@@ -1205,6 +1719,30 @@
 
 		.control-btn {
 			padding: 8px;
+		}
+
+		.download-manager-content {
+			padding: 12px;
+			gap: 12px;
+		}
+
+		.current-item-title,
+		.queue-item-title,
+		.failed-item-title,
+		.completed-item-title {
+			white-space: normal;
+			display: -webkit-box;
+			-webkit-line-clamp: 2;
+			-webkit-box-orient: vertical;
+		}
+
+		.download-manager-close {
+			width: 40px;
+			height: 40px;
+		}
+
+		.download-manager-footer {
+			padding: 10px 12px;
 		}
 	}
 </style>
