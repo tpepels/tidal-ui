@@ -66,6 +66,20 @@ export interface ArtistDetails extends Artist {
 		searchAlbumCount: number;
 		searchTotalCount?: number;
 		searchReturnedCount?: number;
+		enrichmentDiagnostics?: {
+			queryBudget: number;
+			queryCount: number;
+			duplicateQueriesSkipped: number;
+			budgetExhausted: boolean;
+			passes: Array<{
+				name: 'artist-url' | 'artist-name' | 'album-title';
+				query: string;
+				returned: number;
+				accepted: number;
+				newlyAdded: number;
+				total?: number;
+			}>;
+		};
 	};
 }
 

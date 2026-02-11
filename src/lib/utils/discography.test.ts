@@ -68,4 +68,28 @@ describe('groupDiscography', () => {
 		expect(grouped[0]?.versions).toHaveLength(1);
 		expect(grouped[0]?.representative.cover).toBe('cover-id');
 	});
+
+	it('collapses same-title quality variants even when metadata differs', () => {
+		const albums: Album[] = [
+			buildAlbum({
+				id: 41,
+				title: 'Blueprint',
+				audioQuality: 'HIGH',
+				releaseDate: '2023-01-01',
+				upc: '111111111111'
+			}),
+			buildAlbum({
+				id: 42,
+				title: 'Blueprint',
+				audioQuality: 'LOSSLESS',
+				releaseDate: '2024-06-10',
+				upc: '222222222222'
+			})
+		];
+
+		const grouped = groupDiscography(albums, 'LOSSLESS');
+		expect(grouped).toHaveLength(1);
+		expect(grouped[0]?.representative.id).toBe(42);
+		expect(grouped[0]?.versions.map((album) => album.id).sort((a, b) => a - b)).toEqual([41, 42]);
+	});
 });

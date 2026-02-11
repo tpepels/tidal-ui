@@ -6,7 +6,7 @@
 	import type { Album, ArtistDetails, AudioQuality } from '$lib/types';
 	import TopTracksGrid from '$lib/components/TopTracksGrid.svelte';
 	import ShareButton from '$lib/components/ShareButton.svelte';
-	import { groupDiscography, type DiscographyGroup } from '$lib/utils/discography';
+	import { groupDiscography } from '$lib/utils/discography';
 	import { ArrowLeft, User, Download, LoaderCircle } from 'lucide-svelte';
 
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
@@ -89,9 +89,10 @@
 		}
 	}
 
-	function formatAvailableQualities(entry: DiscographyGroup): string | null {
-		if (entry.availableQualities.length === 0) return null;
-		return entry.availableQualities.map((quality) => formatQualityLabel(quality)).join(', ');
+	function formatEnrichmentPassName(name: 'artist-url' | 'artist-name' | 'album-title'): string {
+		if (name === 'artist-name') return 'Artist-name search';
+		if (name === 'album-title') return 'Album-title search';
+		return 'Source URL search';
 	}
 
 	function displayTrackTotal(total?: number | null): number {
@@ -543,6 +544,45 @@
 						{#if discographyInfo.reason}
 							<p class="mt-1 text-xs text-amber-100/90">{discographyInfo.reason}.</p>
 						{/if}
+						{#if discographyInfo.enrichedAlbumCount > 0}
+							<p class="mt-1 text-xs text-amber-100/90">
+								Enrichment already added {discographyInfo.enrichedAlbumCount} album{discographyInfo.enrichedAlbumCount === 1 ? '' : 's'}.
+							</p>
+						{/if}
+						{#if discographyInfo.enrichmentDiagnostics}
+							<p class="mt-2 text-xs text-amber-100/90">
+								Enrichment queries: {discographyInfo.enrichmentDiagnostics.queryCount}/{discographyInfo.enrichmentDiagnostics.queryBudget}
+								{#if discographyInfo.enrichmentDiagnostics.budgetExhausted}
+									(query budget reached)
+								{/if}
+							</p>
+							{#if discographyInfo.enrichmentDiagnostics.duplicateQueriesSkipped > 0}
+								<p class="mt-1 text-xs text-amber-100/90">
+									Duplicate queries skipped: {discographyInfo.enrichmentDiagnostics.duplicateQueriesSkipped}
+								</p>
+							{/if}
+							{#if discographyInfo.enrichmentDiagnostics.passes.length > 0}
+								<div class="mt-2 space-y-1 text-xs text-amber-100/90">
+									{#each discographyInfo.enrichmentDiagnostics.passes.slice(-4) as pass, index (`${pass.name}-${pass.query}-${index}`)}
+										<p class="truncate">
+											{formatEnrichmentPassName(pass.name)}:
+											{pass.accepted}/{pass.returned}
+											{#if pass.total !== undefined}
+												(of {pass.total})
+											{/if}
+											matched
+										</p>
+									{/each}
+								</div>
+							{/if}
+						{/if}
+					</div>
+				{:else if discographyInfo?.enrichedAlbumCount && discographyInfo.enrichedAlbumCount > 0}
+					<div class="mt-3 rounded-lg border border-emerald-800/40 bg-emerald-900/15 p-3 text-xs text-emerald-200">
+						<p>
+							Enrichment added {discographyInfo.enrichedAlbumCount} album{discographyInfo.enrichedAlbumCount === 1 ? '' : 's'}
+							beyond the source artist payload.
+						</p>
 					</div>
 				{/if}
 				{#if discographyError}
@@ -553,7 +593,7 @@
 						{#if rawDiscography.length > discography.length}
 							<p class="text-xs text-gray-500">
 								Merged {rawDiscography.length - discography.length} duplicate resolution variants.
-								Showing one version per release based on selected quality ({formatQualityLabel(downloadQuality)} or higher).
+								Showing one version per release for selected download quality ({formatQualityLabel(downloadQuality)}).
 							</p>
 						{/if}
 						{#each [
@@ -563,7 +603,12 @@
 							{#if section.entries.length > 0}
 								<div class="space-y-3">
 									<div class="flex items-center justify-between">
-										<h3 class="text-lg font-semibold text-white">{section.title}</h3>
+										<div>
+											<h3 class="text-lg font-semibold text-white">{section.title}</h3>
+											<p class="text-xs text-gray-400">
+												Showing {formatQualityLabel(downloadQuality)} variants
+											</p>
+										</div>
 										<span
 											class="rounded-full border border-gray-700 bg-gray-900/70 px-2.5 py-1 text-xs text-gray-300"
 										>
@@ -571,7 +616,7 @@
 										</span>
 									</div>
 									<div class="grid gap-4 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
-										{#each section.entries as entry (entry.key)}
+										{#each section.entries as entry (`${entry.key}:${downloadQuality}`)}
 											{@const album = entry.representative}
 											<div
 												class="group relative flex h-full flex-col rounded-xl border border-gray-800 bg-gray-900/40 p-4 text-center transition-colors hover:border-blue-700 hover:bg-gray-900"
@@ -619,16 +664,9 @@
 														{#if formatAlbumMeta(album)}
 															<p class="mt-1 text-sm text-gray-400">{formatAlbumMeta(album)}</p>
 														{/if}
-														{#if formatAvailableQualities(entry)}
-															<p class="mt-1 text-xs text-gray-500">
-																Qualities: {formatAvailableQualities(entry)}
-															</p>
-														{/if}
-														{#if entry.versions.length > 1}
-															<p class="mt-1 text-xs text-gray-500">
-																{entry.versions.length} versions merged
-															</p>
-														{/if}
+														<p class="mt-1 text-xs text-gray-500">
+															Quality: {formatQualityLabel(downloadQuality)}
+														</p>
 													</div>
 												</a>
 												{#if albumDownloadStates[album.id]?.downloading}

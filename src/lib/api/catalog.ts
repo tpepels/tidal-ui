@@ -240,9 +240,6 @@ export async function getArtist(
 	type AlbumSource = 'album' | 'track' | 'enrichment';
 	const albumSources = new Map<number, Set<AlbumSource>>();
 	let artist: Artist | undefined;
-	let enrichmentSearchTotal: number | undefined;
-	let enrichmentSearchReturned: number | undefined;
-	let enrichmentSearchAccepted = 0;
 	let enrichmentApplied = false;
 
 	const parseNumericId = (value: unknown): number | null => {
@@ -482,6 +479,23 @@ export async function getArtist(
 	}
 
 	const albumsBeforeEnrichment = albumMap.size;
+	const MAX_ENRICHMENT_QUERIES = 14;
+	const MAX_TITLE_ENRICHMENT_QUERIES = 12;
+	type EnrichmentPassName = 'artist-url' | 'artist-name' | 'album-title';
+	type EnrichmentPassResult = {
+		name: EnrichmentPassName;
+		query: string;
+		returned: number;
+		accepted: number;
+		newlyAdded: number;
+		total?: number;
+	};
+
+	const enrichmentPasses: EnrichmentPassResult[] = [];
+	const seenEnrichmentQueries = new Set<string>();
+	let enrichmentQueryCount = 0;
+	let duplicateQueriesSkipped = 0;
+
 	const addEnrichmentAlbums = (items: Album[]): { accepted: number; newlyAdded: number } => {
 		const accepted = new Set<number>();
 		let newlyAdded = 0;
@@ -502,6 +516,7 @@ export async function getArtist(
 				}
 			}
 
+			// Strict artist filtering: only keep albums that explicitly belong to requested artist.
 			if (artistIds.size > 0 && !artistIds.has(id)) {
 				continue;
 			}
@@ -517,102 +532,181 @@ export async function getArtist(
 		return { accepted: accepted.size, newlyAdded };
 	};
 
-	type EnrichmentSearchStats = {
-		total?: number;
-		returned: number;
-		accepted: number;
-		newlyAdded: number;
-	};
+	const runEnrichmentSearch = async (
+		name: EnrichmentPassName,
+		query: string
+	): Promise<EnrichmentPassResult | null> => {
+		const trimmedQuery = query.trim();
+		if (!trimmedQuery) return null;
+		const normalizedQuery = trimmedQuery.toLowerCase();
+		if (seenEnrichmentQueries.has(normalizedQuery)) {
+			duplicateQueriesSkipped += 1;
+			return null;
+		}
+		if (enrichmentQueryCount >= MAX_ENRICHMENT_QUERIES) {
+			return null;
+		}
+		seenEnrichmentQueries.add(normalizedQuery);
+		enrichmentQueryCount += 1;
 
-	const runEnrichmentSearch = async (query: string): Promise<EnrichmentSearchStats | null> => {
 		const searchResponse = await context.fetch(
-			`${context.baseUrl}/search/?al=${encodeURIComponent(query)}`
+			`${context.baseUrl}/search/?al=${encodeURIComponent(trimmedQuery)}`
 		);
 		context.ensureNotRateLimited(searchResponse);
 		if (!searchResponse.ok) {
-			return null;
+			const failedPass: EnrichmentPassResult = {
+				name,
+				query: trimmedQuery,
+				returned: 0,
+				accepted: 0,
+				newlyAdded: 0
+			};
+			enrichmentPasses.push(failedPass);
+			return failedPass;
 		}
 
 		const searchData = await searchResponse.json();
 		const normalizedSearch = normalizeSearchResponse<Album>(searchData, 'albums');
 		const enrichmentResult = addEnrichmentAlbums(normalizedSearch.items);
-		return {
+		const pass: EnrichmentPassResult = {
+			name,
+			query: trimmedQuery,
 			total: normalizedSearch.totalNumberOfItems,
 			returned: normalizedSearch.items.length,
 			accepted: enrichmentResult.accepted,
 			newlyAdded: enrichmentResult.newlyAdded
 		};
+		enrichmentPasses.push(pass);
+		return pass;
 	};
 
-	let enrichmentReasonSource: 'artist-url' | 'artist-name' | 'album-title' | null = null;
+	const isPassTruncated = (pass?: EnrichmentPassResult | null): pass is EnrichmentPassResult =>
+		Boolean(
+			pass &&
+			typeof pass.total === 'number' &&
+			typeof pass.returned === 'number' &&
+			pass.total > pass.returned
+		);
+
+	const isLikelyGenericSearchPage = (pass?: EnrichmentPassResult | null): boolean => {
+		if (!pass) return false;
+		if (!isPassTruncated(pass)) return false;
+		if (pass.returned < 10) return false;
+		return pass.accepted === 0 || pass.accepted / pass.returned < 0.2;
+	};
+
+	const collectTitleCandidates = (): string[] => {
+		const normalizeTitle = (value: string) => value.trim().toLowerCase();
+		const addUnique = (target: string[], value: unknown) => {
+			if (typeof value !== 'string') return;
+			const trimmed = value.trim();
+			if (!trimmed) return;
+			const normalized = normalizeTitle(trimmed);
+			if (seenTitles.has(normalized)) return;
+			seenTitles.add(normalized);
+			target.push(trimmed);
+		};
+		const seenTitles = new Set<string>();
+
+		const albumTitleCandidates = Array.from(albumMap.values())
+			.sort((a, b) => {
+				const dateA = a.releaseDate ? Date.parse(a.releaseDate) : Number.NaN;
+				const dateB = b.releaseDate ? Date.parse(b.releaseDate) : Number.NaN;
+				if (Number.isFinite(dateA) && Number.isFinite(dateB) && dateA !== dateB) {
+					return dateB - dateA;
+				}
+				return (b.popularity ?? 0) - (a.popularity ?? 0);
+			})
+			.map((album) => album.title)
+			.filter((title): title is string => typeof title === 'string' && title.trim().length > 0);
+
+		type TrackTitleStat = { title: string; count: number; maxPopularity: number };
+		const trackTitleStats = new Map<string, TrackTitleStat>();
+		for (const track of trackMap.values()) {
+			if (!track.title || track.title.trim().length < 2) continue;
+			const normalized = normalizeTitle(track.title);
+			const existing = trackTitleStats.get(normalized);
+			if (existing) {
+				existing.count += 1;
+				existing.maxPopularity = Math.max(existing.maxPopularity, track.popularity ?? 0);
+				continue;
+			}
+			trackTitleStats.set(normalized, {
+				title: track.title.trim(),
+				count: 1,
+				maxPopularity: track.popularity ?? 0
+			});
+		}
+
+		const sortedTrackTitles = Array.from(trackTitleStats.values()).sort((a, b) => {
+			if (b.count !== a.count) return b.count - a.count;
+			if (b.maxPopularity !== a.maxPopularity) return b.maxPopularity - a.maxPopularity;
+			return a.title.localeCompare(b.title);
+		});
+		const trackPool = sortedTrackTitles.slice(0, 20).map((entry) => entry.title);
+		const sampledTrackTitles: string[] = [];
+		const sampleCount = Math.min(trackPool.length, 8);
+		for (let i = 0; i < sampleCount; i += 1) {
+			const index = Math.floor(((i + 0.5) * trackPool.length) / sampleCount);
+			const candidate = trackPool[Math.min(index, trackPool.length - 1)];
+			if (candidate) sampledTrackTitles.push(candidate);
+		}
+
+		const combined: string[] = [];
+		for (const title of albumTitleCandidates.slice(0, 4)) {
+			addUnique(combined, title);
+		}
+		for (const title of sampledTrackTitles) {
+			addUnique(combined, title);
+		}
+		for (const title of albumTitleCandidates.slice(4)) {
+			if (combined.length >= MAX_TITLE_ENRICHMENT_QUERIES) break;
+			addUnique(combined, title);
+		}
+
+		return combined.slice(0, MAX_TITLE_ENRICHMENT_QUERIES);
+	};
+
 	try {
-		const searchQuery = artist.url?.trim().length
+		const urlQuery = artist.url?.trim().length
 			? artist.url
 			: `https://tidal.com/artist/${id}`;
-		const primarySearch = await runEnrichmentSearch(searchQuery);
-		if (primarySearch) {
-			enrichmentSearchTotal = primarySearch.total;
-			enrichmentSearchReturned = primarySearch.returned;
-			enrichmentSearchAccepted = primarySearch.accepted;
-			enrichmentReasonSource = 'artist-url';
+		const primaryPass = await runEnrichmentSearch('artist-url', urlQuery);
+		const shouldRunArtistNameFallback =
+			!primaryPass || primaryPass.accepted === 0 || isLikelyGenericSearchPage(primaryPass);
+		let artistNamePass: EnrichmentPassResult | null = null;
+
+		if (shouldRunArtistNameFallback && artist.name?.trim()) {
+			artistNamePass = await runEnrichmentSearch('artist-name', artist.name);
 		}
 
-		// If URL-based search returns generic first-page data (common 25/N pattern), retry with artist name.
-		if (enrichmentSearchAccepted === 0 && artist.name?.trim()) {
-			const byNameSearch = await runEnrichmentSearch(artist.name);
-			if (byNameSearch) {
-				enrichmentSearchTotal = byNameSearch.total ?? enrichmentSearchTotal;
-				enrichmentSearchReturned = byNameSearch.returned;
-				enrichmentSearchAccepted = Math.max(enrichmentSearchAccepted, byNameSearch.accepted);
-				enrichmentReasonSource = 'artist-name';
-			}
-		}
-
-		// Targeted album-title enrichment: search specific discography titles and merge matching results.
-		// This is intentionally capped to avoid high latency/rate-limit spikes.
-		const shouldRunTitleEnrichment =
-			typeof enrichmentSearchTotal === 'number' &&
-			typeof enrichmentSearchReturned === 'number' &&
-			enrichmentSearchTotal > enrichmentSearchReturned &&
-			enrichmentReasonSource === 'artist-name' &&
+		const titlePassBase = artistNamePass ?? primaryPass;
+		if (
+			isPassTruncated(titlePassBase) &&
+			titlePassBase.accepted > 0 &&
 			artist.name?.trim().length > 0 &&
-			albumMap.size > 0;
-		if (shouldRunTitleEnrichment) {
-			const normalizedTitle = (value: string) => value.trim().toLowerCase();
-			const seenTitles = new Set<string>();
-			const titleCandidates = Array.from(albumMap.values())
-				.sort((a, b) => {
-					const dateA = a.releaseDate ? Date.parse(a.releaseDate) : Number.NaN;
-					const dateB = b.releaseDate ? Date.parse(b.releaseDate) : Number.NaN;
-					if (Number.isFinite(dateA) && Number.isFinite(dateB) && dateA !== dateB) {
-						return dateB - dateA;
-					}
-					return (b.popularity ?? 0) - (a.popularity ?? 0);
-				})
-				.map((album) => album.title)
-				.filter((title): title is string => typeof title === 'string' && title.trim().length > 0)
-				.filter((title) => {
-					const key = normalizedTitle(title);
-					if (seenTitles.has(key)) return false;
-					seenTitles.add(key);
-					return true;
-				})
-				.slice(0, 8);
-
-			let titleEnrichmentAdded = 0;
+			enrichmentQueryCount < MAX_ENRICHMENT_QUERIES
+		) {
+			const titleCandidates = collectTitleCandidates();
 			for (const title of titleCandidates) {
-				const titleSearch = await runEnrichmentSearch(`${artist.name} ${title}`);
-				if (!titleSearch) continue;
-				titleEnrichmentAdded += titleSearch.newlyAdded;
-			}
-
-			if (titleEnrichmentAdded > 0) {
-				enrichmentReasonSource = 'album-title';
+				if (enrichmentQueryCount >= MAX_ENRICHMENT_QUERIES) break;
+				await runEnrichmentSearch('album-title', `${artist.name} ${title}`);
 			}
 		}
 	} catch (error) {
 		console.warn(`[Catalog] Artist enrichment search failed for ${id}:`, error);
 	}
+
+	const truncatedPass = [...enrichmentPasses].reverse().find((pass) => isPassTruncated(pass));
+	const successfulPasses = enrichmentPasses.filter(
+		(pass) => pass.returned > 0 || pass.accepted > 0 || typeof pass.total === 'number'
+	);
+	const enrichmentSearchTotal = truncatedPass?.total;
+	const enrichmentSearchReturned = truncatedPass?.returned;
+	const enrichmentSearchAccepted = successfulPasses.reduce(
+		(max, pass) => Math.max(max, pass.accepted),
+		0
+	);
 	enrichmentApplied = albumMap.size > albumsBeforeEnrichment;
 
 	const albums = Array.from(albumMap.values()).map((album) => {
@@ -701,20 +795,20 @@ export async function getArtist(
 	const sourceAlbumCount = countBySource('album');
 	const trackDerivedAlbumCount = countBySource('track');
 	const enrichedAlbumCount = countBySource('enrichment');
-	const searchLooksTruncated =
+	const searchLooksTruncated = Boolean(
 		typeof enrichmentSearchTotal === 'number' &&
-		typeof enrichmentSearchReturned === 'number' &&
-		enrichmentSearchTotal > enrichmentSearchReturned;
+			typeof enrichmentSearchReturned === 'number' &&
+			enrichmentSearchTotal > enrichmentSearchReturned
+	);
+	const passLabel = (passName?: EnrichmentPassName): string => {
+		if (passName === 'artist-name') return 'Artist-name search';
+		if (passName === 'album-title') return 'Album-title enrichment search';
+		return 'Source search';
+	};
 	const missingAlbumPayload = sourceAlbumCount === 0 && trackDerivedAlbumCount > 0;
 	const mayBeIncomplete = searchLooksTruncated || missingAlbumPayload;
 	const reason = searchLooksTruncated
-		? `${
-				enrichmentReasonSource === 'artist-name'
-					? 'Artist-name search'
-					: enrichmentReasonSource === 'album-title'
-						? 'Album-title enrichment search'
-						: 'Source search'
-		  } returned ${enrichmentSearchReturned} of ${enrichmentSearchTotal} albums for this artist`
+		? `${passLabel(truncatedPass?.name)} returned ${enrichmentSearchReturned} of ${enrichmentSearchTotal} albums for this artist`
 		: missingAlbumPayload
 			? 'Source artist endpoint did not include an explicit album list'
 			: undefined;
@@ -732,7 +826,21 @@ export async function getArtist(
 			enrichmentApplied,
 			searchAlbumCount: enrichmentSearchAccepted,
 			searchTotalCount: enrichmentSearchTotal,
-			searchReturnedCount: enrichmentSearchReturned
+			searchReturnedCount: enrichmentSearchReturned,
+			enrichmentDiagnostics: {
+				queryBudget: MAX_ENRICHMENT_QUERIES,
+				queryCount: enrichmentQueryCount,
+				duplicateQueriesSkipped,
+				budgetExhausted: enrichmentQueryCount >= MAX_ENRICHMENT_QUERIES,
+				passes: enrichmentPasses.map((pass) => ({
+					name: pass.name,
+					query: pass.query,
+					returned: pass.returned,
+					accepted: pass.accepted,
+					newlyAdded: pass.newlyAdded,
+					total: pass.total
+				}))
+			}
 		}
 	};
 }

@@ -16,13 +16,6 @@ export type DiscographyGroup = {
 	section: DiscographySection;
 };
 
-function parseYear(value?: string): string {
-	if (!value) return 'unknown';
-	const timestamp = Date.parse(value);
-	if (!Number.isFinite(timestamp)) return 'unknown';
-	return `${new Date(timestamp).getUTCFullYear()}`;
-}
-
 function normalizeTitle(title?: string): string {
 	if (!title) return '';
 	return title
@@ -85,16 +78,14 @@ function getQualityRank(quality: AudioQuality | null | undefined): number {
 }
 
 function buildDiscographyKey(album: Album): string {
-	if (album.upc && album.upc.trim().length > 0) {
-		return `upc:${album.upc.trim().toLowerCase()}`;
-	}
 	const titleKey = normalizeTitle(album.title);
-	const yearKey = parseYear(album.releaseDate);
-	const tracksKey = Number.isFinite(album.numberOfTracks ?? Number.NaN)
-		? `${album.numberOfTracks}`
-		: 'unknown';
 	const artistKey = `${getPrimaryArtistId(album)}`;
-	return `fallback:${artistKey}:${titleKey}:${yearKey}:${tracksKey}`;
+	const section = classifyAlbum(album);
+	if (titleKey.length > 0) {
+		// Group by canonical title so quality variants collapse to one visible release.
+		return `title:${artistKey}:${section}:${titleKey}`;
+	}
+	return `fallback:${artistKey}:${section}:${album.id}`;
 }
 
 function classifyAlbum(album: Album): DiscographySection {
@@ -105,6 +96,16 @@ function classifyAlbum(album: Album): DiscographySection {
 
 function pickRepresentativeVersion(versions: Album[], preferredQuality: AudioQuality): Album {
 	const preferredRank = getQualityRank(preferredQuality);
+	const exactPreferred = versions
+		.map((album) => ({
+			album,
+			rank: getQualityRank(deriveAlbumQuality(album))
+		}))
+		.filter((entry) => entry.rank === preferredRank)
+		.sort((a, b) => compareAlbumFallback(a.album, b.album));
+	if (exactPreferred.length > 0) {
+		return exactPreferred[0]!.album;
+	}
 
 	const atOrAbovePreferred = versions
 		.map((album) => ({
