@@ -257,10 +257,16 @@ export async function getArtist(
 	const isAlbumLike = (value: unknown): value is Album => {
 		if (!value || typeof value !== 'object') return false;
 		const candidate = value as Record<string, unknown>;
+		const rawId = candidate.id;
+		const id =
+			typeof rawId === 'number'
+				? rawId
+				: typeof rawId === 'string' && rawId.trim().length > 0
+					? Number(rawId)
+					: Number.NaN;
 		return (
-			typeof candidate.id === 'number' &&
-			typeof candidate.title === 'string' &&
-			'cover' in candidate
+			Number.isFinite(id) &&
+			typeof candidate.title === 'string'
 		);
 	};
 
@@ -289,9 +295,30 @@ export async function getArtist(
 	};
 
 	const addAlbum = (candidate: Album | undefined) => {
-		if (!candidate || typeof candidate.id !== 'number') return;
-		const normalized = prepareAlbum({ ...candidate });
-		albumMap.set(normalized.id, normalized);
+		if (!candidate) return;
+		const rawId = (candidate as { id?: unknown }).id;
+		const id =
+			typeof rawId === 'number'
+				? rawId
+				: typeof rawId === 'string' && rawId.trim().length > 0
+					? Number(rawId)
+					: Number.NaN;
+		if (!Number.isFinite(id)) return;
+		const normalized = prepareAlbum({ ...candidate, id });
+		const existing = albumMap.get(normalized.id);
+		if (existing) {
+			const merged = {
+				...existing,
+				...normalized,
+				cover: normalized.cover || existing.cover,
+				releaseDate: normalized.releaseDate || existing.releaseDate,
+				numberOfTracks: normalized.numberOfTracks || existing.numberOfTracks,
+				audioQuality: normalized.audioQuality || existing.audioQuality
+			};
+			albumMap.set(normalized.id, merged);
+		} else {
+			albumMap.set(normalized.id, normalized);
+		}
 		recordArtist(normalized.artist ?? normalized.artists?.[0], id);
 	};
 
@@ -457,7 +484,42 @@ export async function getArtist(
 		return Number.isFinite(timestamp) ? timestamp : Number.NaN;
 	};
 
-	const sortedAlbums = albums.sort((a, b) => {
+	const scoreAlbum = (album: Album): number => {
+		let score = 0;
+		if (album.cover) score += 2;
+		if (album.releaseDate) score += 1;
+		if (album.numberOfTracks) score += 1;
+		if (album.audioQuality) score += 1;
+		return score;
+	};
+
+	const buildAlbumKey = (album: Album): string => {
+		if (album.upc && album.upc.trim().length > 0) {
+			return `upc:${album.upc.trim()}`;
+		}
+		const title = album.title.trim().toLowerCase();
+		const year = album.releaseDate ? album.releaseDate.slice(0, 4) : '';
+		const tracks = album.numberOfTracks ? String(album.numberOfTracks) : '';
+		return `title:${title}|year:${year}|tracks:${tracks}`;
+	};
+
+	const dedupedAlbums = (() => {
+		const byKey = new Map<string, Album>();
+		for (const album of albums) {
+			const key = buildAlbumKey(album);
+			const existing = byKey.get(key);
+			if (!existing) {
+				byKey.set(key, album);
+				continue;
+			}
+			if (scoreAlbum(album) > scoreAlbum(existing)) {
+				byKey.set(key, album);
+			}
+		}
+		return Array.from(byKey.values());
+	})();
+
+	const sortedAlbums = dedupedAlbums.sort((a, b) => {
 		const timeA = parseDate(a.releaseDate);
 		const timeB = parseDate(b.releaseDate);
 		if (Number.isNaN(timeA) && Number.isNaN(timeB)) {
