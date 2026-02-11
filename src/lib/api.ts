@@ -2161,7 +2161,7 @@ class LosslessAPI {
 		options?: { proxy?: boolean }
 	): string {
 		const url = `https://resources.tidal.com/images/${coverId.replace(/-/g, '/')}/${size}x${size}.jpg`;
-		if (!options?.proxy || typeof window === 'undefined' || !API_CONFIG.proxyUrl) {
+		if (!options?.proxy || !API_CONFIG.proxyUrl) {
 			return url;
 		}
 		return `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(url)}`;

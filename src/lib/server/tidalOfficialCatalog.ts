@@ -1,4 +1,8 @@
 import type { Album } from '$lib/types';
+import {
+	getCachedOfficialArtistAlbums,
+	setCachedOfficialArtistAlbums
+} from '$lib/server/catalogCache';
 
 const TIDAL_AUTH_URL = 'https://auth.tidal.com/v1/oauth2/token';
 const TIDAL_API_BASE = 'https://openapi.tidal.com/v2';
@@ -458,6 +462,7 @@ async function fetchAlbumsFromRelationshipsEndpoint(
 	let hydratedAlbumCount = 0;
 	let skippedSinglesCount = 0;
 	let skippedDuplicateCount = 0;
+	const relationshipIdsAcrossPages = new Set<number>();
 
 	for (let page = 0; page < MAX_PAGES && nextUrl; page += 1) {
 		pageCount += 1;
@@ -493,6 +498,9 @@ async function fetchAlbumsFromRelationshipsEndpoint(
 
 		const relationshipAlbumIds = extractAlbumIdsFromRelationshipData(payload);
 		relationshipIdCount += relationshipAlbumIds.length;
+		for (const relationshipId of relationshipAlbumIds) {
+			relationshipIdsAcrossPages.add(relationshipId);
+		}
 		if (
 			TIDAL_OPEN_API_TRACE_ALBUM_ID !== null &&
 			relationshipAlbumIds.includes(TIDAL_OPEN_API_TRACE_ALBUM_ID)
@@ -500,18 +508,6 @@ async function fetchAlbumsFromRelationshipsEndpoint(
 			traceAlbumLog(
 				`[TidalOpenApi][trace ${TIDAL_OPEN_API_TRACE_ALBUM_ID}] seen in relationship IDs on page ${page + 1}`
 			);
-		}
-		if (relationshipAlbumIds.length > 0) {
-			const fetchedByIds = await fetchAlbumsByIds(token, countryCode, relationshipAlbumIds);
-			hydratedAlbumCount += fetchedByIds.length;
-			const hydratedMerge = mergeAlbums(
-				collected,
-				seenVariants,
-				fetchedByIds,
-				`relationships:hydrated:page-${page + 1}`
-			);
-			skippedSinglesCount += hydratedMerge.skippedSingles;
-			skippedDuplicateCount += hydratedMerge.skippedDuplicates;
 		}
 		const fromIncludedMerge = mergeAlbums(
 			collected,
@@ -521,9 +517,8 @@ async function fetchAlbumsFromRelationshipsEndpoint(
 		);
 		skippedSinglesCount += fromIncludedMerge.skippedSingles;
 		skippedDuplicateCount += fromIncludedMerge.skippedDuplicates;
-		const unresolvedIds = relationshipAlbumIds.filter((id) => !collected.has(id));
 		debugLog(
-			`[TidalOpenApi] Artist ${artistId}: relationships page ${page + 1} data=${Array.isArray(payload.data) ? payload.data.length : 0}, included=${Array.isArray(payload.included) ? payload.included.length : 0}, relationshipIds=${relationshipAlbumIds.length}, unresolvedIds=${unresolvedIds.length}, mergedTotal=${collected.size}`
+			`[TidalOpenApi] Artist ${artistId}: relationships page ${page + 1} data=${Array.isArray(payload.data) ? payload.data.length : 0}, included=${Array.isArray(payload.included) ? payload.included.length : 0}, relationshipIds=${relationshipAlbumIds.length}, relationshipIdsSeen=${relationshipIdsAcrossPages.size}, mergedTotal=${collected.size}`
 		);
 
 		const pagination = getPaginationHint(payload);
@@ -541,8 +536,23 @@ async function fetchAlbumsFromRelationshipsEndpoint(
 		nextUrl = null;
 	}
 
+	if (relationshipIdsAcrossPages.size > 0) {
+		const fetchedByIds = await fetchAlbumsByIds(token, countryCode, Array.from(relationshipIdsAcrossPages));
+		hydratedAlbumCount += fetchedByIds.length;
+		const hydratedMerge = mergeAlbums(
+			collected,
+			seenVariants,
+			fetchedByIds,
+			'relationships:hydrated:all-pages'
+		);
+		skippedSinglesCount += hydratedMerge.skippedSingles;
+		skippedDuplicateCount += hydratedMerge.skippedDuplicates;
+	}
+
+	const unresolvedIds = Array.from(relationshipIdsAcrossPages).filter((id) => !collected.has(id));
+
 	console.info(
-		`[TidalOpenApi] Artist ${artistId}: relationships pagination pages=${pageCount}, relationshipIds=${relationshipIdCount}, includedAlbums=${includedAlbumCount}, hydratedById=${hydratedAlbumCount}, skippedSingles=${skippedSinglesCount}, skippedDuplicates=${skippedDuplicateCount}, merged=${collected.size}`
+		`[TidalOpenApi] Artist ${artistId}: relationships pagination pages=${pageCount}, relationshipIds=${relationshipIdCount}, includedAlbums=${includedAlbumCount}, hydratedById=${hydratedAlbumCount}, skippedSingles=${skippedSinglesCount}, skippedDuplicates=${skippedDuplicateCount}, unresolvedIds=${unresolvedIds.length}, merged=${collected.size}`
 	);
 
 	return Array.from(collected.values()).sort(compareAlbumByAge);
@@ -587,13 +597,22 @@ export async function fetchOfficialArtistAlbums(
 	artistId: number,
 	countryCode = process.env.TIDAL_COUNTRY_CODE || 'US'
 ): Promise<Album[]> {
+	const cached = await getCachedOfficialArtistAlbums(artistId, countryCode);
+	if (cached) {
+		console.info(`[TidalOpenApi] Artist ${artistId}: cache hit (${cached.length} official album(s))`);
+		return cached;
+	}
+
 	const token = await requestAccessToken();
 	const fromRelationships = await fetchAlbumsFromRelationshipsEndpoint(artistId, token, countryCode);
 	if (fromRelationships.length > 0) {
+		await setCachedOfficialArtistAlbums(artistId, countryCode, fromRelationships);
 		return fromRelationships;
 	}
 	console.warn(
 		`[TidalOpenApi] Artist ${artistId}: relationships returned 0 album(s), trying include=albums fallback`
 	);
-	return fetchAlbumsFromArtistIncludeEndpoint(artistId, token, countryCode);
+	const fromFallback = await fetchAlbumsFromArtistIncludeEndpoint(artistId, token, countryCode);
+	await setCachedOfficialArtistAlbums(artistId, countryCode, fromFallback);
+	return fromFallback;
 }

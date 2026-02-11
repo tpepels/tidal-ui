@@ -11,6 +11,7 @@
 
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
 	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
+	import { artistCacheStore } from '$lib/stores/artistCache';
 
 	import { toasts } from '$lib/stores/toasts';
 	import {
@@ -55,7 +56,8 @@
 		LoaderCircle,
 		Download,
 		Check,
-		Settings
+		Settings,
+		Trash2
 	} from 'lucide-svelte';
 	import { type Track, type AudioQuality, type PlayableTrack, isSonglinkTrack } from '$lib/types';
 
@@ -73,6 +75,7 @@
 	let isZipDownloading = $state(false);
 	let isCsvExporting = $state(false);
 	let isLegacyQueueDownloading = $state(false);
+	let isCacheClearing = $state(false);
 	let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 	const downloadMode = $derived($downloadPreferencesStore.mode);
 	const isServerStorage = $derived($downloadPreferencesStore.storage === 'server');
@@ -226,6 +229,45 @@
 
 	function toggleDownloadLog(): void {
 		downloadLogStore.toggle();
+	}
+
+	async function handleClearCaches(): Promise<void> {
+		if (isCacheClearing) return;
+		isCacheClearing = true;
+
+		try {
+			artistCacheStore.clear();
+
+			if (typeof window !== 'undefined' && 'caches' in window) {
+				const cacheKeys = await window.caches.keys();
+				await Promise.all(cacheKeys.map((cacheKey) => window.caches.delete(cacheKey)));
+			}
+
+			const response = await fetch('/api/cache/clear', { method: 'POST' });
+			if (!response.ok) {
+				throw new Error(`Server cache clear failed (${response.status})`);
+			}
+
+			const payload = (await response.json()) as {
+				cleared?: {
+					officialMemoryCleared?: number;
+					officialRedisCleared?: number;
+					proxyRedisCleared?: number;
+				};
+			};
+
+			const official = payload.cleared?.officialMemoryCleared ?? 0;
+			const officialRedis = payload.cleared?.officialRedisCleared ?? 0;
+			const proxyRedis = payload.cleared?.proxyRedisCleared ?? 0;
+			toasts.success(
+				`Caches cleared (artist: ${official}, official Redis: ${officialRedis}, proxy Redis: ${proxyRedis}).`
+			);
+		} catch (error) {
+			console.error('Failed to clear caches:', error);
+			toasts.error('Failed to clear caches. Check server logs for details.');
+		} finally {
+			isCacheClearing = false;
+		}
 	}
 
 	async function refreshDiagnostics(): Promise<void> {
@@ -991,6 +1033,28 @@
 													</button>
 												{/each}
 											</div>
+										</section>
+										<section class="settings-section">
+											<p class="section-heading">Cache</p>
+											<button
+												type="button"
+												onclick={handleClearCaches}
+												class="glass-option glass-option--wide"
+												disabled={isCacheClearing}
+											>
+												<span class="glass-option__content">
+													<span class="glass-option__label">
+														<Trash2 size={16} />
+														<span>{isCacheClearing ? 'Clearing cache...' : 'Clear app cache'}</span>
+													</span>
+													<span class="glass-option__description">
+														Clears artist discography cache, official TIDAL enrichment cache, and proxied cover cache.
+													</span>
+												</span>
+												{#if isCacheClearing}
+													<LoaderCircle size={16} class="glass-option__check animate-spin" />
+												{/if}
+											</button>
 										</section>
 										<section class="settings-section settings-section--bordered settings-section--wide">
 											<p class="section-heading">Queue actions</p>

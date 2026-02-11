@@ -4,6 +4,7 @@ export type CacheTtlConfig = {
 	defaultTtlSeconds: number;
 	searchTtlSeconds: number;
 	trackTtlSeconds: number;
+	imageTtlSeconds: number;
 };
 
 export function sanitizeHeaderEntries(entries: Array<[string, string]>): Array<[string, string]> {
@@ -25,7 +26,11 @@ export function sanitizeHeaderEntries(entries: Array<[string, string]>): Array<[
 export function isCacheableContentType(contentType: string | null): boolean {
 	if (!contentType) return false;
 	const normalized = contentType.split(';')[0]?.trim().toLowerCase() ?? '';
-	return normalized.includes('json') || normalized.startsWith('text/');
+	return (
+		normalized.includes('json') ||
+		normalized.startsWith('text/') ||
+		normalized.startsWith('image/')
+	);
 }
 
 export function hasDisqualifyingCacheControl(cacheControl: string | null): boolean {
@@ -35,6 +40,10 @@ export function hasDisqualifyingCacheControl(cacheControl: string | null): boole
 }
 
 export function getCacheTtlSeconds(url: URL, config: CacheTtlConfig): number {
+	if (url.hostname === 'resources.tidal.com' && url.pathname.toLowerCase().includes('/images/')) {
+		return config.imageTtlSeconds;
+	}
+
 	const path = url.pathname.toLowerCase();
 	if (path.includes('/track/') || path.includes('/song/')) {
 		return config.trackTtlSeconds;

@@ -44,6 +44,7 @@ const CACHE_NAMESPACE = 'tidal:proxy:v2:';
 const DEFAULT_CACHE_TTL_SECONDS = getEnvNumber('REDIS_CACHE_TTL_SECONDS', 300);
 const SEARCH_CACHE_TTL_SECONDS = getEnvNumber('REDIS_CACHE_TTL_SEARCH_SECONDS', 300);
 const TRACK_CACHE_TTL_SECONDS = getEnvNumber('REDIS_CACHE_TTL_TRACK_SECONDS', 120);
+const IMAGE_CACHE_TTL_SECONDS = getEnvNumber('REDIS_CACHE_TTL_IMAGE_SECONDS', 86400);
 const MAX_CACHE_BODY_BYTES = getEnvNumber('REDIS_CACHE_MAX_BODY_BYTES', 200_000);
 
 const MOCK_PROXY_FLAGS = ['E2E_OFFLINE', 'MOCK_PROXY', 'MOCK_API'];
@@ -295,7 +296,8 @@ function getEnvNumber(name: string, fallback: number): number {
 const cacheTtlConfig = {
 	defaultTtlSeconds: DEFAULT_CACHE_TTL_SECONDS,
 	searchTtlSeconds: SEARCH_CACHE_TTL_SECONDS,
-	trackTtlSeconds: TRACK_CACHE_TTL_SECONDS
+	trackTtlSeconds: TRACK_CACHE_TTL_SECONDS,
+	imageTtlSeconds: IMAGE_CACHE_TTL_SECONDS
 };
 
 function applyProxyHeaders(sourceHeaders: Array<[string, string]>, origin: string | null): Headers {
@@ -312,9 +314,13 @@ function applyProxyHeaders(sourceHeaders: Array<[string, string]>, origin: strin
 	// Don't cache audio/video content
 	const contentType = headers.get('content-type') || '';
 	const isMediaContent = contentType.includes('audio/') || contentType.includes('video/');
+	const isImageContent = contentType.includes('image/');
 
 	if (!headers.has('Cache-Control') && !isMediaContent) {
-		headers.set('Cache-Control', 'public, max-age=300');
+		headers.set(
+			'Cache-Control',
+			isImageContent ? `public, max-age=${IMAGE_CACHE_TTL_SECONDS}` : 'public, max-age=300'
+		);
 	}
 	return headers;
 }

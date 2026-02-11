@@ -20,17 +20,18 @@ describe('proxyCache', () => {
 	it('classifies cacheable content types and cache-control', () => {
 		expect(isCacheableContentType('application/json; charset=utf-8')).toBe(true);
 		expect(isCacheableContentType('text/html')).toBe(true);
-		expect(isCacheableContentType('image/png')).toBe(false);
+		expect(isCacheableContentType('image/png')).toBe(true);
 		expect(hasDisqualifyingCacheControl('no-store')).toBe(true);
 		expect(hasDisqualifyingCacheControl('private, max-age=0')).toBe(true);
 		expect(hasDisqualifyingCacheControl('public, max-age=60')).toBe(false);
 	});
 
 	it('selects TTL based on URL path', () => {
-		const config = { defaultTtlSeconds: 60, searchTtlSeconds: 10, trackTtlSeconds: 5 };
+		const config = { defaultTtlSeconds: 60, searchTtlSeconds: 10, trackTtlSeconds: 5, imageTtlSeconds: 300 };
 		expect(getCacheTtlSeconds(new URL('https://api.test/track/1'), config)).toBe(5);
 		expect(getCacheTtlSeconds(new URL('https://api.test/search/items?q=1'), config)).toBe(10);
 		expect(getCacheTtlSeconds(new URL('https://api.test/album/1'), config)).toBe(60);
+		expect(getCacheTtlSeconds(new URL('https://resources.tidal.com/images/a/b/c/640x640.jpg'), config)).toBe(300);
 	});
 
 	it('creates deterministic cache keys', () => {
