@@ -9,6 +9,11 @@ const TIDAL_API_BASE = 'https://openapi.tidal.com/v2';
 const TOKEN_REFRESH_SKEW_MS = 60_000;
 const MAX_PAGES = 12;
 const ALBUM_BATCH_SIZE = 50;
+const PAGE_FETCH_MAX_RETRIES = Number.parseInt(process.env.TIDAL_PAGE_FETCH_MAX_RETRIES ?? '3', 10);
+const PAGE_FETCH_BASE_BACKOFF_MS = Number.parseInt(process.env.TIDAL_PAGE_FETCH_BASE_BACKOFF_MS ?? '1000', 10);
+const PAGE_FETCH_MAX_BACKOFF_MS = Number.parseInt(process.env.TIDAL_PAGE_FETCH_MAX_BACKOFF_MS ?? '15000', 10);
+const PAGE_FETCH_JITTER_MS = Number.parseInt(process.env.TIDAL_PAGE_FETCH_JITTER_MS ?? '300', 10);
+const RETRYABLE_PAGE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 const TIDAL_OPEN_API_DEBUG = ['1', 'true', 'yes'].includes(
 	(process.env.TIDAL_OPEN_API_DEBUG ?? '').toLowerCase()
 );
@@ -137,6 +142,81 @@ function traceAlbumLog(message: string): void {
 	if (TIDAL_OPEN_API_TRACE_ALBUM_ID !== null) {
 		console.info(message);
 	}
+}
+
+async function wait(ms: number): Promise<void> {
+	await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function parseRetryAfterMs(response: Response): number | null {
+	const retryAfter = response.headers.get('retry-after');
+	if (!retryAfter) return null;
+	const seconds = Number.parseInt(retryAfter, 10);
+	if (Number.isFinite(seconds) && seconds > 0) {
+		return seconds * 1000;
+	}
+	const dateMs = Date.parse(retryAfter);
+	if (!Number.isFinite(dateMs)) return null;
+	const delta = dateMs - Date.now();
+	return delta > 0 ? delta : null;
+}
+
+function calculateBackoffMs(attempt: number, response?: Response): number {
+	const retryAfterMs = response ? parseRetryAfterMs(response) : null;
+	if (retryAfterMs && retryAfterMs > 0) {
+		return retryAfterMs;
+	}
+	const base = Number.isFinite(PAGE_FETCH_BASE_BACKOFF_MS) ? Math.max(100, PAGE_FETCH_BASE_BACKOFF_MS) : 1000;
+	const cappedMax = Number.isFinite(PAGE_FETCH_MAX_BACKOFF_MS) ? Math.max(base, PAGE_FETCH_MAX_BACKOFF_MS) : 15000;
+	const jitter = Number.isFinite(PAGE_FETCH_JITTER_MS) ? Math.max(0, PAGE_FETCH_JITTER_MS) : 300;
+	const exponential = Math.min(base * 2 ** Math.max(0, attempt - 1), cappedMax);
+	return exponential + Math.floor(Math.random() * (jitter + 1));
+}
+
+function shouldRetryPageResponse(response: Response): boolean {
+	return RETRYABLE_PAGE_STATUS_CODES.has(response.status);
+}
+
+async function fetchWithRetryForPage(
+	url: string,
+	headers: Headers,
+	artistId: number,
+	pageNumber: number
+): Promise<Response> {
+	const maxRetries = Number.isFinite(PAGE_FETCH_MAX_RETRIES) ? Math.max(0, PAGE_FETCH_MAX_RETRIES) : 3;
+	let lastError: unknown = null;
+
+	for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+		try {
+			const response = await fetch(url, {
+				method: 'GET',
+				headers
+			});
+
+			if (!shouldRetryPageResponse(response) || attempt >= maxRetries) {
+				return response;
+			}
+
+			const backoffMs = calculateBackoffMs(attempt + 1, response);
+			console.warn(
+				`[TidalOpenApi] Artist ${artistId}: relationships page ${pageNumber} HTTP ${response.status}, retry ${attempt + 1}/${maxRetries} in ${backoffMs}ms`
+			);
+			await wait(backoffMs);
+		} catch (error) {
+			lastError = error;
+			if (attempt >= maxRetries) {
+				throw error;
+			}
+			const backoffMs = calculateBackoffMs(attempt + 1);
+			const reason = error instanceof Error ? error.message : String(error);
+			console.warn(
+				`[TidalOpenApi] Artist ${artistId}: relationships page ${pageNumber} request error (${reason}), retry ${attempt + 1}/${maxRetries} in ${backoffMs}ms`
+			);
+			await wait(backoffMs);
+		}
+	}
+
+	throw lastError instanceof Error ? lastError : new Error('Page fetch retry exhausted');
 }
 
 function parseAlbumFromRecord(record: unknown, artworkCoverMap?: Map<string, string>): Album | null {
@@ -467,10 +547,7 @@ async function fetchAlbumsFromRelationshipsEndpoint(
 	for (let page = 0; page < MAX_PAGES && nextUrl; page += 1) {
 		pageCount += 1;
 		debugLog(`[TidalOpenApi] Artist ${artistId}: relationships page ${page + 1} GET ${nextUrl}`);
-		const response = await fetch(nextUrl, {
-			method: 'GET',
-			headers: createAuthHeaders(token)
-		});
+		const response = await fetchWithRetryForPage(nextUrl, createAuthHeaders(token), artistId, page + 1);
 
 		if (response.status === 404) {
 			if (page === 0) {
