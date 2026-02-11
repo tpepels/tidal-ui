@@ -92,4 +92,27 @@ describe('groupDiscography', () => {
 		expect(grouped[0]?.representative.id).toBe(42);
 		expect(grouped[0]?.versions.map((album) => album.id).sort((a, b) => a - b)).toEqual([41, 42]);
 	});
+
+	it('prefers higher-popularity representative for same-title merged releases', () => {
+		const albums: Album[] = [
+			buildAlbum({
+				id: 51,
+				title: 'Same Name',
+				audioQuality: 'LOSSLESS',
+				releaseDate: '2025-01-01',
+				popularity: 20
+			}),
+			buildAlbum({
+				id: 52,
+				title: 'Same Name',
+				audioQuality: 'LOSSLESS',
+				releaseDate: '2020-01-01',
+				popularity: 90
+			})
+		];
+
+		const grouped = groupDiscography(albums, 'LOSSLESS');
+		expect(grouped).toHaveLength(1);
+		expect(grouped[0]?.representative.id).toBe(52);
+	});
 });

@@ -478,10 +478,8 @@ export async function getArtist(
 		throw new Error('Artist not found');
 	}
 
-	const albumsBeforeEnrichment = albumMap.size;
-	const MAX_ENRICHMENT_QUERIES = 14;
-	const MAX_TITLE_ENRICHMENT_QUERIES = 12;
-	type EnrichmentPassName = 'artist-url' | 'artist-name' | 'album-title';
+	const MAX_ENRICHMENT_QUERIES = 4;
+	type EnrichmentPassName = 'artist-name';
 	type EnrichmentPassResult = {
 		name: EnrichmentPassName;
 		query: string;
@@ -495,15 +493,39 @@ export async function getArtist(
 	const seenEnrichmentQueries = new Set<string>();
 	let enrichmentQueryCount = 0;
 	let duplicateQueriesSkipped = 0;
+	const normalizeAlbumVariantTitle = (value?: string): string =>
+		(value ?? '')
+			.trim()
+			.toLowerCase()
+			.replace(/\s+/g, ' ');
+	const normalizeAlbumVariantQuality = (value?: string): string => {
+		const normalized = (value ?? '').trim().toUpperCase();
+		return normalized.length > 0 ? normalized : 'UNKNOWN';
+	};
+	const buildAlbumVariantKey = (album: Pick<Album, 'id' | 'title' | 'audioQuality'>): string => {
+		const title = normalizeAlbumVariantTitle(album.title);
+		const quality = normalizeAlbumVariantQuality(album.audioQuality);
+		return title.length > 0 ? `title:${title}|quality:${quality}` : `id:${album.id}|quality:${quality}`;
+	};
+	const baselineAlbumVariantKeys = new Set(
+		Array.from(albumMap.values(), (album) => buildAlbumVariantKey(album))
+	);
+	const ingestedAlbumVariantKeys = new Set(baselineAlbumVariantKeys);
+	const enrichmentAddedVariantKeys = new Set<string>();
 
 	const addEnrichmentAlbums = (items: Album[]): { accepted: number; newlyAdded: number } => {
-		const accepted = new Set<number>();
-		let newlyAdded = 0;
+		const accepted = new Set<string>();
+		const newlyAddedBeforePass = enrichmentAddedVariantKeys.size;
 
 		for (const rawAlbum of items) {
 			const prepared = prepareAlbum(rawAlbum);
 			const albumId = parseNumericId((prepared as { id?: unknown }).id);
 			if (albumId === null) continue;
+			const type = (prepared.type ?? '').toUpperCase();
+			// Keep enrichment focused on album/EP releases; singles are shown from source payload only.
+			if (type.includes('SINGLE')) {
+				continue;
+			}
 
 			const artistIds = new Set<number>();
 			const artistId = parseNumericId((prepared as { artist?: { id?: unknown } }).artist?.id);
@@ -521,15 +543,22 @@ export async function getArtist(
 				continue;
 			}
 
-			accepted.add(albumId);
-			const alreadyKnown = albumMap.has(albumId);
+			const variantKey = buildAlbumVariantKey({ ...prepared, id: albumId });
+			accepted.add(variantKey);
+			if (ingestedAlbumVariantKeys.has(variantKey)) {
+				continue;
+			}
+			ingestedAlbumVariantKeys.add(variantKey);
 			addAlbum({ ...prepared, id: albumId }, 'enrichment');
-			if (!alreadyKnown && albumMap.has(albumId)) {
-				newlyAdded += 1;
+			if (!baselineAlbumVariantKeys.has(variantKey)) {
+				enrichmentAddedVariantKeys.add(variantKey);
 			}
 		}
 
-		return { accepted: accepted.size, newlyAdded };
+		return {
+			accepted: accepted.size,
+			newlyAdded: enrichmentAddedVariantKeys.size - newlyAddedBeforePass
+		};
 	};
 
 	const runEnrichmentSearch = async (
@@ -588,110 +617,9 @@ export async function getArtist(
 			pass.total > pass.returned
 		);
 
-	const isLikelyGenericSearchPage = (pass?: EnrichmentPassResult | null): boolean => {
-		if (!pass) return false;
-		if (!isPassTruncated(pass)) return false;
-		if (pass.returned < 10) return false;
-		return pass.accepted === 0 || pass.accepted / pass.returned < 0.2;
-	};
-
-	const collectTitleCandidates = (): string[] => {
-		const normalizeTitle = (value: string) => value.trim().toLowerCase();
-		const addUnique = (target: string[], value: unknown) => {
-			if (typeof value !== 'string') return;
-			const trimmed = value.trim();
-			if (!trimmed) return;
-			const normalized = normalizeTitle(trimmed);
-			if (seenTitles.has(normalized)) return;
-			seenTitles.add(normalized);
-			target.push(trimmed);
-		};
-		const seenTitles = new Set<string>();
-
-		const albumTitleCandidates = Array.from(albumMap.values())
-			.sort((a, b) => {
-				const dateA = a.releaseDate ? Date.parse(a.releaseDate) : Number.NaN;
-				const dateB = b.releaseDate ? Date.parse(b.releaseDate) : Number.NaN;
-				if (Number.isFinite(dateA) && Number.isFinite(dateB) && dateA !== dateB) {
-					return dateB - dateA;
-				}
-				return (b.popularity ?? 0) - (a.popularity ?? 0);
-			})
-			.map((album) => album.title)
-			.filter((title): title is string => typeof title === 'string' && title.trim().length > 0);
-
-		type TrackTitleStat = { title: string; count: number; maxPopularity: number };
-		const trackTitleStats = new Map<string, TrackTitleStat>();
-		for (const track of trackMap.values()) {
-			if (!track.title || track.title.trim().length < 2) continue;
-			const normalized = normalizeTitle(track.title);
-			const existing = trackTitleStats.get(normalized);
-			if (existing) {
-				existing.count += 1;
-				existing.maxPopularity = Math.max(existing.maxPopularity, track.popularity ?? 0);
-				continue;
-			}
-			trackTitleStats.set(normalized, {
-				title: track.title.trim(),
-				count: 1,
-				maxPopularity: track.popularity ?? 0
-			});
-		}
-
-		const sortedTrackTitles = Array.from(trackTitleStats.values()).sort((a, b) => {
-			if (b.count !== a.count) return b.count - a.count;
-			if (b.maxPopularity !== a.maxPopularity) return b.maxPopularity - a.maxPopularity;
-			return a.title.localeCompare(b.title);
-		});
-		const trackPool = sortedTrackTitles.slice(0, 20).map((entry) => entry.title);
-		const sampledTrackTitles: string[] = [];
-		const sampleCount = Math.min(trackPool.length, 8);
-		for (let i = 0; i < sampleCount; i += 1) {
-			const index = Math.floor(((i + 0.5) * trackPool.length) / sampleCount);
-			const candidate = trackPool[Math.min(index, trackPool.length - 1)];
-			if (candidate) sampledTrackTitles.push(candidate);
-		}
-
-		const combined: string[] = [];
-		for (const title of albumTitleCandidates.slice(0, 4)) {
-			addUnique(combined, title);
-		}
-		for (const title of sampledTrackTitles) {
-			addUnique(combined, title);
-		}
-		for (const title of albumTitleCandidates.slice(4)) {
-			if (combined.length >= MAX_TITLE_ENRICHMENT_QUERIES) break;
-			addUnique(combined, title);
-		}
-
-		return combined.slice(0, MAX_TITLE_ENRICHMENT_QUERIES);
-	};
-
 	try {
-		const urlQuery = artist.url?.trim().length
-			? artist.url
-			: `https://tidal.com/artist/${id}`;
-		const primaryPass = await runEnrichmentSearch('artist-url', urlQuery);
-		const shouldRunArtistNameFallback =
-			!primaryPass || primaryPass.accepted === 0 || isLikelyGenericSearchPage(primaryPass);
-		let artistNamePass: EnrichmentPassResult | null = null;
-
-		if (shouldRunArtistNameFallback && artist.name?.trim()) {
-			artistNamePass = await runEnrichmentSearch('artist-name', artist.name);
-		}
-
-		const titlePassBase = artistNamePass ?? primaryPass;
-		if (
-			isPassTruncated(titlePassBase) &&
-			titlePassBase.accepted > 0 &&
-			artist.name?.trim().length > 0 &&
-			enrichmentQueryCount < MAX_ENRICHMENT_QUERIES
-		) {
-			const titleCandidates = collectTitleCandidates();
-			for (const title of titleCandidates) {
-				if (enrichmentQueryCount >= MAX_ENRICHMENT_QUERIES) break;
-				await runEnrichmentSearch('album-title', `${artist.name} ${title}`);
-			}
+		if (artist.name?.trim()) {
+			await runEnrichmentSearch('artist-name', artist.name);
 		}
 	} catch (error) {
 		console.warn(`[Catalog] Artist enrichment search failed for ${id}:`, error);
@@ -707,7 +635,7 @@ export async function getArtist(
 		(max, pass) => Math.max(max, pass.accepted),
 		0
 	);
-	enrichmentApplied = albumMap.size > albumsBeforeEnrichment;
+	enrichmentApplied = enrichmentAddedVariantKeys.size > 0;
 
 	const albums = Array.from(albumMap.values()).map((album) => {
 		if (!album.artist && artist) {
@@ -794,16 +722,15 @@ export async function getArtist(
 		Array.from(albumSources.values()).reduce((sum, sourceSet) => sum + (sourceSet.has(source) ? 1 : 0), 0);
 	const sourceAlbumCount = countBySource('album');
 	const trackDerivedAlbumCount = countBySource('track');
-	const enrichedAlbumCount = countBySource('enrichment');
+	const enrichedAlbumCount = enrichmentAddedVariantKeys.size;
 	const searchLooksTruncated = Boolean(
 		typeof enrichmentSearchTotal === 'number' &&
 			typeof enrichmentSearchReturned === 'number' &&
 			enrichmentSearchTotal > enrichmentSearchReturned
 	);
 	const passLabel = (passName?: EnrichmentPassName): string => {
-		if (passName === 'artist-name') return 'Artist-name search';
-		if (passName === 'album-title') return 'Album-title enrichment search';
-		return 'Source search';
+		void passName;
+		return 'Artist-name search';
 	};
 	const missingAlbumPayload = sourceAlbumCount === 0 && trackDerivedAlbumCount > 0;
 	const mayBeIncomplete = searchLooksTruncated || missingAlbumPayload;

@@ -72,7 +72,7 @@ export interface ArtistDetails extends Artist {
 			duplicateQueriesSkipped: number;
 			budgetExhausted: boolean;
 			passes: Array<{
-				name: 'artist-url' | 'artist-name' | 'album-title';
+				name: 'artist-name';
 				query: string;
 				returned: number;
 				accepted: number;

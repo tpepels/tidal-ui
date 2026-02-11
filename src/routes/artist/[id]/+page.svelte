@@ -22,6 +22,7 @@
 	const topTracks = $derived(artist?.tracks ?? []);
 	const rawDiscography = $derived(artist?.albums ?? []);
 	const discographyInfo = $derived(artist?.discographyInfo ?? null);
+	const enrichmentDiagnostics = $derived(discographyInfo?.enrichmentDiagnostics ?? null);
 	const downloadQuality = $derived($downloadPreferencesStore.downloadQuality as AudioQuality);
 	const discographyEntries = $derived(groupDiscography(rawDiscography, downloadQuality));
 	const discography = $derived(discographyEntries.map((entry) => entry.representative));
@@ -30,6 +31,26 @@
 	);
 	const discographySingles = $derived(
 		discographyEntries.filter((entry) => entry.section === 'single')
+	);
+	const recentMeaningfulEnrichmentPasses = $derived(
+		(enrichmentDiagnostics?.passes ?? [])
+			.filter(
+				(pass) =>
+					pass.accepted > 0 ||
+					pass.returned > 0 ||
+					pass.newlyAdded > 0 ||
+					(typeof pass.total === 'number' && pass.total > 0)
+			)
+			.slice(-4)
+	);
+	const zeroResultEnrichmentPasses = $derived(
+		(enrichmentDiagnostics?.passes ?? []).filter(
+			(pass) =>
+				pass.accepted === 0 &&
+				pass.returned === 0 &&
+				pass.newlyAdded === 0 &&
+				(pass.total === undefined || pass.total === 0)
+		).length
 	);
 	const downloadMode = $derived($downloadPreferencesStore.mode);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
@@ -89,10 +110,9 @@
 		}
 	}
 
-	function formatEnrichmentPassName(name: 'artist-url' | 'artist-name' | 'album-title'): string {
-		if (name === 'artist-name') return 'Artist-name search';
-		if (name === 'album-title') return 'Album-title search';
-		return 'Source URL search';
+	function formatEnrichmentPassName(name: 'artist-name'): string {
+		void name;
+		return 'Artist-name search';
 	}
 
 	function displayTrackTotal(total?: number | null): number {
@@ -549,21 +569,26 @@
 								Enrichment already added {discographyInfo.enrichedAlbumCount} album{discographyInfo.enrichedAlbumCount === 1 ? '' : 's'}.
 							</p>
 						{/if}
-						{#if discographyInfo.enrichmentDiagnostics}
+						{#if enrichmentDiagnostics}
 							<p class="mt-2 text-xs text-amber-100/90">
-								Enrichment queries: {discographyInfo.enrichmentDiagnostics.queryCount}/{discographyInfo.enrichmentDiagnostics.queryBudget}
-								{#if discographyInfo.enrichmentDiagnostics.budgetExhausted}
+								Enrichment queries: {enrichmentDiagnostics.queryCount}/{enrichmentDiagnostics.queryBudget}
+								{#if enrichmentDiagnostics.budgetExhausted}
 									(query budget reached)
 								{/if}
 							</p>
-							{#if discographyInfo.enrichmentDiagnostics.duplicateQueriesSkipped > 0}
+							{#if enrichmentDiagnostics.duplicateQueriesSkipped > 0}
 								<p class="mt-1 text-xs text-amber-100/90">
-									Duplicate queries skipped: {discographyInfo.enrichmentDiagnostics.duplicateQueriesSkipped}
+									Duplicate queries skipped: {enrichmentDiagnostics.duplicateQueriesSkipped}
 								</p>
 							{/if}
-							{#if discographyInfo.enrichmentDiagnostics.passes.length > 0}
+							{#if zeroResultEnrichmentPasses > 0}
+								<p class="mt-1 text-xs text-amber-100/90">
+									{zeroResultEnrichmentPasses} enrichment quer{zeroResultEnrichmentPasses === 1 ? 'y returned' : 'ies returned'} no album results.
+								</p>
+							{/if}
+							{#if recentMeaningfulEnrichmentPasses.length > 0}
 								<div class="mt-2 space-y-1 text-xs text-amber-100/90">
-									{#each discographyInfo.enrichmentDiagnostics.passes.slice(-4) as pass, index (`${pass.name}-${pass.query}-${index}`)}
+									{#each recentMeaningfulEnrichmentPasses as pass, index (`${pass.name}-${pass.query}-${index}`)}
 										<p class="truncate">
 											{formatEnrichmentPassName(pass.name)}:
 											{pass.accepted}/{pass.returned}
@@ -571,6 +596,9 @@
 												(of {pass.total})
 											{/if}
 											matched
+											{#if pass.newlyAdded > 0}
+												, +{pass.newlyAdded} added
+											{/if}
 										</p>
 									{/each}
 								</div>
