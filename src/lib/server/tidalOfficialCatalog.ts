@@ -485,6 +485,13 @@ async function fetchAlbumsFromRelationshipsEndpoint(
 			break;
 		}
 		if (!response.ok) {
+			if (page > 0 && [429, 500, 502, 503, 504].includes(response.status)) {
+				const detail = (await response.text()).slice(0, 200);
+				console.warn(
+					`[TidalOpenApi] Artist ${artistId}: pagination interrupted on page ${page + 1} with HTTP ${response.status}, keeping partial results (merged=${collected.size}, idsSeen=${relationshipIdsAcrossPages.size}). Detail: ${detail}`
+				);
+				break;
+			}
 			const detail = (await response.text()).slice(0, 200);
 			throw new Error(`TIDAL artist albums failed (${response.status}): ${detail}`);
 		}
