@@ -6,6 +6,7 @@
 	import type { Album, ArtistDetails, AudioQuality } from '$lib/types';
 	import TopTracksGrid from '$lib/components/TopTracksGrid.svelte';
 	import ShareButton from '$lib/components/ShareButton.svelte';
+	import { groupDiscography, type DiscographyGroup } from '$lib/utils/discography';
 	import { ArrowLeft, User, Download, LoaderCircle } from 'lucide-svelte';
 
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
@@ -19,9 +20,17 @@
 	let error = $state<string | null>(null);
 	const artistId = $derived($page.params.id);
 	const topTracks = $derived(artist?.tracks ?? []);
-	const discography = $derived(artist?.albums ?? []);
+	const rawDiscography = $derived(artist?.albums ?? []);
 	const discographyInfo = $derived(artist?.discographyInfo ?? null);
 	const downloadQuality = $derived($downloadPreferencesStore.downloadQuality as AudioQuality);
+	const discographyEntries = $derived(groupDiscography(rawDiscography, downloadQuality));
+	const discography = $derived(discographyEntries.map((entry) => entry.representative));
+	const discographyAlbums = $derived(
+		discographyEntries.filter((entry) => entry.section === 'album')
+	);
+	const discographySingles = $derived(
+		discographyEntries.filter((entry) => entry.section === 'single')
+	);
 	const downloadMode = $derived($downloadPreferencesStore.mode);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
 	const downloadStoragePreference = $derived($downloadPreferencesStore.storage);
@@ -65,6 +74,26 @@
 		return parts.join(' • ');
 	}
 
+	function formatQualityLabel(quality: AudioQuality): string {
+		switch (quality) {
+			case 'HI_RES_LOSSLESS':
+				return 'Hi-Res';
+			case 'LOSSLESS':
+				return 'Lossless';
+			case 'HIGH':
+				return 'High';
+			case 'LOW':
+				return 'Low';
+			default:
+				return quality;
+		}
+	}
+
+	function formatAvailableQualities(entry: DiscographyGroup): string | null {
+		if (entry.availableQualities.length === 0) return null;
+		return entry.availableQualities.map((quality) => formatQualityLabel(quality)).join(', ');
+	}
+
 	function displayTrackTotal(total?: number | null): number {
 		if (!Number.isFinite(total)) return 0;
 		return total && total > 0 ? total + 1 : (total ?? 0);
@@ -79,20 +108,6 @@
 		return null;
 	}
 
-	function albumDedupeKey(album: Album): string {
-		const candidate = album as Album & { upc?: string; url?: string };
-		if (Number.isFinite(album.id)) {
-			return `id:${album.id}`;
-		}
-		if (candidate.upc && candidate.upc.trim().length > 0) {
-			return `upc:${candidate.upc.trim().toLowerCase()}`;
-		}
-		if (candidate.url && candidate.url.trim().length > 0) {
-			return `url:${candidate.url.trim().toLowerCase()}`;
-		}
-		return `fallback:${(album.title ?? '').trim().toLowerCase()}`;
-	}
-
 	function albumScore(album: Album): number {
 		let score = 0;
 		if (album.cover) score += 2;
@@ -104,15 +119,14 @@
 
 	function normalizeArtistDetails(data: ArtistDetails): ArtistDetails {
 		const normalizedAlbumsInput = Array.isArray(data.albums) ? data.albums : [];
-		const dedupedAlbums = new Map<string, Album>();
+		const dedupedAlbums = new Map<number, Album>();
 		for (const album of normalizedAlbumsInput) {
 			const parsedId = parseNumericId((album as { id?: unknown }).id);
 			if (parsedId === null) continue;
 			const normalizedAlbum = { ...album, id: parsedId };
-			const key = albumDedupeKey(normalizedAlbum);
-			const existing = dedupedAlbums.get(key);
+			const existing = dedupedAlbums.get(parsedId);
 			if (!existing || albumScore(normalizedAlbum) > albumScore(existing)) {
-				dedupedAlbums.set(key, normalizedAlbum);
+				dedupedAlbums.set(parsedId, normalizedAlbum);
 			}
 		}
 
@@ -535,74 +549,110 @@
 					<p class="mt-2 text-sm text-red-400" role="alert">{discographyError}</p>
 				{/if}
 				{#if discography.length > 0}
-					<div class="mt-6 grid gap-4 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
-						{#each discography as album (album.id)}
-							<div
-								class="group relative flex h-full flex-col rounded-xl border border-gray-800 bg-gray-900/40 p-4 text-center transition-colors hover:border-blue-700 hover:bg-gray-900"
-							>
-								<button
-									onclick={(event) => handleAlbumDownload(album, event)}
-									type="button"
-									class="absolute top-3 right-3 z-40 flex items-center justify-center rounded-full bg-black/50 p-2 text-gray-200 backdrop-blur-md transition-colors hover:bg-blue-600/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-									disabled={isDownloadingDiscography || albumDownloadStates[album.id]?.downloading}
-									aria-label={`Download ${album.title}`}
-								>
-									{#if albumDownloadStates[album.id]?.downloading}
-										<LoaderCircle size={16} class="animate-spin" />
-									{:else}
-										<Download size={16} />
-									{/if}
-								</button>
-								<a
-									href={`/album/${album.id}`}
-									class="flex flex-1 flex-col items-center gap-4 rounded-lg text-center focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-900"
-								>
-									<div
-										class="mx-auto aspect-square w-full max-w-[220px] overflow-hidden rounded-lg bg-gray-800"
-									>
-										{#if album.cover}
-											<img
-												src={losslessAPI.getCoverUrl(album.cover, '640')}
-												alt={album.title}
-												class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-											/>
-										{:else}
-											<div
-												class="flex h-full w-full items-center justify-center text-sm text-gray-500"
-											>
-												No artwork
-											</div>
-										{/if}
-									</div>
-									<div class="w-full">
-										<h3
-											class="truncate text-lg font-semibold text-balance text-white group-hover:text-blue-400"
+					<div class="mt-6 space-y-8">
+						{#if rawDiscography.length > discography.length}
+							<p class="text-xs text-gray-500">
+								Merged {rawDiscography.length - discography.length} duplicate resolution variants.
+								Showing one version per release based on selected quality ({formatQualityLabel(downloadQuality)} or higher).
+							</p>
+						{/if}
+						{#each [
+							{ id: 'album', title: 'Albums', entries: discographyAlbums },
+							{ id: 'single', title: 'Singles', entries: discographySingles }
+						] as section (section.id)}
+							{#if section.entries.length > 0}
+								<div class="space-y-3">
+									<div class="flex items-center justify-between">
+										<h3 class="text-lg font-semibold text-white">{section.title}</h3>
+										<span
+											class="rounded-full border border-gray-700 bg-gray-900/70 px-2.5 py-1 text-xs text-gray-300"
 										>
-											{album.title}
-										</h3>
-										{#if formatAlbumMeta(album)}
-											<p class="mt-1 text-sm text-gray-400">{formatAlbumMeta(album)}</p>
-										{/if}
+											{section.entries.length}
+										</span>
 									</div>
-								</a>
-								{#if albumDownloadStates[album.id]?.downloading}
-									<p class="mt-3 text-xs text-blue-300">
-										Downloading
-										{#if albumDownloadStates[album.id]?.total}
-											{albumDownloadStates[album.id]?.completed ?? 0}/{displayTrackTotal(
-												albumDownloadStates[album.id]?.total ?? 0
-											)}
-										{:else}
-											{albumDownloadStates[album.id]?.completed ?? 0}
-										{/if}
-										tracks…
-									</p>
-								{:else if albumDownloadStates[album.id]?.error}
-									<p class="mt-3 text-xs text-red-400" role="alert">
-										{albumDownloadStates[album.id]?.error}
-									</p>
-								{/if}
-							</div>
+									<div class="grid gap-4 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+										{#each section.entries as entry (entry.key)}
+											{@const album = entry.representative}
+											<div
+												class="group relative flex h-full flex-col rounded-xl border border-gray-800 bg-gray-900/40 p-4 text-center transition-colors hover:border-blue-700 hover:bg-gray-900"
+											>
+												<button
+													onclick={(event) => handleAlbumDownload(album, event)}
+													type="button"
+													class="absolute top-3 right-3 z-40 flex items-center justify-center rounded-full bg-black/50 p-2 text-gray-200 backdrop-blur-md transition-colors hover:bg-blue-600/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+													disabled={isDownloadingDiscography || albumDownloadStates[album.id]?.downloading}
+													aria-label={`Download ${album.title}`}
+												>
+													{#if albumDownloadStates[album.id]?.downloading}
+														<LoaderCircle size={16} class="animate-spin" />
+													{:else}
+														<Download size={16} />
+													{/if}
+												</button>
+												<a
+													href={`/album/${album.id}`}
+													class="flex flex-1 flex-col items-center gap-4 rounded-lg text-center focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-900"
+												>
+													<div
+														class="mx-auto aspect-square w-full max-w-[220px] overflow-hidden rounded-lg bg-gray-800"
+													>
+														{#if album.cover}
+															<img
+																src={losslessAPI.getCoverUrl(album.cover, '640')}
+																alt={album.title}
+																class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+															/>
+														{:else}
+															<div
+																class="flex h-full w-full items-center justify-center text-sm text-gray-500"
+															>
+																No artwork
+															</div>
+														{/if}
+													</div>
+													<div class="w-full">
+														<h3
+															class="truncate text-lg font-semibold text-balance text-white group-hover:text-blue-400"
+														>
+															{album.title}
+														</h3>
+														{#if formatAlbumMeta(album)}
+															<p class="mt-1 text-sm text-gray-400">{formatAlbumMeta(album)}</p>
+														{/if}
+														{#if formatAvailableQualities(entry)}
+															<p class="mt-1 text-xs text-gray-500">
+																Qualities: {formatAvailableQualities(entry)}
+															</p>
+														{/if}
+														{#if entry.versions.length > 1}
+															<p class="mt-1 text-xs text-gray-500">
+																{entry.versions.length} versions merged
+															</p>
+														{/if}
+													</div>
+												</a>
+												{#if albumDownloadStates[album.id]?.downloading}
+													<p class="mt-3 text-xs text-blue-300">
+														Downloading
+														{#if albumDownloadStates[album.id]?.total}
+															{albumDownloadStates[album.id]?.completed ?? 0}/{displayTrackTotal(
+																albumDownloadStates[album.id]?.total ?? 0
+															)}
+														{:else}
+															{albumDownloadStates[album.id]?.completed ?? 0}
+														{/if}
+														tracks…
+													</p>
+												{:else if albumDownloadStates[album.id]?.error}
+													<p class="mt-3 text-xs text-red-400" role="alert">
+														{albumDownloadStates[album.id]?.error}
+													</p>
+												{/if}
+											</div>
+										{/each}
+									</div>
+								</div>
+							{/if}
 						{/each}
 					</div>
 				{:else}

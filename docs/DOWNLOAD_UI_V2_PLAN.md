@@ -67,11 +67,11 @@ Branch: `server-side-download-queue`
 
 ## Validation Gates (each step)
 - [x] `npm run lint`
-- [ ] Manual smoke check:
-- open panel with no jobs
-- enqueue one track and one album
-- verify active/queued/completed/failed counters
-- verify queue source and last updated are visible
+- [x] Manual smoke check (2026-02-11):
+- [x] open panel with no jobs
+- [x] enqueue one track and one album
+- [x] verify active/queued/completed/failed counters
+- [x] verify queue source and last updated are visible
 
 ## Progress Log
 - [x] Plan file created
