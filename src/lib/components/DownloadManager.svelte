@@ -60,8 +60,6 @@
 		};
 	});
 
-	let totalItems = $derived(stats.total);
-	let hasActivity = $derived(totalItems > 0);
 	let workerWarning = $derived(!$workerStatus.running && (stats.running > 0 || stats.queued > 0));
 	const matchesTypeFilter = (job: QueueJob, filter: JobTypeFilter): boolean => {
 		if (filter === 'all') return true;
@@ -76,6 +74,9 @@
 	let resumableJobs = $derived(
 		queueJobs.filter(j => j.status === 'failed' || j.status === 'cancelled')
 	);
+	let pendingItems = $derived(stats.running + stats.queued);
+	let badgeCount = $derived(pendingItems > 0 ? pendingItems : resumableJobs.length);
+	let hasActivity = $derived(badgeCount > 0);
 	let filteredQueuedJobs = $derived(queuedJobs.filter(job => matchesTypeFilter(job, queueTypeFilter)));
 	let filteredCompletedJobs = $derived(
 		completedJobs.filter(job => matchesTypeFilter(job, completedTypeFilter))
@@ -507,7 +508,7 @@
 	>
 		{#if hasActivity}
 			<div class="download-manager-badge">
-				{totalItems}
+				{badgeCount}
 			</div>
 		{/if}
 		<span class="download-manager-icon">⬇</span>
