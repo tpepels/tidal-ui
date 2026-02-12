@@ -1,15 +1,13 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
+	import { losslessAPI } from '$lib/api';
 	import type { Track } from '$lib/types';
 	import { playbackFacade } from '$lib/controllers/playbackFacade';
+	import { createTrackDownloadUi } from '$lib/controllers/trackDownloadUi';
 	import { browseState } from '$lib/stores/browseState';
-	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
-	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
-	import { buildTrackFilename } from '$lib/downloads';
 	import { artistCacheStore } from '$lib/stores/artistCache';
 	import ShareButton from '$lib/components/ShareButton.svelte';
 	import { LoaderCircle, Play, ArrowLeft, Disc, User, Clock, Download, X } from 'lucide-svelte';
@@ -18,14 +16,20 @@
 	let track = $state<Track | null>(null);
 	let isLoading = $state(true);
 	let error = $state<string | null>(null);
-	let isDownloading = $state(false);
-	let downloadTaskId = $state<string | null>(null);
-	let isCancelled = $state(false);
 	let activeRequestToken = 0;
 
 	const trackId = $derived($page.params.id);
-	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
-	const downloadCoverSeperatelyPreference = $derived($userPreferencesStore.downloadCoversSeperately);
+	const downloadActionLabel = $derived(
+		$downloadPreferencesStore.storage === 'server' ? 'Save to server' : 'Download'
+	);
+	const trackDownloadUi = createTrackDownloadUi<Track>({
+		resolveSubtitle: (candidate) => candidate.album?.title ?? candidate.artist?.name,
+		notificationMode: 'toast',
+		skipFfmpegCountdown: true
+	});
+	const { downloadingIds, cancelledIds, handleCancelDownload, handleDownload } = trackDownloadUi;
+	const isDownloading = $derived(track ? $downloadingIds.has(track.id) : false);
+	const isCancelled = $derived(track ? $cancelledIds.has(track.id) : false);
 
 	$effect(() => {
 		const parsedTrackId = Number.parseInt(trackId ?? '', 10);
@@ -94,85 +98,6 @@
 	function handleBackNavigation() {
 		const target = breadcrumbStore.goBack($page.url.pathname, '/');
 		void goto(target);
-	}
-
-	function markCancelled() {
-		isCancelled = true;
-		setTimeout(() => {
-			isCancelled = false;
-		}, 1500);
-	}
-
-	function handleCancelDownload() {
-		if (downloadTaskId) {
-			downloadUiStore.cancelTrackDownload(downloadTaskId);
-		}
-		isDownloading = false;
-		downloadTaskId = null;
-		markCancelled();
-	}
-
-	async function handleDownload() {
-		if (!track) return;
-		
-		isDownloading = true;
-		const quality = $downloadPreferencesStore.downloadQuality;
-		const filename = buildTrackFilename(
-			track.album,
-			track,
-			quality,
-			formatArtists(track.artists),
-			convertAacToMp3Preference
-		);
-
-		const { taskId, controller } = downloadUiStore.beginTrackDownload(track, filename, {
-			subtitle: track.album?.title ?? track.artist?.name
-		});
-		downloadTaskId = taskId;
-		downloadUiStore.skipFfmpegCountdown();
-
-		try {
-			await losslessAPI.downloadTrack(track.id, quality, filename, {
-				signal: controller.signal,
-				onProgress: (progress: TrackDownloadProgress) => {
-					if (progress.stage === 'downloading') {
-						downloadUiStore.updateTrackProgress(
-							taskId,
-							progress.receivedBytes,
-							progress.totalBytes
-						);
-					} else {
-						downloadUiStore.updateTrackStage(taskId, progress.progress);
-					}
-				},
-				onFfmpegCountdown: ({ totalBytes }) => {
-					if (typeof totalBytes === 'number') {
-						downloadUiStore.startFfmpegCountdown(totalBytes, { autoTriggered: false });
-					} else {
-						downloadUiStore.startFfmpegCountdown(0, { autoTriggered: false });
-					}
-				},
-				onFfmpegStart: () => downloadUiStore.startFfmpegLoading(),
-				onFfmpegProgress: (value) => downloadUiStore.updateFfmpegProgress(value),
-				onFfmpegComplete: () => downloadUiStore.completeFfmpeg(),
-				onFfmpegError: (error) => downloadUiStore.errorFfmpeg(error),
-				ffmpegAutoTriggered: false,
-				convertAacToMp3: convertAacToMp3Preference,
-				downloadCoverSeperately: downloadCoverSeperatelyPreference
-			});
-			downloadUiStore.completeTrackDownload(taskId);
-		} catch (error) {
-			if (error instanceof DOMException && error.name === 'AbortError') {
-				downloadUiStore.completeTrackDownload(taskId);
-				markCancelled();
-			} else {
-				console.error('Failed to download track:', error);
-				downloadUiStore.cancelTrackDownload(taskId);
-			}
-		} finally {
-			isDownloading = false;
-			downloadTaskId = null;
-		}
 	}
 </script>
 
@@ -267,7 +192,7 @@
 
 					{#if isDownloading}
 						<button
-							onclick={handleCancelDownload}
+							onclick={(event) => handleCancelDownload(track!.id, event)}
 							class="flex items-center gap-2 rounded-full bg-red-600 px-8 py-3 font-semibold transition-colors hover:bg-red-700"
 						>
 							<X size={20} />
@@ -283,11 +208,11 @@
 						</button>
 					{:else}
 						<button
-							onclick={handleDownload}
+							onclick={(event) => handleDownload(track!, event)}
 							class="flex items-center gap-2 rounded-full bg-gray-800 px-8 py-3 font-semibold transition-colors hover:bg-gray-700"
 						>
 							<Download size={20} />
-							Download
+							{downloadActionLabel}
 						</button>
 					{/if}
 

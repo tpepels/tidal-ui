@@ -33,11 +33,11 @@
 	}
 
 	let isOpen = $state(false);
-	let isLoading = $state(false);
 	let queueJobs = $state<QueueJob[]>([]);
 	let expandedJobId = $state<string | null>(null);
 	let isCompactViewport = $state(false);
 	let actionNotice = $state<{ tone: 'success' | 'error' | 'info'; message: string } | null>(null);
+	let pendingActions = $state<Record<string, boolean>>({});
 	type JobTypeFilter = 'all' | 'albums' | 'tracks';
 	type CollapsibleSection = 'active' | 'queue' | 'failed';
 	let queueTypeFilter = $state<JobTypeFilter>('all');
@@ -135,6 +135,18 @@
 	let canStopAny = $derived(stoppableJobs.length > 0);
 	let canResumeAny = $derived(resumableJobs.length > 0);
 	let hasFailuresToReport = $derived(failedJobs.length > 0 || cancelledJobs.length > 0);
+	const actionKeys = {
+		refresh: 'refresh',
+		bulkStop: 'bulk-stop',
+		bulkResume: 'bulk-resume',
+		bulkReport: 'bulk-report',
+		clearHistory: 'clear-history'
+	} as const;
+
+	const cancelActionKey = (jobId: string): string => `job:${jobId}:cancel`;
+	const retryActionKey = (jobId: string): string => `job:${jobId}:retry`;
+	const deleteActionKey = (jobId: string): string => `job:${jobId}:delete`;
+	const reportActionKey = (jobId: string): string => `job:${jobId}:report`;
 	const toggleSection = (section: CollapsibleSection) => {
 		sectionExpanded = {
 			...sectionExpanded,
@@ -150,6 +162,43 @@
 		const title = job.job.trackTitle || job.job.albumTitle || 'Unknown';
 		const artist = job.job.artistName ? ` by ${job.job.artistName}` : '';
 		return `${title}${artist}`;
+	}
+
+	function isActionPending(key: string): boolean {
+		return Boolean(pendingActions[key]);
+	}
+
+	function setActionPending(key: string, pending: boolean): void {
+		if (pending) {
+			if (pendingActions[key]) return;
+			pendingActions = { ...pendingActions, [key]: true };
+			return;
+		}
+		if (!pendingActions[key]) return;
+		const next = { ...pendingActions };
+		delete next[key];
+		pendingActions = next;
+	}
+
+	function isJobActionPending(jobId: string): boolean {
+		return (
+			isActionPending(cancelActionKey(jobId)) ||
+			isActionPending(retryActionKey(jobId)) ||
+			isActionPending(deleteActionKey(jobId)) ||
+			isActionPending(reportActionKey(jobId))
+		);
+	}
+
+	async function runWithPendingAction<T>(key: string, work: () => Promise<T>): Promise<T | undefined> {
+		if (isActionPending(key)) {
+			return undefined;
+		}
+		setActionPending(key, true);
+		try {
+			return await work();
+		} finally {
+			setActionPending(key, false);
+		}
 	}
 
 	async function runJobAction(
@@ -315,8 +364,8 @@
 	});
 
 	const handleCancelJob = async (job: QueueJob) => {
-		isLoading = true;
-		try {
+		const key = cancelActionKey(job.id);
+		await runWithPendingAction(key, async () => {
 			const result = await runJobAction(job.id, 'cancel');
 			if (result.success) {
 				setActionNotice('success', `Stopped ${summarizeJob(job)}`);
@@ -324,14 +373,12 @@
 				return;
 			}
 			setActionNotice('error', result.error ?? `Failed to stop ${summarizeJob(job)}`);
-		} finally {
-			isLoading = false;
-		}
+		});
 	};
 
 	const handleRetryJob = async (job: QueueJob) => {
-		isLoading = true;
-		try {
+		const key = retryActionKey(job.id);
+		await runWithPendingAction(key, async () => {
 			const result = await runJobAction(job.id, 'retry');
 			if (result.success) {
 				setActionNotice('success', `Resumed ${summarizeJob(job)}`);
@@ -339,14 +386,12 @@
 				return;
 			}
 			setActionNotice('error', result.error ?? `Failed to resume ${summarizeJob(job)}`);
-		} finally {
-			isLoading = false;
-		}
+		});
 	};
 
 	const handleRemoveJob = async (job: QueueJob) => {
-		isLoading = true;
-		try {
+		const key = deleteActionKey(job.id);
+		await runWithPendingAction(key, async () => {
 			const result = await deleteQueueJob(job.id);
 			if (result.success) {
 				setActionNotice('success', `Removed ${summarizeJob(job)}`);
@@ -354,9 +399,7 @@
 				return;
 			}
 			setActionNotice('error', result.error ?? `Failed to remove ${summarizeJob(job)}`);
-		} finally {
-			isLoading = false;
-		}
+		});
 	};
 
 	const handleStopAllActive = async () => {
@@ -364,8 +407,7 @@
 			setActionNotice('info', 'No active or queued downloads to stop.');
 			return;
 		}
-		isLoading = true;
-		try {
+		await runWithPendingAction(actionKeys.bulkStop, async () => {
 			const results = await Promise.all(stoppableJobs.map((job) => runJobAction(job.id, 'cancel')));
 			const succeeded = results.filter((result) => result.success).length;
 			const failed = results.length - succeeded;
@@ -376,9 +418,7 @@
 					: `Stopped ${succeeded} active/queued job(s).`
 			);
 			await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
-		} finally {
-			isLoading = false;
-		}
+		});
 	};
 
 	const handleResumeAll = async () => {
@@ -386,8 +426,7 @@
 			setActionNotice('info', 'No failed or cancelled downloads to resume.');
 			return;
 		}
-		isLoading = true;
-		try {
+		await runWithPendingAction(actionKeys.bulkResume, async () => {
 			const results = await Promise.all(resumableJobs.map((job) => runJobAction(job.id, 'retry')));
 			const succeeded = results.filter((result) => result.success).length;
 			const failed = results.length - succeeded;
@@ -398,9 +437,7 @@
 					: `Resumed ${succeeded} failed/cancelled job(s).`
 			);
 			await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
-		} finally {
-			isLoading = false;
-		}
+		});
 	};
 
 	const handleCopyFailureReport = async (job?: QueueJob) => {
@@ -410,20 +447,23 @@
 			return;
 		}
 		const report = buildFailureReportText(reportJobs);
-		try {
-			await copyTextToClipboard(report);
-			setActionNotice(
-				'success',
-				job
-					? `Failure report copied for ${summarizeJob(job)}`
-					: `Failure report copied for ${reportJobs.length} job(s)`
-			);
-		} catch (error) {
-			setActionNotice(
-				'error',
-				error instanceof Error ? error.message : 'Failed to copy failure report'
-			);
-		}
+		const key = job ? reportActionKey(job.id) : actionKeys.bulkReport;
+		await runWithPendingAction(key, async () => {
+			try {
+				await copyTextToClipboard(report);
+				setActionNotice(
+					'success',
+					job
+						? `Failure report copied for ${summarizeJob(job)}`
+						: `Failure report copied for ${reportJobs.length} job(s)`
+				);
+			} catch (error) {
+				setActionNotice(
+					'error',
+					error instanceof Error ? error.message : 'Failed to copy failure report'
+				);
+			}
+		});
 	};
 
 	const handleClearFailed = async () => {
@@ -435,8 +475,7 @@
 			setActionNotice('info', 'No failed jobs to clear.');
 			return;
 		}
-		isLoading = true;
-		try {
+		await runWithPendingAction(actionKeys.clearHistory, async () => {
 			const results = await Promise.all(removable.map((job) => deleteQueueJob(job.id)));
 			const succeeded = results.filter((result) => result.success).length;
 			const failed = results.length - succeeded;
@@ -447,19 +486,14 @@
 					: `Cleared ${succeeded} failed/cancelled entries.`
 			);
 			await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
-		} finally {
-			isLoading = false;
-		}
+		});
 	};
 
 	const handleManualRefresh = async () => {
-		isLoading = true;
-		try {
+		await runWithPendingAction(actionKeys.refresh, async () => {
 			await serverQueue.poll();
 			await fetchQueueJobs();
-		} finally {
-			isLoading = false;
-		}
+		});
 	};
 </script>
 
@@ -588,30 +622,30 @@
 					class="control-btn control-btn--warning"
 					type="button"
 					title="Stop all active and queued jobs"
-					disabled={!canStopAny || isLoading}
+					disabled={!canStopAny || isActionPending(actionKeys.bulkStop)}
 				>
 					<Square size={14} />
-					<span>Stop Active</span>
+					<span>{isActionPending(actionKeys.bulkStop) ? 'Stopping…' : 'Stop Active'}</span>
 				</button>
 				<button
 					onclick={handleResumeAll}
 					class="control-btn control-btn--primary"
 					type="button"
 					title="Resume all failed or cancelled jobs"
-					disabled={!canResumeAny || isLoading}
+					disabled={!canResumeAny || isActionPending(actionKeys.bulkResume)}
 				>
 					<RotateCcw size={14} />
-					<span>Resume Failed</span>
+					<span>{isActionPending(actionKeys.bulkResume) ? 'Resuming…' : 'Resume Failed'}</span>
 				</button>
 				<button
 					onclick={() => handleCopyFailureReport()}
 					class="control-btn control-btn--secondary"
 					type="button"
 					title="Copy a failure report for troubleshooting"
-					disabled={!hasFailuresToReport || isLoading}
+					disabled={!hasFailuresToReport || isActionPending(actionKeys.bulkReport)}
 				>
 					<ClipboardCopy size={14} />
-					<span>Report Failures</span>
+					<span>{isActionPending(actionKeys.bulkReport) ? 'Copying…' : 'Report Failures'}</span>
 				</button>
 			</div>
 
@@ -643,6 +677,7 @@
 						{#if sectionExpanded.active}
 							<div class="current-items">
 								{#each processingJobs as job (job.id)}
+								{@const jobPending = isJobActionPending(job.id)}
 								<div class="current-item">
 									<div class="current-item-header">
 										<div class="current-item-title">
@@ -655,10 +690,10 @@
 												class="item-action-btn item-action-btn--warning"
 												title="Stop this download"
 												onclick={() => handleCancelJob(job)}
-												disabled={isLoading}
+												disabled={jobPending}
 											>
 												<Square size={12} />
-												<span>Stop</span>
+												<span>{jobPending ? 'Stopping…' : 'Stop'}</span>
 											</button>
 										</div>
 									</div>
@@ -752,6 +787,7 @@
 									</div>
 								{:else}
 									{#each filteredQueuedJobs.slice(0, 5) as job (job.id)}
+										{@const jobPending = isJobActionPending(job.id)}
 										<div class="queue-item-card">
 											<button
 												type="button"
@@ -811,24 +847,24 @@
 														<div class="detail-actions">
 															<span
 																role="button"
-																tabindex={isLoading ? -1 : 0}
+																tabindex={jobPending ? -1 : 0}
 																class="item-action-btn item-action-btn--warning"
 																onclick={(event) => {
 																	event.stopPropagation();
 																	void handleCancelJob(job);
 																}}
 																onkeydown={(event) => {
-																	if (isLoading) return;
+																	if (jobPending) return;
 																	if (event.key === 'Enter' || event.key === ' ') {
 																		event.preventDefault();
 																		event.stopPropagation();
 																		void handleCancelJob(job);
 																	}
 																}}
-																aria-disabled={isLoading}
+																aria-disabled={jobPending}
 															>
 																<Square size={12} />
-																<span>Stop</span>
+																<span>{jobPending ? 'Stopping…' : 'Stop'}</span>
 															</span>
 														</div>
 													</div>
@@ -900,6 +936,7 @@
 								</div>
 							{:else}
 								{#each filteredCompletedJobs.slice(0, 5) as job (job.id)}
+									{@const jobPending = isJobActionPending(job.id)}
 									<div class="completed-item">
 										<div class="completed-item-header">
 											<div class="completed-item-title">
@@ -910,10 +947,10 @@
 												class="item-action-btn"
 												title="Remove from history"
 												onclick={() => handleRemoveJob(job)}
-												disabled={isLoading}
+												disabled={jobPending}
 											>
 												<Trash2 size={12} />
-												<span>Dismiss</span>
+												<span>{jobPending ? 'Removing…' : 'Dismiss'}</span>
 											</button>
 										</div>
 										<div class="completed-item-meta">
@@ -964,6 +1001,7 @@
 						{#if sectionExpanded.failed}
 							<div class="failed-list">
 								{#each resumableJobs.slice(0, 4) as job (job.id)}
+									{@const jobPending = isJobActionPending(job.id)}
 									<div class="failed-item-card">
 										<button
 											type="button"
@@ -1011,66 +1049,66 @@
 													<div class="detail-actions">
 														<span
 															role="button"
-															tabindex={isLoading ? -1 : 0}
+															tabindex={jobPending ? -1 : 0}
 															class="item-action-btn item-action-btn--primary"
 															onclick={(event) => {
 																event.stopPropagation();
 																void handleRetryJob(job);
 															}}
 															onkeydown={(event) => {
-																if (isLoading) return;
+																if (jobPending) return;
 																if (event.key === 'Enter' || event.key === ' ') {
 																	event.preventDefault();
 																	event.stopPropagation();
 																	void handleRetryJob(job);
 																}
 															}}
-															aria-disabled={isLoading}
+															aria-disabled={jobPending}
 														>
 															<RotateCcw size={12} />
-															<span>Resume</span>
+															<span>{jobPending ? 'Resuming…' : 'Resume'}</span>
 														</span>
 														<span
 															role="button"
-															tabindex={isLoading ? -1 : 0}
+															tabindex={jobPending ? -1 : 0}
 															class="item-action-btn"
 															onclick={(event) => {
 																event.stopPropagation();
 																void handleCopyFailureReport(job);
 															}}
 															onkeydown={(event) => {
-																if (isLoading) return;
+																if (jobPending) return;
 																if (event.key === 'Enter' || event.key === ' ') {
 																	event.preventDefault();
 																	event.stopPropagation();
 																	void handleCopyFailureReport(job);
 																}
 															}}
-															aria-disabled={isLoading}
+															aria-disabled={jobPending}
 														>
 															<ClipboardCopy size={12} />
-															<span>Report</span>
+															<span>{jobPending ? 'Copying…' : 'Report'}</span>
 														</span>
 														<span
 															role="button"
-															tabindex={isLoading ? -1 : 0}
+															tabindex={jobPending ? -1 : 0}
 															class="item-action-btn item-action-btn--danger"
 															onclick={(event) => {
 																event.stopPropagation();
 																void handleRemoveJob(job);
 															}}
 															onkeydown={(event) => {
-																if (isLoading) return;
+																if (jobPending) return;
 																if (event.key === 'Enter' || event.key === ' ') {
 																	event.preventDefault();
 																	event.stopPropagation();
 																	void handleRemoveJob(job);
 																}
 															}}
-															aria-disabled={isLoading}
+															aria-disabled={jobPending}
 														>
 															<Trash2 size={12} />
-															<span>Dismiss</span>
+															<span>{jobPending ? 'Removing…' : 'Dismiss'}</span>
 														</span>
 													</div>
 												</div>
@@ -1091,10 +1129,12 @@
 									class="control-btn control-btn--danger"
 									type="button"
 									title="Clear failed and cancelled download history"
-									disabled={isLoading}
+									disabled={isActionPending(actionKeys.clearHistory)}
 								>
 									<Trash2 size={14} />
-									<span>Clear History</span>
+									<span>
+										{isActionPending(actionKeys.clearHistory) ? 'Clearing…' : 'Clear History'}
+									</span>
 								</button>
 							</div>
 						{/if}
@@ -1124,12 +1164,12 @@
 					class="control-btn control-btn--secondary"
 					type="button"
 					title="Refresh queue status"
-					disabled={isLoading}
+					disabled={isActionPending(actionKeys.refresh)}
 				>
-					<span class:rotating={isLoading}>
+					<span class:rotating={isActionPending(actionKeys.refresh)}>
 						<RefreshCw size={14} />
 					</span>
-					<span>Refresh</span>
+					<span>{isActionPending(actionKeys.refresh) ? 'Refreshing…' : 'Refresh'}</span>
 				</button>
 			</div>
 		</div>
@@ -2004,6 +2044,10 @@
 		background: rgba(255, 255, 255, 0.08);
 	}
 
+	.item-action-btn:active {
+		transform: translateY(1px);
+	}
+
 	.item-action-btn:disabled,
 	.item-action-btn[aria-disabled='true'] {
 		opacity: 0.45;
@@ -2072,6 +2116,10 @@
 	.control-btn:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
+	}
+
+	.control-btn:active:not(:disabled) {
+		transform: translateY(1px);
 	}
 
 	/* Empty state */

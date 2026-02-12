@@ -808,7 +808,7 @@
 		<AudioPlayerComponent headless={true} />
 	{/if}
 {:else}
-	<div class="app-root">
+	<div class="app-root" data-sveltekit-preload-data="hover">
 	<div class="app-shell">
 		<div class="settings-fab" bind:this={settingsMenuContainer}>
 			<button
