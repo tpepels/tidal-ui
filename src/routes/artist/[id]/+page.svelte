@@ -70,6 +70,10 @@
 	let discographyProgress = $state({ completed: 0, total: 0 });
 	let discographyError = $state<string | null>(null);
 	let albumDownloadStates = $state<Record<number, AlbumDownloadState>>({});
+	let albumCoverOverrides = $state<Record<number, string>>({});
+	let albumCoverFailures = $state<Record<number, boolean>>({});
+	let albumCoverHydrationAttempted = $state<Record<number, boolean>>({});
+	const pendingAlbumCoverLookups = new Map<number, Promise<string | null>>();
 	let activeRequestToken = 0;
 	const COVER_CANDIDATE_DELIMITER = '\n';
 
@@ -184,10 +188,16 @@
 	function buildAlbumCoverCandidates(
 		representative: Album,
 		versions: Album[],
-		useProxy: boolean
+		useProxy: boolean,
+		overrideCoverId?: string
 	): string[] {
 		const coverIds: string[] = [];
 		const seenIds = new Set<string>();
+		const normalizedOverride = typeof overrideCoverId === 'string' ? overrideCoverId.trim() : '';
+		if (normalizedOverride) {
+			seenIds.add(normalizedOverride);
+			coverIds.push(normalizedOverride);
+		}
 		for (const version of [representative, ...versions]) {
 			const cover = typeof version.cover === 'string' ? version.cover.trim() : '';
 			if (!cover || seenIds.has(cover)) continue;
@@ -215,30 +225,179 @@
 		return candidates.join(COVER_CANDIDATE_DELIMITER);
 	}
 
+	function parseCoverCandidates(rawCandidates: string): string[] {
+		return rawCandidates
+			.split(COVER_CANDIDATE_DELIMITER)
+			.map((candidate) => candidate.trim())
+			.filter((candidate) => candidate.length > 0);
+	}
+
+	function markAlbumCoverFailed(albumId: number): void {
+		albumCoverFailures = {
+			...albumCoverFailures,
+			[albumId]: true
+		};
+	}
+
+	function clearAlbumCoverFailure(albumId: number): void {
+		if (!albumCoverFailures[albumId]) {
+			return;
+		}
+		const next = { ...albumCoverFailures };
+		delete next[albumId];
+		albumCoverFailures = next;
+	}
+
+	async function resolveAlbumCoverFromApi(albumId: number): Promise<string | null> {
+		if (!Number.isFinite(albumId) || albumId <= 0) {
+			return null;
+		}
+
+		const existingOverride = albumCoverOverrides[albumId];
+		if (existingOverride) {
+			return existingOverride;
+		}
+
+		const pending = pendingAlbumCoverLookups.get(albumId);
+		if (pending) {
+			return pending;
+		}
+
+		const lookup = (async () => {
+			try {
+				const { album: albumData } = await losslessAPI.getAlbum(albumId);
+				const cover = typeof albumData.cover === 'string' ? albumData.cover.trim() : '';
+				if (!cover) {
+					return null;
+				}
+
+				albumCoverOverrides = {
+					...albumCoverOverrides,
+					[albumId]: cover
+				};
+				clearAlbumCoverFailure(albumId);
+
+				const artistForCache = albumData.artist?.id ?? artist?.id;
+				if (typeof artistForCache === 'number' && Number.isFinite(artistForCache)) {
+					artistCacheStore.upsertAlbumCover(artistForCache, albumId, cover);
+				} else {
+					artistCacheStore.upsertAlbumCoverGlobally(albumId, cover);
+				}
+
+				return cover;
+			} catch (lookupError) {
+				console.warn(`[Artist] Failed to hydrate cover for album ${albumId}:`, lookupError);
+				return null;
+			} finally {
+				pendingAlbumCoverLookups.delete(albumId);
+			}
+		})();
+
+		pendingAlbumCoverLookups.set(albumId, lookup);
+		return lookup;
+	}
+
+	async function attemptAlbumCoverRecovery(
+		image: HTMLImageElement,
+		currentCandidates: string[]
+	): Promise<void> {
+		const albumId = Number.parseInt(image.dataset.albumId ?? '', 10);
+		if (!Number.isFinite(albumId) || albumId <= 0) {
+			return;
+		}
+
+		const hydratedCover = await resolveAlbumCoverFromApi(albumId);
+		if (!hydratedCover) {
+			markAlbumCoverFailed(albumId);
+			return;
+		}
+
+		const useProxy = image.dataset.coverUseProxy === '1';
+		const hydratedCandidates = losslessAPI.getCoverUrlFallbacks(hydratedCover, '640', {
+			proxy: useProxy,
+			includeLowerSizes: true
+		});
+
+		const merged = [...currentCandidates];
+		for (const candidate of hydratedCandidates) {
+			if (candidate && !merged.includes(candidate)) {
+				merged.push(candidate);
+			}
+		}
+		if (merged.length <= currentCandidates.length) {
+			markAlbumCoverFailed(albumId);
+			return;
+		}
+
+		const nextIndex = currentCandidates.length;
+		image.dataset.coverCandidates = serializeCoverCandidates(merged);
+		image.dataset.coverIndex = String(nextIndex);
+		image.src = merged[nextIndex]!;
+	}
+
+	function handleAlbumCoverLoad(event: Event): void {
+		if (!(event.currentTarget instanceof HTMLImageElement)) {
+			return;
+		}
+		const image = event.currentTarget;
+		const albumId = Number.parseInt(image.dataset.albumId ?? '', 10);
+		if (Number.isFinite(albumId)) {
+			clearAlbumCoverFailure(albumId);
+		}
+	}
+
 	function handleAlbumCoverError(event: Event): void {
 		if (!(event.currentTarget instanceof HTMLImageElement)) {
 			return;
 		}
 		const image = event.currentTarget;
+		const albumId = Number.parseInt(image.dataset.albumId ?? '', 10);
 		const rawCandidates = image.dataset.coverCandidates ?? '';
 		if (!rawCandidates) return;
 
-		const candidates = rawCandidates
-			.split(COVER_CANDIDATE_DELIMITER)
-			.map((candidate) => candidate.trim())
-			.filter((candidate) => candidate.length > 0);
+		const candidates = parseCoverCandidates(rawCandidates);
 		if (candidates.length === 0) return;
 
 		const currentIndex = Number.parseInt(image.dataset.coverIndex ?? '0', 10);
 		const safeIndex = Number.isFinite(currentIndex) && currentIndex >= 0 ? currentIndex : 0;
 		const nextIndex = safeIndex + 1;
 		if (nextIndex >= candidates.length) {
+			if (image.dataset.coverRecoveryTried !== '1') {
+				image.dataset.coverRecoveryTried = '1';
+				void attemptAlbumCoverRecovery(image, candidates);
+				return;
+			}
+			if (Number.isFinite(albumId)) {
+				markAlbumCoverFailed(albumId);
+			}
 			return;
 		}
 
 		image.dataset.coverIndex = String(nextIndex);
 		image.src = candidates[nextIndex]!;
 	}
+
+	$effect(() => {
+		if (!artist) return;
+		for (const entry of discographyEntries) {
+			const album = entry.representative;
+			if (!album || !Number.isFinite(album.id)) continue;
+			if (albumCoverOverrides[album.id] || albumCoverHydrationAttempted[album.id]) {
+				continue;
+			}
+			const hasAnyCover = entry.versions.some(
+				(version) => typeof version.cover === 'string' && version.cover.trim().length > 0
+			);
+			if (hasAnyCover) {
+				continue;
+			}
+			albumCoverHydrationAttempted = {
+				...albumCoverHydrationAttempted,
+				[album.id]: true
+			};
+			void resolveAlbumCoverFromApi(album.id);
+		}
+	});
 
 	function patchAlbumDownloadState(albumId: number, patch: Partial<AlbumDownloadState>) {
 		const previous = albumDownloadStates[albumId] ?? {
@@ -398,6 +557,10 @@
 		discographyProgress = { completed: 0, total: 0 };
 		discographyError = null;
 		albumDownloadStates = {};
+		albumCoverOverrides = {};
+		albumCoverFailures = {};
+		albumCoverHydrationAttempted = {};
+		pendingAlbumCoverLookups.clear();
 
 		if (cachedArtist) {
 			const normalizedCached = normalizeArtistDetails(cachedArtist);
@@ -696,10 +859,12 @@
 												{@const hasOfficialTidalSource = entry.versions.some(
 													(version) => version.discographySource === 'official_tidal'
 												)}
+												{@const coverOverride = albumCoverOverrides[album.id]}
 												{@const coverImageCandidates = buildAlbumCoverCandidates(
 													album,
 													entry.versions,
-													hasOfficialTidalSource
+													hasOfficialTidalSource,
+													coverOverride
 												)}
 												{@const coverImageUrl = coverImageCandidates[0] ?? ''}
 												<div
@@ -733,14 +898,20 @@
 														<div
 															class="mx-auto aspect-square w-full max-w-[220px] overflow-hidden rounded-lg bg-gray-800"
 														>
-															{#if album.cover && coverImageUrl}
+															{#if coverImageUrl && !albumCoverFailures[album.id]}
 																<img
 																	src={coverImageUrl}
+																	data-album-id={album.id}
+																	data-cover-use-proxy={hasOfficialTidalSource ? '1' : '0'}
 																	data-cover-candidates={serializeCoverCandidates(coverImageCandidates)}
 																	data-cover-index="0"
+																	data-cover-recovery-tried="0"
 																	onerror={handleAlbumCoverError}
+																	onload={handleAlbumCoverLoad}
 																	alt={album.title}
 																	class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+																	loading="lazy"
+																	decoding="async"
 																/>
 														{:else}
 															<div

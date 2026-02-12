@@ -29,6 +29,7 @@
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 	import { browseState } from '$lib/stores/browseState';
+	import { artistCacheStore } from '$lib/stores/artistCache';
 
 	import { downloadAlbum } from '$lib/downloads';
 
@@ -75,6 +76,15 @@
 				breadcrumbStore.setLabel(`/artist/${albumData.artist.id}`, albumData.artist.name);
 			}
 			breadcrumbStore.setCurrentLabel(albumData.title, `/album/${albumData.id}`);
+
+			if (albumData.cover) {
+				const artistId = albumData.artist?.id;
+				if (typeof artistId === 'number' && Number.isFinite(artistId)) {
+					artistCacheStore.upsertAlbumCover(artistId, albumData.id, albumData.cover);
+				} else {
+					artistCacheStore.upsertAlbumCoverGlobally(albumData.id, albumData.cover);
+				}
+			}
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load album';
 			console.error('Failed to load album:', err);

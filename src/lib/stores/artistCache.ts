@@ -10,6 +10,53 @@ const STORAGE_KEY = 'tidal-ui:artist-cache';
 const browser = typeof window !== 'undefined';
 const CACHE_TTL_MS = 30 * 60 * 1000;
 
+const normalizeCover = (value: string | null | undefined): string | null => {
+	if (typeof value !== 'string') return null;
+	const trimmed = value.trim();
+	return trimmed.length > 0 ? trimmed : null;
+};
+
+const patchEntryAlbumCover = (
+	entry: ArtistCacheEntry,
+	albumId: number,
+	cover: string
+): ArtistCacheEntry | null => {
+	let changed = false;
+
+	const albums = entry.artist.albums.map((album) => {
+		if (album.id !== albumId) return album;
+		if (album.cover === cover) return album;
+		changed = true;
+		return { ...album, cover };
+	});
+
+	const tracks = entry.artist.tracks.map((track) => {
+		if (!track.album || track.album.id !== albumId) return track;
+		if (track.album.cover === cover) return track;
+		changed = true;
+		return {
+			...track,
+			album: {
+				...track.album,
+				cover
+			}
+		};
+	});
+
+	if (!changed) {
+		return null;
+	}
+
+	return {
+		...entry,
+		artist: {
+			...entry.artist,
+			albums,
+			tracks
+		}
+	};
+};
+
 const hydrateFromSession = () => {
 	if (!browser || artistCache.size > 0) {
 		return;
@@ -79,6 +126,54 @@ export const artistCacheStore = {
 			expiresAt: Date.now() + CACHE_TTL_MS
 		});
 		persistToSession();
+	},
+	upsertAlbumCover(artistId: number, albumId: number, cover: string): void {
+		hydrateFromSession();
+		const normalizedCover = normalizeCover(cover);
+		if (!normalizedCover || !Number.isFinite(artistId) || !Number.isFinite(albumId)) {
+			return;
+		}
+
+		const entry = artistCache.get(artistId);
+		if (!entry || entry.expiresAt <= Date.now()) {
+			return;
+		}
+
+		const patched = patchEntryAlbumCover(entry, albumId, normalizedCover);
+		if (!patched) {
+			return;
+		}
+
+		artistCache.set(artistId, patched);
+		persistToSession();
+	},
+	upsertAlbumCoverGlobally(albumId: number, cover: string): void {
+		hydrateFromSession();
+		const normalizedCover = normalizeCover(cover);
+		if (!normalizedCover || !Number.isFinite(albumId)) {
+			return;
+		}
+
+		const now = Date.now();
+		let changed = false;
+		for (const [artistId, entry] of artistCache.entries()) {
+			if (entry.expiresAt <= now) {
+				artistCache.delete(artistId);
+				changed = true;
+				continue;
+			}
+
+			const patched = patchEntryAlbumCover(entry, albumId, normalizedCover);
+			if (!patched) {
+				continue;
+			}
+			artistCache.set(artistId, patched);
+			changed = true;
+		}
+
+		if (changed) {
+			persistToSession();
+		}
 	},
 	clear(): void {
 		artistCache.clear();

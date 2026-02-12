@@ -11,6 +11,7 @@
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 	import { buildTrackFilename } from '$lib/downloads';
+	import { artistCacheStore } from '$lib/stores/artistCache';
 	import ShareButton from '$lib/components/ShareButton.svelte';
 	import { LoaderCircle, Play, ArrowLeft, Disc, User, Clock, Download, X } from 'lucide-svelte';
 	import { formatArtists } from '$lib/utils/formatters';
@@ -49,6 +50,15 @@
 				breadcrumbStore.setLabel(`/album/${data.track.album.id}`, data.track.album.title);
 			}
 			breadcrumbStore.setCurrentLabel(data.track.title, `/track/${data.track.id}`);
+
+			if (data.track.album?.cover) {
+				const albumArtistId = data.track.album.artist?.id;
+				if (typeof albumArtistId === 'number' && Number.isFinite(albumArtistId)) {
+					artistCacheStore.upsertAlbumCover(albumArtistId, data.track.album.id, data.track.album.cover);
+				} else {
+					artistCacheStore.upsertAlbumCoverGlobally(data.track.album.id, data.track.album.cover);
+				}
+			}
 
 			// Update browse state to track what we're viewing
 			// This does NOT affect playback - only UI display context
