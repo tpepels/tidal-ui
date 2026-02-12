@@ -874,20 +874,28 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 			statusText: responseStatusText,
 			headers
 		});
-	} catch (error) {
-		console.error(`[${getTimestamp()}] [Proxy] ========== PROXY ERROR ==========`);
-		console.error(`[${getTimestamp()}] [Proxy] Error type:`, error?.constructor?.name);
-		console.error(`[${getTimestamp()}] [Proxy] Error message:`, error instanceof Error ? error.message : 'Unknown');
-		console.error(`[${getTimestamp()}] [Proxy] Error code:`, (error as Record<string, unknown>)?.code);
-		console.error(`[${getTimestamp()}] [Proxy] Error cause:`, (error as Record<string, unknown>)?.cause);
-		console.error(`[${getTimestamp()}] [Proxy] Error stack:`, error instanceof Error ? error.stack : 'No stack');
-		console.error(`[${getTimestamp()}] [Proxy] Target URL:`, parsedTarget.toString());
-		console.error(`[${getTimestamp()}] [Proxy] =====================================`);
-		markUpstreamUnhealthy(parsedTarget.origin);
-		return new Response(
-			JSON.stringify({
-				error: 'Proxy request failed',
-				message: error instanceof Error ? error.message : 'Unknown error'
+		} catch (error) {
+			console.error(`[${getTimestamp()}] [Proxy] ========== PROXY ERROR ==========`);
+			console.error(`[${getTimestamp()}] [Proxy] Error type:`, error?.constructor?.name);
+			console.error(`[${getTimestamp()}] [Proxy] Error message:`, error instanceof Error ? error.message : 'Unknown');
+			console.error(`[${getTimestamp()}] [Proxy] Error code:`, (error as Record<string, unknown>)?.code);
+			console.error(`[${getTimestamp()}] [Proxy] Error cause:`, (error as Record<string, unknown>)?.cause);
+			console.error(`[${getTimestamp()}] [Proxy] Error stack:`, error instanceof Error ? error.stack : 'No stack');
+			console.error(`[${getTimestamp()}] [Proxy] Target URL:`, parsedTarget.toString());
+			console.error(`[${getTimestamp()}] [Proxy] =====================================`);
+			const isAbortError =
+				(error instanceof DOMException && error.name === 'AbortError') ||
+				(typeof error === 'object' &&
+					error !== null &&
+					'name' in error &&
+					(error as { name?: unknown }).name === 'AbortError');
+			if (!isAbortError) {
+				markUpstreamUnhealthy(parsedTarget.origin);
+			}
+			return new Response(
+				JSON.stringify({
+					error: 'Proxy request failed',
+					message: error instanceof Error ? error.message : 'Unknown error'
 			}),
 			{
 				status: 500,

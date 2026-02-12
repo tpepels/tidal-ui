@@ -2155,16 +2155,144 @@ class LosslessAPI {
 	/**
 	 * Get cover URL
 	 */
+	private parseArtworkIdFromResourceUrl(value: string): string | null {
+		try {
+			const parsed = new URL(value);
+			if (parsed.hostname !== 'resources.tidal.com') {
+				return null;
+			}
+			const segments = parsed.pathname
+				.split('/')
+				.map((segment) => segment.trim())
+				.filter(Boolean);
+			const imagesIndex = segments.findIndex((segment) => segment.toLowerCase() === 'images');
+			if (imagesIndex < 0) {
+				return null;
+			}
+			const idSegments = segments.slice(imagesIndex + 1);
+			if (idSegments.length === 0) {
+				return null;
+			}
+			const lastSegment = idSegments[idSegments.length - 1] ?? '';
+			if (/^\d+x\d+\.(jpg|jpeg|png|webp)$/i.test(lastSegment)) {
+				idSegments.pop();
+			}
+			if (idSegments.length === 0) {
+				return null;
+			}
+			return idSegments.join('/');
+		} catch {
+			return null;
+		}
+	}
+
+	private normalizeArtworkId(coverId: string): string | null {
+		const trimmed = coverId.trim();
+		if (trimmed.length === 0) {
+			return null;
+		}
+
+		const fromResourceUrl = this.parseArtworkIdFromResourceUrl(trimmed);
+		if (fromResourceUrl) {
+			return fromResourceUrl;
+		}
+
+		if (/^https?:\/\//i.test(trimmed)) {
+			return null;
+		}
+
+		const normalized = trimmed.replace(/^\/+|\/+$/g, '');
+		if (normalized.length === 0) {
+			return null;
+		}
+
+		if (!normalized.includes('/')) {
+			return normalized;
+		}
+
+		const segments = normalized
+			.split('/')
+			.map((segment) => segment.trim())
+			.filter(Boolean);
+		if (segments.length === 0) {
+			return null;
+		}
+
+		const imagesIndex = segments.findIndex((segment) => segment.toLowerCase() === 'images');
+		const relevantSegments = imagesIndex >= 0 ? segments.slice(imagesIndex + 1) : segments;
+		if (relevantSegments.length === 0) {
+			return null;
+		}
+
+		const lastSegment = relevantSegments[relevantSegments.length - 1] ?? '';
+		if (/^\d+x\d+\.(jpg|jpeg|png|webp)$/i.test(lastSegment)) {
+			relevantSegments.pop();
+		}
+
+		if (relevantSegments.length === 0) {
+			return null;
+		}
+
+		return relevantSegments.join('/');
+	}
+
+	private static getFallbackCoverSizes(size: '1280' | '640' | '320' | '160' | '80'): Array<'1280' | '640' | '320' | '160' | '80'> {
+		switch (size) {
+			case '1280':
+				return ['1280', '640', '320', '160', '80'];
+			case '640':
+				return ['640', '320', '160', '80'];
+			case '320':
+				return ['320', '160', '80'];
+			case '160':
+				return ['160', '80'];
+			case '80':
+			default:
+				return ['80'];
+		}
+	}
+
 	getCoverUrl(
 		coverId: string,
 		size: '1280' | '640' | '320' | '160' | '80' = '640',
 		options?: { proxy?: boolean }
 	): string {
-		const url = `https://resources.tidal.com/images/${coverId.replace(/-/g, '/')}/${size}x${size}.jpg`;
+		const normalizedCoverId = this.normalizeArtworkId(coverId);
+		if (!normalizedCoverId) {
+			return '';
+		}
+		const url = `https://resources.tidal.com/images/${normalizedCoverId.replace(/-/g, '/')}/${size}x${size}.jpg`;
 		if (!options?.proxy || !API_CONFIG.proxyUrl) {
 			return url;
 		}
 		return `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(url)}`;
+	}
+
+	getCoverUrlFallbacks(
+		coverId: string,
+		size: '1280' | '640' | '320' | '160' | '80' = '640',
+		options?: { proxy?: boolean; includeLowerSizes?: boolean }
+	): string[] {
+		const sizes = options?.includeLowerSizes
+			? LosslessAPI.getFallbackCoverSizes(size)
+			: [size];
+		const candidates: string[] = [];
+		for (const candidateSize of sizes) {
+			const directUrl = this.getCoverUrl(coverId, candidateSize, { proxy: false });
+			if (!directUrl) {
+				continue;
+			}
+			if (options?.proxy && API_CONFIG.proxyUrl) {
+				const proxyUrl = `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(directUrl)}`;
+				if (!candidates.includes(proxyUrl)) {
+					candidates.push(proxyUrl);
+				}
+			}
+			if (!candidates.includes(directUrl)) {
+				candidates.push(directUrl);
+			}
+		}
+		return candidates;
 	}
 
 	/**

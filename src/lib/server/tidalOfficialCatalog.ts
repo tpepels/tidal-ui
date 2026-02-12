@@ -75,6 +75,42 @@ function parseCoverIdFromResourceUrl(url: string): string | undefined {
 	}
 }
 
+function normalizeCoverId(value: string): string | null {
+	const trimmed = value.trim();
+	if (trimmed.length === 0) return null;
+
+	const fromResourceUrl = parseCoverIdFromResourceUrl(trimmed);
+	if (fromResourceUrl) return fromResourceUrl;
+
+	if (/^https?:\/\//i.test(trimmed)) {
+		return null;
+	}
+
+	const normalized = trimmed.replace(/^\/+|\/+$/g, '');
+	if (normalized.length === 0) return null;
+
+	if (!normalized.includes('/')) {
+		return normalized;
+	}
+
+	const segments = normalized
+		.split('/')
+		.map((segment) => segment.trim())
+		.filter(Boolean);
+	if (segments.length === 0) return null;
+
+	const imagesIndex = segments.findIndex((segment) => segment.toLowerCase() === 'images');
+	const relevantSegments = imagesIndex >= 0 ? segments.slice(imagesIndex + 1) : segments;
+	if (relevantSegments.length === 0) return null;
+
+	const last = relevantSegments[relevantSegments.length - 1] ?? '';
+	if (/^\d+x\d+\.(jpg|jpeg|png|webp)$/i.test(last)) {
+		relevantSegments.pop();
+	}
+
+	return relevantSegments.length > 0 ? relevantSegments.join('/') : null;
+}
+
 function buildArtworkCoverMap(payload: unknown): Map<string, string> {
 	const byArtworkId = new Map<string, string>();
 	if (!isJsonObject(payload) || !Array.isArray(payload.included)) {
@@ -113,7 +149,8 @@ function buildArtworkCoverMap(payload: unknown): Map<string, string> {
 function parseCoverFromRecord(record: unknown, artworkCoverMap?: Map<string, string>): string | null {
 	if (!isJsonObject(record)) return null;
 	const attributes = isJsonObject(record.attributes) ? record.attributes : record;
-	const fromAttributes = parseString(attributes.cover ?? record.cover);
+	const fromAttributesRaw = parseString(attributes.cover ?? record.cover);
+	const fromAttributes = fromAttributesRaw ? normalizeCoverId(fromAttributesRaw) : null;
 	if (fromAttributes) return fromAttributes;
 
 	if (!artworkCoverMap || artworkCoverMap.size === 0) return null;
@@ -127,7 +164,7 @@ function parseCoverFromRecord(record: unknown, artworkCoverMap?: Map<string, str
 		if (!artworkId) continue;
 		const resolved = artworkCoverMap.get(artworkId);
 		if (resolved) {
-			return resolved;
+			return normalizeCoverId(resolved) ?? resolved;
 		}
 	}
 	return null;

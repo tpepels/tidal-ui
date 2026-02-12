@@ -71,6 +71,7 @@
 	let discographyError = $state<string | null>(null);
 	let albumDownloadStates = $state<Record<number, AlbumDownloadState>>({});
 	let activeRequestToken = 0;
+	const COVER_CANDIDATE_DELIMITER = '\n';
 
 	$effect(() => {
 		const id = Number(artistId);
@@ -178,6 +179,65 @@
 			albums: Array.from(dedupedAlbums.values()),
 			tracks: Array.from(dedupedTracks.values())
 		};
+	}
+
+	function buildAlbumCoverCandidates(
+		representative: Album,
+		versions: Album[],
+		useProxy: boolean
+	): string[] {
+		const coverIds: string[] = [];
+		const seenIds = new Set<string>();
+		for (const version of [representative, ...versions]) {
+			const cover = typeof version.cover === 'string' ? version.cover.trim() : '';
+			if (!cover || seenIds.has(cover)) continue;
+			seenIds.add(cover);
+			coverIds.push(cover);
+			if (coverIds.length >= 4) break;
+		}
+
+		const urls: string[] = [];
+		for (const coverId of coverIds) {
+			const candidates = losslessAPI.getCoverUrlFallbacks(coverId, '640', {
+				proxy: useProxy,
+				includeLowerSizes: true
+			});
+			for (const candidate of candidates) {
+				if (candidate && !urls.includes(candidate)) {
+					urls.push(candidate);
+				}
+			}
+		}
+		return urls;
+	}
+
+	function serializeCoverCandidates(candidates: string[]): string {
+		return candidates.join(COVER_CANDIDATE_DELIMITER);
+	}
+
+	function handleAlbumCoverError(event: Event): void {
+		if (!(event.currentTarget instanceof HTMLImageElement)) {
+			return;
+		}
+		const image = event.currentTarget;
+		const rawCandidates = image.dataset.coverCandidates ?? '';
+		if (!rawCandidates) return;
+
+		const candidates = rawCandidates
+			.split(COVER_CANDIDATE_DELIMITER)
+			.map((candidate) => candidate.trim())
+			.filter((candidate) => candidate.length > 0);
+		if (candidates.length === 0) return;
+
+		const currentIndex = Number.parseInt(image.dataset.coverIndex ?? '0', 10);
+		const safeIndex = Number.isFinite(currentIndex) && currentIndex >= 0 ? currentIndex : 0;
+		const nextIndex = safeIndex + 1;
+		if (nextIndex >= candidates.length) {
+			return;
+		}
+
+		image.dataset.coverIndex = String(nextIndex);
+		image.src = candidates[nextIndex]!;
 	}
 
 	function patchAlbumDownloadState(albumId: number, patch: Partial<AlbumDownloadState>) {
@@ -658,18 +718,21 @@
 											{section.entries.length}
 										</span>
 									</div>
-									<div class="grid gap-4 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
-										{#each section.entries as entry (`${entry.key}:${downloadQuality}`)}
-											{@const album = entry.representative}
-											{@const hasOfficialTidalSource = entry.versions.some(
-												(version) => version.discographySource === 'official_tidal'
-											)}
-											{@const coverImageUrl = losslessAPI.getCoverUrl(album.cover, '640', {
-												proxy: hasOfficialTidalSource
-											})}
-											<div
-												class="group relative flex h-full flex-col rounded-xl border border-gray-800 bg-gray-900/40 p-4 text-center transition-colors hover:border-blue-700 hover:bg-gray-900"
-											>
+										<div class="grid gap-4 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+											{#each section.entries as entry (`${entry.key}:${downloadQuality}`)}
+												{@const album = entry.representative}
+												{@const hasOfficialTidalSource = entry.versions.some(
+													(version) => version.discographySource === 'official_tidal'
+												)}
+												{@const coverImageCandidates = buildAlbumCoverCandidates(
+													album,
+													entry.versions,
+													hasOfficialTidalSource
+												)}
+												{@const coverImageUrl = coverImageCandidates[0] ?? ''}
+												<div
+													class="group relative flex h-full flex-col rounded-xl border border-gray-800 bg-gray-900/40 p-4 text-center transition-colors hover:border-blue-700 hover:bg-gray-900"
+												>
 												{#if hasOfficialTidalSource}
 													<span
 														class="absolute top-3 left-3 z-30 rounded-full border border-emerald-600/60 bg-emerald-900/70 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-emerald-200"
@@ -694,16 +757,19 @@
 												<a
 													href={`/album/${album.id}`}
 													class="flex flex-1 flex-col items-center gap-4 rounded-lg text-center focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-900"
-												>
-													<div
-														class="mx-auto aspect-square w-full max-w-[220px] overflow-hidden rounded-lg bg-gray-800"
 													>
-														{#if album.cover}
-															<img
-																src={coverImageUrl}
-																alt={album.title}
-																class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-															/>
+														<div
+															class="mx-auto aspect-square w-full max-w-[220px] overflow-hidden rounded-lg bg-gray-800"
+														>
+															{#if album.cover && coverImageUrl}
+																<img
+																	src={coverImageUrl}
+																	data-cover-candidates={serializeCoverCandidates(coverImageCandidates)}
+																	data-cover-index="0"
+																	onerror={handleAlbumCoverError}
+																	alt={album.title}
+																	class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+																/>
 														{:else}
 															<div
 																class="flex h-full w-full items-center justify-center text-sm text-gray-500"
