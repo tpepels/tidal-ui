@@ -3,7 +3,6 @@
 	import { goto } from '$app/navigation';
 	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
 	import type { Track } from '$lib/types';
-	import { onMount } from 'svelte';
 	import { playbackFacade } from '$lib/controllers/playbackFacade';
 	import { browseState } from '$lib/stores/browseState';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
@@ -22,22 +21,32 @@
 	let isDownloading = $state(false);
 	let downloadTaskId = $state<string | null>(null);
 	let isCancelled = $state(false);
+	let activeRequestToken = 0;
 
 	const trackId = $derived($page.params.id);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
 	const downloadCoverSeperatelyPreference = $derived($userPreferencesStore.downloadCoversSeperately);
 
-	onMount(async () => {
-		if (trackId) {
-			await loadTrack(parseInt(trackId));
+	$effect(() => {
+		const parsedTrackId = Number.parseInt(trackId ?? '', 10);
+		if (!Number.isFinite(parsedTrackId) || parsedTrackId <= 0) {
+			track = null;
+			error = 'Invalid track id';
+			isLoading = false;
+			return;
 		}
+		const requestToken = ++activeRequestToken;
+		void loadTrack(parsedTrackId, requestToken);
 	});
 
-	async function loadTrack(id: number) {
+	async function loadTrack(id: number, requestToken: number) {
 		try {
 			isLoading = true;
 			error = null;
 			const data = await losslessAPI.getTrack(id);
+			if (requestToken !== activeRequestToken) {
+				return;
+			}
 			track = data.track;
 
 			if (data.track.album?.artist) {
@@ -55,9 +64,8 @@
 				const albumArtistId = data.track.album.artist?.id;
 				if (typeof albumArtistId === 'number' && Number.isFinite(albumArtistId)) {
 					artistCacheStore.upsertAlbumCover(albumArtistId, data.track.album.id, data.track.album.cover);
-				} else {
-					artistCacheStore.upsertAlbumCoverGlobally(data.track.album.id, data.track.album.cover);
 				}
+				artistCacheStore.upsertAlbumCoverGlobally(data.track.album.id, data.track.album.cover);
 			}
 
 			// Update browse state to track what we're viewing
@@ -66,10 +74,14 @@
 				browseState.setViewingTrack(track);
 			}
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to load track';
-			console.error('Failed to load track:', err);
+			if (requestToken === activeRequestToken) {
+				error = err instanceof Error ? err.message : 'Failed to load track';
+				console.error('Failed to load track:', err);
+			}
 		} finally {
-			isLoading = false;
+			if (requestToken === activeRequestToken) {
+				isLoading = false;
+			}
 		}
 	}
 

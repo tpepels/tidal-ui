@@ -5,7 +5,6 @@
 	import TrackList from '$lib/components/TrackList.svelte';
 	import ShareButton from '$lib/components/ShareButton.svelte';
 	import type { Album, Track } from '$lib/types';
-	import { onMount } from 'svelte';
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
 	import {
 		ArrowLeft,
@@ -39,6 +38,7 @@
 	let error = $state<string | null>(null);
 	let isDownloadingAll = $state(false);
 	let downloadedCount = $state(0);
+	let activeRequestToken = 0;
 
 	const isAlbumQueue = $derived(
 		tracks.length > 0 &&
@@ -53,17 +53,27 @@
 
 	const albumId = $derived($page.params.id);
 
-	onMount(async () => {
-		if (albumId) {
-			await loadAlbum(parseInt(albumId));
+	$effect(() => {
+		const parsedAlbumId = Number.parseInt(albumId ?? '', 10);
+		if (!Number.isFinite(parsedAlbumId) || parsedAlbumId <= 0) {
+			album = null;
+			tracks = [];
+			error = 'Invalid album id';
+			isLoading = false;
+			return;
 		}
+		const requestToken = ++activeRequestToken;
+		void loadAlbum(parsedAlbumId, requestToken);
 	});
 
-	async function loadAlbum(id: number) {
+	async function loadAlbum(id: number, requestToken: number) {
 		try {
 			isLoading = true;
 			error = null;
 			const { album: albumData, tracks: albumTracks } = await losslessAPI.getAlbum(id);
+			if (requestToken !== activeRequestToken) {
+				return;
+			}
 			album = albumData;
 			tracks = albumTracks;
 
@@ -81,15 +91,18 @@
 				const artistId = albumData.artist?.id;
 				if (typeof artistId === 'number' && Number.isFinite(artistId)) {
 					artistCacheStore.upsertAlbumCover(artistId, albumData.id, albumData.cover);
-				} else {
-					artistCacheStore.upsertAlbumCoverGlobally(albumData.id, albumData.cover);
 				}
+				artistCacheStore.upsertAlbumCoverGlobally(albumData.id, albumData.cover);
 			}
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to load album';
-			console.error('Failed to load album:', err);
+			if (requestToken === activeRequestToken) {
+				error = err instanceof Error ? err.message : 'Failed to load album';
+				console.error('Failed to load album:', err);
+			}
 		} finally {
-			isLoading = false;
+			if (requestToken === activeRequestToken) {
+				isLoading = false;
+			}
 		}
 	}
 

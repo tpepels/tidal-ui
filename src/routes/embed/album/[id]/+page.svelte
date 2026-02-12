@@ -23,6 +23,7 @@
     let tracks = $state<Track[]>([]);
 	let isLoading = $state(true);
 	let error = $state<string | null>(null);
+	let activeRequestToken = 0;
 
 	const albumId = $derived($page.params.id);
     // Check if current playing track is from this album
@@ -42,22 +43,40 @@
         } catch {
 			// Ignore umami tracking errors
 		}
-
-		if (albumId) {
-			await loadAlbum(parseInt(albumId));
-		}
 	});
 
-	async function loadAlbum(id: number) {
+	$effect(() => {
+		const parsedAlbumId = Number.parseInt(albumId ?? '', 10);
+		if (!Number.isFinite(parsedAlbumId) || parsedAlbumId <= 0) {
+			album = null;
+			tracks = [];
+			error = 'Invalid album id';
+			isLoading = false;
+			return;
+		}
+		const requestToken = ++activeRequestToken;
+		void loadAlbum(parsedAlbumId, requestToken);
+	});
+
+	async function loadAlbum(id: number, requestToken: number) {
 		try {
 			isLoading = true;
 			error = null;
 			const data = await losslessAPI.getAlbum(id);
+			if (requestToken !== activeRequestToken) {
+				return;
+			}
 			album = data.album;
             tracks = data.tracks;
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to load album';
-			if (typeof window !== 'undefined' && (window as unknown as { umami?: unknown }).umami) {
+			if (requestToken === activeRequestToken) {
+				error = err instanceof Error ? err.message : 'Failed to load album';
+			}
+			if (
+				requestToken === activeRequestToken &&
+				typeof window !== 'undefined' &&
+				(window as unknown as { umami?: unknown }).umami
+			) {
 				try {
 					const referrer = document.referrer;
 					const host = referrer ? new URL(referrer).hostname : 'direct';
@@ -74,7 +93,9 @@
 				}
 			}
 		} finally {
-			isLoading = false;
+			if (requestToken === activeRequestToken) {
+				isLoading = false;
+			}
 		}
 	}
 

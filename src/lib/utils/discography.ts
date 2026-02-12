@@ -1,5 +1,6 @@
 import type { Album, AudioQuality } from '$lib/types';
 import { deriveQualityFromTags, normalizeQualityToken } from './audioQuality';
+import { scoreAlbumForSelection } from './albumSelection';
 
 const QUALITY_ORDER_ASC: readonly AudioQuality[] = ['LOW', 'HIGH', 'LOSSLESS', 'HI_RES_LOSSLESS'];
 const QUALITY_RANK = new Map<AudioQuality, number>(
@@ -31,15 +32,6 @@ function getPrimaryArtistId(album: Album): number {
 	return typeof candidate === 'number' && Number.isFinite(candidate) ? candidate : 0;
 }
 
-function scoreAlbum(album: Album): number {
-	let score = 0;
-	if (album.cover) score += 2;
-	if (album.releaseDate) score += 1;
-	if (album.numberOfTracks) score += 1;
-	if (album.audioQuality) score += 1;
-	return score;
-}
-
 function albumRecencyScore(album: Album): number {
 	if (!album.releaseDate) return Number.NEGATIVE_INFINITY;
 	const timestamp = Date.parse(album.releaseDate);
@@ -58,7 +50,7 @@ function compareAlbumFallback(a: Album, b: Album): number {
 	if (!hasRecencyA && hasRecencyB) return 1;
 	const popularity = (b.popularity ?? 0) - (a.popularity ?? 0);
 	if (popularity !== 0) return popularity;
-	return scoreAlbum(b) - scoreAlbum(a);
+	return scoreAlbumForSelection(b) - scoreAlbumForSelection(a);
 }
 
 function deriveAlbumQuality(album: Album): AudioQuality | null {
@@ -144,7 +136,7 @@ export function groupDiscography(
 		const groupKey = buildDiscographyKey(album);
 		const group = groups.get(groupKey) ?? new Map<number, Album>();
 		const existing = group.get(album.id);
-		if (!existing || scoreAlbum(album) > scoreAlbum(existing)) {
+		if (!existing || scoreAlbumForSelection(album) > scoreAlbumForSelection(existing)) {
 			group.set(album.id, album);
 		}
 		groups.set(groupKey, group);

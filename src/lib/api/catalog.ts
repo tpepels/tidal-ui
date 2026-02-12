@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { normalizeSearchResponse, prepareAlbum, prepareArtist, prepareTrack } from './normalizers';
+import { scoreAlbumForSelection } from '$lib/utils/albumSelection';
 import {
 	AlbumWithTracksSchema,
 	ApiV2ContainerSchema,
@@ -742,15 +743,6 @@ export async function getArtist(
 		return Number.isFinite(timestamp) ? timestamp : Number.NaN;
 	};
 
-	const scoreAlbum = (album: Album): number => {
-		let score = 0;
-		if (album.cover) score += 2;
-		if (album.releaseDate) score += 1;
-		if (album.numberOfTracks) score += 1;
-		if (album.audioQuality) score += 1;
-		return score;
-	};
-
 	const buildAlbumKey = (album: Album): string => {
 		if (Number.isFinite(album.id)) {
 			return `id:${album.id}`;
@@ -773,7 +765,7 @@ export async function getArtist(
 				byKey.set(key, album);
 				continue;
 			}
-			if (scoreAlbum(album) > scoreAlbum(existing)) {
+			if (scoreAlbumForSelection(album) > scoreAlbumForSelection(existing)) {
 				byKey.set(key, album);
 			}
 		}

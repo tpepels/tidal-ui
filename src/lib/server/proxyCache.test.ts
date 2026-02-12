@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
 	createCacheKey,
+	getCacheBodyByteLimit,
 	getCacheTtlSeconds,
 	hasDisqualifyingCacheControl,
+	isCacheableResponsePayload,
 	isCacheableContentType,
 	sanitizeHeaderEntries
 } from './proxyCache';
@@ -45,5 +47,32 @@ describe('proxyCache', () => {
 		});
 		const key = createCacheKey(url, headers, 'ns:');
 		expect(key.startsWith('ns:')).toBe(true);
+	});
+
+	it('applies separate body-size limits for image responses', () => {
+		expect(getCacheBodyByteLimit('application/json', 200_000, 1_000_000)).toBe(200_000);
+		expect(getCacheBodyByteLimit('image/jpeg', 200_000, 1_000_000)).toBe(1_000_000);
+
+		const imageResult = isCacheableResponsePayload({
+			status: 200,
+			ttlSeconds: 60,
+			cacheControl: 'public, max-age=120',
+			contentType: 'image/jpeg',
+			bodyBytes: 300_000,
+			maxBodyBytes: 200_000,
+			maxImageBodyBytes: 1_000_000
+		});
+		expect(imageResult).toBe(true);
+
+		const jsonResult = isCacheableResponsePayload({
+			status: 200,
+			ttlSeconds: 60,
+			cacheControl: 'public, max-age=120',
+			contentType: 'application/json',
+			bodyBytes: 300_000,
+			maxBodyBytes: 200_000,
+			maxImageBodyBytes: 1_000_000
+		});
+		expect(jsonResult).toBe(false);
 	});
 });

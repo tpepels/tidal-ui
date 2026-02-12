@@ -18,10 +18,11 @@ import {
 import {
 	createCacheKey,
 	getCacheTtlSeconds,
-	hasDisqualifyingCacheControl,
+	isCacheableResponsePayload,
 	isCacheableContentType,
 	sanitizeHeaderEntries
 } from '$lib/server/proxyCache';
+import { isUpstreamFailureError } from '$lib/server/proxyFailureClassifier';
 
 const TRUTHY_VALUES = new Set(['1', 'true', 'yes']);
 
@@ -164,6 +165,10 @@ const SEARCH_CACHE_TTL_SECONDS = getEnvNumber('REDIS_CACHE_TTL_SEARCH_SECONDS', 
 const TRACK_CACHE_TTL_SECONDS = getEnvNumber('REDIS_CACHE_TTL_TRACK_SECONDS', 120);
 const IMAGE_CACHE_TTL_SECONDS = getEnvNumber('REDIS_CACHE_TTL_IMAGE_SECONDS', 604800);
 const MAX_CACHE_BODY_BYTES = getEnvNumber('REDIS_CACHE_MAX_BODY_BYTES', 200_000);
+const MAX_IMAGE_CACHE_BODY_BYTES = Math.max(
+	getEnvNumber('REDIS_CACHE_MAX_IMAGE_BODY_BYTES', 1_500_000),
+	MAX_CACHE_BODY_BYTES
+);
 
 const MOCK_PROXY_FLAGS = ['E2E_OFFLINE', 'MOCK_PROXY', 'MOCK_API'];
 function isMockProxyEnabled(): boolean {
@@ -792,12 +797,15 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 					try {
 						const bodyBytes = await bufferReadableStream(streamForCache);
 						const ttlSeconds = getCacheTtlSeconds(parsedTarget, cacheTtlConfig);
-						const cacheable =
-							upstream.status === 200 &&
-							ttlSeconds > 0 &&
-							!hasDisqualifyingCacheControl(upstreamCacheControl) &&
-							isCacheableContentType(upstreamContentType) &&
-							bodyBytes.byteLength <= MAX_CACHE_BODY_BYTES;
+						const cacheable = isCacheableResponsePayload({
+							status: upstream.status,
+							ttlSeconds,
+							cacheControl: upstreamCacheControl,
+							contentType: upstreamContentType,
+							bodyBytes: bodyBytes.byteLength,
+							maxBodyBytes: MAX_CACHE_BODY_BYTES,
+							maxImageBodyBytes: MAX_IMAGE_CACHE_BODY_BYTES
+						});
 						if (cacheable) {
 							const entry: CachedProxyEntry = {
 								status: upstream.status,
@@ -835,12 +843,15 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 			const contentType = upstreamContentType;
 			const cacheControl = upstreamCacheControl;
 			const byteLength = bodyBytes.byteLength;
-			const cacheable =
-				upstream.status === 200 &&
-				ttlSeconds > 0 &&
-				!hasDisqualifyingCacheControl(cacheControl) &&
-				isCacheableContentType(contentType) &&
-				byteLength <= MAX_CACHE_BODY_BYTES;
+			const cacheable = isCacheableResponsePayload({
+				status: upstream.status,
+				ttlSeconds,
+				cacheControl,
+				contentType,
+				bodyBytes: byteLength,
+				maxBodyBytes: MAX_CACHE_BODY_BYTES,
+				maxImageBodyBytes: MAX_IMAGE_CACHE_BODY_BYTES
+			});
 
 			if (cacheable) {
 				const entry: CachedProxyEntry = {
@@ -883,13 +894,7 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 			console.error(`[${getTimestamp()}] [Proxy] Error stack:`, error instanceof Error ? error.stack : 'No stack');
 			console.error(`[${getTimestamp()}] [Proxy] Target URL:`, parsedTarget.toString());
 			console.error(`[${getTimestamp()}] [Proxy] =====================================`);
-			const isAbortError =
-				(error instanceof DOMException && error.name === 'AbortError') ||
-				(typeof error === 'object' &&
-					error !== null &&
-					'name' in error &&
-					(error as { name?: unknown }).name === 'AbortError');
-			if (!isAbortError) {
+			if (isUpstreamFailureError(error)) {
 				markUpstreamUnhealthy(parsedTarget.origin);
 			}
 			return new Response(

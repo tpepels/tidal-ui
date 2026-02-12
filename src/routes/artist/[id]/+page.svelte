@@ -7,6 +7,7 @@
 	import TopTracksGrid from '$lib/components/TopTracksGrid.svelte';
 	import ShareButton from '$lib/components/ShareButton.svelte';
 	import { groupDiscography } from '$lib/utils/discography';
+	import { scoreAlbumForSelection } from '$lib/utils/albumSelection';
 	import { ArrowLeft, User, Download, LoaderCircle } from 'lucide-svelte';
 
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
@@ -73,13 +74,38 @@
 	let albumCoverOverrides = $state<Record<number, string>>({});
 	let albumCoverFailures = $state<Record<number, boolean>>({});
 	let albumCoverHydrationAttempted = $state<Record<number, boolean>>({});
-	const pendingAlbumCoverLookups = new Map<number, Promise<string | null>>();
+	type PendingCoverLookup = {
+		generation: number;
+		promise: Promise<string | null>;
+	};
+	type CoverHydrationScheduler = {
+		generation: number;
+		activeLookups: number;
+		queue: number[];
+		queuedAlbumIds: Set<number>;
+	};
+
+	const MAX_CONCURRENT_COVER_LOOKUPS = 4;
+	const pendingAlbumCoverLookups = new Map<number, PendingCoverLookup>();
+	let coverHydrationGeneration = $state(0);
+	let coverHydrationScheduler: CoverHydrationScheduler = {
+		generation: 0,
+		activeLookups: 0,
+		queue: [],
+		queuedAlbumIds: new Set<number>()
+	};
 	let activeRequestToken = 0;
 	const COVER_CANDIDATE_DELIMITER = '\n';
 
 	$effect(() => {
 		const id = Number(artistId);
 		if (!Number.isFinite(id) || id <= 0) {
+			activeRequestToken += 1;
+			beginCoverHydrationGeneration();
+			artist = null;
+			artistImage = null;
+			error = 'Invalid artist id';
+			isLoading = false;
 			return;
 		}
 		void loadArtist(id);
@@ -146,15 +172,6 @@
 		return null;
 	}
 
-	function albumScore(album: Album): number {
-		let score = 0;
-		if (album.cover) score += 2;
-		if (album.releaseDate) score += 1;
-		if (album.numberOfTracks) score += 1;
-		if (album.audioQuality) score += 1;
-		return score;
-	}
-
 	function normalizeArtistDetails(data: ArtistDetails): ArtistDetails {
 		const normalizedAlbumsInput = Array.isArray(data.albums) ? data.albums : [];
 		const dedupedAlbums = new Map<number, Album>();
@@ -163,7 +180,7 @@
 			if (parsedId === null) continue;
 			const normalizedAlbum = { ...album, id: parsedId };
 			const existing = dedupedAlbums.get(parsedId);
-			if (!existing || albumScore(normalizedAlbum) > albumScore(existing)) {
+			if (!existing || scoreAlbumForSelection(normalizedAlbum) > scoreAlbumForSelection(existing)) {
 				dedupedAlbums.set(parsedId, normalizedAlbum);
 			}
 		}
@@ -248,8 +265,73 @@
 		albumCoverFailures = next;
 	}
 
-	async function resolveAlbumCoverFromApi(albumId: number): Promise<string | null> {
-		if (!Number.isFinite(albumId) || albumId <= 0) {
+	function createCoverHydrationScheduler(generation: number): CoverHydrationScheduler {
+		return {
+			generation,
+			activeLookups: 0,
+			queue: [],
+			queuedAlbumIds: new Set<number>()
+		};
+	}
+
+	function beginCoverHydrationGeneration(): number {
+		coverHydrationGeneration += 1;
+		coverHydrationScheduler = createCoverHydrationScheduler(coverHydrationGeneration);
+		pendingAlbumCoverLookups.clear();
+		return coverHydrationGeneration;
+	}
+
+	function drainAlbumCoverHydrationQueue(scheduler: CoverHydrationScheduler): void {
+		if (
+			scheduler !== coverHydrationScheduler ||
+			scheduler.generation !== coverHydrationGeneration
+		) {
+			return;
+		}
+
+		while (
+			scheduler.activeLookups < MAX_CONCURRENT_COVER_LOOKUPS &&
+			scheduler.queue.length > 0
+		) {
+			const albumId = scheduler.queue.shift();
+			if (albumId === undefined || !Number.isFinite(albumId)) {
+				continue;
+			}
+			scheduler.activeLookups += 1;
+			void resolveAlbumCoverFromApi(albumId, scheduler.generation)
+				.catch(() => null)
+				.finally(() => {
+					scheduler.activeLookups = Math.max(0, scheduler.activeLookups - 1);
+					scheduler.queuedAlbumIds.delete(albumId);
+					drainAlbumCoverHydrationQueue(scheduler);
+				});
+		}
+	}
+
+	function enqueueAlbumCoverHydration(albumId: number, generation: number): void {
+		if (!Number.isFinite(albumId) || albumId <= 0 || generation !== coverHydrationGeneration) {
+			return;
+		}
+
+		const scheduler = coverHydrationScheduler;
+		if (scheduler.generation !== generation) {
+			return;
+		}
+
+		if (scheduler.queuedAlbumIds.has(albumId)) {
+			return;
+		}
+
+		scheduler.queuedAlbumIds.add(albumId);
+		scheduler.queue.push(albumId);
+		drainAlbumCoverHydrationQueue(scheduler);
+	}
+
+	async function resolveAlbumCoverFromApi(
+		albumId: number,
+		generation: number
+	): Promise<string | null> {
+		if (!Number.isFinite(albumId) || albumId <= 0 || generation !== coverHydrationGeneration) {
 			return null;
 		}
 
@@ -259,15 +341,18 @@
 		}
 
 		const pending = pendingAlbumCoverLookups.get(albumId);
-		if (pending) {
-			return pending;
+		if (pending && pending.generation === generation) {
+			return pending.promise;
+		}
+		if (pending && pending.generation !== generation) {
+			pendingAlbumCoverLookups.delete(albumId);
 		}
 
-		const lookup = (async () => {
+		const lookupPromise = (async () => {
 			try {
 				const { album: albumData } = await losslessAPI.getAlbum(albumId);
 				const cover = typeof albumData.cover === 'string' ? albumData.cover.trim() : '';
-				if (!cover) {
+				if (!cover || generation !== coverHydrationGeneration) {
 					return null;
 				}
 
@@ -280,33 +365,49 @@
 				const artistForCache = albumData.artist?.id ?? artist?.id;
 				if (typeof artistForCache === 'number' && Number.isFinite(artistForCache)) {
 					artistCacheStore.upsertAlbumCover(artistForCache, albumId, cover);
-				} else {
-					artistCacheStore.upsertAlbumCoverGlobally(albumId, cover);
 				}
+				artistCacheStore.upsertAlbumCoverGlobally(albumId, cover);
 
 				return cover;
 			} catch (lookupError) {
-				console.warn(`[Artist] Failed to hydrate cover for album ${albumId}:`, lookupError);
+				if (generation === coverHydrationGeneration) {
+					console.warn(`[Artist] Failed to hydrate cover for album ${albumId}:`, lookupError);
+				}
 				return null;
 			} finally {
-				pendingAlbumCoverLookups.delete(albumId);
+				const current = pendingAlbumCoverLookups.get(albumId);
+				if (current && current.generation === generation) {
+					pendingAlbumCoverLookups.delete(albumId);
+				}
 			}
 		})();
 
-		pendingAlbumCoverLookups.set(albumId, lookup);
-		return lookup;
+		pendingAlbumCoverLookups.set(albumId, {
+			generation,
+			promise: lookupPromise
+		});
+		return lookupPromise;
 	}
 
 	async function attemptAlbumCoverRecovery(
 		image: HTMLImageElement,
-		currentCandidates: string[]
+		currentCandidates: string[],
+		generation: number
 	): Promise<void> {
+		if (!image.isConnected || generation !== coverHydrationGeneration) {
+			return;
+		}
+
 		const albumId = Number.parseInt(image.dataset.albumId ?? '', 10);
 		if (!Number.isFinite(albumId) || albumId <= 0) {
 			return;
 		}
 
-		const hydratedCover = await resolveAlbumCoverFromApi(albumId);
+		const hydratedCover = await resolveAlbumCoverFromApi(albumId, generation);
+		if (!image.isConnected || generation !== coverHydrationGeneration) {
+			return;
+		}
+
 		if (!hydratedCover) {
 			markAlbumCoverFailed(albumId);
 			return;
@@ -332,6 +433,7 @@
 		const nextIndex = currentCandidates.length;
 		image.dataset.coverCandidates = serializeCoverCandidates(merged);
 		image.dataset.coverIndex = String(nextIndex);
+		image.dataset.coverGeneration = String(generation);
 		image.src = merged[nextIndex]!;
 	}
 
@@ -340,6 +442,10 @@
 			return;
 		}
 		const image = event.currentTarget;
+		const imageGeneration = Number.parseInt(image.dataset.coverGeneration ?? '', 10);
+		if (Number.isFinite(imageGeneration) && imageGeneration !== coverHydrationGeneration) {
+			return;
+		}
 		const albumId = Number.parseInt(image.dataset.albumId ?? '', 10);
 		if (Number.isFinite(albumId)) {
 			clearAlbumCoverFailure(albumId);
@@ -351,6 +457,10 @@
 			return;
 		}
 		const image = event.currentTarget;
+		const imageGeneration = Number.parseInt(image.dataset.coverGeneration ?? '', 10);
+		if (Number.isFinite(imageGeneration) && imageGeneration !== coverHydrationGeneration) {
+			return;
+		}
 		const albumId = Number.parseInt(image.dataset.albumId ?? '', 10);
 		const rawCandidates = image.dataset.coverCandidates ?? '';
 		if (!rawCandidates) return;
@@ -364,7 +474,7 @@
 		if (nextIndex >= candidates.length) {
 			if (image.dataset.coverRecoveryTried !== '1') {
 				image.dataset.coverRecoveryTried = '1';
-				void attemptAlbumCoverRecovery(image, candidates);
+				void attemptAlbumCoverRecovery(image, candidates, coverHydrationGeneration);
 				return;
 			}
 			if (Number.isFinite(albumId)) {
@@ -379,6 +489,7 @@
 
 	$effect(() => {
 		if (!artist) return;
+		const generation = coverHydrationGeneration;
 		for (const entry of discographyEntries) {
 			const album = entry.representative;
 			if (!album || !Number.isFinite(album.id)) continue;
@@ -395,7 +506,7 @@
 				...albumCoverHydrationAttempted,
 				[album.id]: true
 			};
-			void resolveAlbumCoverFromApi(album.id);
+			enqueueAlbumCoverHydration(album.id, generation);
 		}
 	});
 
@@ -549,6 +660,7 @@
 
 	async function loadArtist(id: number) {
 		const requestToken = ++activeRequestToken;
+		beginCoverHydrationGeneration();
 		const cachedArtist = artistCacheStore.get(id);
 		const hasCachedArtist = Boolean(cachedArtist);
 
@@ -560,7 +672,6 @@
 		albumCoverOverrides = {};
 		albumCoverFailures = {};
 		albumCoverHydrationAttempted = {};
-		pendingAlbumCoverLookups.clear();
 
 		if (cachedArtist) {
 			const normalizedCached = normalizeArtistDetails(cachedArtist);
@@ -905,6 +1016,7 @@
 																	data-cover-use-proxy={hasOfficialTidalSource ? '1' : '0'}
 																	data-cover-candidates={serializeCoverCandidates(coverImageCandidates)}
 																	data-cover-index="0"
+																	data-cover-generation={coverHydrationGeneration}
 																	data-cover-recovery-tried="0"
 																	onerror={handleAlbumCoverError}
 																	onload={handleAlbumCoverLoad}

@@ -7,6 +7,16 @@ export type CacheTtlConfig = {
 	imageTtlSeconds: number;
 };
 
+export type CacheabilityInput = {
+	status: number;
+	ttlSeconds: number;
+	cacheControl: string | null;
+	contentType: string | null;
+	bodyBytes: number;
+	maxBodyBytes: number;
+	maxImageBodyBytes: number;
+};
+
 export function sanitizeHeaderEntries(entries: Array<[string, string]>): Array<[string, string]> {
 	const blocklist = new Set([
 		'content-encoding',
@@ -39,6 +49,40 @@ export function hasDisqualifyingCacheControl(cacheControl: string | null): boole
 	if (!cacheControl) return false;
 	const normalized = cacheControl.toLowerCase();
 	return normalized.includes('no-store') || normalized.includes('private');
+}
+
+export function getCacheBodyByteLimit(
+	contentType: string | null,
+	maxBodyBytes: number,
+	maxImageBodyBytes: number
+): number {
+	const normalized = contentType?.split(';')[0]?.trim().toLowerCase() ?? '';
+	if (normalized.startsWith('image/')) {
+		return maxImageBodyBytes;
+	}
+	return maxBodyBytes;
+}
+
+export function isCacheableResponsePayload(input: CacheabilityInput): boolean {
+	if (input.status !== 200 || input.ttlSeconds <= 0) {
+		return false;
+	}
+
+	if (hasDisqualifyingCacheControl(input.cacheControl)) {
+		return false;
+	}
+
+	if (!isCacheableContentType(input.contentType)) {
+		return false;
+	}
+
+	const bodyLimit = getCacheBodyByteLimit(
+		input.contentType,
+		input.maxBodyBytes,
+		input.maxImageBodyBytes
+	);
+
+	return input.bodyBytes <= bodyLimit;
 }
 
 export function getCacheTtlSeconds(url: URL, config: CacheTtlConfig): number {

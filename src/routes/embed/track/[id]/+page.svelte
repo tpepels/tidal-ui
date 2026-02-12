@@ -18,6 +18,7 @@
     let trackInfo = $state<TrackInfo | null>(null);
 	let isLoading = $state(true);
 	let error = $state<string | null>(null);
+	let activeRequestToken = 0;
 
 	const trackId = $derived($page.params.id);
     const isPlaying = $derived($machineIsPlaying && $machineCurrentTrack?.id === track?.id);
@@ -36,31 +37,50 @@
         } catch {
 			// Ignore umami tracking errors
 		}
-
-		if (trackId) {
-			await loadTrack(parseInt(trackId));
-		}
 	});
 
-	async function loadTrack(id: number) {
+	$effect(() => {
+		const parsedTrackId = Number.parseInt(trackId ?? '', 10);
+		if (!Number.isFinite(parsedTrackId) || parsedTrackId <= 0) {
+			track = null;
+			trackInfo = null;
+			error = 'Invalid track id';
+			isLoading = false;
+			return;
+		}
+		const requestToken = ++activeRequestToken;
+		void loadTrack(parsedTrackId, requestToken);
+	});
+
+	async function loadTrack(id: number, requestToken: number) {
 		try {
 			isLoading = true;
 			error = null;
 			try {
 				// Try to get Hi-Res first to ensure we have the best metadata
 				const data = await losslessAPI.getTrack(id, 'HI_RES_LOSSLESS');
+				if (requestToken !== activeRequestToken) {
+					return;
+				}
 				track = data.track;
 				trackInfo = data.info;
 			} catch {
 				// Fallback to Lossless if Hi-Res is not available
 				const data = await losslessAPI.getTrack(id, 'LOSSLESS');
+				if (requestToken !== activeRequestToken) {
+					return;
+				}
 				track = data.track;
 				trackInfo = data.info;
 			}
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to load track';
+			if (requestToken === activeRequestToken) {
+				error = err instanceof Error ? err.message : 'Failed to load track';
+			}
 		} finally {
-			isLoading = false;
+			if (requestToken === activeRequestToken) {
+				isLoading = false;
+			}
 		}
 	}
 

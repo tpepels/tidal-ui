@@ -6,7 +6,6 @@
 	import ShareButton from '$lib/components/ShareButton.svelte';
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 	import type { Playlist, Track } from '$lib/types';
-	import { onMount } from 'svelte';
 	import { ArrowLeft, Play, User, Clock, LoaderCircle } from 'lucide-svelte';
 	import { playbackFacade } from '$lib/controllers/playbackFacade';
 
@@ -14,28 +13,43 @@
 	let tracks = $state<Track[]>([]);
 	let isLoading = $state(true);
 	let error = $state<string | null>(null);
+	let activeRequestToken = 0;
 
 	const playlistId = $derived($page.params.id);
 
-	onMount(async () => {
-		if (playlistId) {
-			await loadPlaylist(playlistId);
+	$effect(() => {
+		const normalizedPlaylistId = (playlistId ?? '').trim();
+		if (!normalizedPlaylistId) {
+			playlist = null;
+			tracks = [];
+			error = 'Invalid playlist id';
+			isLoading = false;
+			return;
 		}
+		const requestToken = ++activeRequestToken;
+		void loadPlaylist(normalizedPlaylistId, requestToken);
 	});
 
-	async function loadPlaylist(id: string) {
+	async function loadPlaylist(id: string, requestToken: number) {
 		try {
 			isLoading = true;
 			error = null;
 			const data = await losslessAPI.getPlaylist(id);
+			if (requestToken !== activeRequestToken) {
+				return;
+			}
 			playlist = data.playlist;
 			tracks = data.items.map((item) => item.item);
 			breadcrumbStore.setCurrentLabel(data.playlist.title, `/playlist/${data.playlist.uuid}`);
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to load playlist';
-			console.error('Failed to load playlist:', err);
+			if (requestToken === activeRequestToken) {
+				error = err instanceof Error ? err.message : 'Failed to load playlist';
+				console.error('Failed to load playlist:', err);
+			}
 		} finally {
-			isLoading = false;
+			if (requestToken === activeRequestToken) {
+				isLoading = false;
+			}
 		}
 	}
 
