@@ -407,9 +407,7 @@
 				? losslessAPI.getArtistPictureUrl(normalizedCached.picture)
 				: null;
 			isLoading = false;
-			breadcrumbStore.setBreadcrumbs([
-				{ label: normalizedCached.name, href: `/artist/${normalizedCached.id}` }
-			]);
+			breadcrumbStore.setCurrentLabel(normalizedCached.name, `/artist/${normalizedCached.id}`);
 		}
 
 		try {
@@ -426,10 +424,7 @@
 			artist = normalizedData;
 			artistCacheStore.set(normalizedData);
 
-			// Set breadcrumbs
-			breadcrumbStore.setBreadcrumbs([
-				{ label: normalizedData.name, href: `/artist/${normalizedData.id}` }
-			]);
+			breadcrumbStore.setCurrentLabel(normalizedData.name, `/artist/${normalizedData.id}`);
 
 			// Get artist picture
 			if (artist.picture) {
@@ -448,31 +443,8 @@
 	}
 
 	function handleBackNavigation() {
-		// Try to determine the most appropriate destination based on context
-
-		// 1. If we came from search results, go back to search
-		if (document.referrer?.includes('#') || $page.url.searchParams.has('q')) {
-			goto('/');
-			return;
-		}
-
-		// 2. If we came from an album page that belongs to this artist, go back to that album
-		if (document.referrer?.includes('/album/')) {
-			const albumMatch = document.referrer.match(/\/album\/(\d+)/);
-			if (albumMatch && artist?.albums?.some(album => album.id === parseInt(albumMatch[1]))) {
-				goto(`/album/${albumMatch[1]}`);
-				return;
-			}
-		}
-
-		// 3. Check browser history (current implementation as fallback)
-		if (window.history.state && window.history.state.idx > 0) {
-			window.history.back();
-			return;
-		}
-
-		// 4. Default fallback to home
-		goto('/');
+		const target = breadcrumbStore.goBack($page.url.pathname, '/');
+		void goto(target);
 	}
 </script>
 

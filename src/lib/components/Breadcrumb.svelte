@@ -4,7 +4,7 @@
 
 {#if $breadcrumbStore.breadcrumbs.length > 1}
 	<nav class="breadcrumb-nav" aria-label="Breadcrumb">
-		{#each $breadcrumbStore.breadcrumbs as crumb, index (crumb.href)}
+		{#each $breadcrumbStore.breadcrumbs as crumb, index (`${index}:${crumb.href}`)}
 			{#if index > 0}
 				<span class="breadcrumb-separator">/</span>
 			{/if}

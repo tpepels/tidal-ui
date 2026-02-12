@@ -39,23 +39,16 @@
 			const data = await losslessAPI.getTrack(id);
 			track = data.track;
 
-			// Set breadcrumbs
 			if (data.track.album?.artist) {
-				breadcrumbStore.setBreadcrumbs([
-					{ label: data.track.album.artist.name, href: `/artist/${data.track.album.artist.id}` },
-					{ label: data.track.album.title, href: `/album/${data.track.album.id}` },
-					{ label: data.track.title, href: `/track/${data.track.id}` }
-				]);
-			} else if (data.track.album) {
-				breadcrumbStore.setBreadcrumbs([
-					{ label: data.track.album.title, href: `/album/${data.track.album.id}` },
-					{ label: data.track.title, href: `/track/${data.track.id}` }
-				]);
-			} else {
-				breadcrumbStore.setBreadcrumbs([
-					{ label: data.track.title, href: `/track/${data.track.id}` }
-				]);
+				breadcrumbStore.setLabel(
+					`/artist/${data.track.album.artist.id}`,
+					data.track.album.artist.name
+				);
 			}
+			if (data.track.album?.id) {
+				breadcrumbStore.setLabel(`/album/${data.track.album.id}`, data.track.album.title);
+			}
+			breadcrumbStore.setCurrentLabel(data.track.title, `/track/${data.track.id}`);
 
 			// Update browse state to track what we're viewing
 			// This does NOT affect playback - only UI display context
@@ -77,47 +70,8 @@
 	}
 
 	function handleBackNavigation() {
-		// Try to determine the most appropriate destination based on context
-
-		// 1. If we came from an album page and this track belongs to an album, go back to album
-		if (track?.album?.id && document.referrer?.includes(`/album/${track.album.id}`)) {
-			goto(`/album/${track.album.id}`);
-			return;
-		}
-
-		// 2. If we came from an artist page and this track has artists, go back to the first artist
-		if (track?.artists?.length && document.referrer?.includes('/artist/')) {
-			// Try to find the artist ID in the referrer
-			const artistMatch = document.referrer.match(/\/artist\/(\d+)/);
-			if (artistMatch) {
-				goto(`/artist/${artistMatch[1]}`);
-				return;
-			}
-		}
-
-		// 3. If we came from a playlist page, try to go back there
-		if (document.referrer?.includes('/playlist/')) {
-			const playlistMatch = document.referrer.match(/\/playlist\/([^/?]+)/);
-			if (playlistMatch) {
-				goto(`/playlist/${playlistMatch[1]}`);
-				return;
-			}
-		}
-
-		// 4. If we came from search results, go back to search
-		if (document.referrer?.includes('#') || $page.url.searchParams.has('q')) {
-			goto('/');
-			return;
-		}
-
-		// 5. Check browser history (current implementation as fallback)
-		if (window.history.state && window.history.state.idx > 0) {
-			window.history.back();
-			return;
-		}
-
-		// 6. Default fallback to home
-		goto('/');
+		const target = breadcrumbStore.goBack($page.url.pathname, '/');
+		void goto(target);
 	}
 
 	function markCancelled() {

@@ -72,15 +72,9 @@
 
 			// Set breadcrumbs
 			if (albumData.artist) {
-				breadcrumbStore.setBreadcrumbs([
-					{ label: albumData.artist.name, href: `/artist/${albumData.artist.id}` },
-					{ label: albumData.title, href: `/album/${albumData.id}` }
-				]);
-			} else {
-				breadcrumbStore.setBreadcrumbs([
-					{ label: albumData.title, href: `/album/${albumData.id}` }
-				]);
+				breadcrumbStore.setLabel(`/artist/${albumData.artist.id}`, albumData.artist.name);
 			}
+			breadcrumbStore.setCurrentLabel(albumData.title, `/album/${albumData.id}`);
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load album';
 			console.error('Failed to load album:', err);
@@ -138,28 +132,8 @@
 	}
 
 	function handleBackNavigation() {
-		// Try to determine the most appropriate destination based on context
-
-		// 1. If we came from an artist page and this album belongs to that artist, go back to artist
-		if (album?.artist?.id && document.referrer?.includes(`/artist/${album.artist.id}`)) {
-			goto(`/artist/${album.artist.id}`);
-			return;
-		}
-
-		// 2. If we came from search results, go back to search
-		if (document.referrer?.includes('#') || $page.url.searchParams.has('q')) {
-			goto('/');
-			return;
-		}
-
-		// 3. Check browser history (current implementation as fallback)
-		if (window.history.state && window.history.state.idx > 0) {
-			window.history.back();
-			return;
-		}
-
-		// 4. Default fallback to home
-		goto('/');
+		const target = breadcrumbStore.goBack($page.url.pathname, '/');
+		void goto(target);
 	}
 
 	function handleShufflePlay() {

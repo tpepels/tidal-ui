@@ -4,6 +4,7 @@
 	import { losslessAPI } from '$lib/api';
 	import TrackList from '$lib/components/TrackList.svelte';
 	import ShareButton from '$lib/components/ShareButton.svelte';
+	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 	import type { Playlist, Track } from '$lib/types';
 	import { onMount } from 'svelte';
 	import { ArrowLeft, Play, User, Clock, LoaderCircle } from 'lucide-svelte';
@@ -29,6 +30,7 @@
 			const data = await losslessAPI.getPlaylist(id);
 			playlist = data.playlist;
 			tracks = data.items.map((item) => item.item);
+			breadcrumbStore.setCurrentLabel(data.playlist.title, `/playlist/${data.playlist.uuid}`);
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load playlist';
 			console.error('Failed to load playlist:', err);
@@ -53,22 +55,8 @@
 	}
 
 	function handleBackNavigation() {
-		// Try to determine the most appropriate destination based on context
-
-		// 1. If we came from search results, go back to search
-		if (document.referrer?.includes('#') || $page.url.searchParams.has('q')) {
-			goto('/');
-			return;
-		}
-
-		// 2. Check browser history (current implementation as fallback)
-		if (window.history.state && window.history.state.idx > 0) {
-			window.history.back();
-			return;
-		}
-
-		// 3. Default fallback to home
-		goto('/');
+		const target = breadcrumbStore.goBack($page.url.pathname, '/');
+		void goto(target);
 	}
 </script>
 

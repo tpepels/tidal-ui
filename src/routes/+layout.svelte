@@ -12,6 +12,7 @@
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
 	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { artistCacheStore } from '$lib/stores/artistCache';
+	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 
 	import { toasts } from '$lib/stores/toasts';
 	import {
@@ -106,6 +107,13 @@
 	let diagnosticsPersisted = $state<ReturnType<typeof getPersistedErrorSummary> | null>(null);
 	let diagnosticsRetries = $state<RetrySummary | null>(null);
 	let diagnosticsErrors = $state<ErrorReport[] | null>(null);
+
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		if (isEmbed) return;
+		if ($navigating) return;
+		breadcrumbStore.visit($page.url.pathname);
+	});
 
 	$effect(() => {
 		const current = $machineCurrentTrack;
