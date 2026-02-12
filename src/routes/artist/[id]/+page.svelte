@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
+	import { onDestroy } from 'svelte';
 	import { losslessAPI } from '$lib/api';
 	import { downloadAlbum } from '$lib/downloads';
 	import type { Album, ArtistDetails, AudioQuality } from '$lib/types';
@@ -8,7 +9,7 @@
 	import ShareButton from '$lib/components/ShareButton.svelte';
 	import { groupDiscography } from '$lib/utils/discography';
 	import { scoreAlbumForSelection } from '$lib/utils/albumSelection';
-	import { ArrowLeft, User, Download, LoaderCircle } from 'lucide-svelte';
+	import { ArrowLeft, User, Download, LoaderCircle, X } from 'lucide-svelte';
 
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
@@ -59,12 +60,22 @@
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
 	const downloadStoragePreference = $derived($downloadPreferencesStore.storage);
 
+	type AlbumDownloadStatus =
+		| 'idle'
+		| 'submitting'
+		| 'queued'
+		| 'processing'
+		| 'completed'
+		| 'failed'
+		| 'cancelled';
 	type AlbumDownloadState = {
+		status: AlbumDownloadStatus;
 		downloading: boolean;
 		completed: number;
 		total: number;
 		error: string | null;
 		failedTracks: number;
+		queueJobId: string | null;
 	};
 
 	let isDownloadingDiscography = $state(false);
@@ -86,7 +97,10 @@
 	};
 
 	const MAX_CONCURRENT_COVER_LOOKUPS = 4;
+	const ALBUM_QUEUE_POLL_INTERVAL_MS = 1000;
 	const pendingAlbumCoverLookups = new Map<number, PendingCoverLookup>();
+	const albumQueuePollTimers = new Map<number, ReturnType<typeof setInterval>>();
+	const albumQueuePollTokens = new Map<number, number>();
 	let coverHydrationGeneration = $state(0);
 	let coverHydrationGenerationCounter = 0;
 	let coverHydrationScheduler: CoverHydrationScheduler = {
@@ -102,7 +116,9 @@
 		const id = Number(artistId);
 		if (!Number.isFinite(id) || id <= 0) {
 			activeRequestToken += 1;
+			stopAllAlbumQueuePolling();
 			beginCoverHydrationGeneration();
+			albumDownloadStates = {};
 			artist = null;
 			artistImage = null;
 			error = 'Invalid artist id';
@@ -110,6 +126,10 @@
 			return;
 		}
 		void loadArtist(id);
+	});
+
+	onDestroy(() => {
+		stopAllAlbumQueuePolling();
 	});
 
 	function getReleaseYear(date?: string | null): string | null {
@@ -512,40 +532,247 @@
 		}
 	});
 
-	function patchAlbumDownloadState(albumId: number, patch: Partial<AlbumDownloadState>) {
-		const previous = albumDownloadStates[albumId] ?? {
+	function createDefaultAlbumDownloadState(total = 0): AlbumDownloadState {
+		return {
+			status: 'idle',
 			downloading: false,
 			completed: 0,
-			total: 0,
+			total,
 			error: null,
-			failedTracks: 0
+			failedTracks: 0,
+			queueJobId: null
 		};
+	}
+
+	function patchAlbumDownloadState(albumId: number, patch: Partial<AlbumDownloadState>) {
+		const previous = albumDownloadStates[albumId] ?? createDefaultAlbumDownloadState();
 		albumDownloadStates = {
 			...albumDownloadStates,
 			[albumId]: { ...previous, ...patch }
 		};
 	}
 
+	function getAlbumDownloadState(albumId: number): AlbumDownloadState {
+		return albumDownloadStates[albumId] ?? createDefaultAlbumDownloadState();
+	}
+
+	function isAlbumQueueDownloadCancellable(state: AlbumDownloadState | undefined): boolean {
+		if (!state) return false;
+		return state.status === 'queued' || state.status === 'processing';
+	}
+
+	function stopAlbumQueuePolling(albumId: number): void {
+		const timer = albumQueuePollTimers.get(albumId);
+		if (timer) {
+			clearInterval(timer);
+			albumQueuePollTimers.delete(albumId);
+		}
+	}
+
+	function stopAllAlbumQueuePolling(): void {
+		for (const timer of albumQueuePollTimers.values()) {
+			clearInterval(timer);
+		}
+		albumQueuePollTimers.clear();
+		albumQueuePollTokens.clear();
+	}
+
+	function resolveAlbumQueueProgress(
+		state: AlbumDownloadState,
+		job: {
+			trackCount?: number;
+			completedTracks?: number;
+			progress?: number;
+		}
+	): { total: number; completed: number } {
+		const totalCandidate = Number(job.trackCount);
+		const completedCandidate = Number(job.completedTracks);
+		const progressCandidate = Number(job.progress);
+
+		const total =
+			Number.isFinite(totalCandidate) && totalCandidate > 0
+				? totalCandidate
+				: state.total > 0
+					? state.total
+					: 0;
+		const progressCompleted =
+			Number.isFinite(progressCandidate) && total > 0 ? Math.round(progressCandidate * total) : state.completed;
+		const completed =
+			Number.isFinite(completedCandidate) && completedCandidate >= 0
+				? completedCandidate
+				: progressCompleted;
+
+		if (total > 0) {
+			return { total, completed: Math.min(total, Math.max(0, completed)) };
+		}
+		return { total, completed: Math.max(0, completed) };
+	}
+
+	async function pollAlbumQueueJob(albumId: number, jobId: string, pollToken: number): Promise<void> {
+		if (!jobId || albumQueuePollTokens.get(albumId) !== pollToken) {
+			return;
+		}
+
+		try {
+			const response = await fetch(`/api/download-queue/${jobId}`);
+			if (!response.ok) {
+				return;
+			}
+			const payload = (await response.json()) as {
+				success?: boolean;
+				job?: {
+					status?: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+					trackCount?: number;
+					completedTracks?: number;
+					progress?: number;
+					error?: string;
+				};
+			};
+			if (!payload.success || !payload.job || albumQueuePollTokens.get(albumId) !== pollToken) {
+				return;
+			}
+
+			const current = getAlbumDownloadState(albumId);
+			const progress = resolveAlbumQueueProgress(current, payload.job);
+
+			switch (payload.job.status) {
+				case 'queued':
+					patchAlbumDownloadState(albumId, {
+						status: 'queued',
+						downloading: false,
+						total: progress.total,
+						completed: progress.completed,
+						error: null
+					});
+					break;
+				case 'processing':
+					patchAlbumDownloadState(albumId, {
+						status: 'processing',
+						downloading: true,
+						total: progress.total,
+						completed: progress.completed,
+						error: null
+					});
+					break;
+				case 'completed':
+					patchAlbumDownloadState(albumId, {
+						status: 'completed',
+						downloading: false,
+						total: progress.total,
+						completed: progress.total || progress.completed,
+						error: null
+					});
+					stopAlbumQueuePolling(albumId);
+					albumQueuePollTokens.delete(albumId);
+					break;
+				case 'cancelled':
+					patchAlbumDownloadState(albumId, {
+						status: 'cancelled',
+						downloading: false,
+						error: null
+					});
+					stopAlbumQueuePolling(albumId);
+					albumQueuePollTokens.delete(albumId);
+					break;
+				case 'failed':
+					patchAlbumDownloadState(albumId, {
+						status: 'failed',
+						downloading: false,
+						error: payload.job.error ?? 'Album download failed.'
+					});
+					stopAlbumQueuePolling(albumId);
+					albumQueuePollTokens.delete(albumId);
+					break;
+				default:
+					break;
+			}
+		} catch {
+			// Keep latest optimistic state; next poll will reconcile.
+		}
+	}
+
+	function startAlbumQueuePolling(albumId: number, jobId: string): void {
+		stopAlbumQueuePolling(albumId);
+		const currentToken = (albumQueuePollTokens.get(albumId) ?? 0) + 1;
+		albumQueuePollTokens.set(albumId, currentToken);
+		void pollAlbumQueueJob(albumId, jobId, currentToken);
+		const timer = setInterval(() => {
+			void pollAlbumQueueJob(albumId, jobId, currentToken);
+		}, ALBUM_QUEUE_POLL_INTERVAL_MS);
+		albumQueuePollTimers.set(albumId, timer);
+	}
+
+	async function cancelAlbumQueueDownload(albumId: number, event?: MouseEvent): Promise<void> {
+		event?.preventDefault();
+		event?.stopPropagation();
+
+		const state = getAlbumDownloadState(albumId);
+		if (!isAlbumQueueDownloadCancellable(state) || !state.queueJobId) {
+			return;
+		}
+
+		try {
+			const response = await fetch(`/api/download-queue/${state.queueJobId}`, {
+				method: 'PATCH',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({ action: 'cancel' })
+			});
+			if (!response.ok) {
+				const body = await response.text();
+				throw new Error(body || 'Failed to cancel album download');
+			}
+			patchAlbumDownloadState(albumId, {
+				status: 'cancelled',
+				downloading: false,
+				error: null
+			});
+			stopAlbumQueuePolling(albumId);
+			albumQueuePollTokens.delete(albumId);
+		} catch (cancelError) {
+			patchAlbumDownloadState(albumId, {
+				error:
+					cancelError instanceof Error && cancelError.message
+						? cancelError.message
+						: 'Unable to stop this album download right now.'
+			});
+		}
+	}
+
 	async function handleAlbumDownload(album: Album, event?: MouseEvent) {
 		event?.preventDefault();
 		event?.stopPropagation();
 
-		if (isDownloadingDiscography || albumDownloadStates[album.id]?.downloading) {
+		const currentState = getAlbumDownloadState(album.id);
+		if (isDownloadingDiscography) {
+			return;
+		}
+
+		if (isAlbumQueueDownloadCancellable(currentState)) {
+			await cancelAlbumQueueDownload(album.id);
+			return;
+		}
+
+		if (currentState.downloading || currentState.status === 'submitting') {
 			return;
 		}
 
 		patchAlbumDownloadState(album.id, {
+			status: 'submitting',
 			downloading: true,
 			completed: 0,
 			total: album.numberOfTracks ?? 0,
-			error: null
+			error: null,
+			failedTracks: 0,
+			queueJobId: null
 		});
 
 		const quality = downloadQuality;
 
 		try {
 			let failedCount = 0;
-			await downloadAlbum(
+			const result = await downloadAlbum(
 				album,
 				quality,
 				{
@@ -553,7 +780,12 @@
 						patchAlbumDownloadState(album.id, { total });
 					},
 					onTrackDownloaded: (completed, total) => {
-						patchAlbumDownloadState(album.id, { completed, total });
+						patchAlbumDownloadState(album.id, {
+							status: 'processing',
+							downloading: true,
+							completed,
+							total
+						});
 					},
 					onTrackFailed: (track, error, attempt) => {
 						if (attempt >= 3) {
@@ -563,20 +795,36 @@
 					}
 				},
 				artist?.name,
-				{
-					mode: downloadMode,
-					convertAacToMp3: convertAacToMp3Preference,
-					storage: downloadStoragePreference
-				}
-			);
+					{
+						mode: downloadMode,
+						convertAacToMp3: convertAacToMp3Preference,
+						storage: downloadStoragePreference
+					}
+				);
+
+			if (result.storage === 'server' && result.jobId) {
+				patchAlbumDownloadState(album.id, {
+					status: 'queued',
+					downloading: false,
+					completed: 0,
+					total: result.totalTracks,
+					error: null,
+					queueJobId: result.jobId
+				});
+				startAlbumQueuePolling(album.id, result.jobId);
+				return;
+			}
+
 			const finalState = albumDownloadStates[album.id];
 			patchAlbumDownloadState(album.id, {
+				status: failedCount > 0 ? 'failed' : 'completed',
 				downloading: false,
-				completed: finalState?.total ?? finalState?.completed ?? 0,
+				completed: finalState?.total ?? result.completedTracks ?? finalState?.completed ?? 0,
 				error:
 					failedCount > 0
 						? `${failedCount} track${failedCount > 1 ? 's' : ''} failed after 3 attempts`
-						: null
+						: null,
+				queueJobId: null
 			});
 		} catch (err) {
 			console.error('Failed to download album:', err);
@@ -584,7 +832,12 @@
 				err instanceof Error && err.message
 					? err.message
 					: 'Failed to download album. Please try again.';
-			patchAlbumDownloadState(album.id, { downloading: false, error: message });
+			patchAlbumDownloadState(album.id, {
+				status: 'failed',
+				downloading: false,
+				error: message,
+				queueJobId: null
+			});
 		}
 	}
 
@@ -663,6 +916,7 @@
 	async function loadArtist(id: number) {
 		const requestToken = ++activeRequestToken;
 		beginCoverHydrationGeneration();
+		stopAllAlbumQueuePolling();
 		const cachedArtist = artistCacheStore.get(id);
 		const hasCachedArtist = Boolean(cachedArtist);
 
@@ -980,6 +1234,12 @@
 													coverOverride
 												)}
 												{@const coverImageUrl = coverImageCandidates[0] ?? ''}
+												{@const albumDownloadState =
+													albumDownloadStates[album.id] ??
+													createDefaultAlbumDownloadState(album.numberOfTracks ?? 0)}
+												{@const canCancelAlbumDownload = isAlbumQueueDownloadCancellable(
+													albumDownloadState
+												)}
 												<div
 													class="group relative flex h-full flex-col rounded-xl border border-gray-800 bg-gray-900/40 p-4 text-center transition-colors hover:border-blue-700 hover:bg-gray-900"
 												>
@@ -992,13 +1252,19 @@
 													</span>
 												{/if}
 												<button
-													onclick={(event) => handleAlbumDownload(album, event)}
+													onclick={(event) =>
+														canCancelAlbumDownload
+															? cancelAlbumQueueDownload(album.id, event)
+															: handleAlbumDownload(album, event)}
 													type="button"
 													class="absolute top-3 right-3 z-40 flex items-center justify-center rounded-full bg-black/50 p-2 text-gray-200 backdrop-blur-md transition-colors hover:bg-blue-600/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-													disabled={isDownloadingDiscography || albumDownloadStates[album.id]?.downloading}
-													aria-label={`Download ${album.title}`}
+													disabled={isDownloadingDiscography || albumDownloadState.status === 'submitting'}
+													aria-label={canCancelAlbumDownload ? `Stop download ${album.title}` : `Download ${album.title}`}
+													aria-busy={albumDownloadState.status === 'submitting' || albumDownloadState.status === 'queued' || albumDownloadState.downloading}
 												>
-													{#if albumDownloadStates[album.id]?.downloading}
+													{#if canCancelAlbumDownload}
+														<X size={16} />
+													{:else if albumDownloadState.status === 'submitting' || albumDownloadState.downloading}
 														<LoaderCircle size={16} class="animate-spin" />
 													{:else}
 														<Download size={16} />
@@ -1049,21 +1315,29 @@
 														</p>
 													</div>
 												</a>
-												{#if albumDownloadStates[album.id]?.downloading}
+												{#if albumDownloadState.status === 'queued'}
+													<p class="mt-3 text-xs text-blue-300">
+														Queued on server…
+													</p>
+												{:else if albumDownloadState.downloading}
 													<p class="mt-3 text-xs text-blue-300">
 														Downloading
-														{#if albumDownloadStates[album.id]?.total}
-															{albumDownloadStates[album.id]?.completed ?? 0}/{displayTrackTotal(
-																albumDownloadStates[album.id]?.total ?? 0
+														{#if albumDownloadState.total}
+															{albumDownloadState.completed ?? 0}/{displayTrackTotal(
+																albumDownloadState.total ?? 0
 															)}
 														{:else}
-															{albumDownloadStates[album.id]?.completed ?? 0}
+															{albumDownloadState.completed ?? 0}
 														{/if}
 														tracks…
 													</p>
-												{:else if albumDownloadStates[album.id]?.error}
+												{:else if albumDownloadState.status === 'completed'}
+													<p class="mt-3 text-xs text-emerald-300">Download completed.</p>
+												{:else if albumDownloadState.status === 'cancelled'}
+													<p class="mt-3 text-xs text-amber-300">Download stopped.</p>
+												{:else if albumDownloadState.error}
 													<p class="mt-3 text-xs text-red-400" role="alert">
-														{albumDownloadStates[album.id]?.error}
+														{albumDownloadState.error}
 													</p>
 												{/if}
 											</div>

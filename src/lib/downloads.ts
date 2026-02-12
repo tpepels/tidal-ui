@@ -111,6 +111,14 @@ export interface AlbumDownloadCallbacks {
 	onTrackFailed?(track: Track, error: Error, attempt: number): void;
 }
 
+export interface AlbumDownloadResult {
+	storage: DownloadStorage;
+	totalTracks: number;
+	completedTracks: number;
+	failedTracks: number;
+	jobId?: string;
+}
+
 export type ServerDownloadProgress =
 	| { stage: 'downloading'; receivedBytes: number; totalBytes?: number }
 	| { stage: 'embedding'; progress: number }
@@ -410,15 +418,15 @@ export async function downloadAlbum(
 		downloadCoverSeperately?: boolean;
 		storage?: DownloadStorage;
 	}
-): Promise<void> {
+): Promise<AlbumDownloadResult> {
 	const storage = options?.storage ?? 'server';
-	
+
 	// For server downloads, submit to the Redis-backed queue API
 	if (storage === 'server') {
 		// Fetch album info
 		const { album: fetchedAlbum, tracks } = await losslessAPI.getAlbum(album.id);
 		const canonicalAlbum = fetchedAlbum ?? album;
-		
+
 		if (!tracks || tracks.length === 0) {
 			throw new Error('No tracks found for album');
 		}
@@ -426,7 +434,7 @@ export async function downloadAlbum(
 		const artistName = preferredArtistName ?? canonicalAlbum.artist?.name ?? 'Unknown Artist';
 		const albumTitle = canonicalAlbum.title ?? 'Unknown Album';
 		const trackCount = tracks.length;
-		
+
 		// Submit album job to server queue
 		const response = await fetch('/api/download-queue', {
 			method: 'POST',
@@ -448,11 +456,68 @@ export async function downloadAlbum(
 			throw new Error(`Failed to queue album: ${error}`);
 		}
 
-		await response.json();
+		const payload = (await response.json()) as { success?: boolean; jobId?: string };
+		if (!payload.success || !payload.jobId) {
+			throw new Error('Failed to queue album: missing job id');
+		}
 		callbacks?.onTotalResolved?.(tracks.length);
-		
+
 		// Note: Individual track progress callbacks won't work with queue system
 		// User should monitor via DownloadManager UI instead
-		return;
+		return {
+			storage: 'server',
+			totalTracks: tracks.length,
+			completedTracks: 0,
+			failedTracks: 0,
+			jobId: payload.jobId
+		};
 	}
+
+	const { album: fetchedAlbum, tracks } = await losslessAPI.getAlbum(album.id);
+	const canonicalAlbum = fetchedAlbum ?? album;
+	if (!tracks || tracks.length === 0) {
+		throw new Error('No tracks found for album');
+	}
+
+	const totalTracks = tracks.length;
+	callbacks?.onTotalResolved?.(totalTracks);
+
+	const artistName = preferredArtistName ?? canonicalAlbum.artist?.name ?? 'Unknown Artist';
+	const convertAacToMp3 = options?.convertAacToMp3 ?? false;
+	const downloadCoverSeperately = options?.downloadCoverSeperately ?? false;
+
+	let completedTracks = 0;
+	let failedTracks = 0;
+
+	for (const track of tracks) {
+		const filename = buildTrackFilename(
+			canonicalAlbum,
+			track,
+			quality,
+			artistName,
+			convertAacToMp3
+		);
+
+		const result = await downloadTrackWithRetry(track.id, quality, filename, track, callbacks, {
+			convertAacToMp3,
+			downloadCoverSeperately,
+			storage: 'client'
+		});
+
+		if (result.success && result.blob) {
+			triggerFileDownload(result.blob, filename);
+			completedTracks += 1;
+			callbacks?.onTrackDownloaded?.(completedTracks, totalTracks, track);
+			continue;
+		}
+
+		failedTracks += 1;
+	}
+
+	return {
+		storage: 'client',
+		totalTracks,
+		completedTracks,
+		failedTracks
+	};
 }
