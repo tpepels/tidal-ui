@@ -6,6 +6,7 @@ import { getConnectedRedis } from '$lib/server/redis';
 const OFFICIAL_CACHE_PREFIX = 'tidal:catalog:official-discography:v1:';
 const DEFAULT_CACHE_TTL_SECONDS = getEnvNumber('TIDAL_OFFICIAL_DISCOGRAPHY_CACHE_TTL_SECONDS', 172800);
 const EMPTY_CACHE_TTL_SECONDS = getEnvNumber('TIDAL_OFFICIAL_DISCOGRAPHY_EMPTY_TTL_SECONDS', 172800);
+const MEMORY_CACHE_MAX_ENTRIES = getEnvNumber('TIDAL_OFFICIAL_DISCOGRAPHY_MEMORY_MAX_ENTRIES', 500);
 const SCAN_BATCH_SIZE = 200;
 
 type OfficialDiscographyCacheEntry = {
@@ -45,10 +46,22 @@ function getFromMemory(cacheKey: string): Album[] | null {
 }
 
 function setInMemory(cacheKey: string, albums: Album[], ttlSeconds: number): void {
+	if (ttlSeconds <= 0) {
+		memoryCache.delete(cacheKey);
+		return;
+	}
+	if (memoryCache.has(cacheKey)) {
+		memoryCache.delete(cacheKey);
+	}
 	memoryCache.set(cacheKey, {
 		albums,
 		expiresAt: nowMs() + ttlSeconds * 1000
 	});
+	while (memoryCache.size > MEMORY_CACHE_MAX_ENTRIES) {
+		const oldest = memoryCache.keys().next().value;
+		if (!oldest) break;
+		memoryCache.delete(oldest);
+	}
 }
 
 export async function getCachedOfficialArtistAlbums(
@@ -71,13 +84,15 @@ export async function getCachedOfficialArtistAlbums(
 		if (!raw) return null;
 		const parsed = JSON.parse(raw) as Partial<OfficialDiscographyCacheEntry>;
 		if (!Array.isArray(parsed.albums) || typeof parsed.expiresAt !== 'number') {
-			return null;
-		}
-		if (parsed.expiresAt <= nowMs()) {
 			await redis.del(cacheKey);
 			return null;
 		}
-		setInMemory(cacheKey, parsed.albums as Album[], getTtlSecondsForAlbums(parsed.albums as Album[]));
+		const remainingMs = parsed.expiresAt - nowMs();
+		if (remainingMs <= 0) {
+			await redis.del(cacheKey);
+			return null;
+		}
+		setInMemory(cacheKey, parsed.albums as Album[], Math.ceil(remainingMs / 1000));
 		return parsed.albums as Album[];
 	} catch (error) {
 		console.warn('[CatalogCache] Failed to read official discography cache:', error);

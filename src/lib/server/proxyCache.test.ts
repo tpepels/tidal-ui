@@ -12,6 +12,7 @@ describe('proxyCache', () => {
 		const entries: Array<[string, string]> = [
 			['Content-Encoding', 'gzip'],
 			['Content-Length', '123'],
+			['Set-Cookie', 'session=abc'],
 			['Cache-Control', 'max-age=60']
 		];
 		expect(sanitizeHeaderEntries(entries)).toEqual([['Cache-Control', 'max-age=60']]);
@@ -36,7 +37,12 @@ describe('proxyCache', () => {
 
 	it('creates deterministic cache keys', () => {
 		const url = new URL('https://api.test/track/1');
-		const headers = new Headers({ accept: 'application/json', range: 'bytes=0-10' });
+		const headers = new Headers({
+			accept: 'application/json',
+			range: 'bytes=0-10',
+			'if-none-match': '"abc"',
+			'if-modified-since': 'Mon, 01 Jan 2024 00:00:00 GMT'
+		});
 		const key = createCacheKey(url, headers, 'ns:');
 		expect(key.startsWith('ns:')).toBe(true);
 	});

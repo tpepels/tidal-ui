@@ -16,6 +16,8 @@ export function sanitizeHeaderEntries(entries: Array<[string, string]>): Array<[
 		'keep-alive',
 		'proxy-authenticate',
 		'proxy-authorization',
+		'set-cookie',
+		'set-cookie2',
 		'te',
 		'trailer',
 		'upgrade'
@@ -60,7 +62,9 @@ export function getCacheTtlSeconds(url: URL, config: CacheTtlConfig): number {
 export function createCacheKey(url: URL, headers: Headers, namespace: string): string {
 	const accept = headers.get('accept') ?? '';
 	const range = headers.get('range') ?? '';
-	const keyMaterial = `${url.toString()}|accept=${accept}|range=${range}`;
+	const ifNoneMatch = headers.get('if-none-match') ?? '';
+	const ifModifiedSince = headers.get('if-modified-since') ?? '';
+	const keyMaterial = `${url.toString()}|accept=${accept}|range=${range}|ifNoneMatch=${ifNoneMatch}|ifModifiedSince=${ifModifiedSince}`;
 	const hash = createHash('sha256').update(keyMaterial).digest('hex');
 	return `${namespace}${hash}`;
 }

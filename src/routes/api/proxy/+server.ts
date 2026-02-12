@@ -23,10 +23,121 @@ import {
 	sanitizeHeaderEntries
 } from '$lib/server/proxyCache';
 
-const allowOrigin = (origin?: string | null): boolean => {
-	void origin;
-	return true;
-};
+const TRUTHY_VALUES = new Set(['1', 'true', 'yes']);
+
+function envFlag(name: string, fallback = false): boolean {
+	const raw = env[name];
+	if (!raw) return fallback;
+	return TRUTHY_VALUES.has(raw.toLowerCase());
+}
+
+function parseHostList(name: string): Set<string> {
+	const raw = env[name];
+	if (!raw) return new Set();
+	return new Set(
+		raw
+			.split(',')
+			.map((entry) => entry.trim().toLowerCase())
+			.filter((entry) => entry.length > 0)
+	);
+}
+
+const PROXY_ALLOW_ANY_ORIGIN = envFlag('PROXY_ALLOW_ANY_ORIGIN', false);
+const PROXY_BLOCK_PRIVATE_TARGETS = envFlag('PROXY_BLOCK_PRIVATE_TARGETS', true);
+const PROXY_ALLOWED_TARGET_HOSTS = parseHostList('PROXY_ALLOWED_TARGET_HOSTS');
+
+function normalizeHost(value: string | null | undefined): string | null {
+	if (!value || value.trim().length === 0) return null;
+	return value.trim().toLowerCase();
+}
+
+function allowOrigin(
+	origin: string | null | undefined,
+	requestHost: string | null,
+	secFetchSite: string | null
+): boolean {
+	if (PROXY_ALLOW_ANY_ORIGIN) {
+		return true;
+	}
+	if ((secFetchSite ?? '').toLowerCase() === 'cross-site') {
+		return false;
+	}
+	if (!origin || origin === 'null') {
+		return true;
+	}
+	const expectedHost = normalizeHost(requestHost);
+	if (!expectedHost) {
+		return false;
+	}
+	try {
+		const parsed = new URL(origin);
+		if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+			return false;
+		}
+		return normalizeHost(parsed.host) === expectedHost;
+	} catch {
+		return false;
+	}
+}
+
+function isIpv4PrivateOrLocal(hostname: string): boolean {
+	const parts = hostname.split('.');
+	if (parts.length !== 4) return false;
+	const octets = parts.map((part) => Number.parseInt(part, 10));
+	if (octets.some((octet) => !Number.isFinite(octet) || octet < 0 || octet > 255)) {
+		return false;
+	}
+	const [a, b] = octets;
+	if (a === 10 || a === 127 || a === 0) return true;
+	if (a === 169 && b === 254) return true;
+	if (a === 172 && b >= 16 && b <= 31) return true;
+	if (a === 192 && b === 168) return true;
+	// RFC6598 shared address space
+	if (a === 100 && b >= 64 && b <= 127) return true;
+	return false;
+}
+
+function isIpv6PrivateOrLocal(hostname: string): boolean {
+	const normalized = hostname.toLowerCase();
+	if (normalized.startsWith('::ffff:')) {
+		return isIpv4PrivateOrLocal(normalized.slice('::ffff:'.length));
+	}
+	return (
+		normalized === '::1' ||
+		normalized.startsWith('fc') ||
+		normalized.startsWith('fd') ||
+		normalized.startsWith('fe80:')
+	);
+}
+
+function isPrivateOrLocalHostname(hostname: string): boolean {
+	const normalized = hostname.toLowerCase();
+	if (
+		normalized === 'localhost' ||
+		normalized.endsWith('.localhost') ||
+		normalized.endsWith('.local')
+	) {
+		return true;
+	}
+	if (normalized.includes(':')) {
+		return isIpv6PrivateOrLocal(normalized);
+	}
+	return isIpv4PrivateOrLocal(normalized);
+}
+
+function isAllowedTarget(target: URL): boolean {
+	if (target.protocol !== 'http:' && target.protocol !== 'https:') {
+		return false;
+	}
+	const hostname = target.hostname.toLowerCase();
+	if (PROXY_ALLOWED_TARGET_HOSTS.size > 0 && !PROXY_ALLOWED_TARGET_HOSTS.has(hostname)) {
+		return false;
+	}
+	if (!PROXY_BLOCK_PRIVATE_TARGETS) {
+		return true;
+	}
+	return !isPrivateOrLocalHostname(hostname);
+}
 
 const hopByHopHeaders = new Set([
 	'connection',
@@ -37,6 +148,13 @@ const hopByHopHeaders = new Set([
 	'trailer',
 	'transfer-encoding',
 	'upgrade'
+]);
+
+const forwardedRequestHeaders = new Set([
+	'accept',
+	'range',
+	'if-none-match',
+	'if-modified-since'
 ]);
 
 const CACHE_NAMESPACE = 'tidal:proxy:v2:';
@@ -497,13 +615,15 @@ async function fetchWithRetry(
 export const GET: RequestHandler = async ({ url, request, fetch }) => {
 	const target = url.searchParams.get('url');
 	const origin = request.headers.get('origin');
+	const requestHost = request.headers.get('host');
+	const secFetchSite = request.headers.get('sec-fetch-site');
 
 	console.log(`[${getTimestamp()}] ========== PROXY REQUEST START ==========`);
 	console.log(`[${getTimestamp()}] [Proxy] Target URL:`, target);
 	console.log(`[${getTimestamp()}] [Proxy] Origin:`, origin);
 	console.log(`[${getTimestamp()}] [Proxy] Request headers:`, Object.fromEntries(request.headers.entries()));
 
-	if (!allowOrigin(origin)) {
+	if (!allowOrigin(origin, requestHost, secFetchSite)) {
 		console.log(`[${getTimestamp()}] Proxy request blocked by origin check`);
 		return new Response('Forbidden', { status: 403 });
 	}
@@ -522,6 +642,13 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 		parsedTarget = new URL(target);
 	} catch {
 		return new Response(JSON.stringify({ error: 'Invalid target URL' }), {
+			status: 400,
+			headers: { 'Content-Type': 'application/json' }
+		});
+	}
+
+	if (!isAllowedTarget(parsedTarget)) {
+		return new Response(JSON.stringify({ error: 'Target URL is not allowed' }), {
 			status: 400,
 			headers: { 'Content-Type': 'application/json' }
 		});
@@ -550,22 +677,17 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 
 	const upstreamHeaders = new Headers();
 	let hasRangeRequest = false;
-	let hasAuthorizationHeader = false;
-	let hasCookieHeader = false;
 
 	request.headers.forEach((value, key) => {
 		const lowerKey = key.toLowerCase();
 		if (hopByHopHeaders.has(lowerKey) || lowerKey === 'host') {
 			return;
 		}
+		if (!forwardedRequestHeaders.has(lowerKey)) {
+			return;
+		}
 		if (lowerKey === 'range') {
 			hasRangeRequest = true;
-		}
-		if (lowerKey === 'authorization') {
-			hasAuthorizationHeader = true;
-		}
-		if (lowerKey === 'cookie') {
-			hasCookieHeader = true;
 		}
 		upstreamHeaders.set(key, value);
 	});
@@ -583,7 +705,7 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 	// Force identity encoding so the upstream sends plain data that Node can forward without zstd artifacts.
 	upstreamHeaders.set('Accept-Encoding', 'identity');
 
-	const shouldUseCache = !hasRangeRequest && !hasAuthorizationHeader && !hasCookieHeader;
+	const shouldUseCache = !hasRangeRequest;
 	const redis = shouldUseCache ? getRedisClient() : null;
 	let redisHealthy = Boolean(redis && redis.status === 'ready');
 	const cacheKey = redisHealthy ? createCacheKey(parsedTarget, upstreamHeaders, CACHE_NAMESPACE) : null;
@@ -646,14 +768,18 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 		const upstreamContentLength = upstream.headers.get('content-length');
 		const upstreamContentType = upstream.headers.get('content-type');
 		
-		console.log(`[${getTimestamp()}] [Proxy] Content-Type:`, upstreamContentType);
-		console.log(`[${getTimestamp()}] [Proxy] Content-Length:`, upstreamContentLength);
-		console.log(`[${getTimestamp()}] [Proxy] Cache-Control:`, upstreamCacheControl);
-		console.log(`[${getTimestamp()}] [Proxy] ========== UPSTREAM FETCH END ==========`);
-		const canStream =
-			Boolean(upstream.body) &&
-			!hasRangeRequest &&
-			Boolean(upstreamContentType && isCacheableContentType(upstreamContentType));
+			console.log(`[${getTimestamp()}] [Proxy] Content-Type:`, upstreamContentType);
+			console.log(`[${getTimestamp()}] [Proxy] Content-Length:`, upstreamContentLength);
+			console.log(`[${getTimestamp()}] [Proxy] Cache-Control:`, upstreamCacheControl);
+			console.log(`[${getTimestamp()}] [Proxy] ========== UPSTREAM FETCH END ==========`);
+			const isImageResponse = Boolean(
+				upstreamContentType && upstreamContentType.toLowerCase().includes('image/')
+			);
+			const canStream =
+				Boolean(upstream.body) &&
+				!hasRangeRequest &&
+				!isImageResponse &&
+				Boolean(upstreamContentType && isCacheableContentType(upstreamContentType));
 
 		if (canStream && upstream.body) {
 			const [streamForClient, streamForCache] = upstream.body.tee();
@@ -773,8 +899,10 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 
 export const OPTIONS: RequestHandler = async ({ request }) => {
 	const origin = request.headers.get('origin');
+	const requestHost = request.headers.get('host');
+	const secFetchSite = request.headers.get('sec-fetch-site');
 
-	if (!allowOrigin(origin)) {
+	if (!allowOrigin(origin, requestHost, secFetchSite)) {
 		return new Response(null, { status: 403 });
 	}
 

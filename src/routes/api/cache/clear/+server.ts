@@ -10,6 +10,32 @@ import {
 const PROXY_CACHE_PREFIX = 'tidal:proxy:v2:';
 const SCAN_BATCH_SIZE = 200;
 
+function isSameOriginControlRequest(request: Request, url: URL): boolean {
+	const secFetchSite = (request.headers.get('sec-fetch-site') ?? '').toLowerCase();
+	if (secFetchSite === 'cross-site') {
+		return false;
+	}
+
+	const origin = request.headers.get('origin');
+	if (origin && origin !== 'null') {
+		try {
+			return new URL(origin).origin === url.origin;
+		} catch {
+			return false;
+		}
+	}
+
+	const referer = request.headers.get('referer');
+	if (!referer) {
+		return false;
+	}
+	try {
+		return new URL(referer).origin === url.origin;
+	} catch {
+		return false;
+	}
+}
+
 async function scanDeleteByPrefix(redis: Redis, prefix: string): Promise<number> {
 	let cursor = '0';
 	let deleted = 0;
@@ -29,7 +55,11 @@ async function scanDeleteByPrefix(redis: Redis, prefix: string): Promise<number>
 	return deleted;
 }
 
-export const POST: RequestHandler = async () => {
+export const POST: RequestHandler = async ({ request, url }) => {
+	if (!isSameOriginControlRequest(request, url)) {
+		return json({ ok: false, error: 'Forbidden' }, { status: 403 });
+	}
+
 	const officialMemoryCleared = clearOfficialDiscographyMemoryCache();
 	const officialRedisCleared = await clearOfficialDiscographyRedisCache();
 
@@ -52,4 +82,3 @@ export const POST: RequestHandler = async () => {
 		}
 	});
 };
-
