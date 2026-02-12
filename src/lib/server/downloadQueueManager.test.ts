@@ -11,6 +11,7 @@ import {
 	getAllJobs,
 	getQueueStats,
 	cleanupOldJobs,
+	requestRetry,
 	deleteJob,
 	type QueuedJob,
 	type TrackJob,
@@ -347,6 +348,46 @@ describe('Download Queue Manager', () => {
 
 			const stats = await getQueueStats();
 			expect(stats.failed).toBeGreaterThanOrEqual(1);
+		});
+	});
+
+	describe('requestRetry', () => {
+		it('re-queues failed jobs and clears failure metadata', async () => {
+			const job: TrackJob = {
+				type: 'track',
+				trackId: 12345,
+				quality: 'LOSSLESS'
+			};
+			const jobId = await enqueueJob(job);
+			await updateJobStatus(jobId, {
+				status: 'failed',
+				error: 'network timeout',
+				errorCategory: 'network',
+				completedAt: Date.now(),
+				progress: 0.6,
+				retryCount: 2
+			});
+
+			const retried = await requestRetry(jobId);
+			expect(retried).toBe(true);
+
+			const updated = await getJob(jobId);
+			expect(updated?.status).toBe('queued');
+			expect(updated?.progress).toBe(0);
+			expect(updated?.error).toBeUndefined();
+			expect(updated?.errorCategory).toBeUndefined();
+			expect(updated?.completedAt).toBeUndefined();
+			expect(updated?.retryCount).toBe(0);
+		});
+
+		it('does not retry queued or processing jobs', async () => {
+			const job: TrackJob = {
+				type: 'track',
+				trackId: 777,
+				quality: 'HIGH'
+			};
+			const jobId = await enqueueJob(job);
+			expect(await requestRetry(jobId)).toBe(false);
 		});
 	});
 

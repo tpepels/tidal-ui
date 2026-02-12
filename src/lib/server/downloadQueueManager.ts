@@ -583,6 +583,55 @@ export async function requestCancellation(jobId: string): Promise<boolean> {
 	return false;
 }
 
+function resetTrackProgressForRetry(
+	trackProgress: QueuedJob['trackProgress']
+): QueuedJob['trackProgress'] | undefined {
+	if (!trackProgress || !Array.isArray(trackProgress)) {
+		return undefined;
+	}
+	return trackProgress.map((track) => ({
+		...track,
+		status: 'pending',
+		error: undefined
+	}));
+}
+
+/**
+ * Request a manual retry for a failed/cancelled job.
+ * This re-queues the same job payload and clears failure state.
+ */
+export async function requestRetry(jobId: string): Promise<boolean> {
+	const job = await getJob(jobId);
+	if (!job) {
+		return false;
+	}
+
+	if (job.status !== 'failed' && job.status !== 'cancelled') {
+		return false;
+	}
+
+	await updateJobStatus(jobId, {
+		status: 'queued',
+		progress: 0,
+		error: undefined,
+		errorCategory: undefined,
+		completedAt: undefined,
+		startedAt: undefined,
+		downloadTimeMs: undefined,
+		fileSize: undefined,
+		lastError: undefined,
+		nextRetryAt: undefined,
+		cancellationRequested: false,
+		retryCount: 0,
+		completedTracks: 0,
+		trackProgress: resetTrackProgressForRetry(job.trackProgress)
+	});
+
+	processingJobs.delete(jobId);
+	console.log(`[Queue] Job ${jobId} manually re-queued`);
+	return true;
+}
+
 /**
  * Cleanup stuck jobs in 'processing' state > timeout
  */

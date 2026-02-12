@@ -1,10 +1,18 @@
 <script lang="ts">
-	import { serverQueue, queueStats, workerStatus, totalDownloads } from '$lib/stores/serverQueue.svelte';
-	import { Trash2, RefreshCw, ChevronDown, ChevronUp } from 'lucide-svelte';
+	import { serverQueue, queueStats, workerStatus } from '$lib/stores/serverQueue.svelte';
+	import {
+		Trash2,
+		RefreshCw,
+		ChevronDown,
+		ChevronUp,
+		RotateCcw,
+		Square,
+		ClipboardCopy
+	} from 'lucide-svelte';
 
 	interface QueueJob {
 		id: string;
-		status: 'queued' | 'processing' | 'completed' | 'failed';
+		status: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
 		job: {
 			type: 'track' | 'album';
 			trackId?: number;
@@ -18,6 +26,7 @@
 		createdAt: number;
 		startedAt?: number;
 		completedAt?: number;
+		lastUpdatedAt?: number;
 		error?: string;
 		trackCount?: number; // For albums
 		completedTracks?: number; // For albums
@@ -28,6 +37,7 @@
 	let queueJobs = $state<QueueJob[]>([]);
 	let expandedJobId = $state<string | null>(null);
 	let isCompactViewport = $state(false);
+	let actionNotice = $state<{ tone: 'success' | 'error' | 'info'; message: string } | null>(null);
 	type JobTypeFilter = 'all' | 'albums' | 'tracks';
 	type CollapsibleSection = 'active' | 'queue' | 'failed';
 	let queueTypeFilter = $state<JobTypeFilter>('all');
@@ -50,9 +60,9 @@
 		};
 	});
 
-	let totalItems = $derived($totalDownloads + stats.failed);
+	let totalItems = $derived(stats.total);
 	let hasActivity = $derived(totalItems > 0);
-	let workerWarning = $derived(!$workerStatus.running && totalItems > 0);
+	let workerWarning = $derived(!$workerStatus.running && (stats.running > 0 || stats.queued > 0));
 	const matchesTypeFilter = (job: QueueJob, filter: JobTypeFilter): boolean => {
 		if (filter === 'all') return true;
 		return filter === 'albums' ? job.job.type === 'album' : job.job.type === 'track';
@@ -61,6 +71,11 @@
 	let queuedJobs = $derived(queueJobs.filter(j => j.status === 'queued'));
 	let completedJobs = $derived(queueJobs.filter(j => j.status === 'completed'));
 	let failedJobs = $derived(queueJobs.filter(j => j.status === 'failed'));
+	let cancelledJobs = $derived(queueJobs.filter(j => j.status === 'cancelled'));
+	let stoppableJobs = $derived(queueJobs.filter(j => j.status === 'processing' || j.status === 'queued'));
+	let resumableJobs = $derived(
+		queueJobs.filter(j => j.status === 'failed' || j.status === 'cancelled')
+	);
 	let filteredQueuedJobs = $derived(queuedJobs.filter(job => matchesTypeFilter(job, queueTypeFilter)));
 	let filteredCompletedJobs = $derived(
 		completedJobs.filter(job => matchesTypeFilter(job, completedTypeFilter))
@@ -117,12 +132,116 @@
 		}
 		return 'Polling paused';
 	});
+	let canStopAny = $derived(stoppableJobs.length > 0);
+	let canResumeAny = $derived(resumableJobs.length > 0);
+	let hasFailuresToReport = $derived(failedJobs.length > 0 || cancelledJobs.length > 0);
 	const toggleSection = (section: CollapsibleSection) => {
 		sectionExpanded = {
 			...sectionExpanded,
 			[section]: !sectionExpanded[section]
 		};
 	};
+
+	function setActionNotice(tone: 'success' | 'error' | 'info', message: string): void {
+		actionNotice = { tone, message };
+	}
+
+	function summarizeJob(job: QueueJob): string {
+		const title = job.job.trackTitle || job.job.albumTitle || 'Unknown';
+		const artist = job.job.artistName ? ` by ${job.job.artistName}` : '';
+		return `${title}${artist}`;
+	}
+
+	async function runJobAction(
+		jobId: string,
+		action: 'cancel' | 'retry'
+	): Promise<{ success: boolean; error?: string }> {
+		try {
+			const response = await fetch(`/api/download-queue/${jobId}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action })
+			});
+			const payload = (await response.json()) as { success?: boolean; error?: string };
+			if (!response.ok || !payload.success) {
+				return { success: false, error: payload.error ?? `Failed to ${action} job` };
+			}
+			return { success: true };
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : `Failed to ${action} job`
+			};
+		}
+	}
+
+	async function deleteQueueJob(jobId: string): Promise<{ success: boolean; error?: string }> {
+		try {
+			const response = await fetch(`/api/download-queue/${jobId}`, { method: 'DELETE' });
+			const payload = (await response.json()) as { success?: boolean; error?: string };
+			if (!response.ok || !payload.success) {
+				return { success: false, error: payload.error ?? 'Failed to remove job' };
+			}
+			return { success: true };
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to remove job'
+			};
+		}
+	}
+
+	function buildFailureReportText(jobs: QueueJob[]): string {
+		const timestamp = new Date().toISOString();
+		const lines = [
+			`Download failure report (${timestamp})`,
+			`Queue source: ${$serverQueue.queueSource ?? 'unknown'}`,
+			`Worker running: ${$workerStatus.running ? 'yes' : 'no'}`,
+			`Failed jobs: ${jobs.length}`,
+			''
+		];
+		for (const job of jobs) {
+			lines.push(`- Job ID: ${job.id}`);
+			lines.push(`  Status: ${job.status}`);
+			lines.push(`  Type: ${job.job.type}`);
+			lines.push(`  Title: ${job.job.trackTitle || job.job.albumTitle || 'Unknown'}`);
+			lines.push(`  Artist: ${job.job.artistName || 'Unknown'}`);
+			lines.push(`  Quality: ${job.job.quality || 'Unknown'}`);
+			if (typeof job.trackCount === 'number') {
+				lines.push(
+					`  Track progress: ${job.completedTracks || 0}/${job.trackCount}`
+				);
+			}
+			lines.push(`  Error: ${job.error || 'N/A'}`);
+			lines.push('');
+		}
+		return lines.join('\n');
+	}
+
+	async function copyTextToClipboard(text: string): Promise<void> {
+		if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+			await navigator.clipboard.writeText(text);
+			return;
+		}
+
+		if (typeof document === 'undefined') {
+			throw new Error('Clipboard is not available in this environment.');
+		}
+
+		const textarea = document.createElement('textarea');
+		textarea.value = text;
+		textarea.style.position = 'fixed';
+		textarea.style.opacity = '0';
+		textarea.style.pointerEvents = 'none';
+		document.body.appendChild(textarea);
+		textarea.focus();
+		textarea.select();
+		const copied = document.execCommand('copy');
+		document.body.removeChild(textarea);
+		if (!copied) {
+			throw new Error('Unable to copy report to clipboard.');
+		}
+	}
 
 	// Start polling when component mounts
 	$effect(() => {
@@ -133,7 +252,7 @@
 	$effect(() => {
 		if (typeof window === 'undefined') return;
 		const updateViewportMode = () => {
-			isCompactViewport = window.innerWidth <= 900;
+			isCompactViewport = window.innerWidth <= 1024;
 		};
 		updateViewportMode();
 		window.addEventListener('resize', updateViewportMode);
@@ -148,6 +267,14 @@
 		return () => clearInterval(interval);
 	});
 
+	$effect(() => {
+		if (!actionNotice) return;
+		const timeout = setTimeout(() => {
+			actionNotice = null;
+		}, 3500);
+		return () => clearTimeout(timeout);
+	});
+
 	// Fetch queue jobs details
 	const fetchQueueJobs = async () => {
 		try {
@@ -156,7 +283,22 @@
 			
 			const data = await response.json() as { success: boolean; jobs: QueueJob[] };
 			if (data.success) {
-				queueJobs = data.jobs;
+				const statusPriority: Record<QueueJob['status'], number> = {
+					processing: 0,
+					queued: 1,
+					failed: 2,
+					cancelled: 3,
+					completed: 4
+				};
+				queueJobs = data.jobs
+					.slice()
+					.sort((a, b) => {
+						const priorityDiff = statusPriority[a.status] - statusPriority[b.status];
+						if (priorityDiff !== 0) {
+							return priorityDiff;
+						}
+						return (b.lastUpdatedAt ?? b.completedAt ?? b.createdAt) - (a.lastUpdatedAt ?? a.completedAt ?? a.createdAt);
+					});
 			}
 		} catch (err) {
 			console.error('Failed to fetch queue jobs:', err);
@@ -172,32 +314,141 @@
 		}
 	});
 
-	const handleClearFailed = async () => {
-		if (confirm('Clear all failed downloads?')) {
-			isLoading = true;
-			try {
-				// Fetch all jobs
-				const response = await fetch('/api/download-queue');
-				if (!response.ok) throw new Error('Failed to fetch jobs');
-				
-				const data = await response.json() as { success: boolean; jobs: Array<{ id: string; status: string }> };
-				if (!data.success) throw new Error('Failed to get jobs');
-				
-				// Filter for failed jobs and delete them
-				const failedJobs = data.jobs.filter(j => j.status === 'failed');
-				await Promise.all(
-					failedJobs.map(j => 
-						fetch(`/api/download-queue/${j.id}`, { method: 'DELETE' })
-					)
-				);
-				
-				// Refresh stats
-				await serverQueue.poll();
-			} catch (err) {
-				console.error('Failed to clear failed jobs:', err);
-			} finally {
-				isLoading = false;
+	const handleCancelJob = async (job: QueueJob) => {
+		isLoading = true;
+		try {
+			const result = await runJobAction(job.id, 'cancel');
+			if (result.success) {
+				setActionNotice('success', `Stopped ${summarizeJob(job)}`);
+				await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
+				return;
 			}
+			setActionNotice('error', result.error ?? `Failed to stop ${summarizeJob(job)}`);
+		} finally {
+			isLoading = false;
+		}
+	};
+
+	const handleRetryJob = async (job: QueueJob) => {
+		isLoading = true;
+		try {
+			const result = await runJobAction(job.id, 'retry');
+			if (result.success) {
+				setActionNotice('success', `Resumed ${summarizeJob(job)}`);
+				await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
+				return;
+			}
+			setActionNotice('error', result.error ?? `Failed to resume ${summarizeJob(job)}`);
+		} finally {
+			isLoading = false;
+		}
+	};
+
+	const handleRemoveJob = async (job: QueueJob) => {
+		isLoading = true;
+		try {
+			const result = await deleteQueueJob(job.id);
+			if (result.success) {
+				setActionNotice('success', `Removed ${summarizeJob(job)}`);
+				await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
+				return;
+			}
+			setActionNotice('error', result.error ?? `Failed to remove ${summarizeJob(job)}`);
+		} finally {
+			isLoading = false;
+		}
+	};
+
+	const handleStopAllActive = async () => {
+		if (stoppableJobs.length === 0) {
+			setActionNotice('info', 'No active or queued downloads to stop.');
+			return;
+		}
+		isLoading = true;
+		try {
+			const results = await Promise.all(stoppableJobs.map((job) => runJobAction(job.id, 'cancel')));
+			const succeeded = results.filter((result) => result.success).length;
+			const failed = results.length - succeeded;
+			setActionNotice(
+				failed > 0 ? 'error' : 'success',
+				failed > 0
+					? `Stopped ${succeeded} job(s), ${failed} failed.`
+					: `Stopped ${succeeded} active/queued job(s).`
+			);
+			await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
+		} finally {
+			isLoading = false;
+		}
+	};
+
+	const handleResumeAll = async () => {
+		if (resumableJobs.length === 0) {
+			setActionNotice('info', 'No failed or cancelled downloads to resume.');
+			return;
+		}
+		isLoading = true;
+		try {
+			const results = await Promise.all(resumableJobs.map((job) => runJobAction(job.id, 'retry')));
+			const succeeded = results.filter((result) => result.success).length;
+			const failed = results.length - succeeded;
+			setActionNotice(
+				failed > 0 ? 'error' : 'success',
+				failed > 0
+					? `Resumed ${succeeded} job(s), ${failed} failed.`
+					: `Resumed ${succeeded} failed/cancelled job(s).`
+			);
+			await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
+		} finally {
+			isLoading = false;
+		}
+	};
+
+	const handleCopyFailureReport = async (job?: QueueJob) => {
+		const reportJobs = job ? [job] : resumableJobs;
+		if (reportJobs.length === 0) {
+			setActionNotice('info', 'No failure details available to report.');
+			return;
+		}
+		const report = buildFailureReportText(reportJobs);
+		try {
+			await copyTextToClipboard(report);
+			setActionNotice(
+				'success',
+				job
+					? `Failure report copied for ${summarizeJob(job)}`
+					: `Failure report copied for ${reportJobs.length} job(s)`
+			);
+		} catch (error) {
+			setActionNotice(
+				'error',
+				error instanceof Error ? error.message : 'Failed to copy failure report'
+			);
+		}
+	};
+
+	const handleClearFailed = async () => {
+		if (!confirm('Clear all failed and cancelled downloads from history?')) {
+			return;
+		}
+		const removable = queueJobs.filter((job) => job.status === 'failed' || job.status === 'cancelled');
+		if (removable.length === 0) {
+			setActionNotice('info', 'No failed jobs to clear.');
+			return;
+		}
+		isLoading = true;
+		try {
+			const results = await Promise.all(removable.map((job) => deleteQueueJob(job.id)));
+			const succeeded = results.filter((result) => result.success).length;
+			const failed = results.length - succeeded;
+			setActionNotice(
+				failed > 0 ? 'error' : 'success',
+				failed > 0
+					? `Cleared ${succeeded} failed entries, ${failed} failed.`
+					: `Cleared ${succeeded} failed/cancelled entries.`
+			);
+			await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
+		} finally {
+			isLoading = false;
 		}
 	};
 
@@ -302,6 +553,12 @@
 				</div>
 			{/if}
 
+			{#if actionNotice}
+				<div class="download-manager-notice" data-tone={actionNotice.tone}>
+					{actionNotice.message}
+				</div>
+			{/if}
+
 			<div class="download-manager-top-strip">
 				<div class="top-strip-item top-strip-item--running">
 					<span class="top-strip-label">Running</span>
@@ -312,8 +569,8 @@
 					<span class="top-strip-value">{stats.queued}</span>
 				</div>
 				<div class="top-strip-item top-strip-item--failed">
-					<span class="top-strip-label">Failed</span>
-					<span class="top-strip-value">{stats.failed}</span>
+					<span class="top-strip-label">Needs Attention</span>
+					<span class="top-strip-value">{resumableJobs.length}</span>
 				</div>
 				<div class="top-strip-item">
 					<span class="top-strip-label">Queue source</span>
@@ -323,6 +580,39 @@
 					<span class="top-strip-label">Last update</span>
 					<span class="top-strip-value top-strip-value--text">{lastUpdatedLabel}</span>
 				</div>
+			</div>
+
+			<div class="download-manager-quick-actions">
+				<button
+					onclick={handleStopAllActive}
+					class="control-btn control-btn--warning"
+					type="button"
+					title="Stop all active and queued jobs"
+					disabled={!canStopAny || isLoading}
+				>
+					<Square size={14} />
+					<span>Stop Active</span>
+				</button>
+				<button
+					onclick={handleResumeAll}
+					class="control-btn control-btn--primary"
+					type="button"
+					title="Resume all failed or cancelled jobs"
+					disabled={!canResumeAny || isLoading}
+				>
+					<RotateCcw size={14} />
+					<span>Resume Failed</span>
+				</button>
+				<button
+					onclick={() => handleCopyFailureReport()}
+					class="control-btn control-btn--secondary"
+					type="button"
+					title="Copy a failure report for troubleshooting"
+					disabled={!hasFailuresToReport || isLoading}
+				>
+					<ClipboardCopy size={14} />
+					<span>Report Failures</span>
+				</button>
 			</div>
 
 			<div class="download-manager-content">
@@ -358,7 +648,19 @@
 										<div class="current-item-title">
 											{job.job.type === 'track' ? job.job.trackTitle : job.job.albumTitle || 'Unknown Album'}
 										</div>
-										<span class="badge badge-processing">PROCESSING</span>
+										<div class="item-action-row">
+											<span class="badge badge-processing">PROCESSING</span>
+											<button
+												type="button"
+												class="item-action-btn item-action-btn--warning"
+												title="Stop this download"
+												onclick={() => handleCancelJob(job)}
+												disabled={isLoading}
+											>
+												<Square size={12} />
+												<span>Stop</span>
+											</button>
+										</div>
 									</div>
 									{#if job.job.type === 'album'}
 										<div class="current-item-meta">
@@ -506,6 +808,29 @@
 																<span class="detail-value">{Math.round((job.completedAt || Date.now()) - job.startedAt) / 1000}s</span>
 															</div>
 														{/if}
+														<div class="detail-actions">
+															<span
+																role="button"
+																tabindex={isLoading ? -1 : 0}
+																class="item-action-btn item-action-btn--warning"
+																onclick={(event) => {
+																	event.stopPropagation();
+																	void handleCancelJob(job);
+																}}
+																onkeydown={(event) => {
+																	if (isLoading) return;
+																	if (event.key === 'Enter' || event.key === ' ') {
+																		event.preventDefault();
+																		event.stopPropagation();
+																		void handleCancelJob(job);
+																	}
+																}}
+																aria-disabled={isLoading}
+															>
+																<Square size={12} />
+																<span>Stop</span>
+															</span>
+														</div>
 													</div>
 												{/if}
 											</button>
@@ -576,8 +901,20 @@
 							{:else}
 								{#each filteredCompletedJobs.slice(0, 5) as job (job.id)}
 									<div class="completed-item">
-										<div class="completed-item-title">
-											{job.job.trackTitle || job.job.albumTitle || 'Unknown'}
+										<div class="completed-item-header">
+											<div class="completed-item-title">
+												{job.job.trackTitle || job.job.albumTitle || 'Unknown'}
+											</div>
+											<button
+												type="button"
+												class="item-action-btn"
+												title="Remove from history"
+												onclick={() => handleRemoveJob(job)}
+												disabled={isLoading}
+											>
+												<Trash2 size={12} />
+												<span>Dismiss</span>
+											</button>
 										</div>
 										<div class="completed-item-meta">
 											<span>{job.job.artistName || 'Unknown Artist'}</span>
@@ -601,8 +938,8 @@
 					</div>
 				{/if}
 
-				<!-- Failed -->
-				{#if stats.failed > 0}
+				<!-- Failed / Cancelled -->
+				{#if resumableJobs.length > 0}
 					<div class="section">
 						<button
 							type="button"
@@ -611,10 +948,10 @@
 							aria-expanded={sectionExpanded.failed}
 						>
 							<span class="section-title-main section-title error-title">
-								<span>Failed</span>
+								<span>Needs Attention</span>
 							</span>
 							<span class="section-title-actions">
-								<span class="section-count">{stats.failed}</span>
+								<span class="section-count">{resumableJobs.length}</span>
 								<span class="section-chevron">
 									{#if sectionExpanded.failed}
 										<ChevronUp size={16} />
@@ -626,7 +963,7 @@
 						</button>
 						{#if sectionExpanded.failed}
 							<div class="failed-list">
-								{#each failedJobs.slice(0, 3) as job (job.id)}
+								{#each resumableJobs.slice(0, 4) as job (job.id)}
 									<div class="failed-item-card">
 										<button
 											type="button"
@@ -640,7 +977,9 @@
 														{job.job.type === 'track' ? job.job.trackTitle : job.job.albumTitle || 'Unknown'}
 													</div>
 													<div class="failed-item-artist">{job.job.artistName || 'Unknown'}</div>
-													<div class="failed-item-error-text">{job.error || 'Unknown error'}</div>
+													<div class="failed-item-error-text">
+														{job.status === 'cancelled' ? 'Cancelled by user' : job.error || 'Unknown error'}
+													</div>
 												</div>
 												<span class="expand-icon">
 													{#if expandedJobId === job.id}
@@ -658,6 +997,10 @@
 														<span class="detail-value" style="font-family: monospace; font-size: 11px;">{job.id}</span>
 													</div>
 													<div class="detail-row">
+														<span class="detail-label">Status:</span>
+														<span class="detail-value">{job.status}</span>
+													</div>
+													<div class="detail-row">
 														<span class="detail-label">Type:</span>
 														<span class="detail-value">{job.job.type === 'track' ? 'Single Track' : 'Album'}</span>
 													</div>
@@ -665,15 +1008,80 @@
 														<span class="detail-label">Artist:</span>
 														<span class="detail-value">{job.job.artistName || 'Unknown'}</span>
 													</div>
+													<div class="detail-actions">
+														<span
+															role="button"
+															tabindex={isLoading ? -1 : 0}
+															class="item-action-btn item-action-btn--primary"
+															onclick={(event) => {
+																event.stopPropagation();
+																void handleRetryJob(job);
+															}}
+															onkeydown={(event) => {
+																if (isLoading) return;
+																if (event.key === 'Enter' || event.key === ' ') {
+																	event.preventDefault();
+																	event.stopPropagation();
+																	void handleRetryJob(job);
+																}
+															}}
+															aria-disabled={isLoading}
+														>
+															<RotateCcw size={12} />
+															<span>Resume</span>
+														</span>
+														<span
+															role="button"
+															tabindex={isLoading ? -1 : 0}
+															class="item-action-btn"
+															onclick={(event) => {
+																event.stopPropagation();
+																void handleCopyFailureReport(job);
+															}}
+															onkeydown={(event) => {
+																if (isLoading) return;
+																if (event.key === 'Enter' || event.key === ' ') {
+																	event.preventDefault();
+																	event.stopPropagation();
+																	void handleCopyFailureReport(job);
+																}
+															}}
+															aria-disabled={isLoading}
+														>
+															<ClipboardCopy size={12} />
+															<span>Report</span>
+														</span>
+														<span
+															role="button"
+															tabindex={isLoading ? -1 : 0}
+															class="item-action-btn item-action-btn--danger"
+															onclick={(event) => {
+																event.stopPropagation();
+																void handleRemoveJob(job);
+															}}
+															onkeydown={(event) => {
+																if (isLoading) return;
+																if (event.key === 'Enter' || event.key === ' ') {
+																	event.preventDefault();
+																	event.stopPropagation();
+																	void handleRemoveJob(job);
+																}
+															}}
+															aria-disabled={isLoading}
+														>
+															<Trash2 size={12} />
+															<span>Dismiss</span>
+														</span>
+													</div>
 												</div>
 											{/if}
 										</button>
 									</div>
 								{/each}
 
-								{#if failedJobs.length > 3}
+								{#if resumableJobs.length > 4}
 									<div class="queue-more-hint">
-										+{failedJobs.length - 3} more failed items
+										+{resumableJobs.length - 4} more items
 									</div>
 								{/if}
 							</div>
@@ -682,11 +1090,11 @@
 									onclick={handleClearFailed}
 									class="control-btn control-btn--danger"
 									type="button"
-									title="Clear failed downloads"
+									title="Clear failed and cancelled download history"
 									disabled={isLoading}
 								>
 									<Trash2 size={14} />
-									<span>Clear Failed</span>
+									<span>Clear History</span>
 								</button>
 							</div>
 						{/if}
@@ -694,7 +1102,7 @@
 				{/if}
 
 				<!-- Empty state -->
-				{#if stats.running === 0 && stats.queued === 0 && stats.completed === 0 && stats.failed === 0}
+				{#if stats.total === 0}
 					<div class="download-manager-empty">
 						<p class="empty-message">No downloads yet</p>
 						<p class="empty-hint">Queue a track or album and it will appear here in real time.</p>
@@ -954,6 +1362,33 @@
 		line-height: 1.4;
 	}
 
+	.download-manager-notice {
+		margin: 0 16px 12px;
+		padding: 10px 12px;
+		border-radius: 10px;
+		font-size: 12px;
+		line-height: 1.4;
+		border: 1px solid var(--color-border);
+	}
+
+	.download-manager-notice[data-tone='success'] {
+		background: rgba(16, 185, 129, 0.16);
+		color: #d1fae5;
+		border-color: rgba(16, 185, 129, 0.4);
+	}
+
+	.download-manager-notice[data-tone='error'] {
+		background: rgba(239, 68, 68, 0.16);
+		color: #fecaca;
+		border-color: rgba(239, 68, 68, 0.4);
+	}
+
+	.download-manager-notice[data-tone='info'] {
+		background: rgba(59, 130, 246, 0.16);
+		color: #dbeafe;
+		border-color: rgba(59, 130, 246, 0.4);
+	}
+
 	.download-manager-top-strip {
 		display: grid;
 		grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -963,6 +1398,15 @@
 		padding: 12px 16px;
 		background: rgba(255, 255, 255, 0.02);
 		flex-shrink: 0;
+	}
+
+	.download-manager-quick-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		padding: 10px 16px;
+		border-bottom: 1px solid var(--color-border);
+		background: rgba(255, 255, 255, 0.02);
 	}
 
 	.top-strip-item {
@@ -1127,6 +1571,13 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 8px;
+	}
+
+	.item-action-row {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		flex-shrink: 0;
 	}
 
 	.current-item-title {
@@ -1361,6 +1812,15 @@
 		text-overflow: ellipsis;
 	}
 
+	.detail-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		padding-top: 8px;
+		border-top: 1px solid var(--color-border);
+		margin-top: 6px;
+	}
+
 	.queue-more-hint {
 		text-align: center;
 		padding: 8px 10px;
@@ -1395,6 +1855,13 @@
 		border-radius: 8px;
 		border: 1px solid rgba(6, 182, 212, 0.18);
 		background: rgba(6, 182, 212, 0.05);
+	}
+
+	.completed-item-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
 	}
 
 	.completed-item-title {
@@ -1516,10 +1983,76 @@
 		box-sizing: border-box;
 	}
 
+	.item-action-btn {
+		all: unset;
+		cursor: pointer;
+		padding: 4px 8px;
+		border-radius: 999px;
+		font-size: 11px;
+		font-weight: 600;
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		border: 1px solid var(--color-border);
+		color: var(--color-text-primary);
+		background: rgba(255, 255, 255, 0.04);
+		min-height: 28px;
+		box-sizing: border-box;
+	}
+
+	.item-action-btn:hover {
+		background: rgba(255, 255, 255, 0.08);
+	}
+
+	.item-action-btn:disabled,
+	.item-action-btn[aria-disabled='true'] {
+		opacity: 0.45;
+		cursor: not-allowed;
+		pointer-events: none;
+	}
+
+	.item-action-btn--primary {
+		border-color: rgba(59, 130, 246, 0.5);
+		color: #bfdbfe;
+		background: rgba(59, 130, 246, 0.14);
+	}
+
+	.item-action-btn--warning {
+		border-color: rgba(245, 158, 11, 0.5);
+		color: #fde68a;
+		background: rgba(245, 158, 11, 0.14);
+	}
+
+	.item-action-btn--danger {
+		border-color: rgba(239, 68, 68, 0.5);
+		color: #fecaca;
+		background: rgba(239, 68, 68, 0.14);
+	}
+
 	.control-btn--secondary {
 		background: var(--color-bg-secondary);
 		color: var(--color-text-primary);
 		border: 1px solid var(--color-border);
+	}
+
+	.control-btn--primary {
+		background: rgba(59, 130, 246, 0.2);
+		color: #dbeafe;
+		border-color: rgba(59, 130, 246, 0.5);
+	}
+
+	.control-btn--primary:hover {
+		background: rgba(59, 130, 246, 0.3);
+	}
+
+	.control-btn--warning {
+		background: rgba(245, 158, 11, 0.18);
+		color: #fde68a;
+		border-color: rgba(245, 158, 11, 0.4);
+	}
+
+	.control-btn--warning:hover {
+		background: rgba(245, 158, 11, 0.26);
 	}
 
 	.control-btn--secondary:hover {
@@ -1684,10 +2217,18 @@
 	}
 
 	/* Responsive */
-	@media (max-width: 900px) {
+	@media (max-width: 1024px) {
 		.download-manager-panel {
-			width: calc(100vw - 40px);
-			max-height: 70vh;
+			width: min(760px, calc(100vw - 24px));
+			max-height: 74vh;
+		}
+
+		.download-manager-top-strip {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+		}
+
+		.download-manager-quick-actions {
+			padding: 10px 12px;
 		}
 	}
 
@@ -1732,6 +2273,7 @@
 		.completed-item-title {
 			white-space: normal;
 			display: -webkit-box;
+			line-clamp: 2;
 			-webkit-line-clamp: 2;
 			-webkit-box-orient: vertical;
 		}

@@ -7,7 +7,7 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getJob, requestCancellation, deleteJob } from '$lib/server/downloadQueueManager';
+import { getJob, requestCancellation, requestRetry, deleteJob } from '$lib/server/downloadQueueManager';
 
 /**
  * GET /api/download-queue/:jobId
@@ -41,9 +41,9 @@ export const GET: RequestHandler = async ({ params }) => {
 
 /**
  * PATCH /api/download-queue/:jobId
- * Request cancellation of a job
+ * Request cancellation or retry of a job
  * 
- * Body: { action: 'cancel' }
+ * Body: { action: 'cancel' | 'retry' }
  */
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	try {
@@ -63,6 +63,25 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			return json({
 				success: true,
 				message: 'Cancellation requested',
+				jobId
+			});
+		}
+
+		if (action === 'retry') {
+			const retried = await requestRetry(jobId);
+			if (!retried) {
+				return json(
+					{
+						success: false,
+						error: 'Could not retry job (not found or status is not failed/cancelled)'
+					},
+					{ status: 400 }
+				);
+			}
+
+			return json({
+				success: true,
+				message: 'Retry requested',
 				jobId
 			});
 		}
