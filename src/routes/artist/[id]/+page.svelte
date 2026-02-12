@@ -88,6 +88,7 @@
 	const MAX_CONCURRENT_COVER_LOOKUPS = 4;
 	const pendingAlbumCoverLookups = new Map<number, PendingCoverLookup>();
 	let coverHydrationGeneration = $state(0);
+	let coverHydrationGenerationCounter = 0;
 	let coverHydrationScheduler: CoverHydrationScheduler = {
 		generation: 0,
 		activeLookups: 0,
@@ -275,10 +276,11 @@
 	}
 
 	function beginCoverHydrationGeneration(): number {
-		coverHydrationGeneration += 1;
-		coverHydrationScheduler = createCoverHydrationScheduler(coverHydrationGeneration);
+		coverHydrationGenerationCounter += 1;
+		coverHydrationGeneration = coverHydrationGenerationCounter;
+		coverHydrationScheduler = createCoverHydrationScheduler(coverHydrationGenerationCounter);
 		pendingAlbumCoverLookups.clear();
-		return coverHydrationGeneration;
+		return coverHydrationGenerationCounter;
 	}
 
 	function drainAlbumCoverHydrationQueue(scheduler: CoverHydrationScheduler): void {
