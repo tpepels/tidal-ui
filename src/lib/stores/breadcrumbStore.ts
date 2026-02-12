@@ -136,6 +136,25 @@ export const breadcrumbStore = {
 				return { breadcrumbs: breadcrumbs };
 			}
 
+			// Keep breadcrumbs path-relative: revisiting an earlier location trims
+			// the trail back to that crumb instead of appending duplicates.
+			let existingIndex = -1;
+			for (let i = breadcrumbs.length - 1; i >= 0; i -= 1) {
+				if (breadcrumbs[i]?.href === normalizedHref) {
+					existingIndex = i;
+					break;
+				}
+			}
+			if (existingIndex >= 0) {
+				const trimmed = breadcrumbs.slice(0, existingIndex + 1);
+				if (normalizedHref === HOME_BREADCRUMB.href) {
+					trimmed[0] = { ...HOME_BREADCRUMB };
+				} else {
+					trimmed[existingIndex] = { href: normalizedHref, label: resolvedLabel };
+				}
+				return { breadcrumbs: trimmed };
+			}
+
 			return {
 				breadcrumbs: trimBreadcrumbTrail([...breadcrumbs, { href: normalizedHref, label: resolvedLabel }])
 			};

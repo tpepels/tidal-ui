@@ -13,7 +13,12 @@ const config = {
 			middlewareOptions: {
 				bodyLimit: '100mb'
 			}
-		})
+		}),
+		serviceWorker: {
+			// Use explicit runtime gating in +layout.svelte to avoid LAN/self-signed SSL
+			// registration errors and unexpected auto-registration behavior.
+			register: false
+		}
 	}
 };
 

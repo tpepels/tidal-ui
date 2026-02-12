@@ -10,31 +10,22 @@ describe('breadcrumbStore', () => {
 		breadcrumbStore.clearBreadcrumbs();
 	});
 
-	it('tracks the visited path and goes back to the immediate previous page', () => {
+	it('keeps breadcrumbs path-relative when revisiting earlier pages', () => {
 		breadcrumbStore.visit('/artist/42');
 		breadcrumbStore.visit('/album/7');
 		breadcrumbStore.visit('/track/99');
 		breadcrumbStore.visit('/album/7');
 
 		const initialTrail = get(breadcrumbStore).breadcrumbs.map((crumb) => crumb.href);
-		expect(initialTrail).toEqual(['/', '/artist/42', '/album/7', '/track/99', '/album/7']);
+		expect(initialTrail).toEqual(['/', '/artist/42', '/album/7']);
 
 		const firstBackTarget = breadcrumbStore.goBack('/album/7', '/');
-		expect(firstBackTarget).toBe('/track/99');
-		expect(get(breadcrumbStore).breadcrumbs.map((crumb) => crumb.href)).toEqual([
-			'/',
-			'/artist/42',
-			'/album/7',
-			'/track/99'
-		]);
+		expect(firstBackTarget).toBe('/artist/42');
+		expect(get(breadcrumbStore).breadcrumbs.map((crumb) => crumb.href)).toEqual(['/', '/artist/42']);
 
 		const secondBackTarget = breadcrumbStore.goBack('/track/99', '/');
-		expect(secondBackTarget).toBe('/album/7');
-		expect(get(breadcrumbStore).breadcrumbs.map((crumb) => crumb.href)).toEqual([
-			'/',
-			'/artist/42',
-			'/album/7'
-		]);
+		expect(secondBackTarget).toBe('/');
+		expect(get(breadcrumbStore).breadcrumbs.map((crumb) => crumb.href)).toEqual(['/']);
 	});
 
 	it('updates labels for the current page and matching existing crumbs', () => {
