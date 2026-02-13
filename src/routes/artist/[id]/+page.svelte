@@ -650,9 +650,7 @@
 			.map((entry) => {
 				const representative = entry.representative;
 				const override = albumCoverOverrides[representative.id];
-				const useProxy = entry.versions.some(
-					(version) => version.discographySource === 'official_tidal'
-				);
+				const useProxy = representative.discographySource === 'official_tidal';
 				const candidates = buildAlbumCoverCandidates(
 					representative,
 					entry.versions,
@@ -1536,9 +1534,7 @@
 										<div class="grid gap-4 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
 											{#each section.entries as entry (`${entry.key}:${downloadQuality}`)}
 												{@const album = entry.representative}
-												{@const hasOfficialTidalSource = entry.versions.some(
-													(version) => version.discographySource === 'official_tidal'
-												)}
+												{@const hasOfficialTidalSource = album.discographySource === 'official_tidal'}
 												{@const coverOverride = albumCoverOverrides[album.id]}
 												{@const coverImageCandidates = buildAlbumCoverCandidates(
 													album,

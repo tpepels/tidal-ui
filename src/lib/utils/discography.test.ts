@@ -17,6 +17,7 @@ const buildAlbum = (
 		audioQuality: overrides.audioQuality ?? 'LOSSLESS',
 		artist: overrides.artist ?? { id: 1, name: 'Artist', type: 'MAIN' },
 		artists: overrides.artists ?? [{ id: 1, name: 'Artist', type: 'MAIN' }],
+		discographySource: overrides.discographySource,
 		upc: overrides.upc,
 		popularity: overrides.popularity ?? 50,
 		mediaMetadata: overrides.mediaMetadata
@@ -152,6 +153,51 @@ describe('groupDiscography', () => {
 			bestEditionRule: 'completeness_first'
 		});
 		expect(completenessFirst[0]?.representative.id).toBe(81);
+	});
+
+	it('prioritizes proxy/catalog representatives before official tidal enrichment variants', () => {
+		const albums: Album[] = [
+			buildAlbum({
+				id: 83,
+				title: 'Signal Fires',
+				audioQuality: 'HIGH',
+				releaseDate: '2020-01-01'
+			}),
+			buildAlbum({
+				id: 84,
+				title: 'Signal Fires',
+				audioQuality: 'LOSSLESS',
+				releaseDate: '2022-01-01'
+			}),
+			buildAlbum({
+				id: 85,
+				title: 'Signal Fires',
+				audioQuality: 'HI_RES_LOSSLESS',
+				releaseDate: '2025-01-01',
+				discographySource: 'official_tidal'
+			})
+		];
+
+		const grouped = groupDiscography(albums, 'HI_RES_LOSSLESS');
+		expect(grouped).toHaveLength(1);
+		expect(grouped[0]?.representative.id).toBe(84);
+		expect(grouped[0]?.representative.discographySource).toBeUndefined();
+	});
+
+	it('falls back to official tidal representative when no proxy/catalog variant exists', () => {
+		const albums: Album[] = [
+			buildAlbum({
+				id: 86,
+				title: 'Official Only',
+				audioQuality: 'LOSSLESS',
+				discographySource: 'official_tidal'
+			})
+		];
+
+		const grouped = groupDiscography(albums, 'LOSSLESS');
+		expect(grouped).toHaveLength(1);
+		expect(grouped[0]?.representative.id).toBe(86);
+		expect(grouped[0]?.representative.discographySource).toBe('official_tidal');
 	});
 
 	it('derives discography traits for filtering', () => {

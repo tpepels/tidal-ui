@@ -46,6 +46,11 @@ function getPrimaryArtistId(album: Album): number {
 	return typeof candidate === 'number' && Number.isFinite(candidate) ? candidate : 0;
 }
 
+function getDiscographySourcePriority(album: Album): number {
+	// Prefer proxy/catalog albums over official enrichment IDs for stable downstream routing.
+	return album.discographySource === 'official_tidal' ? 0 : 1;
+}
+
 function albumRecencyScore(album: Album): number {
 	if (!album.releaseDate) return Number.NEGATIVE_INFINITY;
 	const timestamp = Date.parse(album.releaseDate);
@@ -149,10 +154,14 @@ function pickRepresentativeVersion(
 	const enriched = versions.map((album) => {
 		const rank = getQualityRank(deriveAlbumQuality(album));
 		const traits = getDiscographyTraits(album);
-		return { album, rank, traits };
+		const sourcePriority = getDiscographySourcePriority(album);
+		return { album, rank, traits, sourcePriority };
 	});
 
 	const sorted = [...enriched].sort((a, b) => {
+		const sourcePriorityDelta = b.sourcePriority - a.sourcePriority;
+		if (sourcePriorityDelta !== 0) return sourcePriorityDelta;
+
 		switch (bestEditionRule) {
 			case 'completeness_first': {
 				const trackDelta = b.traits.trackCount - a.traits.trackCount;
