@@ -13,7 +13,7 @@ import type { Album, Artist, ArtistDetails, CoverImage, Lyrics, Playlist, Track 
 
 export type CatalogApiContext = {
 	baseUrl: string;
-	fetch: (url: string) => Promise<Response>;
+	fetch: (url: string, options?: RequestInit) => Promise<Response>;
 	ensureNotRateLimited: (response: Response) => void;
 };
 
@@ -23,6 +23,7 @@ const ALBUM_NOT_FOUND_CACHE_TTL_MS = 5 * 60 * 1000;
 const ALBUM_NOT_FOUND_CACHE_MAX_ENTRIES = 500;
 
 const pendingAlbumRequests = new Map<string, Promise<{ album: Album; tracks: Track[] }>>();
+const pendingArtistRequests = new Map<string, Promise<ArtistDetails>>();
 const albumNotFoundCache = new Map<string, number>();
 
 function buildAlbumRequestCacheKey(context: CatalogApiContext, id: number): string {
@@ -86,7 +87,8 @@ function getCachedAlbumNotFoundError(
 
 export async function getAlbum(
 	context: CatalogApiContext,
-	id: number
+	id: number,
+	options?: { signal?: AbortSignal }
 ): Promise<{ album: Album; tracks: Track[] }> {
 	const cacheKey = buildAlbumRequestCacheKey(context, id);
 	const cachedNotFound = getCachedAlbumNotFoundError(cacheKey);
@@ -94,13 +96,18 @@ export async function getAlbum(
 		throw cachedNotFound;
 	}
 
-	const pendingRequest = pendingAlbumRequests.get(cacheKey);
-	if (pendingRequest) {
-		return pendingRequest;
+	const shouldUsePendingCache = !options?.signal;
+	if (shouldUsePendingCache) {
+		const pendingRequest = pendingAlbumRequests.get(cacheKey);
+		if (pendingRequest) {
+			return pendingRequest;
+		}
 	}
 
 	const lookupPromise = (async () => {
-		const response = await context.fetch(`${context.baseUrl}/album/?id=${id}`);
+		const response = await context.fetch(`${context.baseUrl}/album/?id=${id}`, {
+			signal: options?.signal
+		});
 		context.ensureNotRateLimited(response);
 		if (!response.ok) {
 			if (response.status === 404) {
@@ -213,14 +220,18 @@ export async function getAlbum(
 		return result;
 	})();
 
-	pendingAlbumRequests.set(cacheKey, lookupPromise);
+	if (shouldUsePendingCache) {
+		pendingAlbumRequests.set(cacheKey, lookupPromise);
+	}
 
 	try {
 		const result = await lookupPromise;
 		albumNotFoundCache.delete(cacheKey);
 		return result;
 	} finally {
-		pendingAlbumRequests.delete(cacheKey);
+		if (shouldUsePendingCache) {
+			pendingAlbumRequests.delete(cacheKey);
+		}
 	}
 }
 
@@ -267,6 +278,7 @@ type ArtistFetchOptions = {
 	onProgress?: (progress: ArtistFetchProgress) => void;
 	officialEnrichment?: boolean;
 	officialOrigin?: string;
+	signal?: AbortSignal;
 };
 
 type OfficialDiscographyResponse = {
@@ -297,7 +309,9 @@ async function fetchOfficialDiscography(
 	}
 
 	try {
-		const response = await fetch(`${origin}/api/artist/${artistId}/official-discography`);
+		const response = await fetch(`${origin}/api/artist/${artistId}/official-discography`, {
+			signal: options?.signal
+		});
 		if (!response.ok) {
 			return { status: 'error', albums: [], detail: `http_${response.status}` };
 		}
@@ -377,7 +391,19 @@ export async function getArtist(
 	id: number,
 	options?: ArtistFetchOptions
 ): Promise<ArtistDetails> {
-	const response = await context.fetch(`${context.baseUrl}/artist/?f=${id}`);
+	const requestKey = `${context.baseUrl}|${id}|${options?.officialEnrichment ? 'official' : 'default'}|${options?.officialOrigin ?? ''}`;
+	const canDedupe = !options?.onProgress && !options?.signal;
+	if (canDedupe) {
+		const pending = pendingArtistRequests.get(requestKey);
+		if (pending) {
+			return pending;
+		}
+	}
+
+	const requestPromise = (async (): Promise<ArtistDetails> => {
+	const response = await context.fetch(`${context.baseUrl}/artist/?f=${id}`, {
+		signal: options?.signal
+	});
 	context.ensureNotRateLimited(response);
 	if (!response.ok) throw new Error('Failed to get artist');
 	const data = await readJsonWithProgress(response, options?.onProgress);
@@ -609,7 +635,9 @@ export async function getArtist(
 
 	if (!artist) {
 		try {
-			const fallbackResponse = await context.fetch(`${context.baseUrl}/artist/?id=${id}`);
+			const fallbackResponse = await context.fetch(`${context.baseUrl}/artist/?id=${id}`, {
+				signal: options?.signal
+			});
 			context.ensureNotRateLimited(fallbackResponse);
 			if (fallbackResponse.ok) {
 				const fallbackData = await fallbackResponse.json();
@@ -728,7 +756,8 @@ export async function getArtist(
 		enrichmentQueryCount += 1;
 
 		const searchResponse = await context.fetch(
-			`${context.baseUrl}/search/?al=${encodeURIComponent(trimmedQuery)}`
+			`${context.baseUrl}/search/?al=${encodeURIComponent(trimmedQuery)}`,
+			{ signal: options?.signal }
 		);
 		context.ensureNotRateLimited(searchResponse);
 		if (!searchResponse.ok) {
@@ -935,6 +964,19 @@ export async function getArtist(
 			}
 		}
 	};
+	})();
+
+	if (canDedupe) {
+		pendingArtistRequests.set(requestKey, requestPromise);
+	}
+
+	try {
+		return await requestPromise;
+	} finally {
+		if (canDedupe) {
+			pendingArtistRequests.delete(requestKey);
+		}
+	}
 }
 
 export async function getCover(

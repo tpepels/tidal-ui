@@ -116,7 +116,7 @@ class LosslessAPI {
 	private getSearchContext() {
 		return {
 			buildRegionalUrl: this.buildRegionalUrl.bind(this),
-			fetch: (url: string) => this.fetch(url),
+			fetch: (url: string, options?: RequestInit) => this.fetch(url, options),
 			ensureNotRateLimited: this.ensureNotRateLimited.bind(this)
 		};
 	}
@@ -124,7 +124,7 @@ class LosslessAPI {
 	private getCatalogContext() {
 		return {
 			baseUrl: this.baseUrl,
-			fetch: (url: string) => this.fetch(url),
+			fetch: (url: string, options?: RequestInit) => this.fetch(url, options),
 			ensureNotRateLimited: this.ensureNotRateLimited.bind(this)
 		};
 	}
@@ -940,8 +940,11 @@ class LosslessAPI {
 	/**
 	 * Get album details with track listing
 	 */
-	async getAlbum(id: number): Promise<{ album: Album; tracks: Track[] }> {
-		return getAlbum(this.getCatalogContext(), id);
+	async getAlbum(
+		id: number,
+		options?: { signal?: AbortSignal }
+	): Promise<{ album: Album; tracks: Track[] }> {
+		return getAlbum(this.getCatalogContext(), id, options);
 	}
 
 	/**
@@ -956,7 +959,10 @@ class LosslessAPI {
 	 */
 	async getArtist(
 		id: number,
-		options?: { onProgress?: (progress: { receivedBytes: number; totalBytes?: number; percent?: number }) => void }
+		options?: {
+			onProgress?: (progress: { receivedBytes: number; totalBytes?: number; percent?: number }) => void;
+			signal?: AbortSignal;
+		}
 	): Promise<ArtistDetails> {
 		const officialOrigin =
 			typeof window !== 'undefined' && window.location?.origin ? window.location.origin : undefined;

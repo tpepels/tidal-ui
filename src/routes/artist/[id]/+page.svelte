@@ -4,12 +4,27 @@
 	import { onDestroy } from 'svelte';
 	import { losslessAPI } from '$lib/api';
 	import { downloadAlbum } from '$lib/downloads';
+	import { isAlbumDownloadQueueActive, type AlbumDownloadStatus } from '$lib/controllers/albumDownloadUi';
 	import type { Album, ArtistDetails, AudioQuality } from '$lib/types';
 	import TopTracksGrid from '$lib/components/TopTracksGrid.svelte';
 	import ShareButton from '$lib/components/ShareButton.svelte';
-	import { groupDiscography } from '$lib/utils/discography';
+	import {
+		groupDiscography,
+		getDiscographyTraits,
+		type DiscographyBestEditionRule
+	} from '$lib/utils/discography';
+	import {
+		getCoverCacheKey,
+		getResolvedCoverUrl,
+		getUnifiedCoverCandidates,
+		isCoverInFailureBackoff,
+		markCoverFailed,
+		markCoverResolved,
+		prefetchCoverCandidates
+	} from '$lib/utils/coverPipeline';
 	import { scoreAlbumForSelection } from '$lib/utils/albumSelection';
-	import { ArrowLeft, User, Download, LoaderCircle, X } from 'lucide-svelte';
+	import { fetchAlbumLibraryStatus } from '$lib/utils/mediaLibraryClient';
+	import { ArrowLeft, User, Download, LoaderCircle, RotateCcw, X } from 'lucide-svelte';
 
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
@@ -26,10 +41,42 @@
 	const discographyInfo = $derived(artist?.discographyInfo ?? null);
 	const enrichmentDiagnostics = $derived(discographyInfo?.enrichmentDiagnostics ?? null);
 	const downloadQuality = $derived($downloadPreferencesStore.downloadQuality as AudioQuality);
-	const discographyEntries = $derived(groupDiscography(rawDiscography, downloadQuality));
+	let bestEditionRule = $state<DiscographyBestEditionRule>('balanced');
+	let discographyFilterState = $state({
+		album: true,
+		ep: true,
+		single: true,
+		live: true,
+		remaster: true,
+		explicit: true,
+		clean: true
+	});
+	const groupedDiscographyEntries = $derived(
+		groupDiscography(rawDiscography, downloadQuality, { bestEditionRule })
+	);
+	const discographyEntries = $derived(
+		groupedDiscographyEntries.filter((entry) => {
+			const traits = getDiscographyTraits(entry.representative);
+			if (!discographyFilterState[traits.releaseType]) return false;
+			if (!discographyFilterState.live && traits.isLive) return false;
+			if (!discographyFilterState.remaster && traits.isRemaster) return false;
+			if (!discographyFilterState.explicit && traits.isExplicit) return false;
+			if (!discographyFilterState.clean && !traits.isExplicit) return false;
+			return true;
+		})
+	);
+	const duplicateCollapsedCount = $derived(
+		Math.max(0, rawDiscography.length - groupedDiscographyEntries.length)
+	);
+	const filteredOutCount = $derived(
+		Math.max(0, groupedDiscographyEntries.length - discographyEntries.length)
+	);
 	const discography = $derived(discographyEntries.map((entry) => entry.representative));
 	const discographyAlbums = $derived(
 		discographyEntries.filter((entry) => entry.section === 'album')
+	);
+	const discographyEps = $derived(
+		discographyEntries.filter((entry) => entry.section === 'ep')
 	);
 	const discographySingles = $derived(
 		discographyEntries.filter((entry) => entry.section === 'single')
@@ -60,14 +107,6 @@
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
 	const downloadStoragePreference = $derived($downloadPreferencesStore.storage);
 
-	type AlbumDownloadStatus =
-		| 'idle'
-		| 'submitting'
-		| 'queued'
-		| 'processing'
-		| 'completed'
-		| 'failed'
-		| 'cancelled';
 	type AlbumDownloadState = {
 		status: AlbumDownloadStatus;
 		downloading: boolean;
@@ -82,6 +121,7 @@
 	let discographyProgress = $state({ completed: 0, total: 0 });
 	let discographyError = $state<string | null>(null);
 	let albumDownloadStates = $state<Record<number, AlbumDownloadState>>({});
+	let albumLibraryPresence = $state<Record<number, { exists: boolean; matchedTracks: number }>>({});
 	let albumCoverOverrides = $state<Record<number, string>>({});
 	let albumCoverFailures = $state<Record<number, boolean>>({});
 	let albumCoverHydrationAttempted = $state<Record<number, boolean>>({});
@@ -110,11 +150,17 @@
 		queuedAlbumIds: new Set<number>()
 	};
 	let activeRequestToken = 0;
+	let artistLoadAbortController: AbortController | null = null;
+	let activeArtistLoadId: number | null = null;
+	let albumLibraryLookupToken = 0;
 	const COVER_CANDIDATE_DELIMITER = '\n';
 
 	$effect(() => {
 		const id = Number(artistId);
 		if (!Number.isFinite(id) || id <= 0) {
+			artistLoadAbortController?.abort();
+			artistLoadAbortController = null;
+			activeArtistLoadId = null;
 			activeRequestToken += 1;
 			stopAllAlbumQueuePolling();
 			beginCoverHydrationGeneration();
@@ -125,10 +171,20 @@
 			isLoading = false;
 			return;
 		}
-		void loadArtist(id);
+		if (artistLoadAbortController && activeArtistLoadId === id) {
+			return;
+		}
+		artistLoadAbortController?.abort();
+		activeArtistLoadId = id;
+		const controller = new AbortController();
+		artistLoadAbortController = controller;
+		void loadArtist(id, controller);
 	});
 
 	onDestroy(() => {
+		artistLoadAbortController?.abort();
+		artistLoadAbortController = null;
+		activeArtistLoadId = null;
 		stopAllAlbumQueuePolling();
 	});
 
@@ -164,6 +220,15 @@
 		}
 	}
 
+	function toggleDiscographyFilter(
+		key: 'album' | 'ep' | 'single' | 'live' | 'remaster' | 'explicit' | 'clean'
+	): void {
+		discographyFilterState = {
+			...discographyFilterState,
+			[key]: !discographyFilterState[key]
+		};
+	}
+
 	function formatEnrichmentPassName(name: 'artist-name' | 'official-tidal'): string {
 		if (name === 'official-tidal') return 'Official TIDAL API';
 		return 'Artist-name search';
@@ -181,7 +246,7 @@
 
 	function displayTrackTotal(total?: number | null): number {
 		if (!Number.isFinite(total)) return 0;
-		return total && total > 0 ? total + 1 : (total ?? 0);
+		return total && total > 0 ? total : (total ?? 0);
 	}
 
 	function parseNumericId(value: unknown): number | null {
@@ -246,7 +311,21 @@
 
 		const urls: string[] = [];
 		for (const coverId of coverIds) {
-			const candidates = losslessAPI.getCoverUrlFallbacks(coverId, '640', {
+			const cacheKey = getCoverCacheKey({
+				coverId,
+				size: '640',
+				proxy: useProxy
+			});
+			const resolved = getResolvedCoverUrl(cacheKey);
+			if (resolved && !urls.includes(resolved)) {
+				urls.push(resolved);
+			}
+			if (isCoverInFailureBackoff(cacheKey) && !resolved) {
+				continue;
+			}
+			const candidates = getUnifiedCoverCandidates({
+				coverId,
+				size: '640',
 				proxy: useProxy,
 				includeLowerSizes: true
 			});
@@ -436,7 +515,9 @@
 		}
 
 		const useProxy = image.dataset.coverUseProxy === '1';
-		const hydratedCandidates = losslessAPI.getCoverUrlFallbacks(hydratedCover, '640', {
+		const hydratedCandidates = getUnifiedCoverCandidates({
+			coverId: hydratedCover,
+			size: '640',
 			proxy: useProxy,
 			includeLowerSizes: true
 		});
@@ -472,6 +553,10 @@
 		if (Number.isFinite(albumId)) {
 			clearAlbumCoverFailure(albumId);
 		}
+		const coverCacheKey = image.dataset.coverCacheKey ?? '';
+		if (coverCacheKey && image.currentSrc) {
+			markCoverResolved(coverCacheKey, image.currentSrc);
+		}
 	}
 
 	function handleAlbumCoverError(event: Event): void {
@@ -501,6 +586,10 @@
 			}
 			if (Number.isFinite(albumId)) {
 				markAlbumCoverFailed(albumId);
+			}
+			const coverCacheKey = image.dataset.coverCacheKey ?? '';
+			if (coverCacheKey) {
+				markCoverFailed(coverCacheKey);
 			}
 			return;
 		}
@@ -532,6 +621,73 @@
 		}
 	});
 
+	$effect(() => {
+		if (!artist || discographyEntries.length === 0) {
+			return;
+		}
+		const artistIdForKey = artist.id;
+		const batch = discographyEntries
+			.slice(0, 30)
+			.map((entry) => {
+				const representative = entry.representative;
+				const override = albumCoverOverrides[representative.id];
+				const useProxy = entry.versions.some(
+					(version) => version.discographySource === 'official_tidal'
+				);
+				const candidates = buildAlbumCoverCandidates(
+					representative,
+					entry.versions,
+					useProxy,
+					override
+				);
+				if (candidates.length === 0) return null;
+				return {
+					cacheKey: getCoverCacheKey({
+						coverId: override || representative.cover,
+						size: '640',
+						proxy: useProxy,
+						overrideKey: `artist:${artistIdForKey}:album:${representative.id}`
+					}),
+					candidates
+				};
+			})
+			.filter((entry): entry is { cacheKey: string; candidates: string[] } => entry !== null);
+		if (batch.length === 0) return;
+		void prefetchCoverCandidates(batch);
+	});
+
+	$effect(() => {
+		if (!artist || discographyEntries.length === 0) {
+			albumLibraryPresence = {};
+			return;
+		}
+		const artistNameForLookup = artist.name;
+		const lookupToken = ++albumLibraryLookupToken;
+		const payload = discographyEntries.map((entry) => {
+			const representative = entry.representative;
+			return {
+				id: representative.id,
+				artistName: representative.artist?.name ?? artistNameForLookup,
+				albumTitle: representative.title,
+				expectedTrackCount:
+					typeof representative.numberOfTracks === 'number' ? representative.numberOfTracks : undefined
+			};
+		});
+		void fetchAlbumLibraryStatus(payload)
+			.then((result) => {
+				if (lookupToken !== albumLibraryLookupToken) {
+					return;
+				}
+				albumLibraryPresence = result;
+			})
+			.catch(() => {
+				if (lookupToken !== albumLibraryLookupToken) {
+					return;
+				}
+				albumLibraryPresence = {};
+			});
+	});
+
 	function createDefaultAlbumDownloadState(total = 0): AlbumDownloadState {
 		return {
 			status: 'idle',
@@ -558,7 +714,7 @@
 
 	function isAlbumQueueDownloadCancellable(state: AlbumDownloadState | undefined): boolean {
 		if (!state) return false;
-		return state.status === 'queued' || state.status === 'processing';
+		return isAlbumDownloadQueueActive(state.status);
 	}
 
 	function stopAlbumQueuePolling(albumId: number): void {
@@ -621,7 +777,7 @@
 			const payload = (await response.json()) as {
 				success?: boolean;
 				job?: {
-					status?: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+					status?: 'queued' | 'processing' | 'paused' | 'completed' | 'failed' | 'cancelled';
 					trackCount?: number;
 					completedTracks?: number;
 					progress?: number;
@@ -653,6 +809,17 @@
 						completed: progress.completed,
 						error: null
 					});
+					break;
+				case 'paused':
+					patchAlbumDownloadState(albumId, {
+						status: 'paused',
+						downloading: false,
+						total: progress.total,
+						completed: progress.completed,
+						error: null
+					});
+					stopAlbumQueuePolling(albumId);
+					albumQueuePollTokens.delete(albumId);
 					break;
 				case 'completed':
 					patchAlbumDownloadState(albumId, {
@@ -740,6 +907,43 @@
 		}
 	}
 
+	async function resumeAlbumQueueDownload(albumId: number, event?: MouseEvent): Promise<void> {
+		event?.preventDefault();
+		event?.stopPropagation();
+
+		const state = getAlbumDownloadState(albumId);
+		if (state.status !== 'paused' || !state.queueJobId) {
+			return;
+		}
+
+		try {
+			const response = await fetch(`/api/download-queue/${state.queueJobId}`, {
+				method: 'PATCH',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({ action: 'resume' })
+			});
+			if (!response.ok) {
+				const body = await response.text();
+				throw new Error(body || 'Failed to resume album download');
+			}
+			patchAlbumDownloadState(albumId, {
+				status: 'queued',
+				downloading: false,
+				error: null
+			});
+			startAlbumQueuePolling(albumId, state.queueJobId);
+		} catch (resumeError) {
+			patchAlbumDownloadState(albumId, {
+				error:
+					resumeError instanceof Error && resumeError.message
+						? resumeError.message
+						: 'Unable to resume this album download right now.'
+			});
+		}
+	}
+
 	async function handleAlbumDownload(album: Album, event?: MouseEvent) {
 		event?.preventDefault();
 		event?.stopPropagation();
@@ -751,6 +955,14 @@
 
 		if (isAlbumQueueDownloadCancellable(currentState)) {
 			await cancelAlbumQueueDownload(album.id);
+			return;
+		}
+		if (currentState.status === 'paused') {
+			await resumeAlbumQueueDownload(album.id);
+			return;
+		}
+		const inLibrary = albumLibraryPresence[album.id]?.exists === true;
+		if (inLibrary && currentState.status === 'idle') {
 			return;
 		}
 
@@ -913,7 +1125,7 @@
 		isDownloadingDiscography = false;
 	}
 
-	async function loadArtist(id: number) {
+	async function loadArtist(id: number, controller: AbortController) {
 		const requestToken = ++activeRequestToken;
 		beginCoverHydrationGeneration();
 		stopAllAlbumQueuePolling();
@@ -925,6 +1137,7 @@
 		discographyProgress = { completed: 0, total: 0 };
 		discographyError = null;
 		albumDownloadStates = {};
+		albumLibraryPresence = {};
 		albumCoverOverrides = {};
 		albumCoverFailures = {};
 		albumCoverHydrationAttempted = {};
@@ -946,7 +1159,9 @@
 				artist = null;
 				artistImage = null;
 			}
-			const data = await losslessAPI.getArtist(id);
+			const data = await losslessAPI.getArtist(id, {
+				signal: controller.signal
+			});
 			const normalizedData = normalizeArtistDetails(data);
 			if (requestToken !== activeRequestToken) {
 				return;
@@ -962,12 +1177,18 @@
 			}
 		} catch (err) {
 			if (requestToken === activeRequestToken) {
+				if (err instanceof Error && err.name === 'AbortError') {
+					return;
+				}
 				error = err instanceof Error ? err.message : 'Failed to load artist';
 				console.error('Failed to load artist:', err);
 			}
 		} finally {
 			if (requestToken === activeRequestToken) {
 				isLoading = false;
+			}
+			if (artistLoadAbortController === controller) {
+				artistLoadAbortController = null;
 			}
 		}
 	}
@@ -1132,6 +1353,70 @@
 						</button>
 					</div>
 				</div>
+				<div class="mt-4 space-y-3 rounded-xl border border-gray-800 bg-gray-900/40 p-4">
+					<div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+						<p class="text-xs font-semibold tracking-wide text-gray-300 uppercase">
+							Discography Selection
+						</p>
+						<label class="flex items-center gap-2 text-xs text-gray-400">
+							<span>Best edition</span>
+							<select
+								bind:value={bestEditionRule}
+								class="rounded-md border border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-100"
+								aria-label="Best edition rule"
+							>
+								<option value="balanced">Balanced</option>
+								<option value="quality_first">Quality first</option>
+								<option value="completeness_first">Most complete</option>
+								<option value="original_release">Original release</option>
+							</select>
+						</label>
+					</div>
+						<div class="flex flex-wrap gap-2">
+							{#each [
+								{ key: 'album', label: 'Albums' },
+								{ key: 'ep', label: 'EPs' },
+								{ key: 'single', label: 'Singles' }
+							] as release (release.key)}
+							<button
+								type="button"
+								onclick={() => toggleDiscographyFilter(release.key as 'album' | 'ep' | 'single')}
+								class={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+									discographyFilterState[release.key as 'album' | 'ep' | 'single']
+										? 'border-blue-500 bg-blue-600/20 text-blue-100'
+										: 'border-gray-700 bg-gray-900 text-gray-400 hover:text-gray-200'
+								}`}
+							>
+								{release.label}
+							</button>
+						{/each}
+					</div>
+						<div class="flex flex-wrap gap-2">
+							{#each [
+								{ key: 'live', label: 'Live' },
+								{ key: 'remaster', label: 'Remaster/Deluxe' },
+								{ key: 'explicit', label: 'Explicit' },
+								{ key: 'clean', label: 'Clean' }
+							] as filter (filter.key)}
+							<button
+								type="button"
+								onclick={() =>
+									toggleDiscographyFilter(
+										filter.key as 'live' | 'remaster' | 'explicit' | 'clean'
+									)}
+								class={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+									discographyFilterState[
+										filter.key as 'live' | 'remaster' | 'explicit' | 'clean'
+									]
+										? 'border-emerald-600 bg-emerald-700/20 text-emerald-100'
+										: 'border-gray-700 bg-gray-900 text-gray-400 hover:text-gray-200'
+								}`}
+							>
+								{filter.label}
+							</button>
+						{/each}
+					</div>
+				</div>
 				{#if discographyInfo?.mayBeIncomplete}
 					<div class="mt-3 rounded-lg border border-amber-700/40 bg-amber-900/20 p-3 text-sm text-amber-200">
 						<p class="font-semibold">Discography may be incomplete from source data.</p>
@@ -1195,14 +1480,20 @@
 				{/if}
 				{#if discography.length > 0}
 					<div class="mt-6 space-y-8">
-						{#if rawDiscography.length > discography.length}
+						{#if duplicateCollapsedCount > 0 || filteredOutCount > 0}
 							<p class="text-xs text-gray-500">
-								Merged {rawDiscography.length - discography.length} duplicate resolution variants.
-								Showing one version per release for selected download quality ({formatQualityLabel(downloadQuality)}).
+									{#if duplicateCollapsedCount > 0}
+										Merged {duplicateCollapsedCount} duplicate resolution variant{duplicateCollapsedCount === 1 ? '' : 's'}.
+									{/if}
+									{#if filteredOutCount > 0}
+										Filtered out {filteredOutCount} release{filteredOutCount === 1 ? '' : 's'} by selection settings.
+									{/if}
+								Showing one version per release for {formatQualityLabel(downloadQuality)} quality preference.
 							</p>
 						{/if}
 						{#each [
 							{ id: 'album', title: 'Albums', entries: discographyAlbums },
+							{ id: 'ep', title: 'EPs', entries: discographyEps },
 							{ id: 'single', title: 'Singles', entries: discographySingles }
 						] as section (section.id)}
 							{#if section.entries.length > 0}
@@ -1233,6 +1524,12 @@
 													hasOfficialTidalSource,
 													coverOverride
 												)}
+												{@const coverCacheKey = getCoverCacheKey({
+													coverId: coverOverride || album.cover,
+													size: '640',
+													proxy: hasOfficialTidalSource,
+													overrideKey: `artist:${artist?.id ?? 0}:album:${album.id}`
+												})}
 												{@const coverImageUrl = coverImageCandidates[0] ?? ''}
 												{@const albumDownloadState =
 													albumDownloadStates[album.id] ??
@@ -1240,6 +1537,7 @@
 												{@const canCancelAlbumDownload = isAlbumQueueDownloadCancellable(
 													albumDownloadState
 												)}
+												{@const albumInLibrary = albumLibraryPresence[album.id]?.exists === true}
 												<div
 													class="group relative flex h-full flex-col rounded-xl border border-gray-800 bg-gray-900/40 p-4 text-center transition-colors hover:border-blue-700 hover:bg-gray-900"
 												>
@@ -1251,6 +1549,14 @@
 														TIDAL
 													</span>
 												{/if}
+												{#if albumInLibrary}
+													<span
+														class="absolute top-9 left-3 z-20 rounded-full border border-blue-500/60 bg-blue-900/70 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-blue-100"
+														title="Already in local library"
+													>
+														IN LIBRARY
+													</span>
+												{/if}
 												<button
 													onclick={(event) =>
 														canCancelAlbumDownload
@@ -1258,14 +1564,26 @@
 															: handleAlbumDownload(album, event)}
 													type="button"
 													class="absolute top-3 right-3 z-40 flex items-center justify-center rounded-full bg-black/50 p-2 text-gray-200 backdrop-blur-md transition-colors hover:bg-blue-600/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-													disabled={isDownloadingDiscography || albumDownloadState.status === 'submitting'}
-													aria-label={canCancelAlbumDownload ? `Stop download ${album.title}` : `Download ${album.title}`}
+													disabled={
+														isDownloadingDiscography ||
+														albumDownloadState.status === 'submitting' ||
+														(albumInLibrary && albumDownloadState.status === 'idle')
+													}
+													aria-label={
+														canCancelAlbumDownload
+															? `Stop download ${album.title}`
+															: albumDownloadState.status === 'paused'
+																? `Resume download ${album.title}`
+																: `Download ${album.title}`
+													}
 													aria-busy={albumDownloadState.status === 'submitting' || albumDownloadState.status === 'queued' || albumDownloadState.downloading}
 												>
 													{#if canCancelAlbumDownload}
 														<X size={16} />
 													{:else if albumDownloadState.status === 'submitting' || albumDownloadState.downloading}
 														<LoaderCircle size={16} class="animate-spin" />
+													{:else if albumDownloadState.status === 'paused'}
+														<RotateCcw size={16} />
 													{:else}
 														<Download size={16} />
 													{/if}
@@ -1286,6 +1604,7 @@
 																	data-cover-index="0"
 																	data-cover-generation={coverHydrationGeneration}
 																	data-cover-recovery-tried="0"
+																	data-cover-cache-key={coverCacheKey}
 																	onerror={handleAlbumCoverError}
 																	onload={handleAlbumCoverLoad}
 																	alt={album.title}
@@ -1335,10 +1654,14 @@
 													<p class="mt-3 text-xs text-emerald-300">Download completed.</p>
 												{:else if albumDownloadState.status === 'cancelled'}
 													<p class="mt-3 text-xs text-amber-300">Download stopped.</p>
+												{:else if albumDownloadState.status === 'paused'}
+													<p class="mt-3 text-xs text-amber-300">Download paused.</p>
 												{:else if albumDownloadState.error}
 													<p class="mt-3 text-xs text-red-400" role="alert">
 														{albumDownloadState.error}
 													</p>
+												{:else if albumInLibrary}
+													<p class="mt-3 text-xs text-emerald-300">Already in local library.</p>
 												{/if}
 											</div>
 										{/each}

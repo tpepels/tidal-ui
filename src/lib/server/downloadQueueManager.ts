@@ -5,6 +5,9 @@
 
 import type { AudioQuality } from '$lib/types';
 import { getConnectedRedis } from './redis';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
+import { checkAlbumInLibrary, checkTrackInLibrary } from './mediaLibrary';
 
 /**
  * Initialize queue system: clean up stale processing jobs from crashes
@@ -23,15 +26,22 @@ export async function initializeQueue(): Promise<void> {
 				
 				if (job.status === 'processing') {
 					console.log(`[Queue] Recovering job ${jobId} from crash (was processing)`);
-					// Mark as failed with recovery message
+					// Re-queue jobs so local long-running downloads can resume after restart.
 					await client.hset(
 						QUEUE_KEY,
 						jobId,
 						JSON.stringify({
 							...job,
-							status: 'failed' as const,
-							error: 'Recovered from server crash while processing',
-							completedAt: Date.now()
+							status: 'queued' as const,
+							progress: 0,
+							error: undefined,
+							lastError: 'Recovered after server restart while processing',
+							startedAt: undefined,
+							completedAt: undefined,
+							lastUpdatedAt: Date.now(),
+							cancellationRequested: false,
+							pauseRequested: false,
+							nextRetryAt: Date.now() + 1000
 						})
 					);
 					recovered++;
@@ -44,13 +54,21 @@ export async function initializeQueue(): Promise<void> {
 		} catch (err) {
 			console.warn('[Queue] Initialization error:', err);
 		}
+	} else {
+		await loadMemoryQueueFromDisk();
 	}
 
 	console.log('[Queue] Initialization complete');
 }
 
 export type JobType = 'track' | 'album';
-export type JobStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+export type JobStatus =
+	| 'queued'
+	| 'processing'
+	| 'paused'
+	| 'completed'
+	| 'failed'
+	| 'cancelled';
 export type JobPriority = 'low' | 'normal' | 'high';
 export type ErrorCategory = 'network' | 'api_error' | 'rate_limit' | 'auth' | 'not_found' | 'server_error' | 'unknown';
 export type QueueSource = 'redis' | 'memory';
@@ -183,6 +201,7 @@ export interface QueuedJob {
 	priority?: JobPriority;
 	// Cancellation
 	cancellationRequested?: boolean;
+	pauseRequested?: boolean;
 	// Per-track progress (album jobs)
 	trackProgress?: Array<{
 		trackId: number;
@@ -193,6 +212,7 @@ export interface QueuedJob {
 	// Metrics
 	downloadTimeMs?: number;
 	fileSize?: number;
+	fallbackHistory?: AudioQuality[];
 }
 
 // In-memory queue (falls back when Redis unavailable)
@@ -200,8 +220,135 @@ const memoryQueue = new Map<string, QueuedJob>();
 const processingJobs = new Set<string>();
 
 const QUEUE_KEY = 'tidal:downloadQueue';
+const QUEUE_STATE_FILE = path.join(process.cwd(), 'data', 'download-queue-state.v1.json');
+const LOCAL_MODE_ENABLED = process.env.LOCAL_MODE !== 'false';
+const LOCAL_MODE_HIDE_MULTI_PROCESS_WARNING = LOCAL_MODE_ENABLED;
+const LOCAL_COMPLETED_RETENTION_MS =
+	Math.max(60_000, Number(process.env.LOCAL_COMPLETED_RETENTION_MS || 30 * 60 * 1000));
+const LOCAL_CANCELLED_RETENTION_MS =
+	Math.max(60_000, Number(process.env.LOCAL_CANCELLED_RETENTION_MS || 6 * 60 * 60 * 1000));
+const LOCAL_FAILED_RETENTION_MS = Math.max(
+	60_000,
+	Number(process.env.LOCAL_FAILED_RETENTION_MS || 7 * 24 * 60 * 60 * 1000)
+);
+const LOCAL_PAUSED_RETENTION_MS = Math.max(
+	60_000,
+	Number(process.env.LOCAL_PAUSED_RETENTION_MS || 14 * 24 * 60 * 60 * 1000)
+);
+
+let memoryStateLoaded = false;
+
+async function saveMemoryQueueToDisk(): Promise<void> {
+	try {
+		await fs.mkdir(path.dirname(QUEUE_STATE_FILE), { recursive: true });
+		const entries = Array.from(memoryQueue.values()).sort((a, b) => a.createdAt - b.createdAt);
+		await fs.writeFile(
+			QUEUE_STATE_FILE,
+			JSON.stringify(
+				{
+					version: 1,
+					savedAt: Date.now(),
+					jobs: entries
+				},
+				null,
+				2
+			)
+		);
+	} catch (error) {
+		console.warn('[Queue] Failed to persist memory queue state:', error);
+	}
+}
+
+async function loadMemoryQueueFromDisk(): Promise<void> {
+	if (memoryStateLoaded) {
+		return;
+	}
+	memoryStateLoaded = true;
+	try {
+		const raw = await fs.readFile(QUEUE_STATE_FILE, 'utf8');
+		const payload = JSON.parse(raw) as { version?: number; jobs?: QueuedJob[] };
+		if (!payload || payload.version !== 1 || !Array.isArray(payload.jobs)) {
+			return;
+		}
+		const now = Date.now();
+		for (const job of payload.jobs) {
+			if (!job || typeof job !== 'object' || typeof job.id !== 'string') {
+				continue;
+			}
+			// Processing jobs cannot be resumed safely after restart; keep them actionable.
+			if (job.status === 'processing') {
+				memoryQueue.set(job.id, {
+					...job,
+					status: 'queued',
+					progress: 0,
+					error: undefined,
+					lastError:
+						job.lastError ??
+						job.error ??
+						'Recovered after restart while processing',
+					completedAt: undefined,
+					lastUpdatedAt: now,
+					startedAt: undefined,
+					cancellationRequested: false,
+					pauseRequested: false,
+					nextRetryAt: now + 1000
+				});
+				continue;
+			}
+			memoryQueue.set(job.id, job);
+		}
+		if (memoryQueue.size > 0) {
+			console.log(`[Queue] Restored ${memoryQueue.size} job(s) from local queue state`);
+		}
+	} catch {
+		// No persisted state yet.
+	}
+}
+
+async function persistMemoryQueueIfNeeded(usingRedis: boolean): Promise<void> {
+	if (usingRedis) {
+		return;
+	}
+	await saveMemoryQueueToDisk();
+}
+
+async function isJobAlreadyInLocalLibrary(job: DownloadJob): Promise<{
+	exists: boolean;
+	detail?: string;
+	matchedTracks?: number;
+}> {
+	try {
+		if (job.type === 'album') {
+			const result = await checkAlbumInLibrary({
+				artistName: job.artistName,
+				albumTitle: job.albumTitle,
+				expectedTrackCount: job.trackCount
+			});
+			return {
+				exists: result.exists,
+				detail: result.exists ? 'Album already present in local library' : undefined,
+				matchedTracks: result.matchedTracks
+			};
+		}
+		const result = await checkTrackInLibrary({
+			artistName: job.artistName,
+			albumTitle: job.albumTitle,
+			trackTitle: job.trackTitle
+		});
+		return {
+			exists: result.exists,
+			detail: result.exists ? 'Track already present in local library' : undefined
+		};
+	} catch (error) {
+		console.warn('[Queue] Local media check failed:', error);
+		return { exists: false };
+	}
+}
 
 function getRedisWarning(): string {
+	if (LOCAL_MODE_HIDE_MULTI_PROCESS_WARNING) {
+		return '';
+	}
 	return 'Redis unavailable or disabled; using in-memory queue. If the worker runs in a separate process, the UI may not reflect active jobs.';
 }
 
@@ -226,10 +373,13 @@ export async function getQueueSnapshot(): Promise<{
 		}
 	}
 
+	await loadMemoryQueueFromDisk();
+	const warning = getRedisWarning();
+
 	return {
 		jobs: Array.from(memoryQueue.values()),
 		source: 'memory',
-		warning: getRedisWarning()
+		warning: warning || undefined
 	};
 }
 
@@ -244,13 +394,73 @@ export async function enqueueJob(
 		checkDuplicate?: boolean;
 	}
 ): Promise<string> {
+	const now = Date.now();
+
+	if (options?.checkDuplicate !== false) {
+		const library = await isJobAlreadyInLocalLibrary(job);
+		if (library.exists) {
+			const existingLibraryJob = (await getAllJobs()).find((entry) => {
+				if (entry.status !== 'completed') return false;
+				if (entry.job.type !== job.type) return false;
+				if (job.type === 'album' && entry.job.type === 'album') {
+					return entry.job.albumId === job.albumId && entry.job.quality === job.quality;
+				}
+				if (job.type === 'track' && entry.job.type === 'track') {
+					return entry.job.trackId === job.trackId && entry.job.quality === job.quality;
+				}
+				return false;
+			});
+			if (existingLibraryJob) {
+				return existingLibraryJob.id;
+			}
+
+			const libraryJobId = `job-${now}-${Math.random().toString(36).slice(2, 11)}`;
+			const completedLibraryJob: QueuedJob = {
+				id: libraryJobId,
+				job,
+				status: 'completed',
+				progress: 1,
+				createdAt: now,
+				completedAt: now,
+				lastUpdatedAt: now,
+				error: library.detail,
+				priority: options?.priority || 'normal',
+				maxRetries: options?.maxRetries ?? 3,
+				retryCount: 0,
+				trackCount: job.type === 'album' ? job.trackCount : undefined,
+				completedTracks: job.type === 'album' ? library.matchedTracks ?? job.trackCount : undefined
+			};
+
+			const client = await getConnectedRedis();
+			if (client) {
+				try {
+					await client.hset(QUEUE_KEY, libraryJobId, JSON.stringify(completedLibraryJob));
+					console.log(`[Queue] Skipped ${job.type} job; already in local library (${libraryJobId})`);
+					return libraryJobId;
+				} catch (err) {
+					console.warn('[Queue] Redis save failed for library-skip job, using memory:', err);
+				}
+			}
+
+			await loadMemoryQueueFromDisk();
+			memoryQueue.set(libraryJobId, completedLibraryJob);
+			await persistMemoryQueueIfNeeded(false);
+			console.log(`[Queue] Skipped ${job.type} job in memory; already in local library (${libraryJobId})`);
+			return libraryJobId;
+		}
+	}
+
 	// Duplicate detection
 	if (options?.checkDuplicate !== false) {
 		const duplicate = await findDuplicateJob(job);
 		if (duplicate) {
 			console.log(`[Queue] Duplicate job found: ${duplicate.id} (status: ${duplicate.status})`);
 			// If duplicate is queued or processing, return existing job ID
-			if (duplicate.status === 'queued' || duplicate.status === 'processing') {
+			if (
+				duplicate.status === 'queued' ||
+				duplicate.status === 'processing' ||
+				duplicate.status === 'paused'
+			) {
 				return duplicate.id;
 			}
 			// If duplicate failed and is retryable, requeue it
@@ -261,7 +471,9 @@ export async function enqueueJob(
 					progress: 0,
 					error: undefined,
 					retryCount: (duplicate.retryCount || 0) + 1,
-					nextRetryAt: undefined
+					nextRetryAt: undefined,
+					cancellationRequested: false,
+					pauseRequested: false
 				});
 				console.log(`[Queue] Requeued failed job: ${duplicate.id}`);
 				return duplicate.id;
@@ -295,7 +507,9 @@ export async function enqueueJob(
 	}
 
 	// Fallback to memory
+	await loadMemoryQueueFromDisk();
 	memoryQueue.set(jobId, queuedJob);
+	await persistMemoryQueueIfNeeded(false);
 	console.log(`[Queue] Job ${jobId} enqueued in memory (${job.type})`);
 	return jobId;
 }
@@ -377,6 +591,7 @@ export async function dequeueJob(): Promise<QueuedJob | null> {
 	}
 
 	// Fallback to memory
+	await loadMemoryQueueFromDisk();
 	const priorityMap = { high: 3, normal: 2, low: 1 };
 	const availableJobs = Array.from(memoryQueue.values())
 		.filter(j => {
@@ -419,8 +634,8 @@ export async function updateJobStatus(
 				const updated = { ...job, ...stampedUpdates };
 				await client.hset(QUEUE_KEY, jobId, JSON.stringify(updated));
 				
-				// Remove from processing set if completed/failed
-				if (updated.status === 'completed' || updated.status === 'failed') {
+				// Remove from processing set for any non-processing terminal or queued state transition.
+				if (updated.status && updated.status !== 'processing') {
 					processingJobs.delete(jobId);
 				}
 				return;
@@ -431,12 +646,14 @@ export async function updateJobStatus(
 	}
 
 	// Fallback to memory
+	await loadMemoryQueueFromDisk();
 	const job = memoryQueue.get(jobId);
 	if (job) {
 		Object.assign(job, stampedUpdates);
-		if (job.status === 'completed' || job.status === 'failed') {
+		if (job.status !== 'processing') {
 			processingJobs.delete(jobId);
 		}
+		await persistMemoryQueueIfNeeded(false);
 	}
 }
 
@@ -458,6 +675,7 @@ export async function getJob(jobId: string): Promise<QueuedJob | null> {
 	}
 
 	// Fallback to memory
+	await loadMemoryQueueFromDisk();
 	return memoryQueue.get(jobId) || null;
 }
 
@@ -475,6 +693,7 @@ export async function getAllJobs(): Promise<QueuedJob[]> {
 export async function getQueueStats(): Promise<{
 	queued: number;
 	processing: number;
+	paused: number;
 	completed: number;
 	failed: number;
 	total: number;
@@ -483,6 +702,7 @@ export async function getQueueStats(): Promise<{
 	return {
 		queued: jobs.filter(j => j.status === 'queued').length,
 		processing: jobs.filter(j => j.status === 'processing').length,
+		paused: jobs.filter(j => j.status === 'paused').length,
 		completed: jobs.filter(j => j.status === 'completed').length,
 		failed: jobs.filter(j => j.status === 'failed').length,
 		total: jobs.length
@@ -498,10 +718,19 @@ export async function cleanupOldJobs(olderThanMs: number = 24 * 60 * 60 * 1000):
 	let cleaned = 0;
 
 	const client = await getConnectedRedis();
+	const completedRetention = LOCAL_MODE_ENABLED ? LOCAL_COMPLETED_RETENTION_MS : olderThanMs;
+	const failedRetention = LOCAL_MODE_ENABLED ? LOCAL_FAILED_RETENTION_MS : olderThanMs;
+	const cancelledRetention = LOCAL_MODE_ENABLED ? LOCAL_CANCELLED_RETENTION_MS : olderThanMs;
+	const pausedRetention = LOCAL_MODE_ENABLED ? LOCAL_PAUSED_RETENTION_MS : olderThanMs;
 	
 	for (const job of jobs) {
-		const isOld = job.completedAt && (now - job.completedAt) > olderThanMs;
-		const shouldClean = isOld && (job.status === 'completed' || job.status === 'failed');
+		const endedAt = job.completedAt ?? job.lastUpdatedAt ?? job.startedAt ?? job.createdAt;
+		const ageMs = now - endedAt;
+		const shouldClean =
+			(job.status === 'completed' && ageMs > completedRetention) ||
+			(job.status === 'failed' && ageMs > failedRetention) ||
+			(job.status === 'cancelled' && ageMs > cancelledRetention) ||
+			(job.status === 'paused' && ageMs > pausedRetention);
 		
 		if (shouldClean) {
 			if (client) {
@@ -518,6 +747,10 @@ export async function cleanupOldJobs(olderThanMs: number = 24 * 60 * 60 * 1000):
 		}
 	}
 
+	if (!client && cleaned > 0) {
+		await persistMemoryQueueIfNeeded(false);
+	}
+
 	if (cleaned > 0) {
 		console.log(`[Queue] Cleaned up ${cleaned} old jobs (older than ${Math.round(olderThanMs / 1000)}s)`);
 	}
@@ -528,7 +761,7 @@ export async function cleanupOldJobs(olderThanMs: number = 24 * 60 * 60 * 1000):
  * Delete a job from the queue (permanent removal, for failed jobs marked for deletion)
  */
 export async function deleteJob(jobId: string): Promise<boolean> {
-		const client = await getConnectedRedis();
+	const client = await getConnectedRedis();
 	
 	if (client) {
 		try {
@@ -543,8 +776,10 @@ export async function deleteJob(jobId: string): Promise<boolean> {
 	}
 
 	// Fallback to memory
+	await loadMemoryQueueFromDisk();
 	if (memoryQueue.has(jobId)) {
 		memoryQueue.delete(jobId);
+		await persistMemoryQueueIfNeeded(false);
 		console.log(`[Queue] Job ${jobId} deleted from memory`);
 		return true;
 	}
@@ -560,27 +795,75 @@ export async function requestCancellation(jobId: string): Promise<boolean> {
 	if (!job) return false;
 	
 	// If not yet processing, mark as cancelled immediately
-	if (job.status === 'queued') {
+	if (job.status === 'queued' || job.status === 'paused') {
 		await updateJobStatus(jobId, {
 			status: 'cancelled',
 			cancellationRequested: true,
+			pauseRequested: false,
 			completedAt: Date.now()
 		});
 		processingJobs.delete(jobId);
-		console.log(`[Queue] Job ${jobId} cancelled (was queued)`);
+		console.log(`[Queue] Job ${jobId} cancelled (was ${job.status})`);
 		return true;
 	}
 	
 	// If processing, flag for cancellation (worker will check this)
 	if (job.status === 'processing') {
 		await updateJobStatus(jobId, {
-			cancellationRequested: true
+			cancellationRequested: true,
+			pauseRequested: false
 		});
 		console.log(`[Queue] Cancellation requested for job ${jobId} (currently processing)`);
 		return true;
 	}
 	
 	return false;
+}
+
+/**
+ * Pause a queued job, or request pause for processing jobs.
+ */
+export async function requestPause(jobId: string): Promise<boolean> {
+	const job = await getJob(jobId);
+	if (!job) return false;
+
+	if (job.status === 'queued') {
+		await updateJobStatus(jobId, {
+			status: 'paused',
+			pauseRequested: true,
+			cancellationRequested: false
+		});
+		processingJobs.delete(jobId);
+		return true;
+	}
+
+	if (job.status === 'processing') {
+		await updateJobStatus(jobId, {
+			pauseRequested: true
+		});
+		return true;
+	}
+
+	return false;
+}
+
+/**
+ * Resume a paused job.
+ */
+export async function requestResume(jobId: string): Promise<boolean> {
+	const job = await getJob(jobId);
+	if (!job) return false;
+	if (job.status !== 'paused') return false;
+
+	await updateJobStatus(jobId, {
+		status: 'queued',
+		progress: 0,
+		error: undefined,
+		nextRetryAt: undefined,
+		pauseRequested: false,
+		cancellationRequested: false
+	});
+	return true;
 }
 
 function resetTrackProgressForRetry(
@@ -606,7 +889,7 @@ export async function requestRetry(jobId: string): Promise<boolean> {
 		return false;
 	}
 
-	if (job.status !== 'failed' && job.status !== 'cancelled') {
+	if (job.status !== 'failed' && job.status !== 'cancelled' && job.status !== 'paused') {
 		return false;
 	}
 
@@ -622,9 +905,11 @@ export async function requestRetry(jobId: string): Promise<boolean> {
 		lastError: undefined,
 		nextRetryAt: undefined,
 		cancellationRequested: false,
+		pauseRequested: false,
 		retryCount: 0,
 		completedTracks: 0,
-		trackProgress: resetTrackProgressForRetry(job.trackProgress)
+		trackProgress: resetTrackProgressForRetry(job.trackProgress),
+		fallbackHistory: []
 	});
 
 	processingJobs.delete(jobId);
@@ -676,6 +961,7 @@ export async function getMetrics(): Promise<{
 	total_jobs: number;
 	queued: number;
 	processing: number;
+	paused: number;
 	completed: number;
 	failed: number;
 	cancelled: number;
@@ -702,6 +988,7 @@ export async function getMetrics(): Promise<{
 		total_jobs: jobs.length,
 		queued: jobs.filter(j => j.status === 'queued').length,
 		processing: jobs.filter(j => j.status === 'processing').length,
+		paused: jobs.filter(j => j.status === 'paused').length,
 		completed: completed.length,
 		failed: failed.length,
 		cancelled: jobs.filter(j => j.status === 'cancelled').length,

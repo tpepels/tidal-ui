@@ -10,9 +10,11 @@ import {
 	cleanupOldJobs,
 	cleanupStuckJobs,
 	categorizeError,
+	getJob,
 	type QueuedJob,
 	type TrackJob,
-	type AlbumJob
+	type AlbumJob,
+	type ErrorCategory
 } from './downloadQueueManager';
 import { API_CONFIG } from '$lib/config';
 import * as rateLimiter from './rateLimiter';
@@ -29,7 +31,11 @@ import {
 
 let isRunning = false;
 let stopRequested = false;
-const MAX_CONCURRENT = Math.max(1, Number(process.env.WORKER_MAX_CONCURRENT || 6));
+const LOCAL_MODE_ENABLED = process.env.LOCAL_MODE !== 'false';
+const MAX_CONCURRENT = Math.max(
+	1,
+	Number(process.env.WORKER_MAX_CONCURRENT || (LOCAL_MODE_ENABLED ? 3 : 6))
+);
 const POLL_INTERVAL_MS = 2000;
 const PROCESSING_TIMEOUT_MS = 300000; // 5 minute max time in 'processing' state
 const activeSemaphore = new Map<string, Promise<void>>();
@@ -49,6 +55,19 @@ const SEGMENT_TIMEOUT_MS = (() => {
 	const parsed = Number(raw);
 	return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SEGMENT_TIMEOUT_MS;
 })();
+const TRACK_RETRY_BASE_DELAY_MS = Math.max(
+	200,
+	Number(process.env.DOWNLOAD_TRACK_RETRY_BASE_DELAY_MS || 1000)
+);
+const TRACK_RETRY_MAX_DELAY_MS = Math.max(
+	TRACK_RETRY_BASE_DELAY_MS,
+	Number(process.env.DOWNLOAD_TRACK_RETRY_MAX_DELAY_MS || 30_000)
+);
+const DOWNLOAD_ENABLE_QUALITY_FALLBACK = process.env.DOWNLOAD_ENABLE_QUALITY_FALLBACK !== 'false';
+const ALBUM_TRACK_RETRY_ATTEMPTS = Math.max(
+	0,
+	Number(process.env.ALBUM_TRACK_RETRY_ATTEMPTS || 2)
+);
 
 function formatMegabytes(bytes: number | undefined): string {
 	if (!Number.isFinite(bytes) || !bytes) return '0 MB';
@@ -74,6 +93,61 @@ function rotateTargets<T>(targets: T[], offset: number): T[] {
 	return [...targets.slice(shift), ...targets.slice(0, shift)];
 }
 
+const QUALITY_FALLBACK_CHAIN: Record<AudioQuality, AudioQuality[]> = {
+	HI_RES_LOSSLESS: ['LOSSLESS', 'HIGH', 'LOW'],
+	LOSSLESS: ['HIGH', 'LOW'],
+	HIGH: ['LOW'],
+	LOW: []
+};
+
+function resolveNextFallbackQuality(
+	current: AudioQuality,
+	history: AudioQuality[] | undefined
+): AudioQuality | null {
+	const tried = new Set<AudioQuality>(history ?? []);
+	const candidates = QUALITY_FALLBACK_CHAIN[current] ?? [];
+	for (const candidate of candidates) {
+		if (!tried.has(candidate)) {
+			return candidate;
+		}
+	}
+	return null;
+}
+
+function shouldAttemptQualityFallback(
+	result: { errorCategory?: ErrorCategory; error?: string; retryable?: boolean }
+): boolean {
+	if (!DOWNLOAD_ENABLE_QUALITY_FALLBACK) return false;
+	if (result.retryable) return false;
+	if (result.errorCategory === 'not_found') return true;
+	const message = (result.error ?? '').toLowerCase();
+	return (
+		message.includes('quality') ||
+		message.includes('manifest') ||
+		message.includes('unsupported') ||
+		message.includes('unavailable')
+	);
+}
+
+async function waitWithJitter(baseMs: number): Promise<void> {
+	const jitter = Math.floor(Math.random() * Math.max(1, Math.floor(baseMs * 0.2)));
+	await new Promise((resolve) => setTimeout(resolve, baseMs + jitter));
+}
+
+async function shouldStopJob(jobId: string): Promise<'cancelled' | 'paused' | null> {
+	const latest = await getJob(jobId);
+	if (!latest) {
+		return 'cancelled';
+	}
+	if (latest.cancellationRequested) {
+		return 'cancelled';
+	}
+	if (latest.pauseRequested) {
+		return 'paused';
+	}
+	return null;
+}
+
 /**
  * Download a single track using the server download adapter
  * This bypasses HTTP entirely and calls the download core directly
@@ -87,7 +161,14 @@ async function downloadTrack(
 	trackNumber?: number,
 	coverUrl?: string,
 	options?: { downloadCover?: boolean }
-): Promise<{ success: boolean; error?: string; filepath?: string; retryable?: boolean }> {
+): Promise<{
+	success: boolean;
+	error?: string;
+	filepath?: string;
+	retryable?: boolean;
+	errorCategory?: ErrorCategory;
+	retryAfterMs?: number;
+}> {
 	try {
 		console.log(
 			`[Worker] Downloading track ${trackId} (${quality}) [segment timeout ${SEGMENT_TIMEOUT_MS}ms]`
@@ -123,7 +204,9 @@ async function downloadTrack(
 			return {
 				success: false,
 				error: errorMsg,
-				retryable: errorCategory.isRetryable
+				retryable: errorCategory.isRetryable,
+				errorCategory: errorCategory.category,
+				retryAfterMs: errorCategory.retryAfterMs
 			};
 		}
 		const downloadDurationMs = Date.now() - downloadStart;
@@ -188,11 +271,14 @@ async function downloadTrack(
 		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
+		const categorized = categorizeError(message);
 		console.error(`[Worker] Track ${trackId} failed: ${message}`);
 		return { 
 			success: false, 
 			error: message,
-			retryable: false
+			retryable: categorized.isRetryable,
+			errorCategory: categorized.category,
+			retryAfterMs: categorized.retryAfterMs
 		};
 	}
 }
@@ -203,61 +289,113 @@ async function downloadTrack(
 async function processTrackJob(job: QueuedJob): Promise<void> {
 	const trackJob = job.job as TrackJob;
 	const startTime = Date.now();
-	
-	await updateJobStatus(job.id, { 
-		status: 'processing', 
+	const maxRetries = Math.max(0, job.maxRetries ?? 3);
+	let currentQuality = trackJob.quality;
+	let retryCount = job.retryCount ?? 0;
+	const fallbackHistory = Array.isArray(job.fallbackHistory) ? [...job.fallbackHistory] : [];
+
+	await updateJobStatus(job.id, {
+		status: 'processing',
 		startedAt: startTime,
-		progress: 0
+		progress: 0,
+		error: undefined,
+		errorCategory: undefined,
+		nextRetryAt: undefined
 	});
 
-	const result = await downloadTrack(
-		trackJob.trackId,
-		trackJob.quality,
-		trackJob.albumTitle,
-		trackJob.artistName,
-		trackJob.trackTitle,
-		trackJob.trackNumber,
-		trackJob.coverUrl
-	);
-
-	if (result.success) {
-		const duration = Date.now() - startTime;
-		await updateJobStatus(job.id, {
-			status: 'completed',
-			progress: 1,
-			completedAt: Date.now(),
-			downloadTimeMs: duration
-		});
-	} else {
-		// Handle retryable errors
-		if (result.retryable && (!job.maxRetries || job.retryCount! < job.maxRetries)) {
-			const retryCount = (job.retryCount || 0) + 1;
-			const backoffMs = (job.job as TrackJob).type === 'track' ? 
-				Math.min(5000 * retryCount, 300000) : // Cap at 5 minutes
-				5000;
-			
-			console.log(`[Worker] Job ${job.id} retryable, scheduling retry in ${backoffMs}ms (attempt ${retryCount}/${job.maxRetries})`);
-			
+	while (true) {
+		const requestedStop = await shouldStopJob(job.id);
+		if (requestedStop === 'cancelled') {
 			await updateJobStatus(job.id, {
-				status: 'queued',
-				progress: 0,
-				error: result.error,
-				errorCategory: 'network', // Will be categorized properly on next attempt
+				status: 'cancelled',
+				completedAt: Date.now(),
+				error: undefined
+			});
+			return;
+		}
+		if (requestedStop === 'paused') {
+			await updateJobStatus(job.id, {
+				status: 'paused',
+				error: undefined
+			});
+			return;
+		}
+
+		const result = await downloadTrack(
+			trackJob.trackId,
+			currentQuality,
+			trackJob.albumTitle,
+			trackJob.artistName,
+			trackJob.trackTitle,
+			trackJob.trackNumber,
+			trackJob.coverUrl
+		);
+
+		if (result.success) {
+			const duration = Date.now() - startTime;
+			await updateJobStatus(job.id, {
+				status: 'completed',
+				progress: 1,
+				completedAt: Date.now(),
+				downloadTimeMs: duration,
+				error: undefined,
+				errorCategory: undefined,
 				retryCount,
-				nextRetryAt: Date.now() + backoffMs,
+				job: { ...trackJob, quality: currentQuality },
+				fallbackHistory
+			});
+			return;
+		}
+
+		const categorized = categorizeError(result.error ?? 'Download failed');
+		const errorCategory = result.errorCategory ?? categorized.category;
+		const retryable = result.retryable ?? categorized.isRetryable;
+		const retryAfterMs = result.retryAfterMs ?? categorized.retryAfterMs;
+
+		if (retryable && retryCount < maxRetries) {
+			retryCount += 1;
+			const backoffMs = Math.min(
+				TRACK_RETRY_BASE_DELAY_MS * Math.pow(2, Math.max(0, retryCount - 1)),
+				TRACK_RETRY_MAX_DELAY_MS
+			);
+			const delayMs = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : backoffMs;
+			await updateJobStatus(job.id, {
+				status: 'processing',
+				error: `Retrying (${retryCount}/${maxRetries}) after error: ${result.error ?? 'unknown'}`,
+				errorCategory,
+				retryCount,
 				lastError: result.error
 			});
-		} else {
-			// Non-retryable or max retries exceeded
-			const errorCategory = result.retryable ? 'unknown' : 'api_error';
-			
-			await updateJobStatus(job.id, {
-				status: 'failed',
-				error: result.error,
-				errorCategory,
-				completedAt: Date.now()
-			});
+			await waitWithJitter(delayMs);
+			continue;
 		}
+
+		const fallbackQuality = resolveNextFallbackQuality(currentQuality, fallbackHistory);
+		if (fallbackQuality && shouldAttemptQualityFallback(result)) {
+			fallbackHistory.push(currentQuality);
+			currentQuality = fallbackQuality;
+			retryCount = 0;
+			await updateJobStatus(job.id, {
+				status: 'processing',
+				error: `Primary quality unavailable. Falling back to ${fallbackQuality}.`,
+				errorCategory,
+				retryCount,
+				job: { ...trackJob, quality: fallbackQuality },
+				fallbackHistory
+			});
+			continue;
+		}
+
+		await updateJobStatus(job.id, {
+			status: 'failed',
+			error: `${result.error ?? 'Download failed'} (action required: retry or adjust quality settings)`,
+			errorCategory,
+			completedAt: Date.now(),
+			retryCount,
+			lastError: result.error,
+			fallbackHistory
+		});
+		return;
 	}
 }
 
@@ -354,6 +492,80 @@ function parseAlbumResponse(data: unknown): { album: Record<string, unknown>; tr
 	return { album, tracks };
 }
 
+async function downloadAlbumTrackWithPolicy(options: {
+	trackId: number;
+	quality: AudioQuality;
+	albumTitle: string;
+	artistName: string;
+	trackTitle: string;
+	trackNumber: number;
+	coverUrl?: string;
+}): Promise<{
+	success: boolean;
+	error?: string;
+	errorCategory?: ErrorCategory;
+	retries: number;
+	finalQuality: AudioQuality;
+}> {
+	let currentQuality = options.quality;
+	let retries = 0;
+	const fallbackHistory: AudioQuality[] = [];
+
+	while (true) {
+		const result = await downloadTrack(
+			options.trackId,
+			currentQuality,
+			options.albumTitle,
+			options.artistName,
+			options.trackTitle,
+			options.trackNumber,
+			options.coverUrl,
+			{ downloadCover: false }
+		);
+
+		if (result.success) {
+			return {
+				success: true,
+				retries,
+				finalQuality: currentQuality
+			};
+		}
+
+		const categorized = categorizeError(result.error ?? 'Download failed');
+		const errorCategory = result.errorCategory ?? categorized.category;
+		const retryable = result.retryable ?? categorized.isRetryable;
+		const retryAfterMs = result.retryAfterMs ?? categorized.retryAfterMs;
+
+		if (retryable && retries < ALBUM_TRACK_RETRY_ATTEMPTS) {
+			retries += 1;
+			const backoffMs = Math.min(
+				TRACK_RETRY_BASE_DELAY_MS * Math.pow(2, Math.max(0, retries - 1)),
+				TRACK_RETRY_MAX_DELAY_MS
+			);
+			const delayMs = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : backoffMs;
+			await waitWithJitter(delayMs);
+			continue;
+		}
+
+		const fallbackQuality = resolveNextFallbackQuality(currentQuality, fallbackHistory);
+		if (fallbackQuality && shouldAttemptQualityFallback(result)) {
+			fallbackHistory.push(currentQuality);
+			currentQuality = fallbackQuality;
+			retries = 0;
+			continue;
+		}
+
+		return {
+			success: false,
+			error:
+				`${result.error ?? 'Track failed'} (action required: retry album or use lower quality)`,
+			errorCategory,
+			retries,
+			finalQuality: currentQuality
+		};
+	}
+}
+
 /**
  * Process an album job
  */
@@ -363,7 +575,9 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 	await updateJobStatus(job.id, { 
 		status: 'processing', 
 		startedAt: Date.now(),
-		progress: 0
+		progress: 0,
+		error: undefined,
+		cancellationRequested: false
 	});
 
 	try {
@@ -393,6 +607,22 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		// Try up to 3 targets with 10s timeout per target (30s max total)
 		const maxAttempts = Math.min(3, rotatedTargets.length);
 		for (let i = 0; i < maxAttempts; i++) {
+			const requestedStop = await shouldStopJob(job.id);
+			if (requestedStop === 'cancelled') {
+				await updateJobStatus(job.id, {
+					status: 'cancelled',
+					completedAt: Date.now(),
+					error: undefined
+				});
+				return;
+			}
+			if (requestedStop === 'paused') {
+				await updateJobStatus(job.id, {
+					status: 'paused',
+					error: undefined
+				});
+				return;
+			}
 			const target = rotatedTargets[i];
 			try {
 				const albumUrl = `${target.baseUrl}/album/?id=${albumJob.albumId}`;
@@ -535,7 +765,9 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		// UI must handle failed albums with clear indication and retry/delete options.
 		// This is intentional to maintain data integrity.
 		
-		const requestedConcurrency = Number(process.env.ALBUM_TRACK_CONCURRENCY || 6);
+		const requestedConcurrency = Number(
+			process.env.ALBUM_TRACK_CONCURRENCY || (LOCAL_MODE_ENABLED ? 2 : 6)
+		);
 		const albumConcurrency = Math.max(
 			1,
 			Math.min(MAX_CONCURRENT, Number.isFinite(requestedConcurrency) ? requestedConcurrency : 6, tracks.length)
@@ -551,8 +783,16 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 
 		let nextIndex = 0;
 		let inFlight = 0;
+		let requestedTerminalState: 'cancelled' | 'paused' | null = null;
 		const processNextTrack = async (): Promise<void> => {
 			while (true) {
+				if (requestedTerminalState) return;
+				const requestedStop = await shouldStopJob(job.id);
+				if (requestedStop) {
+					requestedTerminalState = requestedStop;
+					return;
+				}
+
 				const i = nextIndex++;
 				if (i >= tracks.length) return;
 
@@ -586,18 +826,23 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 					`[Worker] Album ${albumJob.albumId}: in-flight ${inFlight}/${albumConcurrency} (track ${trackId})`
 				);
 
-				let result: { success: boolean; error?: string };
+				let result: {
+					success: boolean;
+					error?: string;
+					errorCategory?: ErrorCategory;
+					retries: number;
+					finalQuality: AudioQuality;
+				};
 				try {
-					result = await downloadTrack(
+					result = await downloadAlbumTrackWithPolicy({
 						trackId,
-						albumJob.quality,
+						quality: albumJob.quality,
 						albumTitle,
 						artistName,
 						trackTitle,
 						trackNumber,
-						coverUrl,
-						{ downloadCover: false }
-					);
+						coverUrl
+					});
 				} finally {
 					inFlight = Math.max(0, inFlight - 1);
 					console.log(
@@ -629,6 +874,24 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		);
 		await Promise.all(workers);
 
+		if (requestedTerminalState) {
+			if (requestedTerminalState === 'cancelled') {
+				await updateJobStatus(job.id, {
+					status: 'cancelled',
+					completedAt: Date.now(),
+					progress: totalTracks > 0 ? completedTracks / totalTracks : 0,
+					completedTracks
+				});
+				return;
+			}
+			await updateJobStatus(job.id, {
+				status: 'paused',
+				progress: totalTracks > 0 ? completedTracks / totalTracks : 0,
+				completedTracks
+			});
+			return;
+		}
+
 		const duration = Date.now() - startTime;
 
 		if (failedTracks > 0) {
@@ -637,8 +900,9 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 			await updateJobStatus(job.id, {
 				status: 'failed',
 				error: failedTracks === totalTracks 
-					? 'All tracks failed'
+					? 'All tracks failed (action required: retry or use a lower quality setting)'
 					: `Album incomplete: ${failedTracks} of ${totalTracks} tracks could not be downloaded`,
+				errorCategory: 'api_error',
 				completedAt: Date.now(),
 				downloadTimeMs: duration,
 				progress: completedTracks / totalTracks
@@ -672,10 +936,12 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		}
 
 		console.error(`[Worker] Album ${albumJob.albumId} failed: ${errorMsg}`);
+		const categorized = categorizeError(errorMsg);
 
 		await updateJobStatus(job.id, {
 			status: 'failed',
-			error: errorMsg,
+			error: `${errorMsg} (action required: retry or adjust quality/settings)`,
+			errorCategory: categorized.category,
 			completedAt: Date.now()
 		});
 	}
@@ -705,7 +971,7 @@ async function processJob(jobId: string, job: QueuedJob): Promise<void> {
 		console.error(`[Worker] Job ${jobId} processing error:`, message);
 		
 		// Mark as failed if not already marked
-		const currentJob = await import('./downloadQueueManager').then(m => m.getJob(jobId));
+		const currentJob = await getJob(jobId);
 		if (currentJob && currentJob.status === 'processing') {
 			await updateJobStatus(jobId, {
 				status: 'failed',
@@ -743,6 +1009,14 @@ async function workerLoop(): Promise<void> {
 							completedAt: Date.now()
 						});
 						console.log(`[Worker] Job ${job.id} cancelled before processing`);
+						continue;
+					}
+					if (job.pauseRequested || job.status === 'paused') {
+						await updateJobStatus(job.id, {
+							status: 'paused',
+							error: undefined
+						});
+						console.log(`[Worker] Job ${job.id} paused before processing`);
 						continue;
 					}
 					

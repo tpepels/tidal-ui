@@ -8,6 +8,7 @@ import { writable, derived } from 'svelte/store';
 export interface ServerQueueStatus {
 	queued: number;
 	processing: number;
+	paused: number;
 	completed: number;
 	failed: number;
 	total: number;
@@ -32,12 +33,14 @@ export interface ServerQueueState {
 	backendWarning?: string;
 	error?: string;
 	warning?: string;
+	localMode?: boolean;
 }
 
 const initialState: ServerQueueState = {
 	queue: {
 		queued: 0,
 		processing: 0,
+		paused: 0,
 		completed: 0,
 		failed: 0,
 		total: 0

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Album } from '$lib/types';
-import { groupDiscography } from './discography';
+import { getDiscographyTraits, groupDiscography } from './discography';
 
 const buildAlbum = (
 	overrides: Partial<Album> & Pick<Album, 'id' | 'title'>
@@ -13,6 +13,7 @@ const buildAlbum = (
 		releaseDate: overrides.releaseDate ?? '2024-01-01',
 		numberOfTracks: overrides.numberOfTracks ?? 10,
 		type: overrides.type ?? 'ALBUM',
+		explicit: overrides.explicit ?? false,
 		audioQuality: overrides.audioQuality ?? 'LOSSLESS',
 		artist: overrides.artist ?? { id: 1, name: 'Artist', type: 'MAIN' },
 		artists: overrides.artists ?? [{ id: 1, name: 'Artist', type: 'MAIN' }],
@@ -55,6 +56,17 @@ describe('groupDiscography', () => {
 		expect(grouped).toHaveLength(2);
 		expect(grouped.find((entry) => entry.representative.id === 21)?.section).toBe('album');
 		expect(grouped.find((entry) => entry.representative.id === 22)?.section).toBe('single');
+	});
+
+	it('classifies EP releases separately', () => {
+		const grouped = groupDiscography(
+			[
+				buildAlbum({ id: 70, title: 'Main Album', type: 'ALBUM' }),
+				buildAlbum({ id: 71, title: 'Side EP', type: 'EP' })
+			],
+			'LOSSLESS'
+		);
+		expect(grouped.find((entry) => entry.representative.id === 71)?.section).toBe('ep');
 	});
 
 	it('does not create duplicate groups for repeated album ids', () => {
@@ -114,5 +126,46 @@ describe('groupDiscography', () => {
 		const grouped = groupDiscography(albums, 'LOSSLESS');
 		expect(grouped).toHaveLength(1);
 		expect(grouped[0]?.representative.id).toBe(51);
+	});
+
+	it('supports best-edition rule overrides', () => {
+		const albums: Album[] = [
+			buildAlbum({
+				id: 80,
+				title: 'Archive Sessions',
+				type: 'ALBUM',
+				audioQuality: 'LOSSLESS',
+				numberOfTracks: 10,
+				releaseDate: '2005-01-01'
+			}),
+			buildAlbum({
+				id: 81,
+				title: 'Archive Sessions Deluxe',
+				type: 'ALBUM',
+				audioQuality: 'LOSSLESS',
+				numberOfTracks: 18,
+				releaseDate: '2024-01-01'
+			})
+		];
+
+		const completenessFirst = groupDiscography(albums, 'LOSSLESS', {
+			bestEditionRule: 'completeness_first'
+		});
+		expect(completenessFirst[0]?.representative.id).toBe(81);
+	});
+
+	it('derives discography traits for filtering', () => {
+		const traits = getDiscographyTraits(
+			buildAlbum({
+				id: 90,
+				title: 'Live at Rotterdam (Remastered)',
+				type: 'EP',
+				explicit: true
+			})
+		);
+		expect(traits.releaseType).toBe('ep');
+		expect(traits.isLive).toBe(true);
+		expect(traits.isRemaster).toBe(true);
+		expect(traits.isExplicit).toBe(true);
 	});
 });

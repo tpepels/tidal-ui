@@ -373,6 +373,23 @@ function shouldShortCircuitOnNotFound(url: URL): boolean {
 	return path.includes('/artist/') || path.includes('/album/') || path.includes('/playlist/');
 }
 
+function isLocalModeRuntime(): boolean {
+	if (typeof window !== 'undefined' && typeof window.location?.hostname === 'string') {
+		const hostname = window.location.hostname;
+		return (
+			hostname === 'localhost' ||
+			hostname === '127.0.0.1' ||
+			/^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
+			/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
+			/^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/.test(hostname)
+		);
+	}
+	if (typeof process !== 'undefined' && process.env) {
+		return process.env.LOCAL_MODE !== 'false';
+	}
+	return false;
+}
+
 /**
  * Detect if a URL is a media download/stream URL that needs longer timeout
  */
@@ -472,6 +489,10 @@ export async function fetchWithCORS(
 	}
 
 	const stickyTarget = shouldStickToSingleTarget(resolvedUrl);
+	const localModeSingleTarget = stickyTarget && isLocalModeRuntime();
+	if (localModeSingleTarget && uniqueTargets.length > 1) {
+		uniqueTargets = [uniqueTargets[0]!];
+	}
 	const totalAttempts = stickyTarget
 		? uniqueTargets.length
 		: Math.max(3, uniqueTargets.length);

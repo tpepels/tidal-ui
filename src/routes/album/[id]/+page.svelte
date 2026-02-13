@@ -3,6 +3,11 @@
 	import { goto } from '$app/navigation';
 	import { onDestroy } from 'svelte';
 	import { losslessAPI } from '$lib/api';
+	import {
+		isAlbumDownloadQueueActive,
+		type AlbumDownloadStatus
+	} from '$lib/controllers/albumDownloadUi';
+	import CoverArt from '$lib/components/CoverArt.svelte';
 	import TrackList from '$lib/components/TrackList.svelte';
 	import ShareButton from '$lib/components/ShareButton.svelte';
 	import type { Album, Track } from '$lib/types';
@@ -31,6 +36,8 @@
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 	import { browseState } from '$lib/stores/browseState';
 	import { artistCacheStore } from '$lib/stores/artistCache';
+	import { fetchAlbumLibraryStatus } from '$lib/utils/mediaLibraryClient';
+	import { getCoverCacheKey, getUnifiedCoverCandidates } from '$lib/utils/coverPipeline';
 
 	import { downloadAlbum } from '$lib/downloads';
 
@@ -41,6 +48,7 @@
 	let isDownloadingAll = $state(false);
 	let downloadedCount = $state(0);
 	let activeRequestToken = 0;
+	let albumLoadAbortController: AbortController | null = null;
 
 	const isAlbumQueue = $derived(
 		tracks.length > 0 &&
@@ -52,7 +60,7 @@
 	const albumDownloadMode = $derived($downloadPreferencesStore.mode);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
 	const downloadStoragePreference = $derived($downloadPreferencesStore.storage);
-	type AlbumQueueStatus = 'idle' | 'submitting' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+	type AlbumQueueStatus = AlbumDownloadStatus;
 	let queueStatus = $state<AlbumQueueStatus>('idle');
 	let queueJobId = $state<string | null>(null);
 	let queueCompletedTracks = $state(0);
@@ -60,12 +68,14 @@
 	let queuePollInterval: ReturnType<typeof setInterval> | null = null;
 	let queuePollToken = 0;
 	let trackedDownloadAlbumId = $state<number | null>(null);
+	let albumInLibrary = $state(false);
+	let albumLibraryTrackCount = $state(0);
 
 	const hasActiveQueueDownload = $derived(
 		queueStatus === 'submitting' || queueStatus === 'queued' || queueStatus === 'processing'
 	);
 	const isQueueDownloadCancellable = $derived(
-		queueStatus === 'queued' || queueStatus === 'processing'
+		isAlbumDownloadQueueActive(queueStatus)
 	);
 
 	const albumId = $derived($page.params.id);
@@ -73,6 +83,8 @@
 	$effect(() => {
 		const parsedAlbumId = Number.parseInt(albumId ?? '', 10);
 		if (!Number.isFinite(parsedAlbumId) || parsedAlbumId <= 0) {
+			albumLoadAbortController?.abort();
+			albumLoadAbortController = null;
 			stopQueuePolling();
 			album = null;
 			tracks = [];
@@ -90,20 +102,29 @@
 			isDownloadingAll = false;
 			downloadedCount = 0;
 			downloadError = null;
+			albumInLibrary = false;
+			albumLibraryTrackCount = 0;
 		}
 		const requestToken = ++activeRequestToken;
-		void loadAlbum(parsedAlbumId, requestToken);
+		albumLoadAbortController?.abort();
+		const controller = new AbortController();
+		albumLoadAbortController = controller;
+		void loadAlbum(parsedAlbumId, requestToken, controller);
 	});
 
 	onDestroy(() => {
+		albumLoadAbortController?.abort();
+		albumLoadAbortController = null;
 		stopQueuePolling();
 	});
 
-	async function loadAlbum(id: number, requestToken: number) {
+	async function loadAlbum(id: number, requestToken: number, controller: AbortController) {
 		try {
 			isLoading = true;
 			error = null;
-			const { album: albumData, tracks: albumTracks } = await losslessAPI.getAlbum(id);
+			const { album: albumData, tracks: albumTracks } = await losslessAPI.getAlbum(id, {
+				signal: controller.signal
+			});
 			if (requestToken !== activeRequestToken) {
 				return;
 			}
@@ -127,14 +148,35 @@
 				}
 				artistCacheStore.upsertAlbumCoverGlobally(albumData.id, albumData.cover);
 			}
+
+			const libraryStatus = await fetchAlbumLibraryStatus([
+				{
+					id: albumData.id,
+					artistName: albumData.artist?.name,
+					albumTitle: albumData.title,
+					expectedTrackCount: albumTracks.length
+				}
+			]);
+			if (requestToken !== activeRequestToken) {
+				return;
+			}
+			const status = libraryStatus[albumData.id];
+			albumInLibrary = status?.exists === true;
+			albumLibraryTrackCount = status?.matchedTracks ?? 0;
 		} catch (err) {
 			if (requestToken === activeRequestToken) {
+				if (err instanceof Error && err.name === 'AbortError') {
+					return;
+				}
 				error = err instanceof Error ? err.message : 'Failed to load album';
 				console.error('Failed to load album:', err);
 			}
 		} finally {
 			if (requestToken === activeRequestToken) {
 				isLoading = false;
+			}
+			if (albumLoadAbortController === controller) {
+				albumLoadAbortController = null;
 			}
 		}
 	}
@@ -227,7 +269,7 @@
 			const payload = (await response.json()) as {
 				success?: boolean;
 				job?: {
-					status?: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+					status?: 'queued' | 'processing' | 'paused' | 'completed' | 'failed' | 'cancelled';
 					trackCount?: number;
 					completedTracks?: number;
 					progress?: number;
@@ -253,6 +295,11 @@
 				case 'processing':
 					queueStatus = 'processing';
 					downloadError = null;
+					break;
+				case 'paused':
+					queueStatus = 'paused';
+					downloadError = null;
+					stopQueuePolling();
 					break;
 				case 'completed':
 					queueStatus = 'completed';
@@ -314,6 +361,33 @@
 		}
 	}
 
+	async function resumeQueueDownload(): Promise<void> {
+		if (!queueJobId) {
+			return;
+		}
+		try {
+			const response = await fetch(`/api/download-queue/${queueJobId}`, {
+				method: 'PATCH',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({ action: 'resume' })
+			});
+			if (!response.ok) {
+				const body = await response.text();
+				throw new Error(body || 'Failed to resume download');
+			}
+			queueStatus = 'queued';
+			downloadError = null;
+			startQueuePolling(queueJobId);
+		} catch (resumeError) {
+			downloadError =
+				resumeError instanceof Error && resumeError.message
+					? resumeError.message
+					: 'Unable to resume this download right now.';
+		}
+	}
+
 	async function handleDownloadAll() {
 		if (!album || tracks.length === 0) {
 			return;
@@ -321,6 +395,13 @@
 
 		if (isQueueDownloadCancellable) {
 			await cancelQueueDownload();
+			return;
+		}
+		if (queueStatus === 'paused') {
+			await resumeQueueDownload();
+			return;
+		}
+		if (albumInLibrary && queueStatus !== 'failed' && queueStatus !== 'cancelled') {
 			return;
 		}
 
@@ -452,10 +533,24 @@
 							preload="metadata"
 						></video>
 					{:else}
-						<img
-							src={losslessAPI.getCoverUrl(album.cover!, '640')}
+						{@const coverCacheKey = getCoverCacheKey({
+							coverId: album.cover,
+							size: '640',
+							proxy: false,
+							overrideKey: `album:${album.id}`
+						})}
+						{@const coverCandidates = getUnifiedCoverCandidates({
+							coverId: album.cover,
+							size: '640',
+							proxy: false,
+							includeLowerSizes: true
+						})}
+						<CoverArt
+							cacheKey={coverCacheKey}
+							candidates={coverCandidates}
 							alt={album.title}
 							class="h-full w-full object-cover"
+							loading="eager"
 						/>
 					{/if}
 				</div>
@@ -541,7 +636,7 @@
 						<button
 							onclick={handleDownloadAll}
 							class="flex items-center gap-2 rounded-full border border-blue-400/40 px-6 py-3 text-sm font-semibold text-blue-300 transition-colors hover:border-blue-400 hover:text-blue-200 disabled:cursor-not-allowed disabled:opacity-60"
-							disabled={queueStatus === 'submitting'}
+							disabled={queueStatus === 'submitting' || (albumInLibrary && queueStatus === 'idle')}
 							aria-label={isQueueDownloadCancellable ? 'Stop album download' : 'Download album'}
 							aria-busy={hasActiveQueueDownload || isDownloadingAll}
 						>
@@ -556,13 +651,19 @@
 								Downloading {downloadedCount}/{tracks.length}
 							{:else}
 								<Download size={18} />
+								{#if albumInLibrary && queueStatus === 'idle'}
+									Already in Library
+								{:else}
 								{queueStatus === 'failed'
 									? 'Retry Download'
+									: queueStatus === 'paused'
+										? 'Resume Download'
 									: queueStatus === 'cancelled'
 										? 'Resume Download'
 										: queueStatus === 'completed'
 											? 'Download Again'
 											: 'Download Album'}
+								{/if}
 							{/if}
 						</button>
 
@@ -584,6 +685,12 @@
 						<p class="mt-2 text-sm text-emerald-300">Album download completed.</p>
 					{:else if queueStatus === 'cancelled'}
 						<p class="mt-2 text-sm text-amber-300">Album download stopped.</p>
+					{:else if queueStatus === 'paused'}
+						<p class="mt-2 text-sm text-amber-300">Album download paused.</p>
+					{:else if albumInLibrary}
+						<p class="mt-2 text-sm text-emerald-300">
+							Already in local library ({albumLibraryTrackCount} track{albumLibraryTrackCount === 1 ? '' : 's'} found).
+						</p>
 					{/if}
 					{#if downloadError}
 						<p class="mt-2 text-sm text-red-400">{downloadError}</p>

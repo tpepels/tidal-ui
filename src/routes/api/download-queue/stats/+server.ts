@@ -26,6 +26,7 @@ export const GET: RequestHandler = async () => {
 		const queueStats = {
 			queued: jobs.filter(j => j.status === 'queued').length,
 			processing: jobs.filter(j => j.status === 'processing').length,
+			paused: jobs.filter(j => j.status === 'paused').length,
 			completed: jobs.filter(j => j.status === 'completed').length,
 			failed: jobs.filter(j => j.status === 'failed').length,
 			total: jobs.length
@@ -34,6 +35,7 @@ export const GET: RequestHandler = async () => {
 		return json({
 			success: true,
 			queue: queueStats,
+			localMode: process.env.LOCAL_MODE !== 'false',
 			queueSource: snapshot.source,
 			warning: snapshot.warning,
 			metrics,

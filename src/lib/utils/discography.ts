@@ -7,7 +7,21 @@ const QUALITY_RANK = new Map<AudioQuality, number>(
 	QUALITY_ORDER_ASC.map((quality, index) => [quality, index])
 );
 
-export type DiscographySection = 'album' | 'single';
+export type DiscographySection = 'album' | 'ep' | 'single';
+export type DiscographyReleaseType = DiscographySection;
+export type DiscographyBestEditionRule =
+	| 'quality_first'
+	| 'balanced'
+	| 'completeness_first'
+	| 'original_release';
+
+export type DiscographyTraits = {
+	releaseType: DiscographyReleaseType;
+	isLive: boolean;
+	isRemaster: boolean;
+	isExplicit: boolean;
+	trackCount: number;
+};
 
 export type DiscographyGroup = {
 	key: string;
@@ -53,6 +67,19 @@ function compareAlbumFallback(a: Album, b: Album): number {
 	return scoreAlbumForSelection(b) - scoreAlbumForSelection(a);
 }
 
+function compareAlbumOldestFirst(a: Album, b: Album): number {
+	const recencyA = albumRecencyScore(a);
+	const recencyB = albumRecencyScore(b);
+	const hasRecencyA = Number.isFinite(recencyA);
+	const hasRecencyB = Number.isFinite(recencyB);
+	if (hasRecencyA && hasRecencyB && recencyA !== recencyB) {
+		return recencyA - recencyB;
+	}
+	if (hasRecencyA && !hasRecencyB) return -1;
+	if (!hasRecencyA && hasRecencyB) return 1;
+	return compareAlbumFallback(a, b);
+}
+
 function deriveAlbumQuality(album: Album): AudioQuality | null {
 	const fromField = normalizeQualityToken(album.audioQuality ?? null);
 	const fromTags = deriveQualityFromTags(album.mediaMetadata?.tags);
@@ -69,6 +96,29 @@ function getQualityRank(quality: AudioQuality | null | undefined): number {
 	return QUALITY_RANK.get(quality) ?? -1;
 }
 
+export function getDiscographyTraits(album: Album): DiscographyTraits {
+	const type = (album.type ?? '').toUpperCase();
+	const title = (album.title ?? '').toLowerCase();
+	const corpus = `${type} ${title}`;
+	const releaseType: DiscographyReleaseType = type.includes('SINGLE')
+		? 'single'
+		: type.includes('EP')
+			? 'ep'
+			: 'album';
+	const isLive = /\blive\b|acoustic live|unplugged|concert|session/.test(corpus);
+	const isRemaster =
+		/\bremaster(ed)?\b|\banniversary\b|\bdeluxe\b|\bexpanded\b/.test(corpus);
+	const trackCount =
+		typeof album.numberOfTracks === 'number' && album.numberOfTracks > 0 ? album.numberOfTracks : 0;
+	return {
+		releaseType,
+		isLive,
+		isRemaster,
+		isExplicit: Boolean(album.explicit),
+		trackCount
+	};
+}
+
 function buildDiscographyKey(album: Album): string {
 	const titleKey = normalizeTitle(album.title);
 	const artistKey = `${getPrimaryArtistId(album)}`;
@@ -81,52 +131,81 @@ function buildDiscographyKey(album: Album): string {
 }
 
 function classifyAlbum(album: Album): DiscographySection {
-	const type = (album.type ?? '').toUpperCase();
-	if (type.includes('SINGLE')) return 'single';
-	return 'album';
+	return getDiscographyTraits(album).releaseType;
 }
 
-function pickRepresentativeVersion(versions: Album[], preferredQuality: AudioQuality): Album {
+function qualityDistanceScore(rank: number, preferredRank: number): number {
+	if (rank === preferredRank) return 0;
+	if (rank > preferredRank) return rank - preferredRank + 0.1;
+	return preferredRank - rank + 10;
+}
+
+function pickRepresentativeVersion(
+	versions: Album[],
+	preferredQuality: AudioQuality,
+	bestEditionRule: DiscographyBestEditionRule
+): Album {
 	const preferredRank = getQualityRank(preferredQuality);
-	const exactPreferred = versions
-		.map((album) => ({
-			album,
-			rank: getQualityRank(deriveAlbumQuality(album))
-		}))
-		.filter((entry) => entry.rank === preferredRank)
-		.sort((a, b) => compareAlbumFallback(a.album, b.album));
-	if (exactPreferred.length > 0) {
-		return exactPreferred[0]!.album;
-	}
-
-	const atOrAbovePreferred = versions
-		.map((album) => ({
-			album,
-			rank: getQualityRank(deriveAlbumQuality(album))
-		}))
-		.filter((entry) => entry.rank >= preferredRank)
-		.sort((a, b) => {
-			const rankDelta = a.rank - b.rank;
-			if (rankDelta !== 0) return rankDelta;
-			return compareAlbumFallback(a.album, b.album);
-		});
-
-	if (atOrAbovePreferred.length > 0) {
-		return atOrAbovePreferred[0]!.album;
-	}
-
-	const bestAvailable = [...versions].sort((a, b) => {
-		const rankDelta = getQualityRank(deriveAlbumQuality(b)) - getQualityRank(deriveAlbumQuality(a));
-		if (rankDelta !== 0) return rankDelta;
-		return compareAlbumFallback(a, b);
+	const enriched = versions.map((album) => {
+		const rank = getQualityRank(deriveAlbumQuality(album));
+		const traits = getDiscographyTraits(album);
+		return { album, rank, traits };
 	});
-	return bestAvailable[0]!;
+
+	const sorted = [...enriched].sort((a, b) => {
+		switch (bestEditionRule) {
+			case 'completeness_first': {
+				const trackDelta = b.traits.trackCount - a.traits.trackCount;
+				if (trackDelta !== 0) return trackDelta;
+				const qualityDelta =
+					qualityDistanceScore(a.rank, preferredRank) - qualityDistanceScore(b.rank, preferredRank);
+				if (qualityDelta !== 0) return qualityDelta;
+				const variantPenaltyA = Number(a.traits.isLive) + Number(a.traits.isRemaster);
+				const variantPenaltyB = Number(b.traits.isLive) + Number(b.traits.isRemaster);
+				if (variantPenaltyA !== variantPenaltyB) return variantPenaltyA - variantPenaltyB;
+				return compareAlbumFallback(a.album, b.album);
+			}
+			case 'original_release': {
+				const variantPenaltyA = Number(a.traits.isLive) + Number(a.traits.isRemaster);
+				const variantPenaltyB = Number(b.traits.isLive) + Number(b.traits.isRemaster);
+				if (variantPenaltyA !== variantPenaltyB) return variantPenaltyA - variantPenaltyB;
+				const dateDelta = compareAlbumOldestFirst(a.album, b.album);
+				if (dateDelta !== 0) return dateDelta;
+				const qualityDelta =
+					qualityDistanceScore(a.rank, preferredRank) - qualityDistanceScore(b.rank, preferredRank);
+				if (qualityDelta !== 0) return qualityDelta;
+				return compareAlbumFallback(a.album, b.album);
+			}
+			case 'balanced': {
+				const qualityDelta =
+					qualityDistanceScore(a.rank, preferredRank) - qualityDistanceScore(b.rank, preferredRank);
+				if (qualityDelta !== 0) return qualityDelta;
+				const variantPenaltyA = Number(a.traits.isLive) + Number(a.traits.isRemaster);
+				const variantPenaltyB = Number(b.traits.isLive) + Number(b.traits.isRemaster);
+				if (variantPenaltyA !== variantPenaltyB) return variantPenaltyA - variantPenaltyB;
+				const trackDelta = b.traits.trackCount - a.traits.trackCount;
+				if (trackDelta !== 0) return trackDelta;
+				return compareAlbumFallback(a.album, b.album);
+			}
+			case 'quality_first':
+			default: {
+				const qualityDelta =
+					qualityDistanceScore(a.rank, preferredRank) - qualityDistanceScore(b.rank, preferredRank);
+				if (qualityDelta !== 0) return qualityDelta;
+				return compareAlbumFallback(a.album, b.album);
+			}
+		}
+	});
+
+	return sorted[0]!.album;
 }
 
 export function groupDiscography(
 	albums: Album[],
-	preferredQuality: AudioQuality
+	preferredQuality: AudioQuality,
+	options?: { bestEditionRule?: DiscographyBestEditionRule }
 ): DiscographyGroup[] {
+	const bestEditionRule = options?.bestEditionRule ?? 'balanced';
 	const groups = new Map<string, Map<number, Album>>();
 
 	for (const album of albums) {
@@ -148,7 +227,7 @@ export function groupDiscography(
 		const versions = Array.from(albumMap.values()).sort(compareAlbumFallback);
 		if (versions.length === 0) continue;
 
-		const representative = pickRepresentativeVersion(versions, preferredQuality);
+		const representative = pickRepresentativeVersion(versions, preferredQuality, bestEditionRule);
 
 		const availableQualities = Array.from(
 			new Set(

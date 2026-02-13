@@ -1,5 +1,9 @@
 <script lang="ts">
 	import { serverQueue, queueStats, workerStatus } from '$lib/stores/serverQueue.svelte';
+	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
+	import { userPreferencesStore } from '$lib/stores/userPreferences';
+	import { regionStore } from '$lib/stores/region';
+	import { logger, LogLevel, type LogEntry } from '$lib/core/logger';
 	import {
 		Trash2,
 		RefreshCw,
@@ -7,12 +11,13 @@
 		ChevronUp,
 		RotateCcw,
 		Square,
-		ClipboardCopy
+		ClipboardCopy,
+		Bug
 	} from 'lucide-svelte';
 
 	interface QueueJob {
 		id: string;
-		status: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+		status: 'queued' | 'processing' | 'paused' | 'completed' | 'failed' | 'cancelled';
 		job: {
 			type: 'track' | 'album';
 			trackId?: number;
@@ -47,6 +52,10 @@
 		queue: true,
 		failed: true
 	});
+	let localModeSectionInitDone = $state(false);
+	let recentLogEntries = $state<LogEntry[]>([]);
+
+	const DEBUG_LOG_LIMIT = 250;
 
 	// Use server queue data
 	let stats = $derived.by(() => {
@@ -54,6 +63,7 @@
 		return {
 			running: $workerStatus.activeDownloads,
 			queued: serverStats.queued,
+			paused: serverStats.paused,
 			completed: serverStats.completed,
 			failed: serverStats.failed,
 			total: serverStats.total
@@ -67,12 +77,14 @@
 	};
 	let processingJobs = $derived(queueJobs.filter(j => j.status === 'processing'));
 	let queuedJobs = $derived(queueJobs.filter(j => j.status === 'queued'));
+	let pausedJobs = $derived(queueJobs.filter(j => j.status === 'paused'));
 	let completedJobs = $derived(queueJobs.filter(j => j.status === 'completed'));
 	let failedJobs = $derived(queueJobs.filter(j => j.status === 'failed'));
 	let cancelledJobs = $derived(queueJobs.filter(j => j.status === 'cancelled'));
 	let stoppableJobs = $derived(queueJobs.filter(j => j.status === 'processing' || j.status === 'queued'));
+	let pausableJobs = $derived(queueJobs.filter(j => j.status === 'queued' || j.status === 'processing'));
 	let resumableJobs = $derived(
-		queueJobs.filter(j => j.status === 'failed' || j.status === 'cancelled')
+		queueJobs.filter(j => j.status === 'failed' || j.status === 'cancelled' || j.status === 'paused')
 	);
 	let pendingItems = $derived(stats.running + stats.queued);
 	let badgeCount = $derived(pendingItems > 0 ? pendingItems : resumableJobs.length);
@@ -134,17 +146,22 @@
 		return 'Polling paused';
 	});
 	let canStopAny = $derived(stoppableJobs.length > 0);
+	let canPauseAny = $derived(pausableJobs.length > 0);
 	let canResumeAny = $derived(resumableJobs.length > 0);
 	let hasFailuresToReport = $derived(failedJobs.length > 0 || cancelledJobs.length > 0);
 	const actionKeys = {
 		refresh: 'refresh',
+		bulkPause: 'bulk-pause',
 		bulkStop: 'bulk-stop',
 		bulkResume: 'bulk-resume',
 		bulkReport: 'bulk-report',
+		createBundle: 'create-bundle',
 		clearHistory: 'clear-history'
 	} as const;
 
 	const cancelActionKey = (jobId: string): string => `job:${jobId}:cancel`;
+	const pauseActionKey = (jobId: string): string => `job:${jobId}:pause`;
+	const resumeActionKey = (jobId: string): string => `job:${jobId}:resume`;
 	const retryActionKey = (jobId: string): string => `job:${jobId}:retry`;
 	const deleteActionKey = (jobId: string): string => `job:${jobId}:delete`;
 	const reportActionKey = (jobId: string): string => `job:${jobId}:report`;
@@ -184,6 +201,8 @@
 	function isJobActionPending(jobId: string): boolean {
 		return (
 			isActionPending(cancelActionKey(jobId)) ||
+			isActionPending(pauseActionKey(jobId)) ||
+			isActionPending(resumeActionKey(jobId)) ||
 			isActionPending(retryActionKey(jobId)) ||
 			isActionPending(deleteActionKey(jobId)) ||
 			isActionPending(reportActionKey(jobId))
@@ -204,7 +223,7 @@
 
 	async function runJobAction(
 		jobId: string,
-		action: 'cancel' | 'retry'
+		action: 'cancel' | 'pause' | 'resume' | 'retry'
 	): Promise<{ success: boolean; error?: string }> {
 		try {
 			const response = await fetch(`/api/download-queue/${jobId}`, {
@@ -268,6 +287,62 @@
 		return lines.join('\n');
 	}
 
+	function logLevelLabel(level: LogLevel): string {
+		switch (level) {
+			case LogLevel.ERROR:
+				return 'error';
+			case LogLevel.WARN:
+				return 'warn';
+			case LogLevel.INFO:
+				return 'info';
+			case LogLevel.DEBUG:
+				return 'debug';
+			case LogLevel.TRACE:
+				return 'trace';
+			default:
+				return 'unknown';
+		}
+	}
+
+	function buildDebugBundle(): string {
+		const locationPath =
+			typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : '/';
+		const bundle = {
+			generatedAt: new Date().toISOString(),
+			route: locationPath,
+			queue: {
+				source: $serverQueue.queueSource ?? 'unknown',
+				localMode: Boolean($serverQueue.localMode),
+				stats: stats,
+				jobs: queueJobs
+			},
+			worker: $workerStatus,
+			settings: {
+				downloadPreferences: $downloadPreferencesStore,
+				userPreferences: $userPreferencesStore,
+				region: $regionStore
+			},
+			diagnostics: {
+				polling: {
+					lastUpdated: $serverQueue.lastUpdated,
+					lastAttemptAt: $serverQueue.lastAttemptAt,
+					nextPollAt: $serverQueue.nextPollAt,
+					pollIntervalMs: $serverQueue.pollIntervalMs,
+					pollingError: $serverQueue.pollingError,
+					backendError: $serverQueue.backendError,
+					backendWarning: $serverQueue.backendWarning
+				}
+			},
+			recentLogs: recentLogEntries.slice(-120).map((entry) => ({
+				timestamp: entry.timestamp,
+				level: logLevelLabel(entry.level),
+				message: entry.message,
+				context: entry.context
+			}))
+		};
+		return JSON.stringify(bundle, null, 2);
+	}
+
 	async function copyTextToClipboard(text: string): Promise<void> {
 		if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
 			await navigator.clipboard.writeText(text);
@@ -325,6 +400,57 @@
 		return () => clearTimeout(timeout);
 	});
 
+	$effect(() => {
+		if (localModeSectionInitDone) return;
+		if (!$serverQueue.localMode) return;
+		sectionExpanded = {
+			active: false,
+			queue: false,
+			failed: true
+		};
+		localModeSectionInitDone = true;
+	});
+
+	$effect(() => {
+		const unsubscribe = logger.addListener((entry) => {
+			recentLogEntries = [...recentLogEntries.slice(-(DEBUG_LOG_LIMIT - 1)), entry];
+		});
+		const appendWindowError = (message: string, context: Record<string, unknown>) => {
+			recentLogEntries = [
+				...recentLogEntries.slice(-(DEBUG_LOG_LIMIT - 1)),
+				{
+					timestamp: new Date().toISOString(),
+					level: LogLevel.ERROR,
+					message,
+					context
+				}
+			];
+		};
+		const onWindowError = (event: ErrorEvent) => {
+			appendWindowError(event.message || 'Window error', {
+				filename: event.filename,
+				lineno: event.lineno,
+				colno: event.colno
+			});
+		};
+		const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+			appendWindowError('Unhandled promise rejection', {
+				reason: String(event.reason ?? 'unknown')
+			});
+		};
+		if (typeof window !== 'undefined') {
+			window.addEventListener('error', onWindowError);
+			window.addEventListener('unhandledrejection', onUnhandledRejection);
+		}
+		return () => {
+			unsubscribe();
+			if (typeof window !== 'undefined') {
+				window.removeEventListener('error', onWindowError);
+				window.removeEventListener('unhandledrejection', onUnhandledRejection);
+			}
+		};
+	});
+
 	// Fetch queue jobs details
 	const fetchQueueJobs = async () => {
 		try {
@@ -336,9 +462,10 @@
 				const statusPriority: Record<QueueJob['status'], number> = {
 					processing: 0,
 					queued: 1,
-					failed: 2,
-					cancelled: 3,
-					completed: 4
+					paused: 2,
+					failed: 3,
+					cancelled: 4,
+					completed: 5
 				};
 				queueJobs = data.jobs
 					.slice()
@@ -374,6 +501,32 @@
 				return;
 			}
 			setActionNotice('error', result.error ?? `Failed to stop ${summarizeJob(job)}`);
+		});
+	};
+
+	const handlePauseJob = async (job: QueueJob) => {
+		const key = pauseActionKey(job.id);
+		await runWithPendingAction(key, async () => {
+			const result = await runJobAction(job.id, 'pause');
+			if (result.success) {
+				setActionNotice('success', `Paused ${summarizeJob(job)}`);
+				await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
+				return;
+			}
+			setActionNotice('error', result.error ?? `Failed to pause ${summarizeJob(job)}`);
+		});
+	};
+
+	const handleResumePausedJob = async (job: QueueJob) => {
+		const key = resumeActionKey(job.id);
+		await runWithPendingAction(key, async () => {
+			const result = await runJobAction(job.id, 'resume');
+			if (result.success) {
+				setActionNotice('success', `Resumed ${summarizeJob(job)}`);
+				await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
+				return;
+			}
+			setActionNotice('error', result.error ?? `Failed to resume ${summarizeJob(job)}`);
 		});
 	};
 
@@ -422,20 +575,46 @@
 		});
 	};
 
+	const handlePauseAllActive = async () => {
+		if (pausableJobs.length === 0) {
+			setActionNotice('info', 'No active or queued downloads to pause.');
+			return;
+		}
+		await runWithPendingAction(actionKeys.bulkPause, async () => {
+			const results = await Promise.all(pausableJobs.map((job) => runJobAction(job.id, 'pause')));
+			const succeeded = results.filter((result) => result.success).length;
+			const failed = results.length - succeeded;
+			setActionNotice(
+				failed > 0 ? 'error' : 'success',
+				failed > 0
+					? `Paused ${succeeded} job(s), ${failed} failed.`
+					: `Paused ${succeeded} active/queued job(s).`
+			);
+			await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
+		});
+	};
+
 	const handleResumeAll = async () => {
 		if (resumableJobs.length === 0) {
-			setActionNotice('info', 'No failed or cancelled downloads to resume.');
+			setActionNotice('info', 'No paused, failed, or cancelled downloads to resume.');
 			return;
 		}
 		await runWithPendingAction(actionKeys.bulkResume, async () => {
-			const results = await Promise.all(resumableJobs.map((job) => runJobAction(job.id, 'retry')));
+			const results = await Promise.all(
+				resumableJobs.map((job) => {
+					if (job.status === 'paused') {
+						return runJobAction(job.id, 'resume');
+					}
+					return runJobAction(job.id, 'retry');
+				})
+			);
 			const succeeded = results.filter((result) => result.success).length;
 			const failed = results.length - succeeded;
 			setActionNotice(
 				failed > 0 ? 'error' : 'success',
 				failed > 0
 					? `Resumed ${succeeded} job(s), ${failed} failed.`
-					: `Resumed ${succeeded} failed/cancelled job(s).`
+					: `Resumed ${succeeded} paused/failed/cancelled job(s).`
 			);
 			await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
 		});
@@ -462,6 +641,21 @@
 				setActionNotice(
 					'error',
 					error instanceof Error ? error.message : 'Failed to copy failure report'
+				);
+			}
+		});
+	};
+
+	const handleCreateDebugBundle = async () => {
+		const bundle = buildDebugBundle();
+		await runWithPendingAction(actionKeys.createBundle, async () => {
+			try {
+				await copyTextToClipboard(bundle);
+				setActionNotice('success', 'Debug bundle copied to clipboard.');
+			} catch (error) {
+				setActionNotice(
+					'error',
+					error instanceof Error ? error.message : 'Failed to create debug bundle'
 				);
 			}
 		});
@@ -504,7 +698,7 @@
 		type="button"
 		class="download-manager-toggle"
 		class:has-activity={hasActivity}
-		title={isOpen ? 'Hide download manager' : 'Show download manager'}
+		title={isOpen ? 'Hide download center' : 'Show download center'}
 	>
 		{#if hasActivity}
 			<div class="download-manager-badge">
@@ -518,7 +712,7 @@
 		<div class="download-manager-panel" class:compact-mode={isCompactViewport}>
 			<div class="download-manager-header">
 				<div>
-					<h3 class="download-manager-title">Download Manager</h3>
+					<h3 class="download-manager-title">Download Center</h3>
 					<p class="download-manager-subtitle-text">
 						Live server queue status for tracks and albums
 					</p>
@@ -582,7 +776,7 @@
 				</div>
 			{/if}
 
-			{#if $serverQueue.queueSource === 'memory'}
+			{#if $serverQueue.queueSource === 'memory' && !$serverQueue.localMode}
 				<div class="download-manager-warning">
 					Redis unavailable; using in-memory queue. UI may be stale if the worker runs in another process.
 				</div>
@@ -603,6 +797,10 @@
 					<span class="top-strip-label">Queued</span>
 					<span class="top-strip-value">{stats.queued}</span>
 				</div>
+				<div class="top-strip-item top-strip-item--paused">
+					<span class="top-strip-label">Paused</span>
+					<span class="top-strip-value">{pausedJobs.length}</span>
+				</div>
 				<div class="top-strip-item top-strip-item--failed">
 					<span class="top-strip-label">Needs Attention</span>
 					<span class="top-strip-value">{resumableJobs.length}</span>
@@ -618,6 +816,16 @@
 			</div>
 
 			<div class="download-manager-quick-actions">
+				<button
+					onclick={handlePauseAllActive}
+					class="control-btn control-btn--secondary"
+					type="button"
+					title="Pause all active and queued jobs"
+					disabled={!canPauseAny || isActionPending(actionKeys.bulkPause)}
+				>
+					<Square size={14} />
+					<span>{isActionPending(actionKeys.bulkPause) ? 'Pausing…' : 'Pause Active'}</span>
+				</button>
 				<button
 					onclick={handleStopAllActive}
 					class="control-btn control-btn--warning"
@@ -636,7 +844,7 @@
 					disabled={!canResumeAny || isActionPending(actionKeys.bulkResume)}
 				>
 					<RotateCcw size={14} />
-					<span>{isActionPending(actionKeys.bulkResume) ? 'Resuming…' : 'Resume Failed'}</span>
+					<span>{isActionPending(actionKeys.bulkResume) ? 'Resuming…' : 'Resume Paused/Failed'}</span>
 				</button>
 				<button
 					onclick={() => handleCopyFailureReport()}
@@ -647,6 +855,16 @@
 				>
 					<ClipboardCopy size={14} />
 					<span>{isActionPending(actionKeys.bulkReport) ? 'Copying…' : 'Report Failures'}</span>
+				</button>
+				<button
+					onclick={handleCreateDebugBundle}
+					class="control-btn control-btn--secondary"
+					type="button"
+					title="Copy debug bundle with queue snapshot, route, settings, and recent logs"
+					disabled={isActionPending(actionKeys.createBundle)}
+				>
+					<Bug size={14} />
+					<span>{isActionPending(actionKeys.createBundle) ? 'Bundling…' : 'Create Debug Bundle'}</span>
 				</button>
 			</div>
 
@@ -686,6 +904,16 @@
 										</div>
 										<div class="item-action-row">
 											<span class="badge badge-processing">PROCESSING</span>
+											<button
+												type="button"
+												class="item-action-btn"
+												title="Pause this download"
+												onclick={() => handlePauseJob(job)}
+												disabled={jobPending}
+											>
+												<Square size={12} />
+												<span>{jobPending ? 'Pausing…' : 'Pause'}</span>
+											</button>
 											<button
 												type="button"
 												class="item-action-btn item-action-btn--warning"
@@ -846,6 +1074,27 @@
 															</div>
 														{/if}
 														<div class="detail-actions">
+															<span
+																role="button"
+																tabindex={jobPending ? -1 : 0}
+																class="item-action-btn"
+																onclick={(event) => {
+																	event.stopPropagation();
+																	void handlePauseJob(job);
+																}}
+																onkeydown={(event) => {
+																	if (jobPending) return;
+																	if (event.key === 'Enter' || event.key === ' ') {
+																		event.preventDefault();
+																		event.stopPropagation();
+																		void handlePauseJob(job);
+																	}
+																}}
+																aria-disabled={jobPending}
+															>
+																<Square size={12} />
+																<span>{jobPending ? 'Pausing…' : 'Pause'}</span>
+															</span>
 															<span
 																role="button"
 																tabindex={jobPending ? -1 : 0}
@@ -1017,7 +1266,11 @@
 													</div>
 													<div class="failed-item-artist">{job.job.artistName || 'Unknown'}</div>
 													<div class="failed-item-error-text">
-														{job.status === 'cancelled' ? 'Cancelled by user' : job.error || 'Unknown error'}
+														{job.status === 'paused'
+															? 'Paused by user'
+															: job.status === 'cancelled'
+																? 'Cancelled by user'
+																: job.error || 'Unknown error'}
 													</div>
 												</div>
 												<span class="expand-icon">
@@ -1054,6 +1307,10 @@
 															class="item-action-btn item-action-btn--primary"
 															onclick={(event) => {
 																event.stopPropagation();
+																if (job.status === 'paused') {
+																	void handleResumePausedJob(job);
+																	return;
+																}
 																void handleRetryJob(job);
 															}}
 															onkeydown={(event) => {
@@ -1061,13 +1318,17 @@
 																if (event.key === 'Enter' || event.key === ' ') {
 																	event.preventDefault();
 																	event.stopPropagation();
+																	if (job.status === 'paused') {
+																		void handleResumePausedJob(job);
+																		return;
+																	}
 																	void handleRetryJob(job);
 																}
 															}}
 															aria-disabled={jobPending}
 														>
 															<RotateCcw size={12} />
-															<span>{jobPending ? 'Resuming…' : 'Resume'}</span>
+															<span>{jobPending ? 'Resuming…' : job.status === 'paused' ? 'Resume' : 'Retry'}</span>
 														</span>
 														<span
 															role="button"
@@ -1490,6 +1751,10 @@
 
 	.top-strip-item--queued .top-strip-value {
 		color: #f59e0b;
+	}
+
+	.top-strip-item--paused .top-strip-value {
+		color: #facc15;
 	}
 
 	.top-strip-item--failed .top-strip-value {
