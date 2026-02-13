@@ -39,6 +39,19 @@ describe('breadcrumbStore', () => {
 		expect(trail.find((crumb) => crumb.href === '/album/7')?.label).toBe('Album Name');
 	});
 
+	it('does not overwrite an existing label with fallback text on path revisit', () => {
+		breadcrumbStore.visit('/artist/42');
+		breadcrumbStore.setCurrentLabel('Artist Name', '/artist/42');
+
+		breadcrumbStore.visit('/album/7');
+		breadcrumbStore.setCurrentLabel('Album Name', '/album/7');
+
+		breadcrumbStore.visit('/artist/42');
+
+		const trail = get(breadcrumbStore).breadcrumbs;
+		expect(trail.find((crumb) => crumb.href === '/artist/42')?.label).toBe('Artist Name');
+	});
+
 	it('normalizes trailing slashes and keeps back navigation within the trail', () => {
 		breadcrumbStore.visit('/artist/42/');
 		breadcrumbStore.visit('/album/7/');

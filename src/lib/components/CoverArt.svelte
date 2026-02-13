@@ -1,11 +1,13 @@
 <script lang="ts">
 	import {
+		getCoverFailureBackoffMs,
 		getResolvedCoverUrl,
 		isCoverInFailureBackoff,
 		markCoverFailed,
 		markCoverResolved,
 		prefetchCoverCandidates
 	} from '$lib/utils/coverPipeline';
+	import { getNextCoverCandidate, normalizeCoverCandidates } from '$lib/components/coverArtState';
 
 	interface Props {
 		cacheKey: string;
@@ -32,55 +34,80 @@
 	let activeSrc = $state<string | null>(null);
 	let activeIndex = $state(0);
 	let failed = $state(false);
+	let retryTick = $state(0);
+	let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function clearRetryTimer(): void {
+		if (retryTimer) {
+			clearTimeout(retryTimer);
+			retryTimer = null;
+		}
+	}
 
 	$effect(() => {
-		const normalized = (Array.isArray(candidates) ? candidates : []).filter(
-			(value): value is string => typeof value === 'string' && value.length > 0
-		);
+		const runToken = retryTick;
+		clearRetryTimer();
+		const normalized = normalizeCoverCandidates(candidates);
 		if (!cacheKey || normalized.length === 0) {
 			activeSrc = null;
 			activeIndex = 0;
 			failed = true;
-			return;
+			return () => {
+				clearRetryTimer();
+			};
 		}
 
-		const resolved = getResolvedCoverUrl(cacheKey);
-		if (resolved) {
-			const resolvedIndex = normalized.indexOf(resolved);
-			activeIndex = resolvedIndex >= 0 ? resolvedIndex : 0;
-			activeSrc = resolved;
-			failed = false;
-			void prefetchCoverCandidates([{ cacheKey, candidates: normalized }]);
-			return;
-		}
+			const resolved = getResolvedCoverUrl(cacheKey);
+			if (resolved) {
+				const resolvedIndex = normalized.indexOf(resolved);
+				activeIndex = resolvedIndex >= 0 ? resolvedIndex : -1;
+				activeSrc = resolved;
+				failed = false;
+				void prefetchCoverCandidates([{ cacheKey, candidates: normalized }]);
+				return;
+			}
 
 		if (isCoverInFailureBackoff(cacheKey)) {
 			activeSrc = null;
 			activeIndex = 0;
 			failed = true;
-			return;
+			const backoffMs = getCoverFailureBackoffMs(cacheKey);
+			if (backoffMs > 0) {
+				retryTimer = setTimeout(() => {
+					if (retryTick !== runToken) {
+						return;
+					}
+					retryTick += 1;
+				}, backoffMs);
+			}
+			return () => {
+				clearRetryTimer();
+			};
 		}
 
 		activeIndex = 0;
 		activeSrc = normalized[0] ?? null;
 		failed = !activeSrc;
 		void prefetchCoverCandidates([{ cacheKey, candidates: normalized }]);
+
+		return () => {
+			clearRetryTimer();
+		};
 	});
 
 	function handleLoad(): void {
 		if (!activeSrc || !cacheKey) return;
 		markCoverResolved(cacheKey, activeSrc);
 		failed = false;
+		clearRetryTimer();
 	}
 
 	function handleError(): void {
-		const normalized = (Array.isArray(candidates) ? candidates : []).filter(
-			(value): value is string => typeof value === 'string' && value.length > 0
-		);
-		const nextIndex = activeIndex + 1;
-		if (nextIndex < normalized.length) {
-			activeIndex = nextIndex;
-			activeSrc = normalized[nextIndex] ?? null;
+		const normalized = normalizeCoverCandidates(candidates);
+		const nextCandidate = getNextCoverCandidate(normalized, activeIndex);
+		if (!nextCandidate.exhausted && nextCandidate.nextSrc) {
+			activeIndex = nextCandidate.nextIndex;
+			activeSrc = nextCandidate.nextSrc;
 			return;
 		}
 
@@ -89,6 +116,7 @@
 		}
 		failed = true;
 		activeSrc = null;
+		retryTick += 1;
 	}
 </script>
 

@@ -123,6 +123,7 @@ export const breadcrumbStore = {
 
 	visit(href: string, label?: string): void {
 		const normalizedHref = normalizeHref(href);
+		const hasExplicitLabel = typeof label === 'string' && label.trim().length > 0;
 		store.update((state) => {
 			if (normalizedHref === HOME_BREADCRUMB.href) {
 				return { breadcrumbs: [HOME_BREADCRUMB] };
@@ -132,7 +133,10 @@ export const breadcrumbStore = {
 			const resolvedLabel = normalizeLabel(label, normalizedHref);
 			const last = breadcrumbs[breadcrumbs.length - 1];
 			if (last?.href === normalizedHref) {
-				breadcrumbs[breadcrumbs.length - 1] = { href: normalizedHref, label: resolvedLabel };
+				const nextLabel = hasExplicitLabel
+					? resolvedLabel
+					: normalizeLabel(last.label, normalizedHref);
+				breadcrumbs[breadcrumbs.length - 1] = { href: normalizedHref, label: nextLabel };
 				return { breadcrumbs: breadcrumbs };
 			}
 
@@ -150,7 +154,11 @@ export const breadcrumbStore = {
 				if (normalizedHref === HOME_BREADCRUMB.href) {
 					trimmed[0] = { ...HOME_BREADCRUMB };
 				} else {
-					trimmed[existingIndex] = { href: normalizedHref, label: resolvedLabel };
+					const existingLabel = trimmed[existingIndex]?.label;
+					const nextLabel = hasExplicitLabel
+						? resolvedLabel
+						: normalizeLabel(existingLabel, normalizedHref);
+					trimmed[existingIndex] = { href: normalizedHref, label: nextLabel };
 				}
 				return { breadcrumbs: trimmed };
 			}

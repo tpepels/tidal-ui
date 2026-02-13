@@ -2288,14 +2288,14 @@ class LosslessAPI {
 			if (!directUrl) {
 				continue;
 			}
+			if (!candidates.includes(directUrl)) {
+				candidates.push(directUrl);
+			}
 			if (options?.proxy && API_CONFIG.proxyUrl) {
 				const proxyUrl = `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(directUrl)}`;
 				if (!candidates.includes(proxyUrl)) {
 					candidates.push(proxyUrl);
 				}
-			}
-			if (!candidates.includes(directUrl)) {
-				candidates.push(directUrl);
 			}
 		}
 		return candidates;
@@ -2315,7 +2315,21 @@ class LosslessAPI {
 	 * Get artist picture URL
 	 */
 	getArtistPictureUrl(pictureId: string, size: '750' = '750'): string {
-		return `https://resources.tidal.com/images/${pictureId.replace(/-/g, '/')}/${size}x${size}.jpg`;
+		const trimmed = pictureId.trim();
+		if (!trimmed) {
+			return '';
+		}
+
+		const normalizedPictureId = this.normalizeArtworkId(trimmed);
+		if (normalizedPictureId) {
+			return `https://resources.tidal.com/images/${normalizedPictureId.replace(/-/g, '/')}/${size}x${size}.jpg`;
+		}
+
+		if (/^https?:\/\//i.test(trimmed)) {
+			return trimmed;
+		}
+
+		return '';
 	}
 }
 

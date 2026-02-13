@@ -49,6 +49,7 @@
 	let downloadedCount = $state(0);
 	let activeRequestToken = 0;
 	let albumLoadAbortController: AbortController | null = null;
+	let trackedDownloadAlbumId: number | null = null;
 
 	const isAlbumQueue = $derived(
 		tracks.length > 0 &&
@@ -67,7 +68,6 @@
 	let queueTotalTracks = $state(0);
 	let queuePollInterval: ReturnType<typeof setInterval> | null = null;
 	let queuePollToken = 0;
-	let trackedDownloadAlbumId = $state<number | null>(null);
 	let albumInLibrary = $state(false);
 	let albumLibraryTrackCount = $state(0);
 

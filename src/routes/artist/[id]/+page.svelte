@@ -71,6 +71,8 @@
 	const filteredOutCount = $derived(
 		Math.max(0, groupedDiscographyEntries.length - discographyEntries.length)
 	);
+	const hasGroupedDiscography = $derived(groupedDiscographyEntries.length > 0);
+	const filtersHideAllDiscography = $derived(hasGroupedDiscography && discographyEntries.length === 0);
 	const discography = $derived(discographyEntries.map((entry) => entry.representative));
 	const discographyAlbums = $derived(
 		discographyEntries.filter((entry) => entry.section === 'album')
@@ -223,9 +225,26 @@
 	function toggleDiscographyFilter(
 		key: 'album' | 'ep' | 'single' | 'live' | 'remaster' | 'explicit' | 'clean'
 	): void {
-		discographyFilterState = {
+		const nextState = {
 			...discographyFilterState,
 			[key]: !discographyFilterState[key]
+		};
+		// Keep at least one content-rating option active to avoid a confusing "everything hidden" state.
+		if ((key === 'explicit' || key === 'clean') && !nextState.explicit && !nextState.clean) {
+			nextState[key === 'explicit' ? 'clean' : 'explicit'] = true;
+		}
+		discographyFilterState = nextState;
+	}
+
+	function resetDiscographyFilters(): void {
+		discographyFilterState = {
+			album: true,
+			ep: true,
+			single: true,
+			live: true,
+			remaster: true,
+			explicit: true,
+			clean: true
 		};
 	}
 
@@ -1391,13 +1410,13 @@
 							</button>
 						{/each}
 					</div>
-						<div class="flex flex-wrap gap-2">
-							{#each [
-								{ key: 'live', label: 'Live' },
-								{ key: 'remaster', label: 'Remaster/Deluxe' },
-								{ key: 'explicit', label: 'Explicit' },
-								{ key: 'clean', label: 'Clean' }
-							] as filter (filter.key)}
+							<div class="flex flex-wrap gap-2">
+								{#each [
+									{ key: 'live', label: 'Live' },
+									{ key: 'remaster', label: 'Remaster/Deluxe' },
+									{ key: 'explicit', label: 'Explicit' },
+									{ key: 'clean', label: 'Non-explicit' }
+								] as filter (filter.key)}
 							<button
 								type="button"
 								onclick={() =>
@@ -1414,9 +1433,12 @@
 							>
 								{filter.label}
 							</button>
-						{/each}
+							{/each}
+						</div>
+						<p class="text-xs text-gray-500">
+							Content filters use release metadata. “Non-explicit” is what some catalogs label as “clean”.
+						</p>
 					</div>
-				</div>
 				{#if discographyInfo?.mayBeIncomplete}
 					<div class="mt-3 rounded-lg border border-amber-700/40 bg-amber-900/20 p-3 text-sm text-amber-200">
 						<p class="font-semibold">Discography may be incomplete from source data.</p>
@@ -1669,6 +1691,24 @@
 								</div>
 							{/if}
 						{/each}
+					</div>
+				{:else if filtersHideAllDiscography}
+					<div
+						class="mt-6 space-y-3 rounded-lg border border-amber-700/40 bg-amber-900/20 p-6 text-sm text-amber-200"
+					>
+						<p>Current discography filters hide all releases.</p>
+						<p class="text-xs text-amber-100/90">
+							Tip: keep both “Explicit” and “Non-explicit” enabled if you want all editions.
+						</p>
+						<div>
+							<button
+								type="button"
+								onclick={resetDiscographyFilters}
+								class="rounded-full border border-amber-500/60 bg-amber-700/20 px-3 py-1 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-700/30"
+							>
+								Reset discography filters
+							</button>
+						</div>
 					</div>
 				{:else}
 					<div

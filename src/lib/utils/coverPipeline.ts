@@ -14,7 +14,11 @@ const RESOLVED_TTL_MS = Math.max(
 	60_000,
 	Number(import.meta.env.VITE_COVER_RESOLVED_TTL_MS || 24 * 60 * 60 * 1000)
 );
-const FAILURE_TTL_MS = Math.max(
+const BASE_FAILURE_BACKOFF_MS = Math.max(
+	500,
+	Number(import.meta.env.VITE_COVER_FAILURE_BASE_BACKOFF_MS || 1_000)
+);
+const MAX_FAILURE_BACKOFF_MS = Math.max(
 	5_000,
 	Number(import.meta.env.VITE_COVER_FAILURE_TTL_MS || 15 * 60 * 1000)
 );
@@ -84,6 +88,14 @@ export function isCoverInFailureBackoff(cacheKey: string): boolean {
 	return Boolean(entry && entry.expiresAt > now());
 }
 
+export function getCoverFailureBackoffMs(cacheKey: string): number {
+	pruneCoverCaches();
+	const entry = failedCoverCache.get(cacheKey);
+	if (!entry) return 0;
+	const remaining = entry.expiresAt - now();
+	return remaining > 0 ? remaining : 0;
+}
+
 export function markCoverResolved(cacheKey: string, url: string): void {
 	if (!cacheKey || !url) return;
 	resolvedCoverCache.set(cacheKey, {
@@ -96,9 +108,14 @@ export function markCoverResolved(cacheKey: string, url: string): void {
 export function markCoverFailed(cacheKey: string): void {
 	if (!cacheKey) return;
 	const previous = failedCoverCache.get(cacheKey);
+	const failures = (previous?.failures ?? 0) + 1;
+	const backoffMs = Math.min(
+		MAX_FAILURE_BACKOFF_MS,
+		BASE_FAILURE_BACKOFF_MS * 2 ** Math.max(0, failures - 1)
+	);
 	failedCoverCache.set(cacheKey, {
-		failures: (previous?.failures ?? 0) + 1,
-		expiresAt: now() + FAILURE_TTL_MS
+		failures,
+		expiresAt: now() + backoffMs
 	});
 }
 
