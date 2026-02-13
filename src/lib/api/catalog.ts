@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { normalizeSearchResponse, prepareAlbum, prepareArtist, prepareTrack } from './normalizers';
 import { scoreAlbumForSelection } from '$lib/utils/albumSelection';
+import { sortTopTracks } from '$lib/utils/topTracks';
 import {
 	AlbumWithTracksSchema,
 	ApiV2ContainerSchema,
@@ -931,9 +932,7 @@ export async function getArtist(
 		return timeB - timeA;
 	});
 
-	const sortedTracks = tracks
-		.sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))
-		.slice(0, 100);
+	const sortedTracks = sortTopTracks(tracks, 100);
 
 	const countBySource = (source: AlbumSource) =>
 		Array.from(albumSources.values()).reduce((sum, sourceSet) => sum + (sourceSet.has(source) ? 1 : 0), 0);

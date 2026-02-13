@@ -145,6 +145,119 @@ describe('catalog.getArtist enrichment', () => {
 		expect(seenQueries).toEqual(['Nina Simone']);
 	});
 
+	it('returns top tracks in deterministic order when popularity ties', async () => {
+		const sourcePayload = {
+			version: '2.4',
+			albums: [],
+			tracks: [
+				{
+					id: 401,
+					title: 'Tie Older',
+					duration: 180,
+					trackNumber: 2,
+					volumeNumber: 1,
+					version: null,
+					popularity: 50,
+					url: 'http://www.tidal.com/track/401',
+					streamReady: true,
+					allowStreaming: true,
+					premiumStreamingOnly: false,
+					explicit: false,
+					editable: false,
+					audioQuality: 'LOW',
+					audioModes: [],
+					artist: { id: 1684, name: 'Nina Simone', type: 'MAIN' },
+					artists: [{ id: 1684, name: 'Nina Simone', type: 'MAIN' }],
+					album: {
+						id: 4001,
+						title: 'Tie Album Older',
+						cover: 'cover-4001',
+						videoCover: null,
+						releaseDate: '2015-01-01'
+					}
+				},
+				{
+					id: 402,
+					title: 'Tie Newer #2',
+					duration: 180,
+					trackNumber: 2,
+					volumeNumber: 1,
+					version: null,
+					popularity: 50,
+					url: 'http://www.tidal.com/track/402',
+					streamReady: true,
+					allowStreaming: true,
+					premiumStreamingOnly: false,
+					explicit: false,
+					editable: false,
+					audioQuality: 'LOW',
+					audioModes: [],
+					artist: { id: 1684, name: 'Nina Simone', type: 'MAIN' },
+					artists: [{ id: 1684, name: 'Nina Simone', type: 'MAIN' }],
+					album: {
+						id: 4002,
+						title: 'Tie Album Newer',
+						cover: 'cover-4002',
+						videoCover: null,
+						releaseDate: '2024-01-01'
+					}
+				},
+				{
+					id: 403,
+					title: 'Tie Newer #1',
+					duration: 180,
+					trackNumber: 1,
+					volumeNumber: 1,
+					version: null,
+					popularity: 50,
+					url: 'http://www.tidal.com/track/403',
+					streamReady: true,
+					allowStreaming: true,
+					premiumStreamingOnly: false,
+					explicit: false,
+					editable: false,
+					audioQuality: 'LOW',
+					audioModes: [],
+					artist: { id: 1684, name: 'Nina Simone', type: 'MAIN' },
+					artists: [{ id: 1684, name: 'Nina Simone', type: 'MAIN' }],
+					album: {
+						id: 4002,
+						title: 'Tie Album Newer',
+						cover: 'cover-4002',
+						videoCover: null,
+						releaseDate: '2024-01-01'
+					}
+				}
+			]
+		};
+		const searchPayload = {
+			version: '2.4',
+			data: {
+				albums: {
+					limit: 25,
+					offset: 0,
+					totalNumberOfItems: 0,
+					items: []
+				}
+			}
+		};
+
+		const fetchMock = vi.fn(async (url: string) => {
+			if (url.includes('/artist/?f=1684')) return jsonResponse(sourcePayload);
+			if (url.includes('/search/?al=')) return jsonResponse(searchPayload);
+			throw new Error(`Unexpected URL: ${url}`);
+		});
+
+		const context: CatalogApiContext = {
+			baseUrl: 'https://example.test',
+			fetch: fetchMock,
+			ensureNotRateLimited: vi.fn()
+		};
+
+		const result = await getArtist(context, 1684);
+		expect(result.tracks.slice(0, 3).map((track) => track.id)).toEqual([403, 402, 401]);
+	});
+
 	it('does not include singles from enrichment search results', async () => {
 		const sourcePayload = buildSourcePayload();
 		const searchPayload = {

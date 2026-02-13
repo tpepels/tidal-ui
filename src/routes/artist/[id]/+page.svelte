@@ -23,6 +23,7 @@
 		prefetchCoverCandidates
 	} from '$lib/utils/coverPipeline';
 	import { scoreAlbumForSelection } from '$lib/utils/albumSelection';
+	import { sortTopTracks } from '$lib/utils/topTracks';
 	import { fetchAlbumLibraryStatus } from '$lib/utils/mediaLibraryClient';
 	import { ArrowLeft, User, Download, LoaderCircle, RotateCcw, X } from 'lucide-svelte';
 
@@ -303,7 +304,7 @@
 		return {
 			...data,
 			albums: Array.from(dedupedAlbums.values()),
-			tracks: Array.from(dedupedTracks.values())
+			tracks: sortTopTracks(Array.from(dedupedTracks.values()), 100)
 		};
 	}
 
