@@ -17,115 +17,211 @@ export type CatalogApiContext = {
 	ensureNotRateLimited: (response: Response) => void;
 };
 
+type CatalogHttpError = Error & { status?: number; cached?: boolean };
+
+const ALBUM_NOT_FOUND_CACHE_TTL_MS = 5 * 60 * 1000;
+const ALBUM_NOT_FOUND_CACHE_MAX_ENTRIES = 500;
+
+const pendingAlbumRequests = new Map<string, Promise<{ album: Album; tracks: Track[] }>>();
+const albumNotFoundCache = new Map<string, number>();
+
+function buildAlbumRequestCacheKey(context: CatalogApiContext, id: number): string {
+	return `${context.baseUrl}|${id}`;
+}
+
+function pruneAlbumNotFoundCache(now: number = Date.now()): void {
+	for (const [cacheKey, expiresAt] of albumNotFoundCache.entries()) {
+		if (expiresAt <= now) {
+			albumNotFoundCache.delete(cacheKey);
+		}
+	}
+
+	if (albumNotFoundCache.size <= ALBUM_NOT_FOUND_CACHE_MAX_ENTRIES) {
+		return;
+	}
+
+	const overflow = albumNotFoundCache.size - ALBUM_NOT_FOUND_CACHE_MAX_ENTRIES;
+	let removed = 0;
+	for (const cacheKey of albumNotFoundCache.keys()) {
+		albumNotFoundCache.delete(cacheKey);
+		removed += 1;
+		if (removed >= overflow) {
+			break;
+		}
+	}
+}
+
+function cacheAlbumNotFound(cacheKey: string, now: number = Date.now()): void {
+	albumNotFoundCache.set(cacheKey, now + ALBUM_NOT_FOUND_CACHE_TTL_MS);
+	pruneAlbumNotFoundCache(now);
+}
+
+function createHttpStatusError(
+	message: string,
+	status: number,
+	options?: { cached?: boolean }
+): CatalogHttpError {
+	const error = new Error(message) as CatalogHttpError;
+	error.status = status;
+	if (options?.cached) {
+		error.cached = true;
+	}
+	return error;
+}
+
+function getCachedAlbumNotFoundError(
+	cacheKey: string,
+	now: number = Date.now()
+): CatalogHttpError | null {
+	const expiresAt = albumNotFoundCache.get(cacheKey);
+	if (!expiresAt) {
+		return null;
+	}
+	if (expiresAt <= now) {
+		albumNotFoundCache.delete(cacheKey);
+		return null;
+	}
+	return createHttpStatusError('Album not found', 404, { cached: true });
+}
+
 export async function getAlbum(
 	context: CatalogApiContext,
 	id: number
 ): Promise<{ album: Album; tracks: Track[] }> {
-	const response = await context.fetch(`${context.baseUrl}/album/?id=${id}`);
-	context.ensureNotRateLimited(response);
-	if (!response.ok) throw new Error('Failed to get album');
-	const data = await response.json();
+	const cacheKey = buildAlbumRequestCacheKey(context, id);
+	const cachedNotFound = getCachedAlbumNotFoundError(cacheKey);
+	if (cachedNotFound) {
+		throw cachedNotFound;
+	}
 
-	safeValidateApiResponse({ data }, ApiV2ContainerSchema, {
-		endpoint: 'catalog.album.container',
-		allowUnvalidated: true
-	});
+	const pendingRequest = pendingAlbumRequests.get(cacheKey);
+	if (pendingRequest) {
+		return pendingRequest;
+	}
 
-	if (data && typeof data === 'object' && 'data' in data && 'items' in data.data) {
-		const items = data.data.items;
-		if (Array.isArray(items) && items.length > 0) {
-			const firstItem = items[0];
-			const firstTrack = firstItem.item || firstItem;
+	const lookupPromise = (async () => {
+		const response = await context.fetch(`${context.baseUrl}/album/?id=${id}`);
+		context.ensureNotRateLimited(response);
+		if (!response.ok) {
+			if (response.status === 404) {
+				cacheAlbumNotFound(cacheKey);
+			}
+			throw createHttpStatusError('Failed to get album', response.status);
+		}
+		const data = await response.json();
 
-			if (firstTrack && firstTrack.album) {
-				let albumEntry = prepareAlbum(firstTrack.album);
+		safeValidateApiResponse({ data }, ApiV2ContainerSchema, {
+			endpoint: 'catalog.album.container',
+			allowUnvalidated: true
+		});
 
-				if (!albumEntry.artist && firstTrack.artist) {
-					albumEntry = { ...albumEntry, artist: firstTrack.artist };
+		if (data && typeof data === 'object' && 'data' in data && 'items' in data.data) {
+			const items = data.data.items;
+			if (Array.isArray(items) && items.length > 0) {
+				const firstItem = items[0];
+				const firstTrack = firstItem.item || firstItem;
+
+				if (firstTrack && firstTrack.album) {
+					let albumEntry = prepareAlbum(firstTrack.album);
+
+					if (!albumEntry.artist && firstTrack.artist) {
+						albumEntry = { ...albumEntry, artist: firstTrack.artist };
+					}
+
+					const tracks = items
+						.map((i: unknown) => {
+							if (!i || typeof i !== 'object') return null;
+							const itemObj = i as { item?: unknown };
+							const t = (itemObj.item || itemObj) as Track;
+
+							if (!t) return null;
+							return prepareTrack({ ...t, album: albumEntry });
+						})
+						.filter((t): t is Track => t !== null);
+
+					const result = { album: albumEntry, tracks };
+
+					const finalValidation = safeValidateApiResponse(result, AlbumWithTracksSchema, {
+						endpoint: 'catalog.album'
+					});
+					if (!finalValidation.success) {
+						throw new Error('Album response validation failed');
+					}
+
+					return result;
 				}
-
-				const tracks = items
-					.map((i: unknown) => {
-						if (!i || typeof i !== 'object') return null;
-						const itemObj = i as { item?: unknown };
-						const t = (itemObj.item || itemObj) as Track;
-
-						if (!t) return null;
-						return prepareTrack({ ...t, album: albumEntry });
-					})
-					.filter((t): t is Track => t !== null);
-
-				const result = { album: albumEntry, tracks };
-
-				const finalValidation = safeValidateApiResponse(result, AlbumWithTracksSchema, {
-					endpoint: 'catalog.album'
-				});
-				if (!finalValidation.success) {
-					throw new Error('Album response validation failed');
-				}
-
-				return result;
 			}
 		}
-	}
 
-	const entries = Array.isArray(data) ? data : [data];
+		const entries = Array.isArray(data) ? data : [data];
 
-	let albumEntry: Album | undefined;
-	let trackCollection: { items?: unknown[] } | undefined;
+		let albumEntry: Album | undefined;
+		let trackCollection: { items?: unknown[] } | undefined;
 
-	for (const entry of entries) {
-		if (!entry || typeof entry !== 'object') continue;
+		for (const entry of entries) {
+			if (!entry || typeof entry !== 'object') continue;
 
-		if (!albumEntry && 'title' in entry && 'id' in entry && 'cover' in entry) {
-			albumEntry = prepareAlbum(entry as Album);
-			continue;
-		}
-
-		if (
-			!trackCollection &&
-			'items' in entry &&
-			Array.isArray((entry as { items?: unknown[] }).items)
-		) {
-			trackCollection = entry as { items?: unknown[] };
-		}
-	}
-
-	if (!albumEntry) {
-		throw new Error('Album not found');
-	}
-
-	const tracks: Track[] = [];
-	if (trackCollection?.items) {
-		for (const rawItem of trackCollection.items) {
-			if (!rawItem || typeof rawItem !== 'object') continue;
-
-			let trackCandidate: Track | undefined;
-			if ('item' in rawItem && rawItem.item && typeof rawItem.item === 'object') {
-				trackCandidate = rawItem.item as Track;
-			} else {
-				trackCandidate = rawItem as Track;
+			if (!albumEntry && 'title' in entry && 'id' in entry && 'cover' in entry) {
+				albumEntry = prepareAlbum(entry as Album);
+				continue;
 			}
 
-			if (!trackCandidate) continue;
-
-			const candidateWithAlbum = trackCandidate.album
-				? trackCandidate
-				: ({ ...trackCandidate, album: albumEntry } as Track);
-			tracks.push(prepareTrack(candidateWithAlbum));
+			if (
+				!trackCollection &&
+				'items' in entry &&
+				Array.isArray((entry as { items?: unknown[] }).items)
+			) {
+				trackCollection = entry as { items?: unknown[] };
+			}
 		}
+
+		if (!albumEntry) {
+			cacheAlbumNotFound(cacheKey);
+			throw createHttpStatusError('Album not found', 404);
+		}
+
+		const tracks: Track[] = [];
+		if (trackCollection?.items) {
+			for (const rawItem of trackCollection.items) {
+				if (!rawItem || typeof rawItem !== 'object') continue;
+
+				let trackCandidate: Track | undefined;
+				if ('item' in rawItem && rawItem.item && typeof rawItem.item === 'object') {
+					trackCandidate = rawItem.item as Track;
+				} else {
+					trackCandidate = rawItem as Track;
+				}
+
+				if (!trackCandidate) continue;
+
+				const candidateWithAlbum = trackCandidate.album
+					? trackCandidate
+					: ({ ...trackCandidate, album: albumEntry } as Track);
+				tracks.push(prepareTrack(candidateWithAlbum));
+			}
+		}
+
+		const result = { album: albumEntry, tracks };
+
+		const finalValidation = safeValidateApiResponse(result, AlbumWithTracksSchema, {
+			endpoint: 'catalog.album'
+		});
+		if (!finalValidation.success) {
+			throw new Error('Album response validation failed');
+		}
+
+		return result;
+	})();
+
+	pendingAlbumRequests.set(cacheKey, lookupPromise);
+
+	try {
+		const result = await lookupPromise;
+		albumNotFoundCache.delete(cacheKey);
+		return result;
+	} finally {
+		pendingAlbumRequests.delete(cacheKey);
 	}
-
-	const result = { album: albumEntry, tracks };
-
-	const finalValidation = safeValidateApiResponse(result, AlbumWithTracksSchema, {
-		endpoint: 'catalog.album'
-	});
-	if (!finalValidation.success) {
-		throw new Error('Album response validation failed');
-	}
-
-	return result;
 }
 
 export async function getPlaylist(

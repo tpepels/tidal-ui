@@ -368,6 +368,11 @@ function shouldStickToSingleTarget(url: URL): boolean {
 	return path.includes('/artist/') || path.includes('/album/') || path.includes('/playlist/');
 }
 
+function shouldShortCircuitOnNotFound(url: URL): boolean {
+	const path = url.pathname.toLowerCase();
+	return path.includes('/artist/') || path.includes('/album/') || path.includes('/playlist/');
+}
+
 /**
  * Detect if a URL is a media download/stream URL that needs longer timeout
  */
@@ -542,6 +547,9 @@ export async function fetchWithCORS(
 
 			lastResponse = response;
 			attemptDetails.push({ target: target.name, status: response.status });
+			if (response.status === 404 && shouldShortCircuitOnNotFound(resolvedUrl)) {
+				return response;
+			}
 		} catch (error) {
 			lastError = error;
 			markTargetUnhealthy(target.name);

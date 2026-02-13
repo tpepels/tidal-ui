@@ -123,4 +123,16 @@ describe('config target selection', () => {
 		const headers = new Headers(options.headers);
 		expect(headers.get('X-Client')).toBe('BiniLossless/v0.0-test');
 	});
+
+	it('short-circuits sticky endpoint retries on 404 responses', async () => {
+		const { config, retryFetch } = await setupConfig();
+		vi.spyOn(Math, 'random').mockReturnValue(0);
+		const notFound = new Response('not found', { status: 404 });
+		retryFetch.mockResolvedValue(notFound);
+
+		const result = await config.fetchWithCORS('https://api.example.com/v1/album/?id=123');
+
+		expect(result.status).toBe(404);
+		expect(retryFetch).toHaveBeenCalledTimes(1);
+	});
 });
