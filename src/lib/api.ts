@@ -4,6 +4,7 @@ import { API_CONFIG, fetchWithCORS, selectApiTargetForRegion } from '$lib/config
 import type { RegionOption } from '$lib/stores/region';
 import { parseTidalUrl } from './utils/urlParser';
 import { formatArtistsForMetadata } from './utils/formatters';
+import { buildTrackDiscMetadataEntries } from './utils/trackDiscMetadata';
 import { z } from 'zod';
 import { prepareAlbum, prepareArtist, prepareTrack } from './api/normalizers';
 import { getAlbum, getArtist, getCover, getLyrics, getPlaylist } from './api/catalog';
@@ -1291,26 +1292,14 @@ class LosslessAPI {
 		if (mainArtist) entries.push(['artist', mainArtist]);
 		if (albumArtist) entries.push(['album_artist', albumArtist]);
 		if (album?.title) entries.push(['album', album.title]);
-
-		const trackNumber = Number(track.trackNumber);
-		const totalTracks = Number(album?.numberOfTracks);
-		if (Number.isFinite(trackNumber) && trackNumber > 0) {
-			const value =
-				Number.isFinite(totalTracks) && totalTracks > 0
-					? `${trackNumber}/${totalTracks}`
-					: `${trackNumber}`;
-			entries.push(['track', value]);
-		}
-
-		const discNumber = Number(track.volumeNumber);
-		const totalDiscs = Number(album?.numberOfVolumes);
-		if (Number.isFinite(discNumber) && discNumber > 0) {
-			const value =
-				Number.isFinite(totalDiscs) && totalDiscs > 0
-					? `${discNumber}/${totalDiscs}`
-					: `${discNumber}`;
-			entries.push(['disc', value]);
-		}
+		entries.push(
+			...buildTrackDiscMetadataEntries({
+				trackNumber: track.trackNumber,
+				totalTracks: album?.numberOfTracks,
+				discNumber: track.volumeNumber,
+				totalDiscs: album?.numberOfVolumes
+			})
+		);
 
 		const releaseDate = album?.releaseDate ?? track.streamStartDate;
 		if (releaseDate) {

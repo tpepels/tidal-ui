@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { formatArtistsForMetadata } from '../utils/formatters';
+import { buildTrackDiscMetadataEntries } from '../utils/trackDiscMetadata';
 
 export interface ServerMetadataOptions {
 	downloadCoverSeperately?: boolean;
@@ -195,22 +196,13 @@ function buildMetadataObject(lookup: TrackLookup, overrides?: MetadataOverrides)
 	if (overrideAlbumTitle || album?.title) metadata.album = overrideAlbumTitle ?? album.title;
 
 	// Track and disc numbers
-	const trackNumber = Number(track.trackNumber);
-	const totalTracks = Number(album?.numberOfTracks);
-	if (Number.isFinite(trackNumber) && trackNumber > 0) {
-		metadata.track =
-			Number.isFinite(totalTracks) && totalTracks > 0
-				? `${trackNumber}/${totalTracks}`
-				: `${trackNumber}`;
-	}
-
-	const discNumber = Number(track.volumeNumber);
-	const totalDiscs = Number(album?.numberOfVolumes);
-	if (Number.isFinite(discNumber) && discNumber > 0) {
-		metadata.disc =
-			Number.isFinite(totalDiscs) && totalDiscs > 0
-				? `${discNumber}/${totalDiscs}`
-				: `${discNumber}`;
+	for (const [key, value] of buildTrackDiscMetadataEntries({
+		trackNumber: track.trackNumber,
+		totalTracks: album?.numberOfTracks,
+		discNumber: track.volumeNumber,
+		totalDiscs: album?.numberOfVolumes
+	})) {
+		metadata[key] = value;
 	}
 
 	// Release date
