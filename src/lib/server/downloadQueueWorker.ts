@@ -34,7 +34,7 @@ let stopRequested = false;
 const LOCAL_MODE_ENABLED = process.env.LOCAL_MODE !== 'false';
 const MAX_CONCURRENT = Math.max(
 	1,
-	Number(process.env.WORKER_MAX_CONCURRENT || (LOCAL_MODE_ENABLED ? 3 : 6))
+	Number(process.env.WORKER_MAX_CONCURRENT || 6)
 );
 const POLL_INTERVAL_MS = 2000;
 const PROCESSING_TIMEOUT_MS = 300000; // 5 minute max time in 'processing' state
