@@ -81,7 +81,7 @@ describe('Download Track API (chunked + cover)', () => {
 	it('uploads chunks and downloads cover end-to-end', async () => {
 		const { POST: startUpload } = await import('./+server');
 		const { POST: uploadChunk } = await import('./[uploadId]/chunk/+server');
-		const { sanitizePath, pendingUploads, chunkUploads } = await import('./_shared');
+		const { sanitizePath, pendingUploads, chunkUploads, buildServerFilename } = await import('./_shared');
 
 		const payload = Buffer.from('abcdefghijklmnopqrstuvwxyz');
 		const checksum = checksumForBuffer(payload);
@@ -146,8 +146,7 @@ describe('Download Track API (chunked + cover)', () => {
 
 		const artistDir = sanitizePath('Test Artist');
 		const albumDir = sanitizePath('Test Album');
-		const title = sanitizePath('Test Track');
-		const filename = `${sanitizePath('Test Artist')} - ${title}.flac`;
+		const filename = buildServerFilename('Test Artist', 'Test Track', 101, 'flac');
 		const finalPath = path.join(downloadDir, artistDir, albumDir, filename);
 		const coverPath = path.join(downloadDir, artistDir, albumDir, 'cover.jpg');
 
@@ -163,7 +162,7 @@ describe('Download Track API (chunked + cover)', () => {
 	it('skips overwrite when conflictResolution is skip', async () => {
 		const { POST: startUpload } = await import('./+server');
 		const { POST: uploadChunk } = await import('./[uploadId]/chunk/+server');
-		const { sanitizePath, pendingUploads, chunkUploads } = await import('./_shared');
+		const { sanitizePath, pendingUploads, chunkUploads, buildServerFilename } = await import('./_shared');
 
 		const existingPayload = Buffer.from('existing-data');
 		const payload = Buffer.from('new-data-will-be-skipped');
@@ -176,8 +175,7 @@ describe('Download Track API (chunked + cover)', () => {
 
 		const artistDir = sanitizePath(artistName);
 		const albumDir = sanitizePath(albumTitle);
-		const title = sanitizePath(trackTitle);
-		const filename = `${sanitizePath(artistName)} - ${title}.flac`;
+		const filename = buildServerFilename(artistName, trackTitle, 202, 'flac');
 		const targetDir = path.join(downloadDir, artistDir, albumDir);
 		const finalPath = path.join(targetDir, filename);
 

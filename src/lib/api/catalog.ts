@@ -26,6 +26,23 @@ const pendingAlbumRequests = new Map<string, Promise<{ album: Album; tracks: Tra
 const pendingArtistRequests = new Map<string, Promise<ArtistDetails>>();
 const albumNotFoundCache = new Map<string, number>();
 
+function isLocalBrowserRuntime(): boolean {
+	if (typeof process !== 'undefined' && process.env?.LOCAL_MODE === 'false') {
+		return false;
+	}
+	if (typeof window === 'undefined' || typeof window.location?.hostname !== 'string') {
+		return false;
+	}
+	const hostname = window.location.hostname;
+	return (
+		hostname === 'localhost' ||
+		hostname === '127.0.0.1' ||
+		/^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
+		/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
+		/^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/.test(hostname)
+	);
+}
+
 function buildAlbumRequestCacheKey(context: CatalogApiContext, id: number): string {
 	return `${context.baseUrl}|${id}`;
 }
@@ -53,6 +70,9 @@ function pruneAlbumNotFoundCache(now: number = Date.now()): void {
 }
 
 function cacheAlbumNotFound(cacheKey: string, now: number = Date.now()): void {
+	if (isLocalBrowserRuntime()) {
+		return;
+	}
 	albumNotFoundCache.set(cacheKey, now + ALBUM_NOT_FOUND_CACHE_TTL_MS);
 	pruneAlbumNotFoundCache(now);
 }
@@ -74,6 +94,9 @@ function getCachedAlbumNotFoundError(
 	cacheKey: string,
 	now: number = Date.now()
 ): CatalogHttpError | null {
+	if (isLocalBrowserRuntime()) {
+		return null;
+	}
 	const expiresAt = albumNotFoundCache.get(cacheKey);
 	if (!expiresAt) {
 		return null;

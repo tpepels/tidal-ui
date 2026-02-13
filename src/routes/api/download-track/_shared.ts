@@ -707,10 +707,12 @@ export const getServerExtension = (
 /**
  * Build a filename for server-side downloads that includes track numbers for ordering.
  * Album title is already part of the directory structure, so it's not duplicated in the filename.
- * Format: "01 Artist - Title.ext" or "01-03 Artist - Title.ext" for multi-volume
+ * Plex-style format:
+ * - Single disc: "01 - Track Title.ext"
+ * - Multi disc: "302 - Track Title.ext" (disc 3, track 2)
  */
 export const buildServerFilename = (
-	artistName: string | undefined,
+	_artistName: string | undefined,
 	trackTitle: string | undefined,
 	trackId: number,
 	ext: string,
@@ -721,7 +723,6 @@ export const buildServerFilename = (
 		return `track-${trackId}.${ext}`;
 	}
 
-	const artist = sanitizePath(artistName || 'Unknown');
 	const title = sanitizePath(trackTitle);
 
 	// Use override if provided, otherwise extract from metadata
@@ -729,16 +730,21 @@ export const buildServerFilename = (
 	const volumeNumber = Number(trackMetadata?.track?.volumeNumber);
 	const numberOfVolumes = Number(trackMetadata?.track?.album?.numberOfVolumes);
 
-	let trackPart = '';
+	let trackPart = '00';
 	if (Number.isFinite(trackNumber) && trackNumber > 0) {
-		if (numberOfVolumes > 1 && Number.isFinite(volumeNumber) && volumeNumber > 0) {
-			trackPart = `${volumeNumber}-${trackNumber} `;
+		const trackPartPadded = `${Math.trunc(trackNumber)}`.padStart(2, '0');
+		const isMultiDisc =
+			(numberOfVolumes > 1 && Number.isFinite(volumeNumber) && volumeNumber > 0) ||
+			(Number.isFinite(volumeNumber) && volumeNumber > 1);
+		if (isMultiDisc) {
+			const disc = Number.isFinite(volumeNumber) && volumeNumber > 0 ? Math.trunc(volumeNumber) : 1;
+			trackPart = `${disc}${trackPartPadded}`;
 		} else {
-			trackPart = `${trackNumber} `;
+			trackPart = trackPartPadded;
 		}
 	}
 
-	return `${trackPart}${artist} - ${title}.${ext}`;
+	return `${trackPart} - ${title}.${ext}`;
 };
 
 // Handle file conflicts based on resolution strategy

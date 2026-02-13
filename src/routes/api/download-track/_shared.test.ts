@@ -31,7 +31,7 @@ describe('download-track/_shared invariants', () => {
 		await fs.rm(tempDir, { recursive: true, force: true });
 	});
 
-	it('buildServerFilename uses sanitized artist/title and multi-volume numbering', () => {
+	it('buildServerFilename uses Plex-style numbering and sanitized track titles', () => {
 		const filename = buildServerFilename(
 			'AC/DC',
 			'Song: 1',
@@ -46,7 +46,7 @@ describe('download-track/_shared invariants', () => {
 			}
 		);
 
-		expect(filename).toBe('2-3 AC_DC - Song_ 1.flac');
+		expect(filename).toBe('203 - Song_ 1.flac');
 	});
 
 	it('buildServerFilename falls back to track id when title is missing', () => {

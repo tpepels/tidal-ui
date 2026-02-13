@@ -74,6 +74,7 @@ const setupConfig = async (overrides?: Parameters<typeof buildConfig>[0]) => {
 
 afterEach(() => {
 	vi.restoreAllMocks();
+	vi.unstubAllEnvs();
 	clearBrowserWindow();
 });
 
@@ -124,11 +125,42 @@ describe('config target selection', () => {
 		expect(headers.get('X-Client')).toBe('BiniLossless/v0.0-test');
 	});
 
-	it('short-circuits sticky endpoint retries on 404 responses', async () => {
+	it('tries fallback targets for sticky endpoints in local mode after a 404', async () => {
+		vi.stubEnv('LOCAL_MODE', 'true');
 		const { config, retryFetch } = await setupConfig();
 		vi.spyOn(Math, 'random').mockReturnValue(0);
-		const notFound = new Response('not found', { status: 404 });
-		retryFetch.mockResolvedValue(notFound);
+		retryFetch
+			.mockResolvedValueOnce(new Response('not found', { status: 404 }))
+			.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+		const result = await config.fetchWithCORS('https://api.example.com/v1/album/?id=123');
+
+		expect(result.status).toBe(200);
+		expect(retryFetch).toHaveBeenCalledTimes(2);
+	});
+
+	it('reuses the last successful sticky target first in local mode', async () => {
+		vi.stubEnv('LOCAL_MODE', 'true');
+		const { config, retryFetch } = await setupConfig();
+		vi.spyOn(Math, 'random').mockReturnValue(0);
+		retryFetch
+			.mockResolvedValueOnce(new Response('not found', { status: 404 }))
+			.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+			.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+		const first = await config.fetchWithCORS('https://api.example.com/v1/album/?id=123');
+		const second = await config.fetchWithCORS('https://api.example.com/v1/album/?id=456');
+
+		expect(first.status).toBe(200);
+		expect(second.status).toBe(200);
+		expect(retryFetch).toHaveBeenCalledTimes(3);
+	});
+
+	it('still short-circuits sticky endpoint retries on 404 outside local mode', async () => {
+		vi.stubEnv('LOCAL_MODE', 'false');
+		const { config, retryFetch } = await setupConfig();
+		vi.spyOn(Math, 'random').mockReturnValue(0);
+		retryFetch.mockResolvedValue(new Response('not found', { status: 404 }));
 
 		const result = await config.fetchWithCORS('https://api.example.com/v1/album/?id=123');
 

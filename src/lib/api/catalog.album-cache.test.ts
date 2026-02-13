@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getAlbum, type CatalogApiContext } from './catalog';
 
 function createContext(fetchImpl: CatalogApiContext['fetch']): CatalogApiContext {
@@ -26,6 +26,10 @@ function createAlbumResponse(id: number): Response {
 }
 
 describe('catalog album request guards', () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
 	it('dedupes concurrent getAlbum requests for the same id', async () => {
 		let resolveFetch: ((value: Response) => void) | undefined;
 		const fetchMock = vi.fn(
@@ -51,6 +55,7 @@ describe('catalog album request guards', () => {
 	});
 
 	it('caches not-found album lookups and suppresses immediate retries', async () => {
+		vi.stubEnv('LOCAL_MODE', 'false');
 		const fetchMock = vi.fn().mockResolvedValue(new Response('missing', { status: 404 }));
 		const context = createContext(fetchMock);
 

@@ -19,6 +19,7 @@ type WeightedTarget = ApiClusterTarget & { cumulativeWeight: number };
 let v1WeightedTargets: WeightedTarget[] | null = null;
 let v2WeightedTargets: WeightedTarget[] | null = null;
 const targetFailureTimestamps = new Map<string, number>();
+const stickyEndpointPreferredTargets = new Map<string, string>();
 const TARGET_FAILURE_TTL_MS = 60_000;
 
 function markTargetUnhealthy(targetName: string): void {
@@ -373,6 +374,14 @@ function shouldShortCircuitOnNotFound(url: URL): boolean {
 	return path.includes('/artist/') || path.includes('/album/') || path.includes('/playlist/');
 }
 
+function getStickyEndpointKey(url: URL): string | null {
+	const path = url.pathname.toLowerCase();
+	if (path.includes('/album/')) return 'album';
+	if (path.includes('/artist/')) return 'artist';
+	if (path.includes('/playlist/')) return 'playlist';
+	return null;
+}
+
 function isLocalModeRuntime(): boolean {
 	if (typeof window !== 'undefined' && typeof window.location?.hostname === 'string') {
 		const hostname = window.location.hostname;
@@ -489,10 +498,23 @@ export async function fetchWithCORS(
 	}
 
 	const stickyTarget = shouldStickToSingleTarget(resolvedUrl);
-	const localModeSingleTarget = stickyTarget && isLocalModeRuntime();
-	if (localModeSingleTarget && uniqueTargets.length > 1) {
-		uniqueTargets = [uniqueTargets[0]!];
+	const localModeRuntime = isLocalModeRuntime();
+	const stickyEndpointKey = stickyTarget ? getStickyEndpointKey(resolvedUrl) : null;
+	if (localModeRuntime && stickyEndpointKey) {
+		const preferredTargetName = stickyEndpointPreferredTargets.get(stickyEndpointKey);
+		if (preferredTargetName) {
+			const preferredIndex = uniqueTargets.findIndex((target) => target.name === preferredTargetName);
+			if (preferredIndex > 0) {
+				const preferredTarget = uniqueTargets[preferredIndex];
+				uniqueTargets = [
+					preferredTarget,
+					...uniqueTargets.slice(0, preferredIndex),
+					...uniqueTargets.slice(preferredIndex + 1)
+				];
+			}
+		}
 	}
+	const shortCircuitNotFound = shouldShortCircuitOnNotFound(resolvedUrl) && !localModeRuntime;
 	const totalAttempts = stickyTarget
 		? uniqueTargets.length
 		: Math.max(3, uniqueTargets.length);
@@ -559,6 +581,9 @@ export async function fetchWithCORS(
 			if (response.ok) {
 				const unexpected = await isUnexpectedProxyResponse(response.clone());
 				if (!unexpected) {
+					if (stickyEndpointKey) {
+						stickyEndpointPreferredTargets.set(stickyEndpointKey, target.name);
+					}
 					return response;
 				}
 				lastUnexpectedResponse = response;
@@ -568,7 +593,7 @@ export async function fetchWithCORS(
 
 			lastResponse = response;
 			attemptDetails.push({ target: target.name, status: response.status });
-			if (response.status === 404 && shouldShortCircuitOnNotFound(resolvedUrl)) {
+			if (response.status === 404 && shortCircuitNotFound) {
 				return response;
 			}
 		} catch (error) {
