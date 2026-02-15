@@ -1,7 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { AudioQuality, TrackLookup } from '$lib/types';
-import { embedMetadataToFile } from '$lib/server/metadataEmbedder';
+import { embedMetadataToFile, type MetadataOverrides } from '$lib/server/metadataEmbedder';
 import {
 	buildServerFilename,
 	sanitizeDirName,
@@ -242,11 +242,23 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 		try {
 			const overrideAlbumTitle = albumTitle && albumTitle.trim().length > 0 ? albumTitle.trim() : undefined;
 			const overrideAlbumArtist = artistName && artistName.trim().length > 0 ? artistName.trim() : undefined;
-			const metadataOverrides =
-				overrideAlbumTitle || overrideAlbumArtist
-					? { albumTitle: overrideAlbumTitle, albumArtist: overrideAlbumArtist }
+			const numericTrackNumber = Number(trackNumber);
+			const overrideTrackNumber =
+				Number.isFinite(numericTrackNumber) && numericTrackNumber > 0
+					? Math.trunc(numericTrackNumber)
 					: undefined;
-			if (metadataOverrides) {
+			const metadataOverrides: MetadataOverrides = {};
+			if (overrideAlbumTitle) {
+				metadataOverrides.albumTitle = overrideAlbumTitle;
+			}
+			if (overrideAlbumArtist) {
+				metadataOverrides.albumArtist = overrideAlbumArtist;
+			}
+			if (overrideTrackNumber !== undefined) {
+				metadataOverrides.trackNumber = overrideTrackNumber;
+			}
+			const hasMetadataOverrides = Object.keys(metadataOverrides).length > 0;
+			if (hasMetadataOverrides) {
 				const trackAlbumTitle = trackLookup.track?.album?.title;
 				const trackAlbumArtist =
 					trackLookup.track?.album?.artist?.name ??
@@ -263,8 +275,20 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 						`[Server Metadata] Normalizing album artist for track ${trackId}: "${trackAlbumArtist}" -> "${overrideAlbumArtist}"`
 					);
 				}
+				if (
+					overrideTrackNumber !== undefined &&
+					Number(trackLookup.track?.trackNumber) !== overrideTrackNumber
+				) {
+					console.log(
+						`[Server Metadata] Normalizing track number for track ${trackId}: "${trackLookup.track?.trackNumber}" -> "${overrideTrackNumber}"`
+					);
+				}
 			}
-			finalOutputPath = await embedMetadataToFile(finalOutputPath, trackLookup, metadataOverrides);
+			finalOutputPath = await embedMetadataToFile(
+				finalOutputPath,
+				trackLookup,
+				hasMetadataOverrides ? metadataOverrides : undefined
+			);
 			metadataEmbedded = true;
 		} catch {
 			metadataEmbedded = false;

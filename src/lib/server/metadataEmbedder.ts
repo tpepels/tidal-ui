@@ -70,6 +70,10 @@ const findFfmpeg = (): string | null => {
 export interface MetadataOverrides {
 	albumTitle?: string;
 	albumArtist?: string;
+	trackNumber?: number;
+	totalTracks?: number;
+	discNumber?: number;
+	totalDiscs?: number;
 }
 
 export async function embedMetadataToFile(
@@ -169,7 +173,15 @@ function runFfmpeg(ffmpegPath: string, args: string[]): Promise<string> {
 /**
  * Build metadata key-value pairs from a TrackLookup object.
  */
-function buildMetadataObject(lookup: TrackLookup, overrides?: MetadataOverrides) {
+function normalizePositiveInteger(value: number | undefined): number | undefined {
+	const parsed = Number(value);
+	if (!Number.isFinite(parsed) || parsed <= 0) {
+		return undefined;
+	}
+	return Math.trunc(parsed);
+}
+
+export function buildMetadataObject(lookup: TrackLookup, overrides?: MetadataOverrides) {
 	const { track } = lookup;
 	const album = track.album;
 	const mainArtist = formatArtistsForMetadata(track.artists);
@@ -196,11 +208,15 @@ function buildMetadataObject(lookup: TrackLookup, overrides?: MetadataOverrides)
 	if (overrideAlbumTitle || album?.title) metadata.album = overrideAlbumTitle ?? album.title;
 
 	// Track and disc numbers
+	const trackNumberOverride = normalizePositiveInteger(overrides?.trackNumber);
+	const totalTracksOverride = normalizePositiveInteger(overrides?.totalTracks);
+	const discNumberOverride = normalizePositiveInteger(overrides?.discNumber);
+	const totalDiscsOverride = normalizePositiveInteger(overrides?.totalDiscs);
 	for (const [key, value] of buildTrackDiscMetadataEntries({
-		trackNumber: track.trackNumber,
-		totalTracks: album?.numberOfTracks,
-		discNumber: track.volumeNumber,
-		totalDiscs: album?.numberOfVolumes
+		trackNumber: trackNumberOverride ?? track.trackNumber,
+		totalTracks: totalTracksOverride ?? album?.numberOfTracks,
+		discNumber: discNumberOverride ?? track.volumeNumber,
+		totalDiscs: totalDiscsOverride ?? album?.numberOfVolumes
 	})) {
 		metadata[key] = value;
 	}
