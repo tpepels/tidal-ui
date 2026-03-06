@@ -18,6 +18,7 @@ import {
 	type ErrorCategory
 } from './downloadQueueManager';
 import { API_CONFIG } from '$lib/config';
+import { refreshApiTargetsIfStale } from '$lib/config/targets';
 import * as rateLimiter from './rateLimiter';
 import type { AudioQuality } from '$lib/types';
 import { losslessAPI } from '$lib/api';
@@ -174,6 +175,30 @@ async function cleanupAlbumStaging(stagingRoot: string | undefined): Promise<voi
 		await fs.rm(stagingRoot, { recursive: true, force: true });
 	} catch (error) {
 		console.warn(`[Worker] Failed to clean up staging directory ${stagingRoot}:`, error);
+	}
+}
+
+async function cleanupStaleAlbumStagingOnStartup(): Promise<number> {
+	try {
+		await ensureDir(ALBUM_STAGING_ROOT);
+		const entries = await fs.readdir(ALBUM_STAGING_ROOT, { withFileTypes: true });
+		let cleaned = 0;
+		for (const entry of entries) {
+			const entryPath = path.join(ALBUM_STAGING_ROOT, entry.name);
+			try {
+				await fs.rm(entryPath, { recursive: true, force: true });
+				cleaned += 1;
+			} catch (error) {
+				console.warn(`[Worker] Failed to remove stale album staging path ${entryPath}:`, error);
+			}
+		}
+		if (cleaned > 0) {
+			console.log(`[Worker] Cleaned ${cleaned} stale album staging path(s) on startup`);
+		}
+		return cleaned;
+	} catch (error) {
+		console.warn('[Worker] Failed to sweep album staging directory on startup:', error);
+		return 0;
 	}
 }
 
@@ -665,6 +690,12 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 	});
 
 	try {
+		try {
+			await refreshApiTargetsIfStale();
+		} catch (refreshError) {
+			console.warn('[Worker] API target refresh failed, continuing with cached targets:', refreshError);
+		}
+
 		// Fetch album with target rotation (server-safe direct fetch, not browser proxy)
 		const targets = API_CONFIG.targets.length > 0 
 			? API_CONFIG.targets 
@@ -1183,6 +1214,7 @@ export async function startWorker(): Promise<void> {
 	// Initialize queue (recover from crashes)
 	const { initializeQueue } = await import('./downloadQueueManager');
 	await initializeQueue();
+	await cleanupStaleAlbumStagingOnStartup();
 	
 	isRunning = true;
 	stopRequested = false;
@@ -1220,3 +1252,8 @@ export function getWorkerStatus(): {
 		maxConcurrent: MAX_CONCURRENT
 	};
 }
+
+export const __test = {
+	cleanupStaleAlbumStagingOnStartup,
+	getAlbumStagingRoot: (): string => ALBUM_STAGING_ROOT
+};

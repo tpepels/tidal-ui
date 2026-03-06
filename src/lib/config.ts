@@ -5,7 +5,7 @@ import { retryFetch } from './errors';
 // CORS Proxy Configuration
 // If you're experiencing CORS issues with the HIFI API, you can set up a proxy
 
-import { API_CONFIG } from './config/targets';
+import { API_CONFIG, refreshApiTargetsIfStale } from './config/targets';
 import type { ApiClusterTarget } from './config/targets';
 
 // Re-export for backwards compatibility
@@ -18,9 +18,17 @@ type WeightedTarget = ApiClusterTarget & { cumulativeWeight: number };
 
 let v1WeightedTargets: WeightedTarget[] | null = null;
 let v2WeightedTargets: WeightedTarget[] | null = null;
+let v1TargetSignature: string | null = null;
+let v2TargetSignature: string | null = null;
 const targetFailureTimestamps = new Map<string, number>();
 const stickyEndpointPreferredTargets = new Map<string, string>();
 const TARGET_FAILURE_TTL_MS = 60_000;
+
+function buildTargetSignature(targets: ApiClusterTarget[]): string {
+	return targets
+		.map((target) => `${target.name}|${target.baseUrl}|${target.weight}|${target.requiresProxy}`)
+		.join('||');
+}
 
 function markTargetUnhealthy(targetName: string): void {
 	targetFailureTimestamps.set(targetName, Date.now());
@@ -64,15 +72,19 @@ function buildWeightedTargets(targets: ApiClusterTarget[]): WeightedTarget[] {
 
 function ensureWeightedTargets(apiVersion: 'v1' | 'v2' = 'v2'): WeightedTarget[] {
 	if (apiVersion === 'v2') {
-		if (!v2WeightedTargets) {
+		const signature = buildTargetSignature(API_CONFIG.targets);
+		if (!v2WeightedTargets || v2TargetSignature !== signature) {
 			v2WeightedTargets = buildWeightedTargets(API_CONFIG.targets);
+			v2TargetSignature = signature;
 		}
 		return v2WeightedTargets;
 	} else {
-		if (!v1WeightedTargets) {
+		const signature = buildTargetSignature(API_CONFIG.targets);
+		if (!v1WeightedTargets || v1TargetSignature !== signature) {
 			// v1 includes API_CONFIG.targets with fallback weighting
 			const fallbackTargets = API_CONFIG.targets.map((t) => ({ ...t, weight: 1 }));
 			v1WeightedTargets = buildWeightedTargets([...API_CONFIG.targets, ...fallbackTargets]);
+			v1TargetSignature = signature;
 		}
 		return v1WeightedTargets;
 	}
@@ -427,6 +439,12 @@ export async function fetchWithCORS(
 		skipTarget?: string; // Skip a previously-failed target on retry
 	}
 ): Promise<Response> {
+	try {
+		await refreshApiTargetsIfStale();
+	} catch (error) {
+		console.warn('[API Targets] Refresh failed, using current target list:', error);
+	}
+
 	const resolvedUrl = resolveUrl(url);
 	if (!resolvedUrl) {
 		throw new Error(`Unable to resolve URL: ${url}`);

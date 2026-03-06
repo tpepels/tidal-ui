@@ -7,12 +7,13 @@ import type { AudioQuality } from '$lib/types';
 import type { ApiClient } from '../../core/download/types';
 import { downloadTrackWithRetry } from '../../core/download/downloadCore';
 import { detectAudioFormat } from '../../utils/audioFormat';
-import { 
+import {
 	API_CONFIG,
 	getPrimaryTarget,
 	ensureWeightedTargets
 } from '$lib/config';
 import type { ApiClusterTarget } from '$lib/config';
+import { refreshApiTargetsIfStale } from '$lib/config/targets';
 import { APP_VERSION } from '$lib/version';
 import type { TrackLookup } from '$lib/types';
 import {
@@ -164,6 +165,12 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 	}
 
 	return async (input: RequestInfo | URL, options?: RequestInit) => {
+		try {
+			await refreshApiTargetsIfStale();
+		} catch (error) {
+			console.warn('[ServerFetch] Target refresh failed, using cached targets:', error);
+		}
+
 		const initialUrl =
 			typeof input === 'string'
 				? input

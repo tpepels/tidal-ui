@@ -58,7 +58,12 @@ const setupConfig = async (overrides?: Parameters<typeof buildConfig>[0]) => {
 	vi.resetModules();
 	vi.unmock('$lib/config');
 	vi.doMock('./config/targets', () => ({
-		API_CONFIG: buildConfig(overrides)
+		API_CONFIG: buildConfig(overrides),
+		refreshApiTargetsIfStale: vi.fn().mockResolvedValue({
+			updated: false,
+			count: (overrides?.targets ?? defaultTargets).length,
+			source: 'static'
+		})
 	}));
 	vi.doMock('./errors', () => ({
 		retryFetch: vi.fn()
