@@ -172,4 +172,38 @@ describe('config target selection', () => {
 		expect(result.status).toBe(404);
 		expect(retryFetch).toHaveBeenCalledTimes(1);
 	});
+
+	it('rewrites stale API origins to current target pool when origin is no longer configured', async () => {
+		const { config, retryFetch } = await setupConfig({
+			targets: [
+				{
+					name: 'new-primary',
+					baseUrl: 'https://new-primary.example.com',
+					weight: 1,
+					requiresProxy: false,
+					category: 'auto-only'
+				},
+				{
+					name: 'new-fallback',
+					baseUrl: 'https://new-fallback.example.com',
+					weight: 1,
+					requiresProxy: false,
+					category: 'auto-only'
+				}
+			]
+		});
+		vi.spyOn(Math, 'random').mockReturnValue(0);
+		retryFetch.mockResolvedValue(
+			new Response(JSON.stringify({ ok: true }), {
+				status: 200,
+				headers: { 'content-type': 'application/json' }
+			})
+		);
+
+		await config.fetchWithCORS('https://stale-origin.example.com/track/?id=123&quality=LOSSLESS');
+
+		expect(retryFetch).toHaveBeenCalledTimes(1);
+		const [calledUrl] = retryFetch.mock.calls[0] as [string, RequestInit];
+		expect(calledUrl).toBe('https://new-primary.example.com/track/?id=123&quality=LOSSLESS');
+	});
 });

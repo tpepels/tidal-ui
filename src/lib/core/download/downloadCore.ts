@@ -143,10 +143,17 @@ export async function downloadTrackCore(params: {
 		trackLookupPromise = apiClient.getTrack(trackId, quality, { skipTarget });
 		inflightManifestRequests.set(cacheKey, trackLookupPromise);
 		
-		// Clean up cache after request completes
-		trackLookupPromise.finally(() => {
-			inflightManifestRequests.delete(cacheKey);
-		});
+		// Clean up cache after request settles.
+		// Use then(onFulfilled, onRejected) so we don't create an unhandled rejected Promise
+		// from finally() when the lookup fails (caller handles the original rejection).
+		void trackLookupPromise.then(
+			() => {
+				inflightManifestRequests.delete(cacheKey);
+			},
+			() => {
+				inflightManifestRequests.delete(cacheKey);
+			}
+		);
 	} else {
 		debugLog('[DownloadCore] Using cached manifest request for track', trackId);
 	}

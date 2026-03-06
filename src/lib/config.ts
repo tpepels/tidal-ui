@@ -386,6 +386,35 @@ function shouldShortCircuitOnNotFound(url: URL): boolean {
 	return path.includes('/artist/') || path.includes('/album/') || path.includes('/playlist/');
 }
 
+function isLikelyApiClusterUrl(url: URL): boolean {
+	const host = url.hostname.toLowerCase();
+	if (
+		host.endsWith('.monochrome.tf') ||
+		host.endsWith('.squid.wtf') ||
+		host.endsWith('.spotisaver.net') ||
+		host.endsWith('.qqdl.site') ||
+		host.endsWith('.kinoplus.online') ||
+		host.endsWith('.binimum.org') ||
+		host.endsWith('.401658.xyz')
+	) {
+		return true;
+	}
+
+	const path = url.pathname.toLowerCase();
+	return (
+		path.includes('/track/') ||
+		path.includes('/album/') ||
+		path.includes('/artist/') ||
+		path.includes('/playlist/') ||
+		path.includes('/search/') ||
+		path.includes('/song/') ||
+		path.includes('/lyrics/') ||
+		path.includes('/cover/') ||
+		path.includes('/info/') ||
+		path.includes('/manifest/')
+	);
+}
+
 function getStickyEndpointKey(url: URL): string | null {
 	const path = url.pathname.toLowerCase();
 	if (path.includes('/album/')) return 'album';
@@ -450,14 +479,15 @@ export async function fetchWithCORS(
 		throw new Error(`Unable to resolve URL: ${url}`);
 	}
 
+	const apiVersion = options?.apiVersion ?? 'v2';
 	const originTarget = findTargetForUrl(resolvedUrl);
-	if (!originTarget) {
+	const shouldRouteThroughApiCluster = !originTarget && isLikelyApiClusterUrl(resolvedUrl);
+	if (!originTarget && !shouldRouteThroughApiCluster) {
 		return retryFetch(getProxiedUrl(resolvedUrl.toString()), {
 			...options
 		});
 	}
 
-	const apiVersion = options?.apiVersion ?? 'v2';
 	const weightedTargets = ensureWeightedTargets(apiVersion);
 	const attemptOrder: ApiClusterTarget[] = [];
 	if (shouldPreferPrimaryTarget(resolvedUrl)) {
@@ -510,7 +540,7 @@ export async function fetchWithCORS(
 		uniqueTargets = [getPrimaryTarget(apiVersion)];
 	}
 
-	const originBase = parseTargetBase(originTarget);
+	const originBase = originTarget ? parseTargetBase(originTarget) : new URL(resolvedUrl.origin);
 	if (!originBase) {
 		throw new Error('Invalid origin target configuration.');
 	}

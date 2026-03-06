@@ -154,16 +154,6 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 		return headers;
 	}
 
-	function getTargetForOrigin(origin: string): ApiClusterTarget | undefined {
-		return API_CONFIG.targets.find((target) => {
-			try {
-				return new URL(target.baseUrl).origin === origin;
-			} catch {
-				return false;
-			}
-		});
-	}
-
 	return async (input: RequestInfo | URL, options?: RequestInit) => {
 		try {
 			await refreshApiTargetsIfStale();
@@ -265,29 +255,23 @@ async function createServerFetch(): Promise<typeof globalThis.fetch> {
 
 		for (const target of targetList) {
 			try {
-				// If URL is already absolute, try to rotate between known targets
+				// If URL is already absolute, rewrite origin to each target while preserving path/query/hash.
 				if (finalUrl.startsWith('http')) {
 					let targetUrl = finalUrl;
-					let targetForHeaders: ApiClusterTarget | undefined = target;
 					try {
 						const parsed = new URL(finalUrl);
-						const originTarget = getTargetForOrigin(parsed.origin);
-						if (originTarget) {
-							const replaced = new URL(target.baseUrl);
-							replaced.pathname = parsed.pathname;
-							replaced.search = parsed.search;
-							replaced.hash = parsed.hash;
-							targetUrl = replaced.toString();
-							targetForHeaders = target;
-						}
+						const replaced = new URL(target.baseUrl);
+						replaced.pathname = parsed.pathname;
+						replaced.search = parsed.search;
+						replaced.hash = parsed.hash;
+						targetUrl = replaced.toString();
 					} catch {
-						// Fall back to original absolute URL
-						targetForHeaders = undefined;
+						// Fall back to original URL if parsing fails.
 					}
 
 					const response = await globalThis.fetch(targetUrl, {
 						...mergedOptions,
-						headers: buildHeaders(mergedOptions, targetForHeaders)
+						headers: buildHeaders(mergedOptions, target)
 					});
 					if (response.ok) {
 						rateLimiter.recordSuccess(target.name);
