@@ -360,6 +360,64 @@ export interface ServerDownloadResult {
 	receivedBytes?: number;
 	totalBytes?: number;
 	error?: string;
+	errorCode?:
+		| 'RATE_LIMITED'
+		| 'NETWORK'
+		| 'AUTH'
+		| 'NOT_FOUND'
+		| 'QUALITY_UNAVAILABLE'
+		| 'UPSTREAM_API'
+		| 'UNKNOWN';
+	retryable?: boolean;
+	stage?: 'download' | 'metadata_lookup';
+	warning?: string;
+}
+
+function classifyServerDownloadError(errorMessage: string): {
+	code:
+		| 'RATE_LIMITED'
+		| 'NETWORK'
+		| 'AUTH'
+		| 'NOT_FOUND'
+		| 'QUALITY_UNAVAILABLE'
+		| 'UPSTREAM_API'
+		| 'UNKNOWN';
+	retryable: boolean;
+} {
+	const message = errorMessage.toLowerCase();
+
+	if (message.includes('429') || message.includes('rate limit') || message.includes('too many requests')) {
+		return { code: 'RATE_LIMITED', retryable: true };
+	}
+	if (
+		message.includes('timeout') ||
+		message.includes('abort') ||
+		message.includes('network') ||
+		message.includes('econnrefused') ||
+		message.includes('enotfound') ||
+		message.includes('econnreset') ||
+		message.includes('eai_again')
+	) {
+		return { code: 'NETWORK', retryable: true };
+	}
+	if (message.includes('401') || message.includes('403') || message.includes('unauthorized') || message.includes('forbidden')) {
+		return { code: 'AUTH', retryable: false };
+	}
+	if (message.includes('404') || message.includes('not found')) {
+		return { code: 'NOT_FOUND', retryable: false };
+	}
+	if (
+		message.includes('quality') ||
+		message.includes('manifest') ||
+		message.includes('unsupported') ||
+		message.includes('unavailable')
+	) {
+		return { code: 'QUALITY_UNAVAILABLE', retryable: false };
+	}
+	if (message.includes('upstream api')) {
+		return { code: 'UPSTREAM_API', retryable: true };
+	}
+	return { code: 'UNKNOWN', retryable: true };
 }
 
 export async function downloadTrackServerSide(
@@ -402,8 +460,21 @@ export async function downloadTrackServerSide(
 		const buffer = Buffer.from(result.buffer);
 		const detectedFormat = detectAudioFormat(new Uint8Array(buffer));
 
-		// Fetch track metadata for embedding + naming downstream (only after successful download)
-		const trackLookup = await apiClient.getTrack(trackId, quality);
+		// Metadata lookup can fail independently from audio download.
+		// Treat it as non-fatal: keep the audio, skip metadata embedding downstream.
+		let trackLookup: TrackLookup | undefined;
+		let warning: string | undefined;
+		try {
+			trackLookup = await apiClient.getTrack(trackId, quality);
+		} catch (metadataError) {
+			const metadataMsg =
+				metadataError instanceof Error ? metadataError.message : String(metadataError);
+			warning = `Metadata lookup failed: ${metadataMsg}`;
+			console.warn(
+				`[ServerDownload] Metadata lookup failed for track ${trackId}; continuing without metadata:`,
+				metadataMsg
+			);
+		}
 
 		return {
 			success: true,
@@ -412,14 +483,19 @@ export async function downloadTrackServerSide(
 			detectedFormat: detectedFormat ?? undefined,
 			trackLookup,
 			receivedBytes: result.receivedBytes,
-			totalBytes: result.totalBytes
+			totalBytes: result.totalBytes,
+			warning
 		};
 	} catch (error) {
 		const errorMsg = error instanceof Error ? error.message : String(error);
+		const classified = classifyServerDownloadError(errorMsg);
 		console.error(`[ServerDownload] Failed to download track ${trackId}:`, errorMsg);
 		return {
 			success: false,
-			error: errorMsg
+			error: errorMsg,
+			errorCode: classified.code,
+			retryable: classified.retryable,
+			stage: 'download'
 		};
 	}
 }

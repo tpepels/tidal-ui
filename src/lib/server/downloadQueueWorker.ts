@@ -298,9 +298,10 @@ async function downloadTrack(
 			segmentTimeoutMs: SEGMENT_TIMEOUT_MS
 		});
 
-		if (!result.success || !result.buffer || !result.trackLookup) {
+		if (!result.success || !result.buffer) {
 			const errorMsg = result.error || 'Download failed';
-			const errorCategory = categorizeError(errorMsg, undefined);
+			const categorized = categorizeError(errorMsg, undefined);
+			const retryable = result.retryable ?? categorized.isRetryable;
 
 			if (errorMsg.includes('429') || errorMsg.includes('Too Many Requests')) {
 				rateLimiter.recordError(apiTarget, 'rate_limit');
@@ -310,10 +311,19 @@ async function downloadTrack(
 			return {
 				success: false,
 				error: errorMsg,
-				retryable: errorCategory.isRetryable,
-				errorCategory: errorCategory.category,
-				retryAfterMs: errorCategory.retryAfterMs
+				retryable,
+				errorCategory: categorized.category,
+				retryAfterMs: categorized.retryAfterMs
 			};
+		}
+
+		if (!result.trackLookup) {
+			console.warn(
+				`[Worker] Track ${trackId} downloaded without track metadata; proceeding with filename-only finalization.`
+			);
+		}
+		if (result.warning) {
+			console.warn(`[Worker] Track ${trackId} warning: ${result.warning}`);
 		}
 		const downloadDurationMs = Date.now() - downloadStart;
 		console.log(
@@ -322,14 +332,14 @@ async function downloadTrack(
 
 		const resolvedArtist =
 			artistName ||
-			result.trackLookup.track.artist?.name ||
+			result.trackLookup?.track.artist?.name ||
 			'Unknown Artist';
 		const resolvedAlbum =
 			albumTitle ||
-			result.trackLookup.track.album?.title ||
+			result.trackLookup?.track.album?.title ||
 			'Unknown Album';
-		const lookupTitle = result.trackLookup.track.title;
-		const lookupVersion = result.trackLookup.track.version;
+		const lookupTitle = result.trackLookup?.track.title;
+		const lookupVersion = result.trackLookup?.track.version;
 		const computedTitle = lookupTitle
 			? lookupVersion
 				? `${lookupTitle} (${lookupVersion})`
@@ -337,7 +347,7 @@ async function downloadTrack(
 			: undefined;
 		const resolvedTitle = trackTitle || computedTitle || 'Unknown Track';
 		const resolvedTrackNumber =
-			trackNumber || Number(result.trackLookup.track.trackNumber) || undefined;
+			trackNumber || Number(result.trackLookup?.track.trackNumber) || undefined;
 
 		const finalizeStart = Date.now();
 		const finalizeResult = await finalizeTrack({

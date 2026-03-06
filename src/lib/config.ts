@@ -531,9 +531,17 @@ export async function fetchWithCORS(
 		}
 	}
 
-	const healthyTargets = uniqueTargets.filter((target) => isTargetHealthy(target.name));
-	if (healthyTargets.length > 0) {
+	const candidateTargets = uniqueTargets;
+	const healthyTargets = candidateTargets.filter((target) => isTargetHealthy(target.name));
+	if (healthyTargets.length === 0) {
+		uniqueTargets = candidateTargets;
+	} else if (candidateTargets.length <= 1 || healthyTargets.length >= 2) {
+		// Use only healthy targets when we still have redundancy.
 		uniqueTargets = healthyTargets;
+	} else {
+		// Avoid collapsing to a single healthy target and retrying it repeatedly.
+		// Keep the full candidate pool so one request cycle can still probe fallbacks.
+		uniqueTargets = candidateTargets;
 	}
 
 	if (uniqueTargets.length === 0) {
@@ -563,9 +571,9 @@ export async function fetchWithCORS(
 		}
 	}
 	const shortCircuitNotFound = shouldShortCircuitOnNotFound(resolvedUrl) && !localModeRuntime;
-	const totalAttempts = stickyTarget
-		? uniqueTargets.length
-		: Math.max(3, uniqueTargets.length);
+	// Try each target at most once per request cycle.
+	// retryFetch already handles transient retries per target.
+	const totalAttempts = uniqueTargets.length;
 	let lastError: unknown = null;
 	let lastResponse: Response | null = null;
 	let lastUnexpectedResponse: Response | null = null;
@@ -580,9 +588,7 @@ export async function fetchWithCORS(
 	const attemptDetails: { target: string; error?: string; status?: number }[] = [];
 
 	for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
-		const target = stickyTarget
-			? uniqueTargets[attempt]
-			: uniqueTargets[attempt % uniqueTargets.length];
+		const target = uniqueTargets[attempt];
 		const targetBase = parseTargetBase(target);
 		if (!targetBase) {
 			continue;

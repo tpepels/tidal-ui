@@ -206,4 +206,71 @@ describe('config target selection', () => {
 		const [calledUrl] = retryFetch.mock.calls[0] as [string, RequestInit];
 		expect(calledUrl).toBe('https://new-primary.example.com/track/?id=123&quality=LOSSLESS');
 	});
+
+	it('does not retry the same target repeatedly when only one target is available', async () => {
+		const { config, retryFetch } = await setupConfig({
+			targets: [
+				{
+					name: 'single',
+					baseUrl: 'https://single.example.com',
+					weight: 1,
+					requiresProxy: false,
+					category: 'auto-only'
+				}
+			]
+		});
+
+		retryFetch.mockRejectedValue(new Error('Failed to fetch'));
+
+		await expect(
+			config.fetchWithCORS('https://single.example.com/track/?id=123')
+		).rejects.toThrow('after 1 target(s)');
+		expect(retryFetch).toHaveBeenCalledTimes(1);
+	});
+
+	it('keeps fallback targets in play when only one target is currently healthy', async () => {
+		const { config, retryFetch } = await setupConfig({
+			targets: [
+				{
+					name: 'primary',
+					baseUrl: 'https://primary.example.com',
+					weight: 1,
+					requiresProxy: false,
+					category: 'auto-only'
+				},
+				{
+					name: 'fallback',
+					baseUrl: 'https://fallback.example.com',
+					weight: 1,
+					requiresProxy: false,
+					category: 'auto-only'
+				}
+			]
+		});
+		vi.spyOn(Math, 'random').mockReturnValue(0);
+
+		// First request: primary fails (marked unhealthy), fallback succeeds.
+		retryFetch
+			.mockRejectedValueOnce(new Error('Failed to fetch'))
+			.mockResolvedValueOnce(
+				new Response(JSON.stringify({ ok: true }), {
+					status: 200,
+					headers: { 'content-type': 'application/json' }
+				})
+			);
+
+		const first = await config.fetchWithCORS('https://primary.example.com/track/?id=1');
+		expect(first.status).toBe(200);
+
+		// Second request should still probe both targets, not just the single healthy one.
+		retryFetch.mockRejectedValue(new Error('Failed to fetch'));
+		await expect(
+			config.fetchWithCORS('https://primary.example.com/track/?id=2')
+		).rejects.toThrow('after 2 target(s)');
+
+		expect(retryFetch).toHaveBeenCalledTimes(4);
+		const secondRequestCalls = retryFetch.mock.calls.slice(2).map((call) => call[0] as string);
+		expect(secondRequestCalls.some((url) => url.includes('primary.example.com'))).toBe(true);
+		expect(secondRequestCalls.some((url) => url.includes('fallback.example.com'))).toBe(true);
+	});
 });
