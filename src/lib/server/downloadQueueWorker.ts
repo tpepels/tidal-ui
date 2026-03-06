@@ -34,10 +34,10 @@ import {
 
 let isRunning = false;
 let stopRequested = false;
-const LOCAL_MODE_ENABLED = process.env.LOCAL_MODE !== 'false';
+const DEFAULT_WORKER_MAX_CONCURRENT = 4;
 const MAX_CONCURRENT = Math.max(
 	1,
-	Number(process.env.WORKER_MAX_CONCURRENT || 6)
+	Number(process.env.WORKER_MAX_CONCURRENT || DEFAULT_WORKER_MAX_CONCURRENT)
 );
 const POLL_INTERVAL_MS = 2000;
 const PROCESSING_TIMEOUT_MS = 300000; // 5 minute max time in 'processing' state
@@ -71,6 +71,7 @@ const ALBUM_TRACK_RETRY_ATTEMPTS = Math.max(
 	0,
 	Number(process.env.ALBUM_TRACK_RETRY_ATTEMPTS || 2)
 );
+const DEFAULT_ALBUM_TRACK_CONCURRENCY = 2;
 const ALBUM_STAGING_ROOT = path.join(getTempDir(), 'album-staging');
 
 function formatMegabytes(bytes: number | undefined): string {
@@ -893,7 +894,7 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		// This is intentional to maintain data integrity.
 		
 		const requestedConcurrency = Number(
-			process.env.ALBUM_TRACK_CONCURRENCY || (LOCAL_MODE_ENABLED ? 2 : 6)
+			process.env.ALBUM_TRACK_CONCURRENCY || DEFAULT_ALBUM_TRACK_CONCURRENCY
 		);
 		const albumConcurrency = Math.max(
 			1,
