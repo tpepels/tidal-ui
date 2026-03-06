@@ -30,6 +30,7 @@ export interface FinalizeTrackParams {
 	artistName?: string;
 	trackTitle?: string;
 	trackNumber?: number;
+	outputBaseDir?: string;
 	trackLookup?: TrackLookup;
 	buffer?: Buffer | ArrayBuffer;
 	tempFilePath?: string;
@@ -113,6 +114,7 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 		artistName,
 		trackTitle,
 		trackNumber,
+		outputBaseDir,
 		trackLookup,
 		buffer,
 		tempFilePath,
@@ -155,7 +157,7 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 		trackNumber
 	);
 
-	const baseDir = getDownloadDir();
+	const baseDir = outputBaseDir ?? getDownloadDir();
 	const artistDir = sanitizeDirName(artistName || 'Unknown Artist');
 	const albumDir = sanitizeDirName(albumTitle || 'Unknown Album');
 	const targetDir = path.join(baseDir, artistDir, albumDir);
@@ -198,7 +200,8 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 		initialFilepath,
 		conflictResolution,
 		newFileSize,
-		resolvedChecksum
+		resolvedChecksum,
+		baseDir
 	);
 
 	if (action === 'skip') {

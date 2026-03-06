@@ -3,6 +3,7 @@
  * Runs independently of browser sessions
  */
 
+import * as fs from 'node:fs/promises';
 import * as path from 'path';
 import {
 	dequeueJob,
@@ -26,6 +27,7 @@ import {
 	downloadCoverToDir,
 	ensureDir,
 	getDownloadDir,
+	getTempDir,
 	sanitizeDirName
 } from '../../routes/api/download-track/_shared';
 
@@ -68,6 +70,7 @@ const ALBUM_TRACK_RETRY_ATTEMPTS = Math.max(
 	0,
 	Number(process.env.ALBUM_TRACK_RETRY_ATTEMPTS || 2)
 );
+const ALBUM_STAGING_ROOT = path.join(getTempDir(), 'album-staging');
 
 function formatMegabytes(bytes: number | undefined): string {
 	if (!Number.isFinite(bytes) || !bytes) return '0 MB';
@@ -148,6 +151,84 @@ async function shouldStopJob(jobId: string): Promise<'cancelled' | 'paused' | nu
 	return null;
 }
 
+function randomSuffix(): string {
+	return Math.random().toString(36).slice(2, 10);
+}
+
+function buildAlbumStagingRoot(jobId: string): string {
+	return path.join(ALBUM_STAGING_ROOT, `${jobId}-${Date.now()}-${randomSuffix()}`);
+}
+
+async function pathExists(targetPath: string): Promise<boolean> {
+	try {
+		await fs.access(targetPath);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+async function cleanupAlbumStaging(stagingRoot: string | undefined): Promise<void> {
+	if (!stagingRoot) return;
+	try {
+		await fs.rm(stagingRoot, { recursive: true, force: true });
+	} catch (error) {
+		console.warn(`[Worker] Failed to clean up staging directory ${stagingRoot}:`, error);
+	}
+}
+
+async function publishAlbumFromStaging(options: {
+	jobId: string;
+	stagingRoot: string;
+	artistDirName: string;
+	albumDirName: string;
+}): Promise<void> {
+	const stagedAlbumDir = path.join(options.stagingRoot, options.artistDirName, options.albumDirName);
+	if (!(await pathExists(stagedAlbumDir))) {
+		throw new Error('Album staging directory missing before publish');
+	}
+
+	const finalArtistDir = path.join(getDownloadDir(), options.artistDirName);
+	const finalAlbumDir = path.join(finalArtistDir, options.albumDirName);
+	await ensureDir(finalArtistDir);
+
+	if (!(await pathExists(finalAlbumDir))) {
+		try {
+			await fs.rename(stagedAlbumDir, finalAlbumDir);
+			return;
+		} catch (error) {
+			const code = (error as NodeJS.ErrnoException).code;
+			if (code === 'EXDEV') {
+				const publishingDir = path.join(
+					finalArtistDir,
+					`.${options.albumDirName}.publishing-${options.jobId}-${randomSuffix()}`
+				);
+				await fs.rm(publishingDir, { recursive: true, force: true });
+				await fs.cp(stagedAlbumDir, publishingDir, { recursive: true, force: true });
+				try {
+					await fs.rename(publishingDir, finalAlbumDir);
+				} catch (renameError) {
+					const renameCode = (renameError as NodeJS.ErrnoException).code;
+					if (renameCode !== 'EEXIST' && renameCode !== 'ENOTEMPTY') {
+						throw renameError;
+					}
+					await fs.cp(publishingDir, finalAlbumDir, { recursive: true, force: true });
+				} finally {
+					await fs.rm(publishingDir, { recursive: true, force: true }).catch(() => {});
+				}
+				await fs.rm(stagedAlbumDir, { recursive: true, force: true });
+				return;
+			}
+			if (code !== 'EEXIST' && code !== 'ENOTEMPTY') {
+				throw error;
+			}
+		}
+	}
+
+	await fs.cp(stagedAlbumDir, finalAlbumDir, { recursive: true, force: true });
+	await fs.rm(stagedAlbumDir, { recursive: true, force: true });
+}
+
 /**
  * Download a single track using the server download adapter
  * This bypasses HTTP entirely and calls the download core directly
@@ -160,7 +241,7 @@ async function downloadTrack(
 	trackTitle?: string,
 	trackNumber?: number,
 	coverUrl?: string,
-	options?: { downloadCover?: boolean }
+	options?: { downloadCover?: boolean; outputBaseDir?: string }
 ): Promise<{
 	success: boolean;
 	error?: string;
@@ -246,7 +327,8 @@ async function downloadTrack(
 			conflictResolution: 'overwrite_if_different',
 			detectedMimeType: result.mimeType,
 			downloadCoverSeperately: options?.downloadCover ?? true,
-			coverUrl
+			coverUrl,
+			outputBaseDir: options?.outputBaseDir
 		});
 		const finalizeDurationMs = Date.now() - finalizeStart;
 		console.log(
@@ -500,6 +582,7 @@ async function downloadAlbumTrackWithPolicy(options: {
 	trackTitle: string;
 	trackNumber: number;
 	coverUrl?: string;
+	outputBaseDir?: string;
 }): Promise<{
 	success: boolean;
 	error?: string;
@@ -520,7 +603,7 @@ async function downloadAlbumTrackWithPolicy(options: {
 			options.trackTitle,
 			options.trackNumber,
 			options.coverUrl,
-			{ downloadCover: false }
+			{ downloadCover: false, outputBaseDir: options.outputBaseDir }
 		);
 
 		if (result.success) {
@@ -571,6 +654,7 @@ async function downloadAlbumTrackWithPolicy(options: {
  */
 async function processAlbumJob(job: QueuedJob): Promise<void> {
 	const albumJob = job.job as AlbumJob;
+	let stagingRoot: string | undefined;
 
 	await updateJobStatus(job.id, { 
 		status: 'processing', 
@@ -716,6 +800,14 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 
 		const albumTitle =
 			(typeof album.title === 'string' ? album.title : undefined) || 'Unknown Album';
+		const artistDirName = sanitizeDirName(artistName);
+		const albumDirName = sanitizeDirName(albumTitle);
+		stagingRoot = buildAlbumStagingRoot(job.id);
+		const stagingAlbumDir = path.join(stagingRoot, artistDirName, albumDirName);
+		await ensureDir(stagingAlbumDir);
+		console.log(
+			`[Worker] Album ${albumJob.albumId}: staging download in ${stagingAlbumDir}`
+		);
 
 		await updateJobStatus(job.id, {
 			job: { ...job.job, albumTitle, artistName },
@@ -732,15 +824,9 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		}
 
 		if (coverUrl) {
-			const coverDir = path.join(
-				getDownloadDir(),
-				sanitizeDirName(artistName),
-				sanitizeDirName(albumTitle)
-			);
-			await ensureDir(coverDir);
-			const coverResult = await downloadCoverToDir(coverUrl, coverDir);
+			const coverResult = await downloadCoverToDir(coverUrl, stagingAlbumDir);
 			if (coverResult) {
-				console.log(`[Worker] Album ${albumJob.albumId}: cover downloaded once`);
+				console.log(`[Worker] Album ${albumJob.albumId}: cover downloaded to staging`);
 			}
 		}
 
@@ -841,7 +927,8 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 						artistName,
 						trackTitle,
 						trackNumber,
-						coverUrl
+						coverUrl,
+						outputBaseDir: stagingRoot
 					});
 				} finally {
 					inFlight = Math.max(0, inFlight - 1);
@@ -907,7 +994,17 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 				downloadTimeMs: duration,
 				progress: completedTracks / totalTracks
 			});
+			return;
 		} else {
+			if (!stagingRoot) {
+				throw new Error('Album staging root missing before publish');
+			}
+			await publishAlbumFromStaging({
+				jobId: job.id,
+				stagingRoot,
+				artistDirName,
+				albumDirName
+			});
 			await updateJobStatus(job.id, {
 				status: 'completed',
 				completedAt: Date.now(),
@@ -944,6 +1041,8 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 			errorCategory: categorized.category,
 			completedAt: Date.now()
 		});
+	} finally {
+		await cleanupAlbumStaging(stagingRoot);
 	}
 }
 

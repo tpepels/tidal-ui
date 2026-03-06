@@ -752,11 +752,15 @@ export const resolveFileConflict = async (
 	targetPath: string,
 	conflictResolution: ConflictResolution = 'overwrite_if_different',
 	newFileSize?: number,
-	newFileChecksum?: string
+	newFileChecksum?: string,
+	allowedBaseDir?: string
 ): Promise<{ finalPath: string; action: 'overwrite' | 'skip' | 'rename' }> => {
 	// Security check: ensure targetPath is within expected directory
 	const resolvedTarget = path.resolve(targetPath);
-	const baseDir = getDownloadDir();
+	const baseDir =
+		typeof allowedBaseDir === 'string' && allowedBaseDir.trim().length > 0
+			? allowedBaseDir
+			: getDownloadDir();
 	const resolvedBase = path.resolve(baseDir);
 	if (!resolvedTarget.startsWith(resolvedBase + path.sep) && resolvedTarget !== resolvedBase) {
 		throw new Error('Invalid path: outside allowed directory');

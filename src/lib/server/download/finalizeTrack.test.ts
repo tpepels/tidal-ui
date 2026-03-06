@@ -90,4 +90,32 @@ describe('finalizeTrack', () => {
 			expect(second.action).toBe('skip');
 		}
 	});
+
+	it('supports writing to a custom output base directory', async () => {
+		const stagingRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'tidal-ui-stage-'));
+		try {
+			const result = await finalizeTrack({
+				trackId: 303,
+				quality: 'LOSSLESS',
+				albumTitle: 'Staged Album',
+				artistName: 'Staged Artist',
+				trackTitle: 'Staged Track',
+				trackNumber: 3,
+				buffer: Buffer.from('staged-audio-data'),
+				downloadCoverSeperately: false,
+				outputBaseDir: stagingRoot
+			});
+
+			expect(result.success).toBe(true);
+			if (!result.success) return;
+
+			const stagedPath = path.join(stagingRoot, 'Staged Artist', 'Staged Album', result.filename);
+			await expect(fs.stat(stagedPath)).resolves.toBeDefined();
+
+			const defaultPath = path.join(downloadDir, 'Staged Artist', 'Staged Album', result.filename);
+			await expect(fs.stat(defaultPath)).rejects.toThrow();
+		} finally {
+			await fs.rm(stagingRoot, { recursive: true, force: true });
+		}
+	});
 });
