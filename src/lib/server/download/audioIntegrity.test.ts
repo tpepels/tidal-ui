@@ -127,4 +127,37 @@ describe('audioIntegrity', () => {
 		expect(extracted.durationSeconds).toBeCloseTo(100.2, 2);
 		expect(extracted.codecName).toBe('flac');
 	});
+
+	it('fails when decoded duration is much shorter than expected (partial file)', async () => {
+		const result = await validateAudioFileIntegrity(
+			{
+				filePath: '/tmp/example.flac',
+				expectedExtension: '.flac',
+				expectedDurationSeconds: 211
+			},
+			{
+				binaryFinder: () => '/usr/bin/ffprobe',
+				ffmpegBinaryFinder: () => '/usr/bin/ffmpeg',
+				durationToleranceSeconds: 3,
+				probeRunner: async () => ({
+					format: { format_name: 'flac', duration: '211' },
+					streams: [{ codec_type: 'audio', codec_name: 'flac', duration: '211' }]
+				}),
+				decodeRunner: async () => 29.2
+			}
+		);
+
+		expect(result.ok).toBe(false);
+		expect(result.error).toMatch(/decoded duration mismatch/i);
+	});
+
+	it('parses ffmpeg progress timestamps', () => {
+		expect(__test.parseFfmpegTimestampSeconds('00:03:31.245')).toBeCloseTo(211.245, 3);
+		expect(__test.parseFfmpegTimestampSeconds('n/a')).toBeNull();
+
+		const decoded = __test.parseLastDecodedDurationSeconds(
+			'frame=1\nout_time=00:00:10.000\nout_time=00:00:29.123\nprogress=end'
+		);
+		expect(decoded).toBeCloseTo(29.123, 3);
+	});
 });

@@ -18,7 +18,10 @@ type FfprobePayload = {
 };
 
 type ProbeRunner = (ffprobePath: string, filePath: string) => Promise<FfprobePayload>;
-type DecodeRunner = (ffmpegPath: string, filePath: string) => Promise<void>;
+type DecodeRunner = (
+	ffmpegPath: string,
+	filePath: string
+) => Promise<void | number | null>;
 
 type BinaryFinder = () => string | null;
 
@@ -63,6 +66,32 @@ function parseDurationSeconds(value: unknown): number | null {
 		return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 	}
 	return null;
+}
+
+function parseFfmpegTimestampSeconds(value: string): number | null {
+	const trimmed = value.trim();
+	const match = /^(\d+):(\d+):(\d+(?:\.\d+)?)$/.exec(trimmed);
+	if (!match) return null;
+	const hours = Number.parseInt(match[1], 10);
+	const minutes = Number.parseInt(match[2], 10);
+	const seconds = Number.parseFloat(match[3]);
+	if (!Number.isFinite(hours) || !Number.isFinite(minutes) || !Number.isFinite(seconds)) {
+		return null;
+	}
+	return hours * 3600 + minutes * 60 + seconds;
+}
+
+function parseLastDecodedDurationSeconds(progressText: string): number | null {
+	let lastDecodedSeconds: number | null = null;
+	for (const line of progressText.split(/\r?\n/)) {
+		if (!line.startsWith('out_time=')) continue;
+		const value = line.slice('out_time='.length);
+		const parsed = parseFfmpegTimestampSeconds(value);
+		if (parsed !== null && parsed > 0) {
+			lastDecodedSeconds = parsed;
+		}
+	}
+	return lastDecodedSeconds;
 }
 
 function getConfiguredDurationToleranceSeconds(expectedDurationSeconds: number): number {
@@ -192,11 +221,25 @@ function runFfprobeJson(ffprobePath: string, filePath: string): Promise<FfprobeP
 	});
 }
 
-function runFfmpegDecode(ffmpegPath: string, filePath: string): Promise<void> {
+function runFfmpegDecode(ffmpegPath: string, filePath: string): Promise<number | null> {
 	return new Promise((resolve, reject) => {
 		execFile(
 			ffmpegPath,
-			['-v', 'error', '-nostdin', '-i', filePath, '-f', 'null', '-'],
+			[
+				'-v',
+				'error',
+				'-nostdin',
+				'-i',
+				filePath,
+				'-map',
+				'0:a:0',
+				'-f',
+				'null',
+				'-',
+				'-nostats',
+				'-progress',
+				'pipe:2'
+			],
 			{ timeout: 45000 },
 			(error, _stdout, stderr) => {
 				if (error) {
@@ -204,7 +247,7 @@ function runFfmpegDecode(ffmpegPath: string, filePath: string): Promise<void> {
 					reject(new Error(stderrText ? `ffmpeg decode failed: ${stderrText}` : error.message));
 					return;
 				}
-				resolve();
+				resolve(parseLastDecodedDurationSeconds(stderr || ''));
 			}
 		);
 	});
@@ -310,7 +353,26 @@ export async function validateAudioFileIntegrity(
 		return { ok: false, error: 'ffmpeg binary not found for decode validation' };
 	}
 	try {
-		await decodeRunner(ffmpegPath, input.filePath);
+		const decodedDuration = await decodeRunner(ffmpegPath, input.filePath);
+		if (typeof decodedDuration === 'number' && Number.isFinite(decodedDuration) && decodedDuration > 0) {
+			const referenceDuration =
+				Number.isFinite(expectedDuration) && expectedDuration > 0
+					? expectedDuration
+					: extracted.durationSeconds;
+			const decodeToleranceSeconds =
+				typeof deps?.durationToleranceSeconds === 'number' && deps.durationToleranceSeconds > 0
+					? deps.durationToleranceSeconds
+					: getConfiguredDurationToleranceSeconds(referenceDuration);
+			const decodedDelta = Math.abs(decodedDuration - referenceDuration);
+			if (decodedDelta > decodeToleranceSeconds) {
+				return {
+					ok: false,
+					error:
+						`Decoded duration mismatch: expected ${referenceDuration}s ± ${decodeToleranceSeconds}s, ` +
+						`ffmpeg decoded ${decodedDuration.toFixed(3)}s`
+				};
+			}
+		}
 	} catch (error) {
 		return {
 			ok: false,
@@ -330,6 +392,8 @@ export const __test = {
 	normalizeExtension,
 	matchesExpectedContainer,
 	extractProbeValues,
+	parseFfmpegTimestampSeconds,
+	parseLastDecodedDurationSeconds,
 	resetCache(): void {
 		resolvedFfprobePath = undefined;
 		resolvedFfmpegPath = undefined;
