@@ -358,7 +358,7 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 		};
 	}
 
-	if (finalOutputPath === finalPath && finalSize !== newFileSize) {
+	if (!metadataEmbedded && finalOutputPath === finalPath && finalSize !== newFileSize) {
 		return {
 			success: false,
 			error: createDownloadError(

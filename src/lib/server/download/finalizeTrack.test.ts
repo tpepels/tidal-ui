@@ -2,6 +2,15 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
+
+const metadataEmbedderMocks = vi.hoisted(() => ({
+	embedMetadataToFile: vi.fn(async (filePath: string) => filePath)
+}));
+
+vi.mock('$lib/server/metadataEmbedder', () => ({
+	embedMetadataToFile: metadataEmbedderMocks.embedMetadataToFile
+}));
+
 vi.mock('$lib/server/download/audioIntegrity', () => ({
 	validateAudioFileIntegrity: vi.fn(async () => ({
 		ok: true,
@@ -25,6 +34,8 @@ describe('finalizeTrack', () => {
 		tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tidal-ui-temp-'));
 		process.env.DOWNLOAD_DIR = downloadDir;
 		process.env.TEMP_DIR = tempDir;
+		metadataEmbedderMocks.embedMetadataToFile.mockReset();
+		metadataEmbedderMocks.embedMetadataToFile.mockImplementation(async (filePath: string) => filePath);
 	});
 
 	afterEach(async () => {
@@ -125,5 +136,45 @@ describe('finalizeTrack', () => {
 		} finally {
 			await fs.rm(stagingRoot, { recursive: true, force: true });
 		}
+	});
+
+	it('allows finalized size changes when metadata is embedded in-place', async () => {
+		const payload = Buffer.from('raw-audio-data');
+		metadataEmbedderMocks.embedMetadataToFile.mockImplementation(async (filePath: string) => {
+			await fs.appendFile(filePath, Buffer.from('metadata-bytes'));
+			return filePath;
+		});
+
+		const result = await finalizeTrack({
+			trackId: 404,
+			quality: 'LOSSLESS',
+			albumTitle: 'Meta Album',
+			artistName: 'Meta Artist',
+			trackTitle: 'Meta Track',
+			trackNumber: 1,
+			buffer: payload,
+			downloadCoverSeperately: false,
+			trackLookup: {
+				track: {
+					duration: 120,
+					trackNumber: 1,
+					volumeNumber: 1,
+					album: {
+						title: 'Meta Album',
+						artist: { name: 'Meta Artist' },
+						artists: [{ name: 'Meta Artist' }]
+					}
+				},
+				info: {}
+			} as any
+		});
+
+		expect(result.success).toBe(true);
+		if (!result.success) return;
+		expect(result.metadataEmbedded).toBe(true);
+
+		const writtenPath = path.join(downloadDir, 'Meta Artist', 'Meta Album', result.filename);
+		const stat = await fs.stat(writtenPath);
+		expect(stat.size).toBeGreaterThan(payload.length);
 	});
 });
