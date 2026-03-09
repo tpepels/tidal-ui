@@ -1,7 +1,15 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
+vi.mock('$lib/server/download/audioIntegrity', () => ({
+	validateAudioFileIntegrity: vi.fn(async () => ({
+		ok: true,
+		durationSeconds: 1,
+		codecName: 'flac',
+		formatName: 'flac'
+	}))
+}));
 import { finalizeTrack } from './finalizeTrack';
 
 describe('finalizeTrack', () => {

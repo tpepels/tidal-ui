@@ -1,0 +1,85 @@
+import { describe, expect, it } from 'vitest';
+import { __test, validateAudioFileIntegrity } from './audioIntegrity';
+
+describe('audioIntegrity', () => {
+	it('fails when ffprobe is unavailable', async () => {
+		const result = await validateAudioFileIntegrity(
+			{ filePath: '/tmp/example.flac' },
+			{ binaryFinder: () => null }
+		);
+		expect(result.ok).toBe(false);
+		expect(result.error).toMatch(/ffprobe/i);
+	});
+
+	it('validates codec/container and duration from probe payload', async () => {
+		const result = await validateAudioFileIntegrity(
+			{
+				filePath: '/tmp/example.flac',
+				expectedExtension: '.flac',
+				expectedDurationSeconds: 200
+			},
+			{
+				binaryFinder: () => '/usr/bin/ffprobe',
+				durationToleranceSeconds: 5,
+				probeRunner: async () => ({
+					format: { format_name: 'flac', duration: '200.10' },
+					streams: [{ codec_type: 'audio', codec_name: 'flac', duration: '200.05' }]
+				})
+			}
+		);
+
+		expect(result.ok).toBe(true);
+		expect(result.durationSeconds).toBeCloseTo(200.05, 2);
+		expect(result.codecName).toBe('flac');
+	});
+
+	it('fails when duration is outside tolerance', async () => {
+		const result = await validateAudioFileIntegrity(
+			{
+				filePath: '/tmp/example.flac',
+				expectedExtension: '.flac',
+				expectedDurationSeconds: 180
+			},
+			{
+				binaryFinder: () => '/usr/bin/ffprobe',
+				durationToleranceSeconds: 2,
+				probeRunner: async () => ({
+					format: { format_name: 'flac', duration: '198' },
+					streams: [{ codec_type: 'audio', codec_name: 'flac', duration: '198' }]
+				})
+			}
+		);
+
+		expect(result.ok).toBe(false);
+		expect(result.error).toMatch(/duration mismatch/i);
+	});
+
+	it('fails on container mismatch', async () => {
+		const result = await validateAudioFileIntegrity(
+			{
+				filePath: '/tmp/example.flac',
+				expectedExtension: '.flac'
+			},
+			{
+				binaryFinder: () => '/usr/bin/ffprobe',
+				probeRunner: async () => ({
+					format: { format_name: 'mov,mp4,m4a,3gp,3g2,mj2', duration: '120' },
+					streams: [{ codec_type: 'audio', codec_name: 'aac', duration: '120' }]
+				})
+			}
+		);
+
+		expect(result.ok).toBe(false);
+		expect(result.error).toMatch(/container\/codec mismatch/i);
+	});
+
+	it('extracts stream and format values safely', () => {
+		const extracted = __test.extractProbeValues({
+			format: { format_name: 'flac', duration: '100.25' },
+			streams: [{ codec_type: 'audio', codec_name: 'flac', duration: '100.20' }]
+		});
+		expect(extracted.hasAudioStream).toBe(true);
+		expect(extracted.durationSeconds).toBeCloseTo(100.2, 2);
+		expect(extracted.codecName).toBe('flac');
+	});
+});

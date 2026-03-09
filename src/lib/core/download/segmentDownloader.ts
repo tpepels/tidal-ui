@@ -4,6 +4,7 @@
 
 import { detectAudioFormat } from '$lib/utils/audioFormat';
 import type { DownloadOptions, DownloadResult, FetchFunction } from './types';
+import { assertCompleteResponseBody } from './responseIntegrity';
 
 export async function downloadSegmentedDash(
 	initializationUrl: string,
@@ -61,6 +62,10 @@ export async function downloadSegmentedDash(
 		}
 		const buffer = await response.arrayBuffer();
 		const chunk = new Uint8Array(buffer);
+		assertCompleteResponseBody(response, chunk.byteLength, `DASH segment ${url}`);
+		if (chunk.byteLength === 0) {
+			throw new Error(`DASH segment ${url} returned an empty body`);
+		}
 		receivedBytes += chunk.byteLength;
 		chunks.push(chunk);
 		

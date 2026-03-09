@@ -2,6 +2,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { AudioQuality, TrackLookup } from '$lib/types';
 import { embedMetadataToFile, type MetadataOverrides } from '$lib/server/metadataEmbedder';
+import { validateAudioFileIntegrity } from '$lib/server/download/audioIntegrity';
 import {
 	buildServerFilename,
 	sanitizeDirName,
@@ -196,13 +197,29 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 		}
 	}
 
-	const { finalPath, action } = await resolveFileConflict(
+	const resolvedConflict = await resolveFileConflict(
 		initialFilepath,
 		conflictResolution,
 		newFileSize,
 		resolvedChecksum,
 		baseDir
 	);
+	const finalPath = resolvedConflict.finalPath;
+	let action = resolvedConflict.action;
+
+	if (action === 'skip') {
+		const existingIntegrity = await validateAudioFileIntegrity({
+			filePath: finalPath,
+			expectedExtension: path.extname(finalPath),
+			expectedDurationSeconds: Number(trackLookup?.track?.duration)
+		});
+		if (!existingIntegrity.ok) {
+			console.warn(
+				`[Server Download] Existing file failed integrity validation for track ${trackId}; overwriting instead of skipping: ${existingIntegrity.error}`
+			);
+			action = 'overwrite';
+		}
+	}
 
 	if (action === 'skip') {
 		if (tempFilePath) {
@@ -305,6 +322,80 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 	}
 	if (downloadCoverSeperately && resolvedCoverUrl) {
 		coverDownloaded = await downloadCoverToDir(resolvedCoverUrl, targetDir);
+	}
+
+	let finalSize = 0;
+	try {
+		const finalStat = await fs.stat(finalOutputPath);
+		finalSize = finalStat.size;
+	} catch (error) {
+		return {
+			success: false,
+			error: createDownloadError(
+				ERROR_CODES.SIZE_MISMATCH,
+				'Failed to verify finalized file size on disk',
+				true,
+				{ originalError: error instanceof Error ? error.message : String(error) },
+				10,
+				'Please retry the download.'
+			),
+			status: 500
+		};
+	}
+
+	if (finalSize <= 0) {
+		return {
+			success: false,
+			error: createDownloadError(
+				ERROR_CODES.SIZE_MISMATCH,
+				'Finalized file is empty',
+				true,
+				{ path: finalOutputPath, size: finalSize },
+				10,
+				'Please retry the download.'
+			),
+			status: 500
+		};
+	}
+
+	if (finalOutputPath === finalPath && finalSize !== newFileSize) {
+		return {
+			success: false,
+			error: createDownloadError(
+				ERROR_CODES.SIZE_MISMATCH,
+				`Finalized file size mismatch: expected ${newFileSize} bytes, got ${finalSize} bytes`,
+				true,
+				{ path: finalOutputPath, expectedBytes: newFileSize, actualBytes: finalSize },
+				10,
+				'Please retry the download.'
+			),
+			status: 500
+		};
+	}
+
+	const integrity = await validateAudioFileIntegrity({
+		filePath: finalOutputPath,
+		expectedExtension: path.extname(finalOutputPath),
+		expectedDurationSeconds: Number(trackLookup?.track?.duration)
+	});
+	if (!integrity.ok) {
+		return {
+			success: false,
+			error: createDownloadError(
+				ERROR_CODES.INTEGRITY_CHECK_FAILED,
+				`Audio integrity validation failed: ${integrity.error || 'unknown reason'}`,
+				true,
+				{
+					path: finalOutputPath,
+					durationSeconds: integrity.durationSeconds,
+					codecName: integrity.codecName,
+					formatName: integrity.formatName
+				},
+				10,
+				'Please retry the download.'
+			),
+			status: 500
+		};
 	}
 
 	return {

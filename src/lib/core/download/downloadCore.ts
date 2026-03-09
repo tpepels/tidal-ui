@@ -12,6 +12,7 @@ import type {
 import type { AudioQuality, TrackLookup } from '$lib/types';
 import { parseManifest } from './manifestParser';
 import { downloadSegmentedDash } from './segmentDownloader';
+import { assertCompleteResponseBody } from './responseIntegrity';
 import { 
 	recordDownloadStart,
 	recordDownloadSuccess,
@@ -328,6 +329,7 @@ async function downloadFromResponse(
 			merged.set(chunk, offset);
 			offset += chunk.byteLength;
 		}
+		assertCompleteResponseBody(response, receivedBytes, 'Audio stream response');
 
 		return {
 			buffer: merged.buffer,
@@ -340,6 +342,7 @@ async function downloadFromResponse(
 	// Fallback: download as single chunk
 	const buffer = await response.arrayBuffer();
 	const receivedBytes = buffer.byteLength;
+	assertCompleteResponseBody(response, receivedBytes, 'Audio stream response');
 
 	options?.onProgress?.({
 		stage: 'downloading',
