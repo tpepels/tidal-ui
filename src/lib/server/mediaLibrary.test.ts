@@ -1,12 +1,22 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+
+const integrityMocks = vi.hoisted(() => ({
+	validateAudioFileIntegrity: vi.fn()
+}));
+
+vi.mock('./download/audioIntegrity', () => ({
+	validateAudioFileIntegrity: integrityMocks.validateAudioFileIntegrity
+}));
+
 import {
 	batchAlbumLibraryStatus,
 	checkAlbumInLibrary,
 	checkTrackInLibrary,
-	clearMediaLibraryScanCache
+	clearMediaLibraryScanCache,
+	deduplicateMediaLibrary
 } from './mediaLibrary';
 import { sanitizeDirName } from '../../routes/api/download-track/_shared';
 
@@ -32,6 +42,13 @@ describe('mediaLibrary', () => {
 		process.env.DOWNLOAD_DIR = downloadDir;
 		process.env.MEDIA_LIBRARY_HASH_SAMPLE_BYTES = '0';
 		clearMediaLibraryScanCache();
+		integrityMocks.validateAudioFileIntegrity.mockReset();
+		integrityMocks.validateAudioFileIntegrity.mockResolvedValue({
+			ok: true,
+			durationSeconds: 180,
+			codecName: 'flac',
+			formatName: 'flac'
+		});
 	});
 
 	afterEach(async () => {
@@ -112,5 +129,44 @@ describe('mediaLibrary', () => {
 
 		expect(status.exists).toBe(false);
 		expect(status.matches).toEqual([]);
+	});
+
+	it('keeps the healthy complete duplicate and backs up the weaker one', async () => {
+		const artistDir = sanitizeDirName('Sonido Gallo Negro');
+		const albumDir = sanitizeDirName('Example Album');
+		const targetDir = path.join(downloadDir, artistDir, albumDir);
+		await fs.mkdir(targetDir, { recursive: true });
+
+		const shortPath = path.join(targetDir, '08 - Planet Claire.flac');
+		const fullPath = path.join(targetDir, '08 - Planet Claire (Remastered).flac');
+		await fs.writeFile(shortPath, Buffer.alloc(4000, 1));
+		await fs.writeFile(fullPath, Buffer.alloc(8000, 2));
+
+		integrityMocks.validateAudioFileIntegrity.mockImplementation(async (input: { filePath: string }) => {
+			if (input.filePath === shortPath) {
+				return {
+					ok: false,
+					error: 'Duration mismatch: expected 211s ± 5s, ffprobe reported 29s',
+					durationSeconds: 29
+				};
+			}
+			return {
+				ok: true,
+				durationSeconds: 211,
+				codecName: 'flac',
+				formatName: 'flac'
+			};
+		});
+
+		const result = await deduplicateMediaLibrary({
+			dryRun: false,
+			forceRescan: true
+		});
+
+		const finalFiles = await fs.readdir(targetDir);
+		expect(finalFiles).toContain('08 - Planet Claire (Remastered).flac');
+		expect(finalFiles).not.toContain('08 - Planet Claire.flac');
+		expect(result.duplicateFilesBackedUp).toBe(1);
+		expect(result.backupRoot).toBeTruthy();
 	});
 });

@@ -138,6 +138,40 @@ describe('finalizeTrack', () => {
 		}
 	});
 
+	it('respects explicit target directory overrides', async () => {
+		const result = await finalizeTrack({
+			trackId: 350,
+			quality: 'LOSSLESS',
+			artistName: 'Art Blakey',
+			albumTitle: "Buhaina's Delight (Rudy Van Gelder Edition: Remastered)",
+			targetArtistDir: 'Art Blakey',
+			targetAlbumDir: "Buhaina's Delight (Rudy Van Gelder Edition Remastered)",
+			trackTitle: 'Backstage Sally',
+			trackNumber: 1,
+			buffer: Buffer.from('legacy-dir-test'),
+			downloadCoverSeperately: false
+		});
+
+		expect(result.success).toBe(true);
+		if (!result.success) return;
+
+		const overridePath = path.join(
+			downloadDir,
+			'Art Blakey',
+			"Buhaina's Delight (Rudy Van Gelder Edition Remastered)",
+			result.filename
+		);
+		await expect(fs.stat(overridePath)).resolves.toBeDefined();
+
+		const sanitizedPath = path.join(
+			downloadDir,
+			'Art Blakey',
+			"Buhaina's Delight (Rudy Van Gelder Edition_ Remastered)",
+			result.filename
+		);
+		await expect(fs.stat(sanitizedPath)).rejects.toThrow();
+	});
+
 	it('allows finalized size changes when metadata is embedded in-place', async () => {
 		const payload = Buffer.from('raw-audio-data');
 		metadataEmbedderMocks.embedMetadataToFile.mockImplementation(async (filePath: string) => {

@@ -18,6 +18,10 @@ const ArtistRolesSchema = z
 	.optional();
 
 const OptionalStringSchema = z.string().nullable().optional();
+const OptionalStringFromNullableSchema = z.preprocess(
+	(value) => (value === null ? undefined : value),
+	z.string().optional()
+);
 
 // API Response Schemas
 export const TrackSchema = z.object({
@@ -76,13 +80,13 @@ export const TrackSchema = z.object({
 					})
 				)
 				.optional(),
-			releaseDate: z.string().optional(),
-			numberOfTracks: z.number().optional(),
-			numberOfVolumes: z.number().optional(),
-			copyright: z.string().optional(),
-			popularity: z.number().optional()
-		})
-		.optional(),
+				releaseDate: z.string().optional(),
+				numberOfTracks: z.number().optional(),
+				numberOfVolumes: z.number().optional(),
+				copyright: OptionalStringFromNullableSchema,
+				popularity: z.number().optional()
+			})
+			.optional(),
 	duration: z.number().optional(),
 	explicit: z.boolean().optional(),
 	trackNumber: z.number().optional(),
@@ -132,7 +136,7 @@ export const AlbumSchema = z.object({
 	releaseDate: z.string().optional(),
 	numberOfTracks: z.number().optional(),
 	numberOfVolumes: z.number().optional(),
-	copyright: z.string().optional(),
+	copyright: OptionalStringFromNullableSchema,
 	popularity: z.number().optional(),
 	explicit: z.boolean().optional()
 });

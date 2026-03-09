@@ -72,6 +72,50 @@ export type FullLibraryRepairResult = {
 	error?: string;
 };
 
+export type FullLibraryRepairStatusResult = {
+	success: boolean;
+	status?: 'idle' | 'running' | 'completed' | 'failed';
+	startedAt?: number | null;
+	finishedAt?: number | null;
+	currentAlbum?: {
+		index: number;
+		total: number;
+		artistName: string;
+		albumTitle: string;
+	} | null;
+	summary?: {
+		albumsDiscovered: number;
+		albumsProcessed: number;
+		albumsMatched: number;
+		albumsUnresolved: number;
+		albumsErrored: number;
+		albumsWithRepairTargets: number;
+		albumsWithQueuedRepairs: number;
+		tracksExpected: number;
+		tracksHealthy: number;
+		tracksMissing: number;
+		tracksCorrupt: number;
+		tracksQueued: number;
+	};
+	error?: string | null;
+};
+
+export type MediaLibraryDeduplicateResult = {
+	success: boolean;
+	scannedAt?: number;
+	dryRun?: boolean;
+	albumsScanned?: number;
+	duplicateAlbumGroups?: number;
+	duplicateAlbumDirs?: number;
+	albumsMerged?: number;
+	filesMovedBetweenAlbums?: number;
+	albumsWithTrackDuplicates?: number;
+	duplicateTrackGroups?: number;
+	duplicateFilesBackedUp?: number;
+	backupRoot?: string;
+	error?: string;
+};
+
 export async function fetchAlbumLibraryStatus(
 	albums: AlbumLibraryStatusInput[]
 ): Promise<AlbumLibraryStatusMap> {
@@ -163,6 +207,54 @@ export async function repairFullLibraryInLibrary(input: {
 		return {
 			success: false,
 			error: 'Failed to auto-repair full library'
+		};
+	}
+}
+
+export async function fetchFullLibraryRepairStatus(): Promise<FullLibraryRepairStatusResult> {
+	try {
+		const response = await fetch('/api/media-library/repair-all');
+		const payload = (await response.json()) as FullLibraryRepairStatusResult;
+		if (!response.ok) {
+			return {
+				success: false,
+				error: payload?.error || 'Failed to fetch full-library repair status'
+			};
+		}
+		return payload;
+	} catch {
+		return {
+			success: false,
+			error: 'Failed to fetch full-library repair status'
+		};
+	}
+}
+
+export async function deduplicateLibraryInLibrary(input?: {
+	dryRun?: boolean;
+	forceRescan?: boolean;
+	maxAlbums?: number;
+}): Promise<MediaLibraryDeduplicateResult> {
+	try {
+		const response = await fetch('/api/media-library/deduplicate', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify(input ?? {})
+		});
+		const payload = (await response.json()) as MediaLibraryDeduplicateResult;
+		if (!response.ok) {
+			return {
+				success: false,
+				error: payload?.error || 'Failed to deduplicate media library'
+			};
+		}
+		return payload;
+	} catch {
+		return {
+			success: false,
+			error: 'Failed to deduplicate media library'
 		};
 	}
 }

@@ -27,6 +27,18 @@ describe('inspectAlbumIntegrity', () => {
 		return filePath;
 	}
 
+	async function writeTrackInRawDir(
+		artistDir: string,
+		albumDir: string,
+		filename: string
+	): Promise<string> {
+		const targetDir = path.join(downloadDir, artistDir, albumDir);
+		await fs.mkdir(targetDir, { recursive: true });
+		const filePath = path.join(targetDir, filename);
+		await fs.writeFile(filePath, Buffer.from([0x49, 0x44, 0x33, 0x00]));
+		return filePath;
+	}
+
 	beforeEach(async () => {
 		downloadDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tidal-ui-media-library-integrity-'));
 		originalDownloadDir = process.env.DOWNLOAD_DIR;
@@ -112,5 +124,33 @@ describe('inspectAlbumIntegrity', () => {
 				tracks: [{ trackId: 99, trackTitle: 'Track', trackNumber: 1, expectedDurationSeconds: 120 }]
 			})
 		).rejects.toThrow('Integrity scanner unavailable');
+	});
+
+	it('matches legacy local album directories when sanitized title differs', async () => {
+		const legacyArtistDir = 'Art Blakey';
+		const legacyAlbumDir = "Buhaina's Delight (Rudy Van Gelder Edition Remastered)";
+		await writeTrackInRawDir(legacyArtistDir, legacyAlbumDir, '01 - Backstage Sally.flac');
+
+		const report = await inspectAlbumIntegrity({
+			artistName: 'Art Blakey',
+			albumTitle: "Buhaina's Delight (Rudy Van Gelder Edition: Remastered)",
+			tracks: [
+				{
+					trackId: 101,
+					trackTitle: 'Backstage Sally',
+					trackNumber: 1,
+					expectedDurationSeconds: 180
+				}
+			]
+		});
+
+		expect(report.summary).toEqual({
+			expected: 1,
+			healthy: 1,
+			missing: 0,
+			corrupt: 0
+		});
+		expect(report.resolvedArtistDir).toBe(legacyArtistDir);
+		expect(report.resolvedAlbumDir).toBe(legacyAlbumDir);
 	});
 });

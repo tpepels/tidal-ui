@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { get } from 'svelte/store';
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
@@ -13,7 +13,11 @@
 	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { artistCacheStore } from '$lib/stores/artistCache';
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
-	import { repairFullLibraryInLibrary } from '$lib/utils/mediaLibraryClient';
+	import {
+		deduplicateLibraryInLibrary,
+		fetchFullLibraryRepairStatus,
+		repairFullLibraryInLibrary
+	} from '$lib/utils/mediaLibraryClient';
 
 	import { toasts } from '$lib/stores/toasts';
 	import {
@@ -80,6 +84,11 @@
 	let isCacheClearing = $state(false);
 	let isFullLibraryRepairing = $state(false);
 	let fullLibraryRepairSummary = $state<string | null>(null);
+	let fullLibraryRepairProgress = $state<string | null>(null);
+	let isLibraryDeduplicating = $state(false);
+	let libraryDeduplicateSummary = $state<string | null>(null);
+	let fullLibraryRepairPollInterval = $state<ReturnType<typeof setInterval> | null>(null);
+	let fullLibraryRepairPollToken = $state(0);
 	let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 	const downloadMode = $derived($downloadPreferencesStore.mode);
 	const isServerStorage = $derived($downloadPreferencesStore.storage === 'server');
@@ -102,6 +111,8 @@
 	const MAX_QUEUE_ZIP_TRACKS = 75;
 	const FULL_LIBRARY_REPAIR_CONFIRMATION =
 		'Scan your full local library and queue automatic repairs for missing/corrupt tracks? This can queue many downloads.';
+	const LIBRARY_DEDUP_CONFIRMATION =
+		'Merge duplicate album folders and remove duplicate tracks by track number? Duplicates are moved to a backup folder first.';
 	let diagnosticsOpen = $state(false);
 	let diagnosticsLoading = $state(false);
 	let diagnosticsSummary = $state<ReturnType<typeof getErrorSummary> | null>(null);
@@ -283,6 +294,51 @@
 		}
 	}
 
+	function stopFullLibraryRepairPolling(): void {
+		fullLibraryRepairPollToken += 1;
+		if (fullLibraryRepairPollInterval) {
+			clearInterval(fullLibraryRepairPollInterval);
+			fullLibraryRepairPollInterval = null;
+		}
+	}
+
+	function formatFullLibraryRepairProgress(status: {
+		currentAlbum?: { index: number; total: number; artistName: string; albumTitle: string } | null;
+		summary?: { albumsProcessed: number; albumsDiscovered: number; tracksQueued: number };
+	}): string {
+		const processed = status.summary?.albumsProcessed ?? 0;
+		const discovered = status.summary?.albumsDiscovered ?? 0;
+		const currentAlbum = status.currentAlbum;
+		const queued = status.summary?.tracksQueued ?? 0;
+		const currentLabel =
+			currentAlbum && currentAlbum.albumTitle
+				? ` Currently: ${currentAlbum.artistName} - ${currentAlbum.albumTitle}.`
+				: '';
+		return `Scanning library: ${processed}/${discovered} album(s) processed.${currentLabel} Queued ${queued} track repair(s).`;
+	}
+
+	async function pollFullLibraryRepairStatus(token: number): Promise<void> {
+		if (token !== fullLibraryRepairPollToken) {
+			return;
+		}
+		const status = await fetchFullLibraryRepairStatus();
+		if (token !== fullLibraryRepairPollToken || !status.success) {
+			return;
+		}
+		if (status.status === 'running') {
+			fullLibraryRepairProgress = formatFullLibraryRepairProgress(status);
+		}
+	}
+
+	function startFullLibraryRepairPolling(): void {
+		stopFullLibraryRepairPolling();
+		const token = fullLibraryRepairPollToken;
+		void pollFullLibraryRepairStatus(token);
+		fullLibraryRepairPollInterval = setInterval(() => {
+			void pollFullLibraryRepairStatus(token);
+		}, 1000);
+	}
+
 	async function handleFullLibraryRepair(): Promise<void> {
 		if (isFullLibraryRepairing) return;
 
@@ -293,6 +349,8 @@
 
 		isFullLibraryRepairing = true;
 		fullLibraryRepairSummary = null;
+		fullLibraryRepairProgress = 'Starting full-library integrity scan...';
+		startFullLibraryRepairPolling();
 
 		try {
 			const quality = get(downloadPreferencesStore).downloadQuality;
@@ -307,6 +365,7 @@
 
 			const summary = result.summary;
 			const summaryLine = `Scanned ${summary.albumsProcessed}/${summary.albumsDiscovered} album(s); queued ${summary.tracksQueued} repair track(s).`;
+			fullLibraryRepairProgress = null;
 			fullLibraryRepairSummary = summaryLine;
 			toasts.success(summaryLine);
 
@@ -325,10 +384,49 @@
 				error instanceof Error && error.message
 					? error.message
 					: 'Failed to auto-repair full library';
+			fullLibraryRepairProgress = null;
 			fullLibraryRepairSummary = null;
 			toasts.error(message);
 		} finally {
+			stopFullLibraryRepairPolling();
 			isFullLibraryRepairing = false;
+		}
+	}
+
+	async function handleLibraryDeduplicate(): Promise<void> {
+		if (isLibraryDeduplicating) return;
+		if (typeof window !== 'undefined') {
+			const confirmed = window.confirm(LIBRARY_DEDUP_CONFIRMATION);
+			if (!confirmed) return;
+		}
+
+		isLibraryDeduplicating = true;
+		libraryDeduplicateSummary = null;
+
+		try {
+			const result = await deduplicateLibraryInLibrary({
+				dryRun: false,
+				forceRescan: true
+			});
+			if (!result.success) {
+				throw new Error(result.error || 'Failed to deduplicate media library');
+			}
+
+			const summary = `Merged ${result.albumsMerged ?? 0} album folder(s), moved ${result.filesMovedBetweenAlbums ?? 0} file(s), and backed up ${result.duplicateFilesBackedUp ?? 0} duplicate track file(s).`;
+			libraryDeduplicateSummary = summary;
+			toasts.success(summary);
+			if (result.backupRoot) {
+				toasts.info(`Duplicate backups saved to ${result.backupRoot}`);
+			}
+		} catch (error) {
+			const message =
+				error instanceof Error && error.message
+					? error.message
+					: 'Failed to deduplicate media library';
+			libraryDeduplicateSummary = null;
+			toasts.error(message);
+		} finally {
+			isLibraryDeduplicating = false;
 		}
 	}
 
@@ -360,6 +458,10 @@
 		if (!isPlayerVisible && typeof document !== 'undefined') {
 			document.documentElement.style.setProperty('--player-height', '0px');
 		}
+	});
+
+	onDestroy(() => {
+		stopFullLibraryRepairPolling();
 	});
 
 
@@ -1142,6 +1244,32 @@
 												</button>
 												{#if fullLibraryRepairSummary}
 													<p class="section-footnote">{fullLibraryRepairSummary}</p>
+												{/if}
+												{#if fullLibraryRepairProgress}
+													<p class="section-footnote">{fullLibraryRepairProgress}</p>
+												{/if}
+												<button
+													type="button"
+													onclick={handleLibraryDeduplicate}
+													class="glass-option glass-option--wide"
+													disabled={isLibraryDeduplicating}
+													aria-busy={isLibraryDeduplicating}
+												>
+													<span class="glass-option__content">
+														<span class="glass-option__label">
+															<Trash2 size={16} />
+															<span>{isLibraryDeduplicating ? 'Consolidating duplicates…' : 'Consolidate duplicate album files'}</span>
+														</span>
+														<span class="glass-option__description">
+															Merges duplicate album folders and keeps the healthiest/full-length duplicate track variant.
+														</span>
+													</span>
+													{#if isLibraryDeduplicating}
+														<LoaderCircle size={16} class="glass-option__check animate-spin" />
+													{/if}
+												</button>
+												{#if libraryDeduplicateSummary}
+													<p class="section-footnote">{libraryDeduplicateSummary}</p>
 												{/if}
 											</section>
 											<section class="settings-section settings-section--bordered settings-section--wide">

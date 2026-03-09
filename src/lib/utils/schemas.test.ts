@@ -196,6 +196,28 @@ describe('Schemas', () => {
 				expect(result.success).toBe(true);
 			});
 
+			it('accepts null copyright in album search response', () => {
+				const searchResponse = {
+					items: [
+						{
+							id: 11,
+							title: 'Album With Null Copyright',
+							artist: { name: 'Artist 1' },
+							copyright: null
+						}
+					],
+					totalNumberOfItems: 1,
+					limit: 20,
+					offset: 0
+				};
+
+				const result = safeValidateApiResponse(searchResponse, AlbumSearchResponseSchema);
+				expect(result.success).toBe(true);
+				if (result.success) {
+					expect(result.data.items[0]?.copyright).toBeUndefined();
+				}
+			});
+
 			it('handles empty search results', () => {
 				const emptyResponse = {
 					items: [],

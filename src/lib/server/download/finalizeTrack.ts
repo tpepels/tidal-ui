@@ -29,6 +29,8 @@ export interface FinalizeTrackParams {
 	quality: AudioQuality;
 	albumTitle?: string;
 	artistName?: string;
+	targetArtistDir?: string;
+	targetAlbumDir?: string;
 	trackTitle?: string;
 	trackNumber?: number;
 	outputBaseDir?: string;
@@ -107,12 +109,26 @@ const mapFsError = (error: NodeJS.ErrnoException): { error: DownloadError; statu
 	);
 };
 
+function sanitizeOverrideDirComponent(input: string | undefined): string | null {
+	if (typeof input !== 'string') return null;
+	const trimmed = input.trim();
+	if (!trimmed || trimmed === '.' || trimmed === '..') {
+		return null;
+	}
+	if (trimmed.includes('/') || trimmed.includes('\\')) {
+		return null;
+	}
+	return trimmed;
+}
+
 export async function finalizeTrack(params: FinalizeTrackParams): Promise<FinalizeTrackResult> {
 	const {
 		trackId,
 		quality,
 		albumTitle,
 		artistName,
+		targetArtistDir,
+		targetAlbumDir,
 		trackTitle,
 		trackNumber,
 		outputBaseDir,
@@ -159,8 +175,18 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 	);
 
 	const baseDir = outputBaseDir ?? getDownloadDir();
-	const artistDir = sanitizeDirName(artistName || 'Unknown Artist');
-	const albumDir = sanitizeDirName(albumTitle || 'Unknown Album');
+	const overrideArtistDir = sanitizeOverrideDirComponent(targetArtistDir);
+	const overrideAlbumDir = sanitizeOverrideDirComponent(targetAlbumDir);
+	if (
+		(targetArtistDir && !overrideArtistDir) ||
+		(targetAlbumDir && !overrideAlbumDir)
+	) {
+		console.warn(
+			`[Server Download] Invalid target directory override for track ${trackId}; falling back to sanitized metadata path.`
+		);
+	}
+	const artistDir = overrideArtistDir ?? sanitizeDirName(artistName || 'Unknown Artist');
+	const albumDir = overrideAlbumDir ?? sanitizeDirName(albumTitle || 'Unknown Album');
 	const targetDir = path.join(baseDir, artistDir, albumDir);
 	await ensureDir(targetDir);
 	const initialFilepath = path.join(targetDir, filename);

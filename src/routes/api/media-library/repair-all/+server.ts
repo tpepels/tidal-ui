@@ -55,6 +55,25 @@ type FullLibraryRepairResult = {
 	errorAlbums: UnresolvedAlbum[];
 };
 
+type FullLibraryRepairRunStatus = 'idle' | 'running' | 'completed' | 'failed';
+
+type FullLibraryRepairCurrentAlbum = {
+	index: number;
+	total: number;
+	artistName: string;
+	albumTitle: string;
+};
+
+type FullLibraryRepairStatusPayload = {
+	success: true;
+	status: FullLibraryRepairRunStatus;
+	startedAt: number | null;
+	finishedAt: number | null;
+	currentAlbum: FullLibraryRepairCurrentAlbum | null;
+	summary: FullLibraryRepairSummary;
+	error: string | null;
+};
+
 const ALLOWED_QUALITIES = new Set<AudioQuality>(['LOW', 'HIGH', 'LOSSLESS', 'HI_RES_LOSSLESS']);
 const VARIOUS_ARTISTS_DIR = sanitizeDirName('Various Artists');
 const UNRESOLVED_PAYLOAD_LIMIT = 50;
@@ -62,7 +81,63 @@ const MATCH_MIN_SCORE = 180;
 const MATCH_AMBIGUITY_WINDOW = 25;
 const logPrefix = '[Media Library Auto Repair]';
 
+function createEmptySummary(): FullLibraryRepairSummary {
+	return {
+		albumsDiscovered: 0,
+		albumsProcessed: 0,
+		albumsMatched: 0,
+		albumsUnresolved: 0,
+		albumsErrored: 0,
+		albumsWithRepairTargets: 0,
+		albumsWithQueuedRepairs: 0,
+		tracksExpected: 0,
+		tracksHealthy: 0,
+		tracksMissing: 0,
+		tracksCorrupt: 0,
+		tracksQueued: 0
+	};
+}
+
 let activeRun: Promise<FullLibraryRepairResult> | null = null;
+let runStatus: FullLibraryRepairRunStatus = 'idle';
+let runStartedAt: number | null = null;
+let runFinishedAt: number | null = null;
+let runCurrentAlbum: FullLibraryRepairCurrentAlbum | null = null;
+let runSummary: FullLibraryRepairSummary = createEmptySummary();
+let runError: string | null = null;
+
+function setRunStatusRunning(startedAt: number): void {
+	runStatus = 'running';
+	runStartedAt = startedAt;
+	runFinishedAt = null;
+	runCurrentAlbum = null;
+	runSummary = createEmptySummary();
+	runError = null;
+}
+
+function setRunCurrentAlbum(
+	currentAlbum:
+		| {
+				index: number;
+				total: number;
+				artistName: string;
+				albumTitle: string;
+		  }
+		| null
+): void {
+	runCurrentAlbum = currentAlbum;
+}
+
+function setRunSummary(summary: FullLibraryRepairSummary): void {
+	runSummary = { ...summary };
+}
+
+function setRunStatusFinished(status: FullLibraryRepairRunStatus, finishedAt: number, error?: string): void {
+	runStatus = status;
+	runFinishedAt = finishedAt;
+	runCurrentAlbum = null;
+	runError = error ?? null;
+}
 
 function normalizeComparable(value: string): string {
 	return value.toLowerCase().replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
@@ -241,21 +316,9 @@ async function runRepairAll(input: {
 	const startedAt = Date.now();
 	const unresolvedAlbums: UnresolvedAlbum[] = [];
 	const errorAlbums: UnresolvedAlbum[] = [];
+	setRunStatusRunning(startedAt);
 
-	const summary: FullLibraryRepairSummary = {
-		albumsDiscovered: 0,
-		albumsProcessed: 0,
-		albumsMatched: 0,
-		albumsUnresolved: 0,
-		albumsErrored: 0,
-		albumsWithRepairTargets: 0,
-		albumsWithQueuedRepairs: 0,
-		tracksExpected: 0,
-		tracksHealthy: 0,
-		tracksMissing: 0,
-		tracksCorrupt: 0,
-		tracksQueued: 0
-	};
+	const summary: FullLibraryRepairSummary = createEmptySummary();
 
 	const snapshot = await scanLocalMediaLibrary({ force: input.forceRescan });
 	const groupedAlbums = groupLibraryAlbums(snapshot.files);
@@ -263,6 +326,7 @@ async function runRepairAll(input: {
 	const albumsToProcess =
 		typeof maxAlbums === 'number' ? groupedAlbums.slice(0, maxAlbums) : groupedAlbums;
 	summary.albumsDiscovered = groupedAlbums.length;
+	setRunSummary(summary);
 
 	console.log(
 		`${logPrefix} Starting full library repair`,
@@ -276,8 +340,15 @@ async function runRepairAll(input: {
 		})
 	);
 
-	for (const localAlbum of albumsToProcess) {
+	for (const [index, localAlbum] of albumsToProcess.entries()) {
 		summary.albumsProcessed += 1;
+		setRunCurrentAlbum({
+			index: index + 1,
+			total: albumsToProcess.length,
+			artistName: localAlbum.localArtistName,
+			albumTitle: localAlbum.localAlbumTitle
+		});
+		setRunSummary(summary);
 		console.log(
 			`${logPrefix} Processing album`,
 			JSON.stringify({
@@ -308,6 +379,7 @@ async function runRepairAll(input: {
 					error: reason
 				})
 			);
+			setRunSummary(summary);
 			continue;
 		}
 
@@ -326,11 +398,13 @@ async function runRepairAll(input: {
 					reason: matchResult.reason ?? 'No confident match'
 				})
 			);
+			setRunSummary(summary);
 			continue;
 		}
 
 		const matchedAlbum = matchResult.match;
 		summary.albumsMatched += 1;
+		setRunSummary(summary);
 
 		let albumDetails;
 		try {
@@ -352,6 +426,7 @@ async function runRepairAll(input: {
 					error: reason
 				})
 			);
+			setRunSummary(summary);
 			continue;
 		}
 
@@ -379,6 +454,7 @@ async function runRepairAll(input: {
 					matchedAlbumId: matchedAlbum.id
 				})
 			);
+			setRunSummary(summary);
 			continue;
 		}
 
@@ -387,6 +463,8 @@ async function runRepairAll(input: {
 			report = await inspectAlbumIntegrity({
 				artistName: localAlbum.localArtistName,
 				albumTitle: localAlbum.localAlbumTitle,
+				targetArtistDir: localAlbum.artistDir,
+				targetAlbumDir: localAlbum.albumDir,
 				tracks: trackInputs
 			});
 		} catch (error) {
@@ -406,6 +484,7 @@ async function runRepairAll(input: {
 					error: reason
 				})
 			);
+			setRunSummary(summary);
 			continue;
 		}
 
@@ -413,6 +492,7 @@ async function runRepairAll(input: {
 		summary.tracksHealthy += report.summary.healthy;
 		summary.tracksMissing += report.summary.missing;
 		summary.tracksCorrupt += report.summary.corrupt;
+		setRunSummary(summary);
 
 		const repairTargets = report.tracks.filter((track) => track.status === 'missing' || track.status === 'corrupt');
 		if (repairTargets.length === 0) {
@@ -428,6 +508,7 @@ async function runRepairAll(input: {
 		}
 
 		summary.albumsWithRepairTargets += 1;
+		setRunSummary(summary);
 
 		let queuedForAlbum = 0;
 		if (input.queue) {
@@ -440,6 +521,8 @@ async function runRepairAll(input: {
 						quality: input.quality,
 						albumTitle: localAlbum.localAlbumTitle,
 						artistName: localAlbum.localArtistName,
+						targetArtistDir: localAlbum.artistDir,
+						targetAlbumDir: localAlbum.albumDir,
 						trackTitle: target.trackTitle,
 						trackNumber: target.trackNumber,
 						coverUrl,
@@ -454,11 +537,13 @@ async function runRepairAll(input: {
 				);
 				queuedForAlbum += 1;
 				summary.tracksQueued += 1;
+				setRunSummary(summary);
 			}
 		}
 
 		if (queuedForAlbum > 0) {
 			summary.albumsWithQueuedRepairs += 1;
+			setRunSummary(summary);
 		}
 
 		console.log(
@@ -474,6 +559,8 @@ async function runRepairAll(input: {
 	}
 
 	const finishedAt = Date.now();
+	setRunSummary(summary);
+	setRunStatusFinished('completed', finishedAt);
 
 	console.log(
 		`${logPrefix} Full library repair completed`,
@@ -526,14 +613,29 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json(result);
 	} catch (error) {
 		console.error('[Media Library API] repair-all error:', error);
+		const message = error instanceof Error ? error.message : 'Failed to auto-repair full library';
+		setRunStatusFinished('failed', Date.now(), message);
 		return json(
 			{
 				success: false,
-				error: error instanceof Error ? error.message : 'Failed to auto-repair full library'
+				error: message
 			},
 			{ status: 500 }
 		);
 	} finally {
 		activeRun = null;
 	}
+};
+
+export const GET: RequestHandler = async () => {
+	const payload: FullLibraryRepairStatusPayload = {
+		success: true,
+		status: runStatus,
+		startedAt: runStartedAt,
+		finishedAt: runFinishedAt,
+		currentAlbum: runCurrentAlbum,
+		summary: runSummary,
+		error: runError
+	};
+	return json(payload);
 };

@@ -533,7 +533,13 @@ async function downloadTrack(
 	trackTitle?: string,
 	trackNumber?: number,
 	coverUrl?: string,
-	options?: { downloadCover?: boolean; outputBaseDir?: string; forceOverwrite?: boolean }
+	options?: {
+		downloadCover?: boolean;
+		outputBaseDir?: string;
+		forceOverwrite?: boolean;
+		targetArtistDir?: string;
+		targetAlbumDir?: string;
+	}
 ): Promise<{
 	success: boolean;
 	error?: string;
@@ -623,6 +629,8 @@ async function downloadTrack(
 			quality,
 			albumTitle: resolvedAlbum,
 			artistName: resolvedArtist,
+			targetArtistDir: options?.targetArtistDir,
+			targetAlbumDir: options?.targetAlbumDir,
 			trackTitle: resolvedTitle,
 			trackNumber: resolvedTrackNumber,
 			trackLookup: result.trackLookup,
@@ -715,7 +723,11 @@ async function processTrackJob(job: QueuedJob): Promise<void> {
 			trackJob.trackTitle,
 			trackJob.trackNumber,
 			trackJob.coverUrl,
-			{ forceOverwrite: trackJob.forceOverwrite === true }
+			{
+				forceOverwrite: trackJob.forceOverwrite === true,
+				targetArtistDir: trackJob.targetArtistDir,
+				targetAlbumDir: trackJob.targetAlbumDir
+			}
 		);
 
 		if (result.success) {

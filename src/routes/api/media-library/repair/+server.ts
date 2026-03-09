@@ -100,6 +100,8 @@ export const POST: RequestHandler = async ({ request }) => {
 				healthy: report.summary.healthy,
 				missing: report.summary.missing,
 				corrupt: report.summary.corrupt,
+				resolvedArtistDir: report.resolvedArtistDir ?? null,
+				resolvedAlbumDir: report.resolvedAlbumDir ?? null,
 				repairTargetCount: repairTargets.length,
 				queueEnabled: shouldQueue
 			})
@@ -114,6 +116,8 @@ export const POST: RequestHandler = async ({ request }) => {
 						quality: body.quality,
 						albumTitle: body.albumTitle,
 						artistName: body.artistName,
+						targetArtistDir: report.resolvedArtistDir,
+						targetAlbumDir: report.resolvedAlbumDir,
 						trackTitle: track.trackTitle,
 						trackNumber: track.trackNumber,
 						coverUrl: body.coverUrl,
@@ -143,6 +147,8 @@ export const POST: RequestHandler = async ({ request }) => {
 			success: true,
 			albumId,
 			scannedAt: report.scannedAt,
+			resolvedArtistDir: report.resolvedArtistDir ?? null,
+			resolvedAlbumDir: report.resolvedAlbumDir ?? null,
 			summary: {
 				expected: report.summary.expected,
 				healthy: report.summary.healthy,

@@ -166,6 +166,8 @@ export interface TrackJob {
 	trackTitle?: string;
 	trackNumber?: number;
 	coverUrl?: string;
+	targetArtistDir?: string;
+	targetAlbumDir?: string;
 	forceOverwrite?: boolean;
 }
 
