@@ -516,6 +516,7 @@ export async function inspectAlbumIntegrity(input: {
 	force?: boolean;
 	validationConcurrency?: number;
 }): Promise<AlbumIntegrityReport> {
+	const logPrefix = '[Media Library Integrity]';
 	const requestedTracks = Array.isArray(input.tracks)
 		? input.tracks
 				.map((track) => ({
@@ -578,6 +579,20 @@ export async function inspectAlbumIntegrity(input: {
 		toPositiveInt(input.validationConcurrency) ??
 		(toPositiveInt(configuredConcurrency) ?? 2);
 
+	console.log(
+		`${logPrefix} Starting integrity scan`,
+		JSON.stringify({
+			artistName: input.artistName ?? null,
+			albumTitle: input.albumTitle ?? null,
+			requestedTrackCount: requestedTracks.length,
+			matchedAlbumFileCount: albumFiles.length,
+			candidateTrackCount: candidates.length,
+			validationConcurrency,
+			forceRescan: input.force === true,
+			scannedAt: snapshot.scannedAt
+		})
+	);
+
 	await mapWithConcurrency(candidates, validationConcurrency, async ({ track, file, result }) => {
 		const expectedDurationSeconds =
 			typeof track.expectedDurationSeconds === 'number' &&
@@ -595,6 +610,16 @@ export async function inspectAlbumIntegrity(input: {
 		} catch (error) {
 			result.status = 'corrupt';
 			result.reason = error instanceof Error ? error.message : String(error);
+			console.warn(
+				`${logPrefix} Track marked corrupt after validation error`,
+				JSON.stringify({
+					trackId: track.trackId,
+					trackNumber: track.trackNumber ?? null,
+					trackTitle: track.trackTitle ?? null,
+					relativePath: file.relativePath,
+					reason: result.reason
+				})
+			);
 			return;
 		}
 
@@ -605,16 +630,63 @@ export async function inspectAlbumIntegrity(input: {
 			}
 			result.status = 'corrupt';
 			result.reason = reason;
+			console.warn(
+				`${logPrefix} Track marked corrupt`,
+				JSON.stringify({
+					trackId: track.trackId,
+					trackNumber: track.trackNumber ?? null,
+					trackTitle: track.trackTitle ?? null,
+					relativePath: file.relativePath,
+					reason
+				})
+			);
 			return;
 		}
 
 		result.status = 'healthy';
 		result.reason = undefined;
+		console.log(
+			`${logPrefix} Track healthy`,
+			JSON.stringify({
+				trackId: track.trackId,
+				trackNumber: track.trackNumber ?? null,
+				trackTitle: track.trackTitle ?? null,
+				relativePath: file.relativePath,
+				durationSeconds: integrity.durationSeconds ?? null,
+				codecName: integrity.codecName ?? null,
+				formatName: integrity.formatName ?? null
+			})
+		);
 	});
+
+	for (const track of results) {
+		if (track.status !== 'missing') continue;
+		console.warn(
+			`${logPrefix} Track missing`,
+			JSON.stringify({
+				trackId: track.trackId,
+				trackNumber: track.trackNumber ?? null,
+				trackTitle: track.trackTitle ?? null,
+				reason: track.reason ?? null
+			})
+		);
+	}
 
 	const healthy = results.filter((track) => track.status === 'healthy').length;
 	const missing = results.filter((track) => track.status === 'missing').length;
 	const corrupt = results.filter((track) => track.status === 'corrupt').length;
+
+	console.log(
+		`${logPrefix} Scan complete`,
+		JSON.stringify({
+			artistName: input.artistName ?? null,
+			albumTitle: input.albumTitle ?? null,
+			expected: results.length,
+			healthy,
+			missing,
+			corrupt
+		})
+	);
 
 	return {
 		scannedAt: snapshot.scannedAt,

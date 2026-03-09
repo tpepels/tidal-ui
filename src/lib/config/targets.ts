@@ -215,6 +215,8 @@ function getDynamicAllowedHosts(): Set<string> {
 }
 
 function isDynamicRefreshEnabled(force: boolean): boolean {
+	// Never call uptime endpoints directly from browser runtime (CORS + trust concerns).
+	if (typeof process === 'undefined' || !process.versions?.node) return false;
 	if (force) return true;
 	if (getEnvValue('DISABLE_DYNAMIC_API_TARGETS') === 'true') return false;
 	if (getEnvValue('DYNAMIC_API_TARGETS') === 'false') return false;
@@ -460,12 +462,18 @@ async function fetchUptimePayload(
 	const controller = new AbortController();
 	const timeout = setTimeout(() => controller.abort(), timeoutMs);
 	try {
+		const isNodeRuntime = typeof process !== 'undefined' && Boolean(process.versions?.node);
 		const response = await fetchImpl(url, {
 			method: 'GET',
-			headers: {
-				Accept: 'application/json',
-				'Cache-Control': 'no-cache'
-			},
+			headers: isNodeRuntime
+				? {
+						Accept: 'application/json',
+						'Cache-Control': 'no-cache'
+					}
+				: {
+						Accept: 'application/json'
+					},
+			cache: 'no-store',
 			signal: controller.signal
 		});
 		if (!response.ok) {

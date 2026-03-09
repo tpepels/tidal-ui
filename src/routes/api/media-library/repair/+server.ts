@@ -68,6 +68,19 @@ export const POST: RequestHandler = async ({ request }) => {
 			);
 		}
 
+		console.log(
+			'[Media Library API] repair requested',
+			JSON.stringify({
+				albumId,
+				artistName: body.artistName ?? null,
+				albumTitle: body.albumTitle ?? null,
+				quality: body.quality,
+				requestedTrackCount: normalizedTracks.length,
+				forceRescan: body.forceRescan === true,
+				queue: body.queue !== false
+			})
+		);
+
 		const report = await inspectAlbumIntegrity({
 			artistName: body.artistName,
 			albumTitle: body.albumTitle,
@@ -78,6 +91,19 @@ export const POST: RequestHandler = async ({ request }) => {
 		const repairTargets = report.tracks.filter((track) => track.status === 'missing' || track.status === 'corrupt');
 		const shouldQueue = body.queue !== false;
 		const queuedJobIds: string[] = [];
+
+		console.log(
+			'[Media Library API] repair scan completed',
+			JSON.stringify({
+				albumId,
+				expected: report.summary.expected,
+				healthy: report.summary.healthy,
+				missing: report.summary.missing,
+				corrupt: report.summary.corrupt,
+				repairTargetCount: repairTargets.length,
+				queueEnabled: shouldQueue
+			})
+		);
 
 		if (shouldQueue) {
 			for (const track of repairTargets) {
@@ -103,6 +129,15 @@ export const POST: RequestHandler = async ({ request }) => {
 				queuedJobIds.push(jobId);
 			}
 		}
+
+		console.log(
+			'[Media Library API] repair queue outcome',
+			JSON.stringify({
+				albumId,
+				queuedCount: queuedJobIds.length,
+				queuedTrackIds: repairTargets.map((track) => track.trackId)
+			})
+		);
 
 		return json({
 			success: true,
