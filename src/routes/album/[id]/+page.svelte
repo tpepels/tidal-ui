@@ -70,6 +70,8 @@
 	let queuePollToken = 0;
 	let albumInLibrary = $state(false);
 	let albumLibraryTrackCount = $state(0);
+	const FORCE_OVERWRITE_CONFIRMATION =
+		'This album is already in your local library. Redownload it and overwrite existing files?';
 
 	const hasActiveQueueDownload = $derived(
 		queueStatus === 'submitting' || queueStatus === 'queued' || queueStatus === 'processing'
@@ -401,8 +403,12 @@
 			await resumeQueueDownload();
 			return;
 		}
+		let forceOverwrite = false;
 		if (albumInLibrary && queueStatus !== 'failed' && queueStatus !== 'cancelled') {
-			return;
+			forceOverwrite = window.confirm(FORCE_OVERWRITE_CONFIRMATION);
+			if (!forceOverwrite) {
+				return;
+			}
 		}
 
 		if (isDownloadingAll || hasActiveQueueDownload) {
@@ -441,7 +447,12 @@
 					}
 				},
 				album.artist?.name,
-				{ mode, convertAacToMp3: convertAacToMp3Preference, storage: downloadStoragePreference }
+				{
+					mode,
+					convertAacToMp3: convertAacToMp3Preference,
+					storage: downloadStoragePreference,
+					forceOverwrite
+				}
 			);
 
 			if (result.storage === 'server' && result.jobId) {
@@ -636,7 +647,7 @@
 						<button
 							onclick={handleDownloadAll}
 							class="flex items-center gap-2 rounded-full border border-blue-400/40 px-6 py-3 text-sm font-semibold text-blue-300 transition-colors hover:border-blue-400 hover:text-blue-200 disabled:cursor-not-allowed disabled:opacity-60"
-							disabled={queueStatus === 'submitting' || (albumInLibrary && queueStatus === 'idle')}
+							disabled={queueStatus === 'submitting'}
 							aria-label={isQueueDownloadCancellable ? 'Stop album download' : 'Download album'}
 							aria-busy={hasActiveQueueDownload || isDownloadingAll}
 						>
@@ -651,9 +662,6 @@
 								Downloading {downloadedCount}/{tracks.length}
 							{:else}
 								<Download size={18} />
-								{#if albumInLibrary && queueStatus === 'idle'}
-									Already in Library
-								{:else}
 								{queueStatus === 'failed'
 									? 'Retry Download'
 									: queueStatus === 'paused'
@@ -662,8 +670,9 @@
 										? 'Resume Download'
 										: queueStatus === 'completed'
 											? 'Download Again'
+											: albumInLibrary && queueStatus === 'idle'
+												? 'Redownload Album'
 											: 'Download Album'}
-								{/if}
 							{/if}
 						</button>
 
@@ -689,7 +698,7 @@
 						<p class="mt-2 text-sm text-amber-300">Album download paused.</p>
 					{:else if albumInLibrary}
 						<p class="mt-2 text-sm text-emerald-300">
-							Already in local library ({albumLibraryTrackCount} track{albumLibraryTrackCount === 1 ? '' : 's'} found).
+							Already in local library ({albumLibraryTrackCount} track{albumLibraryTrackCount === 1 ? '' : 's'} found). Click "Redownload Album" to overwrite.
 						</p>
 					{/if}
 					{#if downloadError}

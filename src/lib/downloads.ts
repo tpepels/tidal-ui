@@ -417,6 +417,7 @@ export async function downloadAlbum(
 		convertAacToMp3?: boolean;
 		downloadCoverSeperately?: boolean;
 		storage?: DownloadStorage;
+		forceOverwrite?: boolean;
 	}
 ): Promise<AlbumDownloadResult> {
 	const storage = options?.storage ?? 'server';
@@ -446,8 +447,10 @@ export async function downloadAlbum(
 					quality,
 					artistName,
 					albumTitle,
-					trackCount
-				}
+					trackCount,
+					forceOverwrite: options?.forceOverwrite === true
+				},
+				forceOverwrite: options?.forceOverwrite === true
 			})
 		});
 

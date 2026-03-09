@@ -262,6 +262,7 @@ async function reconcilePublishedAlbum(params: {
 	artistName: string;
 	albumTitle: string;
 	coverUrl?: string;
+	forceOverwrite?: boolean;
 	finalAlbumDir: string;
 	expectedTracks: ExpectedAlbumTrack[];
 	expectedFileByTrackId: Map<number, string>;
@@ -295,12 +296,14 @@ async function reconcilePublishedAlbum(params: {
 				artistName: params.artistName,
 				trackTitle: missingTrack.trackTitle,
 				trackNumber: missingTrack.trackNumber,
-				coverUrl: params.coverUrl
+				coverUrl: params.coverUrl,
+				forceOverwrite: params.forceOverwrite === true
 			},
 			{
 				priority: 'high',
 				maxRetries: 6,
-				checkDuplicate: true
+				checkDuplicate: true,
+				forceOverwrite: params.forceOverwrite === true
 			}
 		);
 		queuedTrackJobIds.push(jobId);
@@ -530,7 +533,7 @@ async function downloadTrack(
 	trackTitle?: string,
 	trackNumber?: number,
 	coverUrl?: string,
-	options?: { downloadCover?: boolean; outputBaseDir?: string }
+	options?: { downloadCover?: boolean; outputBaseDir?: string; forceOverwrite?: boolean }
 ): Promise<{
 	success: boolean;
 	error?: string;
@@ -543,6 +546,7 @@ async function downloadTrack(
 		console.log(
 			`[Worker] Downloading track ${trackId} (${quality}) [segment timeout ${SEGMENT_TIMEOUT_MS}ms]`
 		);
+		const conflictResolution = options?.forceOverwrite ? 'overwrite' : 'overwrite_if_different';
 		
 		const apiTarget = API_CONFIG.baseUrl || API_CONFIG.targets[0]?.baseUrl || 'unknown';
 		const downloadStart = Date.now();
@@ -557,7 +561,7 @@ async function downloadTrack(
 			trackTitle,
 			trackNumber,
 			coverUrl,
-			conflictResolution: 'overwrite_if_different',
+			conflictResolution,
 			apiClient: losslessAPI, // Main branch's API client with all the tested logic
 			segmentTimeoutMs: SEGMENT_TIMEOUT_MS
 		});
@@ -623,7 +627,7 @@ async function downloadTrack(
 			trackNumber: resolvedTrackNumber,
 			trackLookup: result.trackLookup,
 			buffer: result.buffer,
-			conflictResolution: 'overwrite_if_different',
+			conflictResolution,
 			detectedMimeType: result.mimeType,
 			downloadCoverSeperately: options?.downloadCover ?? true,
 			coverUrl,
@@ -710,7 +714,8 @@ async function processTrackJob(job: QueuedJob): Promise<void> {
 			trackJob.artistName,
 			trackJob.trackTitle,
 			trackJob.trackNumber,
-			trackJob.coverUrl
+			trackJob.coverUrl,
+			{ forceOverwrite: trackJob.forceOverwrite === true }
 		);
 
 		if (result.success) {
@@ -885,6 +890,7 @@ async function downloadAlbumTrackWithPolicy(options: {
 	trackNumber: number;
 	coverUrl?: string;
 	outputBaseDir?: string;
+	forceOverwrite?: boolean;
 }): Promise<{
 	success: boolean;
 	error?: string;
@@ -910,7 +916,11 @@ async function downloadAlbumTrackWithPolicy(options: {
 			options.trackTitle,
 			options.trackNumber,
 			options.coverUrl,
-			{ downloadCover: false, outputBaseDir: options.outputBaseDir }
+			{
+				downloadCover: false,
+				outputBaseDir: options.outputBaseDir,
+				forceOverwrite: options.forceOverwrite === true
+			}
 		);
 
 		if (result.success) {
@@ -1298,7 +1308,8 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 						trackTitle,
 						trackNumber,
 						coverUrl,
-						outputBaseDir: stagingRoot
+						outputBaseDir: stagingRoot,
+						forceOverwrite: albumJob.forceOverwrite === true
 					});
 				} finally {
 					inFlight = Math.max(0, inFlight - 1);
@@ -1430,6 +1441,7 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 				artistName,
 				albumTitle,
 				coverUrl,
+				forceOverwrite: albumJob.forceOverwrite === true,
 				finalAlbumDir,
 				expectedTracks: validExpectedTracks,
 				expectedFileByTrackId: publishedFilenameByTrackId

@@ -166,6 +166,7 @@ export interface TrackJob {
 	trackTitle?: string;
 	trackNumber?: number;
 	coverUrl?: string;
+	forceOverwrite?: boolean;
 }
 
 export interface AlbumJob {
@@ -175,6 +176,7 @@ export interface AlbumJob {
 	albumTitle?: string;
 	artistName?: string;
 	trackCount?: number;
+	forceOverwrite?: boolean;
 }
 
 export type DownloadJob = TrackJob | AlbumJob;
@@ -393,11 +395,16 @@ export async function enqueueJob(
 		priority?: JobPriority; 
 		maxRetries?: number;
 		checkDuplicate?: boolean;
+		forceOverwrite?: boolean;
 	}
 ): Promise<string> {
 	const now = Date.now();
+	const forceOverwrite =
+		options?.forceOverwrite === true ||
+		(job.type === 'album' && job.forceOverwrite === true) ||
+		(job.type === 'track' && job.forceOverwrite === true);
 
-	if (options?.checkDuplicate !== false) {
+	if (options?.checkDuplicate !== false && !forceOverwrite) {
 		const library = await isJobAlreadyInLocalLibrary(job);
 		if (library.exists) {
 			const existingLibraryJob = (await getAllJobs()).find((entry) => {

@@ -16,17 +16,19 @@ import { enqueueJob, getQueueSnapshot, type DownloadJob } from '$lib/server/down
  *   job: TrackJob | AlbumJob,
  *   priority?: 'low' | 'normal' | 'high',
  *   maxRetries?: number,
- *   checkDuplicate?: boolean
+ *   checkDuplicate?: boolean,
+ *   forceOverwrite?: boolean
  * }
  */
 export const POST: RequestHandler = async ({ request }) => {
 	try {
 		const body = await request.json();
-		const { job, priority = 'normal', maxRetries = 3, checkDuplicate = true } = body as {
+		const { job, priority = 'normal', maxRetries = 3, checkDuplicate = true, forceOverwrite = false } = body as {
 			job: DownloadJob;
 			priority?: 'low' | 'normal' | 'high';
 			maxRetries?: number;
 			checkDuplicate?: boolean;
+			forceOverwrite?: boolean;
 		};
 
 		if (!job || !job.type) {
@@ -56,10 +58,22 @@ export const POST: RequestHandler = async ({ request }) => {
 			}
 		}
 
-		const jobId = await enqueueJob(job, {
+		if (typeof forceOverwrite !== 'boolean') {
+			return json(
+				{ success: false, error: 'forceOverwrite must be a boolean' },
+				{ status: 400 }
+			);
+		}
+
+		const normalizedJob = forceOverwrite
+			? ({ ...job, forceOverwrite: true } as DownloadJob)
+			: job;
+
+		const jobId = await enqueueJob(normalizedJob, {
 			priority,
 			maxRetries,
-			checkDuplicate
+			checkDuplicate,
+			forceOverwrite
 		});
 		const snapshot = await getQueueSnapshot();
 

@@ -157,6 +157,8 @@
 	let activeArtistLoadId: number | null = null;
 	let albumLibraryLookupToken = 0;
 	const COVER_CANDIDATE_DELIMITER = '\n';
+	const FORCE_OVERWRITE_CONFIRMATION =
+		'This album is already in your local library. Redownload it and overwrite existing files?';
 
 	$effect(() => {
 		const id = Number(artistId);
@@ -980,8 +982,12 @@
 			return;
 		}
 		const inLibrary = albumLibraryPresence[album.id]?.exists === true;
+		let forceOverwrite = false;
 		if (inLibrary && currentState.status === 'idle') {
-			return;
+			forceOverwrite = window.confirm(FORCE_OVERWRITE_CONFIRMATION);
+			if (!forceOverwrite) {
+				return;
+			}
 		}
 
 		if (currentState.downloading || currentState.status === 'submitting') {
@@ -1025,12 +1031,13 @@
 					}
 				},
 				artist?.name,
-					{
-						mode: downloadMode,
-						convertAacToMp3: convertAacToMp3Preference,
-						storage: downloadStoragePreference
-					}
-				);
+				{
+					mode: downloadMode,
+					convertAacToMp3: convertAacToMp3Preference,
+					storage: downloadStoragePreference,
+					forceOverwrite
+				}
+			);
 
 			if (result.storage === 'server' && result.jobId) {
 				patchAlbumDownloadState(album.id, {
@@ -1585,8 +1592,7 @@
 													class="absolute top-3 right-3 z-40 flex items-center justify-center rounded-full bg-black/50 p-2 text-gray-200 backdrop-blur-md transition-colors hover:bg-blue-600/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
 													disabled={
 														isDownloadingDiscography ||
-														albumDownloadState.status === 'submitting' ||
-														(albumInLibrary && albumDownloadState.status === 'idle')
+														albumDownloadState.status === 'submitting'
 													}
 													aria-label={
 														canCancelAlbumDownload

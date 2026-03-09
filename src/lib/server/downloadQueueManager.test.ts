@@ -3,6 +3,17 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+const mediaLibraryMocks = vi.hoisted(() => ({
+	checkAlbumInLibrary: vi.fn(),
+	checkTrackInLibrary: vi.fn()
+}));
+
+vi.mock('./mediaLibrary', () => ({
+	checkAlbumInLibrary: mediaLibraryMocks.checkAlbumInLibrary,
+	checkTrackInLibrary: mediaLibraryMocks.checkTrackInLibrary
+}));
+
 import {
 	enqueueJob,
 	dequeueJob,
@@ -22,6 +33,17 @@ describe('Download Queue Manager', () => {
 	beforeEach(async () => {
 		// Disable Redis for tests to ensure memory storage is used
 		vi.stubEnv('REDIS_DISABLED', 'true');
+		mediaLibraryMocks.checkAlbumInLibrary.mockReset();
+		mediaLibraryMocks.checkTrackInLibrary.mockReset();
+		mediaLibraryMocks.checkAlbumInLibrary.mockResolvedValue({
+			exists: false,
+			matchedTracks: 0,
+			samplePaths: []
+		});
+		mediaLibraryMocks.checkTrackInLibrary.mockResolvedValue({
+			exists: false,
+			matches: []
+		});
 		
 		// Clear queue before each test
 		const jobs = await getAllJobs();
@@ -76,6 +98,54 @@ describe('Download Queue Manager', () => {
 			expect(queued.job.albumTitle).toBe('Test Album');
 			expect(queued.job.trackTitle).toBe('Test Track');
 		}
+		});
+
+		it('skips album job when already present in local library by default', async () => {
+			mediaLibraryMocks.checkAlbumInLibrary.mockResolvedValue({
+				exists: true,
+				matchedTracks: 7,
+				samplePaths: []
+			});
+			const job: AlbumJob = {
+				type: 'album',
+				albumId: 445566,
+				quality: 'LOSSLESS',
+				artistName: 'Existing Artist',
+				albumTitle: 'Existing Album',
+				trackCount: 7
+			};
+
+			const jobId = await enqueueJob(job);
+			const queued = await getJob(jobId);
+
+			expect(queued).toBeDefined();
+			expect(queued?.status).toBe('completed');
+			expect(queued?.error).toContain('already present in local library');
+			expect(queued?.completedTracks).toBe(7);
+		});
+
+		it('queues album job when forceOverwrite is enabled even if album exists locally', async () => {
+			mediaLibraryMocks.checkAlbumInLibrary.mockResolvedValue({
+				exists: true,
+				matchedTracks: 10,
+				samplePaths: []
+			});
+			const job: AlbumJob = {
+				type: 'album',
+				albumId: 998877,
+				quality: 'LOSSLESS',
+				artistName: 'Existing Artist',
+				albumTitle: 'Existing Album',
+				trackCount: 10,
+				forceOverwrite: true
+			};
+
+			const jobId = await enqueueJob(job, { forceOverwrite: true });
+			const queued = await getJob(jobId);
+
+			expect(queued).toBeDefined();
+			expect(queued?.status).toBe('queued');
+			expect(queued?.error).toBeUndefined();
 		});
 	});
 

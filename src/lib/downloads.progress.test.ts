@@ -117,4 +117,62 @@ describe('downloadAlbum server progress', () => {
 			headers: { 'Content-Type': 'application/json' }
 		}));
 	});
+
+	it('includes forceOverwrite in queue request when requested', async () => {
+		const album: Album = {
+			id: 11,
+			title: 'Overwrite Album',
+			cover: 'cover',
+			videoCover: null,
+			releaseDate: '2024-01-01',
+			numberOfTracks: 1,
+			numberOfVolumes: 1,
+			duration: 180,
+			artist: { id: 1, name: 'Overwrite Artist', type: 'MAIN' },
+			artists: [{ id: 1, name: 'Overwrite Artist', type: 'MAIN' }],
+			explicit: false,
+			popularity: 1,
+			type: 'album',
+			upc: '0000'
+		};
+		const track: Track = {
+			id: 12,
+			title: 'Overwrite Track',
+			duration: 180,
+			trackNumber: 1,
+			volumeNumber: 1,
+			explicit: false,
+			isrc: 'TEST123',
+			audioQuality: 'LOSSLESS',
+			audioModes: ['STEREO'],
+			allowStreaming: true,
+			streamReady: true,
+			streamStartDate: '2024-01-01',
+			premiumStreamingOnly: false,
+			replayGain: -6.5,
+			peak: 0.95,
+			version: null,
+			popularity: 1,
+			url: 'https://example.com',
+			editable: false,
+			artist: { id: 1, name: 'Overwrite Artist', type: 'MAIN' },
+			artists: [{ id: 1, name: 'Overwrite Artist', type: 'MAIN' }],
+			album,
+			mixes: {},
+			mediaMetadata: { tags: [] }
+		};
+		vi.mocked(losslessAPI.getAlbum).mockResolvedValue({ album, tracks: [track] });
+
+		await downloadAlbum(album, 'LOSSLESS', undefined, undefined, {
+			mode: 'individual',
+			storage: 'server',
+			forceOverwrite: true
+		});
+
+		const body = JSON.parse(
+			(vi.mocked(global.fetch).mock.calls[0]?.[1] as { body?: string })?.body ?? '{}'
+		);
+		expect(body.forceOverwrite).toBe(true);
+		expect(body.job?.forceOverwrite).toBe(true);
+	});
 });

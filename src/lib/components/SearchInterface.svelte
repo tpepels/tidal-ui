@@ -177,6 +177,8 @@ import {
 	};
 
 	const ALBUM_QUEUE_POLL_INTERVAL_MS = 1000;
+	const FORCE_OVERWRITE_CONFIRMATION =
+		'This album is already in your local library. Redownload it and overwrite existing files?';
 	let albumDownloadStates = $state<Record<number, AlbumDownloadState>>({});
 	let albumLibraryPresence = $state<Record<number, { exists: boolean; matchedTracks: number }>>({});
 	const albumQueuePollTimers = new Map<number, ReturnType<typeof setInterval>>();
@@ -538,8 +540,12 @@ import {
 			return;
 		}
 		const inLibrary = albumLibraryPresence[album.id]?.exists === true;
+		let forceOverwrite = false;
 		if (inLibrary && currentState.status === 'idle') {
-			return;
+			forceOverwrite = window.confirm(FORCE_OVERWRITE_CONFIRMATION);
+			if (!forceOverwrite) {
+				return;
+			}
 		}
 
 		if (currentState.downloading || currentState.status === 'submitting') {
@@ -579,7 +585,8 @@ import {
 					mode: albumDownloadMode,
 					convertAacToMp3: convertAacToMp3Preference,
 					downloadCoverSeperately: downloadCoverSeperatelyPreference,
-					storage: $downloadPreferencesStore.storage
+					storage: $downloadPreferencesStore.storage,
+					forceOverwrite
 				}
 			);
 
@@ -1270,7 +1277,7 @@ import {
 									: handleAlbumDownloadClick(album, event)}
 							type="button"
 							class="absolute top-3 right-3 z-40 flex items-center justify-center rounded-full bg-black/50 p-2 text-gray-200 backdrop-blur-md transition-colors hover:bg-blue-600/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-							disabled={albumDownloadState.status === 'submitting' || (albumInLibrary && albumDownloadState.status === 'idle')}
+							disabled={albumDownloadState.status === 'submitting'}
 							aria-label={
 								canCancelAlbumDownload
 									? `Stop download ${album.title}`
