@@ -172,6 +172,26 @@ describe('finalizeTrack', () => {
 		await expect(fs.stat(sanitizedPath)).rejects.toThrow();
 	});
 
+	it('fails repair-mode finalization when target directory does not exist', async () => {
+		const result = await finalizeTrack({
+			trackId: 351,
+			quality: 'LOSSLESS',
+			artistName: 'Missing Artist',
+			albumTitle: 'Missing Album',
+			targetArtistDir: 'Missing Artist',
+			targetAlbumDir: 'Missing Album',
+			requireExistingTargetDir: true,
+			trackTitle: 'Track',
+			trackNumber: 1,
+			buffer: Buffer.from('repair-target-missing'),
+			downloadCoverSeperately: false
+		});
+
+		expect(result.success).toBe(false);
+		if (result.success) return;
+		expect(result.error.message).toContain('Repair target directory does not exist');
+	});
+
 	it('allows finalized size changes when metadata is embedded in-place', async () => {
 		const payload = Buffer.from('raw-audio-data');
 		metadataEmbedderMocks.embedMetadataToFile.mockImplementation(async (filePath: string) => {

@@ -91,6 +91,19 @@ export const POST: RequestHandler = async ({ request }) => {
 		const repairTargets = report.tracks.filter((track) => track.status === 'missing' || track.status === 'corrupt');
 		const shouldQueue = body.queue !== false;
 		const queuedJobIds: string[] = [];
+		const resolvedArtistDir = report.resolvedArtistDir;
+		const resolvedAlbumDir = report.resolvedAlbumDir;
+
+		if (shouldQueue && repairTargets.length > 0 && (!resolvedArtistDir || !resolvedAlbumDir)) {
+			return json(
+				{
+					success: false,
+					error:
+						'No existing local album directory could be resolved for repair. Refusing to create a new directory in repair mode.'
+				},
+				{ status: 409 }
+			);
+		}
 
 		console.log(
 			'[Media Library API] repair scan completed',
@@ -100,8 +113,8 @@ export const POST: RequestHandler = async ({ request }) => {
 				healthy: report.summary.healthy,
 				missing: report.summary.missing,
 				corrupt: report.summary.corrupt,
-				resolvedArtistDir: report.resolvedArtistDir ?? null,
-				resolvedAlbumDir: report.resolvedAlbumDir ?? null,
+				resolvedArtistDir: resolvedArtistDir ?? null,
+				resolvedAlbumDir: resolvedAlbumDir ?? null,
 				repairTargetCount: repairTargets.length,
 				queueEnabled: shouldQueue
 			})
@@ -116,8 +129,8 @@ export const POST: RequestHandler = async ({ request }) => {
 						quality: body.quality,
 						albumTitle: body.albumTitle,
 						artistName: body.artistName,
-						targetArtistDir: report.resolvedArtistDir,
-						targetAlbumDir: report.resolvedAlbumDir,
+						targetArtistDir: resolvedArtistDir,
+						targetAlbumDir: resolvedAlbumDir,
 						trackTitle: track.trackTitle,
 						trackNumber: track.trackNumber,
 						coverUrl: body.coverUrl,
@@ -147,8 +160,8 @@ export const POST: RequestHandler = async ({ request }) => {
 			success: true,
 			albumId,
 			scannedAt: report.scannedAt,
-			resolvedArtistDir: report.resolvedArtistDir ?? null,
-			resolvedAlbumDir: report.resolvedAlbumDir ?? null,
+			resolvedArtistDir: resolvedArtistDir ?? null,
+			resolvedAlbumDir: resolvedAlbumDir ?? null,
 			summary: {
 				expected: report.summary.expected,
 				healthy: report.summary.healthy,

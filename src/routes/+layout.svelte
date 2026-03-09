@@ -15,6 +15,7 @@
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 	import {
 		deduplicateLibraryInLibrary,
+		fetchLibraryDeduplicateStatus,
 		fetchFullLibraryRepairStatus,
 		repairFullLibraryInLibrary
 	} from '$lib/utils/mediaLibraryClient';
@@ -87,6 +88,9 @@
 	let fullLibraryRepairProgress = $state<string | null>(null);
 	let isLibraryDeduplicating = $state(false);
 	let libraryDeduplicateSummary = $state<string | null>(null);
+	let libraryDeduplicateProgress = $state<string | null>(null);
+	let libraryDeduplicatePollInterval = $state<ReturnType<typeof setInterval> | null>(null);
+	let libraryDeduplicatePollToken = $state(0);
 	let fullLibraryRepairPollInterval = $state<ReturnType<typeof setInterval> | null>(null);
 	let fullLibraryRepairPollToken = $state(0);
 	let settingsMenuContainer = $state<HTMLDivElement | null>(null);
@@ -402,6 +406,8 @@
 
 		isLibraryDeduplicating = true;
 		libraryDeduplicateSummary = null;
+		libraryDeduplicateProgress = 'Starting library deduplication...';
+		startLibraryDeduplicatePolling();
 
 		try {
 			const result = await deduplicateLibraryInLibrary({
@@ -413,6 +419,7 @@
 			}
 
 			const summary = `Merged ${result.albumsMerged ?? 0} album folder(s), moved ${result.filesMovedBetweenAlbums ?? 0} file(s), and backed up ${result.duplicateFilesBackedUp ?? 0} duplicate track file(s).`;
+			libraryDeduplicateProgress = null;
 			libraryDeduplicateSummary = summary;
 			toasts.success(summary);
 			if (result.backupRoot) {
@@ -423,11 +430,66 @@
 				error instanceof Error && error.message
 					? error.message
 					: 'Failed to deduplicate media library';
+			libraryDeduplicateProgress = null;
 			libraryDeduplicateSummary = null;
 			toasts.error(message);
 		} finally {
+			stopLibraryDeduplicatePolling();
 			isLibraryDeduplicating = false;
 		}
+	}
+
+	function stopLibraryDeduplicatePolling(): void {
+		libraryDeduplicatePollToken += 1;
+		if (libraryDeduplicatePollInterval) {
+			clearInterval(libraryDeduplicatePollInterval);
+			libraryDeduplicatePollInterval = null;
+		}
+	}
+
+	function formatLibraryDeduplicateProgress(status: {
+		progress?: {
+			message: string;
+			processed: number;
+			total: number;
+			currentArtistDir?: string;
+			currentAlbumDir?: string;
+			summary?: { albumsMerged?: number; duplicateFilesBackedUp?: number };
+		} | null;
+	}): string {
+		const progress = status.progress;
+		if (!progress) return 'Preparing deduplication...';
+		const processed = progress.processed ?? 0;
+		const total = progress.total ?? 0;
+		const current =
+			progress.currentArtistDir && progress.currentAlbumDir
+				? ` Current: ${progress.currentArtistDir} - ${progress.currentAlbumDir}.`
+				: '';
+		const merged = progress.summary?.albumsMerged ?? 0;
+		const backedUp = progress.summary?.duplicateFilesBackedUp ?? 0;
+		return `${progress.message} (${processed}/${total}). Merged ${merged}, backed up ${backedUp}.${current}`;
+	}
+
+	async function pollLibraryDeduplicateStatus(token: number): Promise<void> {
+		if (token !== libraryDeduplicatePollToken) {
+			return;
+		}
+		const status = await fetchLibraryDeduplicateStatus();
+		if (token !== libraryDeduplicatePollToken || !status.success) {
+			return;
+		}
+		if (status.status === 'running') {
+			libraryDeduplicateProgress = formatLibraryDeduplicateProgress(status);
+		}
+	}
+
+	function startLibraryDeduplicatePolling(): void {
+		stopLibraryDeduplicatePolling();
+		const token = libraryDeduplicatePollToken;
+		void pollLibraryDeduplicateStatus(token);
+		libraryDeduplicatePollInterval = setInterval(() => {
+			void pollLibraryDeduplicateStatus(token);
+		}, 1000);
 	}
 
 	async function refreshDiagnostics(): Promise<void> {
@@ -462,6 +524,7 @@
 
 	onDestroy(() => {
 		stopFullLibraryRepairPolling();
+		stopLibraryDeduplicatePolling();
 	});
 
 
@@ -1270,6 +1333,9 @@
 												</button>
 												{#if libraryDeduplicateSummary}
 													<p class="section-footnote">{libraryDeduplicateSummary}</p>
+												{/if}
+												{#if libraryDeduplicateProgress}
+													<p class="section-footnote">{libraryDeduplicateProgress}</p>
 												{/if}
 											</section>
 											<section class="settings-section settings-section--bordered settings-section--wide">

@@ -631,6 +631,7 @@ async function downloadTrack(
 			artistName: resolvedArtist,
 			targetArtistDir: options?.targetArtistDir,
 			targetAlbumDir: options?.targetAlbumDir,
+			requireExistingTargetDir: Boolean(options?.targetArtistDir && options?.targetAlbumDir),
 			trackTitle: resolvedTitle,
 			trackNumber: resolvedTrackNumber,
 			trackLookup: result.trackLookup,

@@ -31,6 +31,7 @@ export interface FinalizeTrackParams {
 	artistName?: string;
 	targetArtistDir?: string;
 	targetAlbumDir?: string;
+	requireExistingTargetDir?: boolean;
 	trackTitle?: string;
 	trackNumber?: number;
 	outputBaseDir?: string;
@@ -129,6 +130,7 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 		artistName,
 		targetArtistDir,
 		targetAlbumDir,
+		requireExistingTargetDir = false,
 		trackTitle,
 		trackNumber,
 		outputBaseDir,
@@ -188,7 +190,38 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 	const artistDir = overrideArtistDir ?? sanitizeDirName(artistName || 'Unknown Artist');
 	const albumDir = overrideAlbumDir ?? sanitizeDirName(albumTitle || 'Unknown Album');
 	const targetDir = path.join(baseDir, artistDir, albumDir);
-	await ensureDir(targetDir);
+	if (requireExistingTargetDir) {
+		if (!overrideArtistDir || !overrideAlbumDir) {
+			return {
+				success: false,
+				error: createDownloadError(
+					ERROR_CODES.INVALID_FILE,
+					'Repair target directory is missing or invalid',
+					false
+				),
+				status: 400
+			};
+		}
+		let targetStat;
+		try {
+			targetStat = await fs.stat(targetDir);
+		} catch {
+			targetStat = null;
+		}
+		if (!targetStat?.isDirectory()) {
+			return {
+				success: false,
+				error: createDownloadError(
+					ERROR_CODES.INVALID_FILE,
+					`Repair target directory does not exist: ${targetDir}`,
+					false
+				),
+				status: 409
+			};
+		}
+	} else {
+		await ensureDir(targetDir);
+	}
 	const initialFilepath = path.join(targetDir, filename);
 
 	let newFileSize = 0;

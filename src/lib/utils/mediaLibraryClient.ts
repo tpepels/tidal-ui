@@ -116,6 +116,48 @@ export type MediaLibraryDeduplicateResult = {
 	error?: string;
 };
 
+export type MediaLibraryDeduplicateStatusResult = {
+	success: boolean;
+	status?: 'idle' | 'running' | 'completed' | 'failed';
+	startedAt?: number | null;
+	finishedAt?: number | null;
+	progress?: {
+		phase: 'scan' | 'merge' | 'track_dedupe' | 'complete';
+		message: string;
+		processed: number;
+		total: number;
+		currentArtistDir?: string;
+		currentAlbumDir?: string;
+		summary: {
+			scannedAt: number;
+			dryRun: boolean;
+			albumsScanned: number;
+			duplicateAlbumGroups: number;
+			duplicateAlbumDirs: number;
+			albumsMerged: number;
+			filesMovedBetweenAlbums: number;
+			albumsWithTrackDuplicates: number;
+			duplicateTrackGroups: number;
+			duplicateFilesBackedUp: number;
+			backupRoot?: string;
+		};
+	} | null;
+	result?: {
+		scannedAt: number;
+		dryRun: boolean;
+		albumsScanned: number;
+		duplicateAlbumGroups: number;
+		duplicateAlbumDirs: number;
+		albumsMerged: number;
+		filesMovedBetweenAlbums: number;
+		albumsWithTrackDuplicates: number;
+		duplicateTrackGroups: number;
+		duplicateFilesBackedUp: number;
+		backupRoot?: string;
+	} | null;
+	error?: string | null;
+};
+
 export async function fetchAlbumLibraryStatus(
 	albums: AlbumLibraryStatusInput[]
 ): Promise<AlbumLibraryStatusMap> {
@@ -255,6 +297,25 @@ export async function deduplicateLibraryInLibrary(input?: {
 		return {
 			success: false,
 			error: 'Failed to deduplicate media library'
+		};
+	}
+}
+
+export async function fetchLibraryDeduplicateStatus(): Promise<MediaLibraryDeduplicateStatusResult> {
+	try {
+		const response = await fetch('/api/media-library/deduplicate');
+		const payload = (await response.json()) as MediaLibraryDeduplicateStatusResult;
+		if (!response.ok) {
+			return {
+				success: false,
+				error: payload?.error || 'Failed to fetch deduplicate status'
+			};
+		}
+		return payload;
+	} catch {
+		return {
+			success: false,
+			error: 'Failed to fetch deduplicate status'
 		};
 	}
 }

@@ -101,6 +101,16 @@ export interface MediaLibraryDedupeSummary {
 	backupRoot?: string;
 }
 
+export interface MediaLibraryDedupeProgress {
+	phase: 'scan' | 'merge' | 'track_dedupe' | 'complete';
+	message: string;
+	processed: number;
+	total: number;
+	currentArtistDir?: string;
+	currentAlbumDir?: string;
+	summary: MediaLibraryDedupeSummary;
+}
+
 type EmbeddedTags = {
 	artistKey: string;
 	albumArtistKey: string;
@@ -1128,6 +1138,7 @@ export async function deduplicateMediaLibrary(options?: {
 	dryRun?: boolean;
 	forceRescan?: boolean;
 	maxAlbums?: number;
+	onProgress?: (progress: MediaLibraryDedupeProgress) => void;
 }): Promise<MediaLibraryDedupeSummary> {
 	const dryRun = options?.dryRun !== false;
 	const snapshot = await scanLocalMediaLibrary({ force: options?.forceRescan === true || !dryRun });
@@ -1158,6 +1169,45 @@ export async function deduplicateMediaLibrary(options?: {
 		duplicateTrackGroups: 0,
 		duplicateFilesBackedUp: 0
 	};
+	const emitProgress = (
+		phase: MediaLibraryDedupeProgress['phase'],
+		message: string,
+		processed: number,
+		total: number,
+		current?: { artistDir?: string; albumDir?: string }
+	): void => {
+		const progress: MediaLibraryDedupeProgress = {
+			phase,
+			message,
+			processed,
+			total,
+			currentArtistDir: current?.artistDir,
+			currentAlbumDir: current?.albumDir,
+			summary: { ...summary }
+		};
+		console.log(
+			`[Media Library Dedupe] ${message}`,
+			JSON.stringify({
+				phase,
+				processed,
+				total,
+				currentArtistDir: progress.currentArtistDir ?? null,
+				currentAlbumDir: progress.currentAlbumDir ?? null,
+				summary: progress.summary
+			})
+		);
+		try {
+			options?.onProgress?.(progress);
+		} catch {
+			// Never fail dedupe due to progress observers.
+		}
+	};
+	emitProgress(
+		'scan',
+		`Scanned ${summary.albumsScanned} album directory group(s).`,
+		0,
+		summary.albumsScanned
+	);
 
 	const duplicateAlbumGroups = new Map<string, AlbumDirGroup[]>();
 	for (const album of albumGroups) {
@@ -1173,6 +1223,14 @@ export async function deduplicateMediaLibrary(options?: {
 	const dedupeTargets = new Map<string, { artistDir: string; albumDir: string }>();
 	const maxAlbums = toPositiveInt(options?.maxAlbums);
 	let mergedGroupCount = 0;
+	const candidateMergeGroups = Array.from(duplicateAlbumGroups.values()).filter(
+		(groups) => groups.length > 1
+	);
+	const mergeTotal =
+		typeof maxAlbums === 'number'
+			? Math.min(maxAlbums, candidateMergeGroups.length)
+			: candidateMergeGroups.length;
+	emitProgress('merge', 'Starting duplicate album directory merge phase.', 0, mergeTotal);
 
 	for (const groups of duplicateAlbumGroups.values()) {
 		if (groups.length <= 1) continue;
@@ -1187,6 +1245,13 @@ export async function deduplicateMediaLibrary(options?: {
 			artistDir: canonical.artistDir,
 			albumDir: canonical.albumDir
 		});
+		emitProgress(
+			'merge',
+			`Merging duplicate directories for ${canonical.artistDir}/${canonical.albumDir}`,
+			mergedGroupCount,
+			mergeTotal,
+			{ artistDir: canonical.artistDir, albumDir: canonical.albumDir }
+		);
 
 		for (const group of groups) {
 			if (group.albumDir === canonical.albumDir) continue;
@@ -1217,6 +1282,14 @@ export async function deduplicateMediaLibrary(options?: {
 			}
 		}
 	}
+	const trackDedupeTotal =
+		typeof maxAlbums === 'number' ? Math.min(maxAlbums, dedupeTargets.size) : dedupeTargets.size;
+	emitProgress(
+		'track_dedupe',
+		'Starting duplicate track resolution phase.',
+		0,
+		trackDedupeTotal
+	);
 
 	let backupRoot: string | undefined;
 	if (!dryRun) {
@@ -1234,6 +1307,13 @@ export async function deduplicateMediaLibrary(options?: {
 			break;
 		}
 		dedupeProcessedAlbums += 1;
+		emitProgress(
+			'track_dedupe',
+			`Resolving duplicate tracks in ${target.artistDir}/${target.albumDir}`,
+			dedupeProcessedAlbums,
+			trackDedupeTotal,
+			{ artistDir: target.artistDir, albumDir: target.albumDir }
+		);
 		const albumPath = path.join(snapshot.baseDir, target.artistDir, target.albumDir);
 		if (!(await pathExists(albumPath))) {
 			continue;
@@ -1272,6 +1352,12 @@ export async function deduplicateMediaLibrary(options?: {
 		summary.backupRoot = backupRoot;
 		clearMediaLibraryScanCache();
 	}
+	emitProgress(
+		'complete',
+		`Deduplication complete: merged ${summary.albumsMerged} album folder(s), backed up ${summary.duplicateFilesBackedUp} duplicate file(s).`,
+		trackDedupeTotal,
+		trackDedupeTotal
+	);
 
 	return summary;
 }
