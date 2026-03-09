@@ -13,6 +13,7 @@
 	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { artistCacheStore } from '$lib/stores/artistCache';
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
+	import { repairFullLibraryInLibrary } from '$lib/utils/mediaLibraryClient';
 
 	import { toasts } from '$lib/stores/toasts';
 	import {
@@ -77,6 +78,8 @@
 	let isCsvExporting = $state(false);
 	let isLegacyQueueDownloading = $state(false);
 	let isCacheClearing = $state(false);
+	let isFullLibraryRepairing = $state(false);
+	let fullLibraryRepairSummary = $state<string | null>(null);
 	let settingsMenuContainer = $state<HTMLDivElement | null>(null);
 	const downloadMode = $derived($downloadPreferencesStore.mode);
 	const isServerStorage = $derived($downloadPreferencesStore.storage === 'server');
@@ -97,6 +100,8 @@
 	const isEmbed = $derived($page.url.pathname.startsWith('/embed'));
 	const diagnosticsEnabled = dev || import.meta.env.VITE_E2E === 'true';
 	const MAX_QUEUE_ZIP_TRACKS = 75;
+	const FULL_LIBRARY_REPAIR_CONFIRMATION =
+		'Scan your full local library and queue automatic repairs for missing/corrupt tracks? This can queue many downloads.';
 	let diagnosticsOpen = $state(false);
 	let diagnosticsLoading = $state(false);
 	let diagnosticsSummary = $state<ReturnType<typeof getErrorSummary> | null>(null);
@@ -275,6 +280,55 @@
 			toasts.error('Failed to clear caches. Check server logs for details.');
 		} finally {
 			isCacheClearing = false;
+		}
+	}
+
+	async function handleFullLibraryRepair(): Promise<void> {
+		if (isFullLibraryRepairing) return;
+
+		if (typeof window !== 'undefined') {
+			const confirmed = window.confirm(FULL_LIBRARY_REPAIR_CONFIRMATION);
+			if (!confirmed) return;
+		}
+
+		isFullLibraryRepairing = true;
+		fullLibraryRepairSummary = null;
+
+		try {
+			const quality = get(downloadPreferencesStore).downloadQuality;
+			const result = await repairFullLibraryInLibrary({
+				quality,
+				queue: true
+			});
+
+			if (!result.success || !result.summary) {
+				throw new Error(result.error || 'Failed to auto-repair full library');
+			}
+
+			const summary = result.summary;
+			const summaryLine = `Scanned ${summary.albumsProcessed}/${summary.albumsDiscovered} album(s); queued ${summary.tracksQueued} repair track(s).`;
+			fullLibraryRepairSummary = summaryLine;
+			toasts.success(summaryLine);
+
+			if (summary.albumsUnresolved > 0) {
+				toasts.warning(
+					`${summary.albumsUnresolved} album(s) could not be confidently matched to TIDAL and were skipped.`
+				);
+			}
+			if (summary.albumsErrored > 0) {
+				toasts.warning(
+					`${summary.albumsErrored} album(s) failed during auto-repair. Check server logs for details.`
+				);
+			}
+		} catch (error) {
+			const message =
+				error instanceof Error && error.message
+					? error.message
+					: 'Failed to auto-repair full library';
+			fullLibraryRepairSummary = null;
+			toasts.error(message);
+		} finally {
+			isFullLibraryRepairing = false;
 		}
 	}
 
@@ -1042,9 +1096,9 @@
 												{/each}
 											</div>
 										</section>
-										<section class="settings-section">
-											<p class="section-heading">Cache</p>
-											<button
+											<section class="settings-section">
+												<p class="section-heading">Cache</p>
+												<button
 												type="button"
 												onclick={handleClearCaches}
 												class="glass-option glass-option--wide"
@@ -1061,11 +1115,37 @@
 												</span>
 												{#if isCacheClearing}
 													<LoaderCircle size={16} class="glass-option__check animate-spin" />
+													{/if}
+												</button>
+											</section>
+											<section class="settings-section">
+												<p class="section-heading">Library Maintenance</p>
+												<button
+													type="button"
+													onclick={handleFullLibraryRepair}
+													class="glass-option glass-option--wide glass-option--primary"
+													disabled={isFullLibraryRepairing}
+													aria-busy={isFullLibraryRepairing}
+												>
+													<span class="glass-option__content">
+														<span class="glass-option__label">
+															<Download size={16} />
+															<span>{isFullLibraryRepairing ? 'Auto-repair running…' : 'Auto-repair full library'}</span>
+														</span>
+														<span class="glass-option__description">
+															Scans all local albums, validates integrity, and queues missing/corrupt tracks for repair.
+														</span>
+													</span>
+													{#if isFullLibraryRepairing}
+														<LoaderCircle size={16} class="glass-option__check animate-spin" />
+													{/if}
+												</button>
+												{#if fullLibraryRepairSummary}
+													<p class="section-footnote">{fullLibraryRepairSummary}</p>
 												{/if}
-											</button>
-										</section>
-										<section class="settings-section settings-section--bordered settings-section--wide">
-											<p class="section-heading">Queue actions</p>
+											</section>
+											<section class="settings-section settings-section--bordered settings-section--wide">
+												<p class="section-heading">Queue actions</p>
 											<div class="actions-column">
 												<button
 													onclick={handleQueueDownload}

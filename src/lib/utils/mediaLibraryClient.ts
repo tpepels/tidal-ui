@@ -38,6 +38,40 @@ export type AlbumRepairResult = {
 	error?: string;
 };
 
+export type FullLibraryRepairResult = {
+	success: boolean;
+	startedAt?: number;
+	finishedAt?: number;
+	durationMs?: number;
+	queueEnabled?: boolean;
+	quality?: 'LOW' | 'HIGH' | 'LOSSLESS' | 'HI_RES_LOSSLESS';
+	summary?: {
+		albumsDiscovered: number;
+		albumsProcessed: number;
+		albumsMatched: number;
+		albumsUnresolved: number;
+		albumsErrored: number;
+		albumsWithRepairTargets: number;
+		albumsWithQueuedRepairs: number;
+		tracksExpected: number;
+		tracksHealthy: number;
+		tracksMissing: number;
+		tracksCorrupt: number;
+		tracksQueued: number;
+	};
+	unresolvedAlbums?: Array<{
+		artistName: string;
+		albumTitle: string;
+		reason: string;
+	}>;
+	errorAlbums?: Array<{
+		artistName: string;
+		albumTitle: string;
+		reason: string;
+	}>;
+	error?: string;
+};
+
 export async function fetchAlbumLibraryStatus(
 	albums: AlbumLibraryStatusInput[]
 ): Promise<AlbumLibraryStatusMap> {
@@ -99,6 +133,36 @@ export async function repairAlbumInLibrary(input: {
 		return {
 			success: false,
 			error: 'Failed to inspect/repair album'
+		};
+	}
+}
+
+export async function repairFullLibraryInLibrary(input: {
+	quality: 'LOW' | 'HIGH' | 'LOSSLESS' | 'HI_RES_LOSSLESS';
+	forceRescan?: boolean;
+	queue?: boolean;
+	maxAlbums?: number;
+}): Promise<FullLibraryRepairResult> {
+	try {
+		const response = await fetch('/api/media-library/repair-all', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify(input)
+		});
+		const payload = (await response.json()) as FullLibraryRepairResult;
+		if (!response.ok) {
+			return {
+				success: false,
+				error: payload?.error || 'Failed to auto-repair full library'
+			};
+		}
+		return payload;
+	} catch {
+		return {
+			success: false,
+			error: 'Failed to auto-repair full library'
 		};
 	}
 }
