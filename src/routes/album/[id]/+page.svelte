@@ -36,7 +36,7 @@
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 	import { browseState } from '$lib/stores/browseState';
 	import { artistCacheStore } from '$lib/stores/artistCache';
-	import { fetchAlbumLibraryStatus } from '$lib/utils/mediaLibraryClient';
+	import { fetchAlbumLibraryStatus, repairAlbumInLibrary } from '$lib/utils/mediaLibraryClient';
 	import { getCoverCacheKey, getUnifiedCoverCandidates } from '$lib/utils/coverPipeline';
 
 	import { downloadAlbum } from '$lib/downloads';
@@ -70,6 +70,8 @@
 	let queuePollToken = 0;
 	let albumInLibrary = $state(false);
 	let albumLibraryTrackCount = $state(0);
+	let isRepairingAlbum = $state(false);
+	let repairMessage = $state<string | null>(null);
 	const FORCE_OVERWRITE_CONFIRMATION =
 		'This album is already in your local library. Redownload it and overwrite existing files?';
 
@@ -106,6 +108,8 @@
 			downloadError = null;
 			albumInLibrary = false;
 			albumLibraryTrackCount = 0;
+			isRepairingAlbum = false;
+			repairMessage = null;
 		}
 		const requestToken = ++activeRequestToken;
 		albumLoadAbortController?.abort();
@@ -489,6 +493,53 @@
 		}
 	}
 
+	function buildAlbumCoverUrl(coverId?: string | null): string | undefined {
+		if (!coverId || typeof coverId !== 'string') {
+			return undefined;
+		}
+		return `https://resources.tidal.com/images/${coverId.replace(/-/g, '/')}/1280x1280.jpg`;
+	}
+
+	async function handleRepairAlbum(): Promise<void> {
+		if (!album || tracks.length === 0 || isRepairingAlbum) {
+			return;
+		}
+		isRepairingAlbum = true;
+		repairMessage = null;
+		downloadError = null;
+		try {
+			const quality = $downloadPreferencesStore.downloadQuality;
+			const result = await repairAlbumInLibrary({
+				albumId: album.id,
+				artistName: album.artist?.name,
+				albumTitle: album.title,
+				quality,
+				coverUrl: buildAlbumCoverUrl(album.cover),
+				tracks: tracks.map((track) => ({
+					trackId: track.id,
+					trackTitle: track.version ? `${track.title} (${track.version})` : track.title,
+					trackNumber: track.trackNumber,
+					durationSeconds: track.duration
+				}))
+			});
+			if (!result.success || !result.summary) {
+				throw new Error(result.error || 'Album integrity scan failed');
+			}
+			if (result.summary.queued > 0) {
+				repairMessage =
+					`Queued ${result.summary.queued} repair download(s): ` +
+					`${result.summary.missing} missing, ${result.summary.corrupt} corrupt.`;
+			} else {
+				repairMessage = 'Album integrity verified: all tracks are complete and healthy.';
+			}
+		} catch (error) {
+			downloadError =
+				error instanceof Error ? error.message : 'Failed to inspect and repair this album.';
+		} finally {
+			isRepairingAlbum = false;
+		}
+	}
+
 	const totalDuration = $derived(tracks.reduce((sum, track) => sum + (track.duration ?? 0), 0));
 </script>
 
@@ -674,10 +725,25 @@
 												? 'Redownload Album'
 											: 'Download Album'}
 							{/if}
-						</button>
+							</button>
+							{#if albumInLibrary}
+								<button
+									onclick={handleRepairAlbum}
+									class="flex items-center gap-2 rounded-full border border-emerald-400/40 px-6 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:border-emerald-400 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+									disabled={isRepairingAlbum}
+									aria-busy={isRepairingAlbum}
+								>
+									{#if isRepairingAlbum}
+										<LoaderCircle size={18} class="animate-spin" />
+										Checking Integrity…
+									{:else}
+										Repair Missing/Corrupt
+									{/if}
+								</button>
+							{/if}
 
-						<ShareButton type="album" id={album.id} variant="secondary" />
-					</div>
+							<ShareButton type="album" id={album.id} variant="secondary" />
+						</div>
 					{#if queueStatus === 'queued'}
 						<p class="mt-2 text-sm text-blue-300">
 							Queued on server. Open Download Manager for live progress.
@@ -696,14 +762,17 @@
 						<p class="mt-2 text-sm text-amber-300">Album download stopped.</p>
 					{:else if queueStatus === 'paused'}
 						<p class="mt-2 text-sm text-amber-300">Album download paused.</p>
-					{:else if albumInLibrary}
-						<p class="mt-2 text-sm text-emerald-300">
-							Already in local library ({albumLibraryTrackCount} track{albumLibraryTrackCount === 1 ? '' : 's'} found). Click "Redownload Album" to overwrite.
-						</p>
-					{/if}
-					{#if downloadError}
-						<p class="mt-2 text-sm text-red-400">{downloadError}</p>
-					{/if}
+						{:else if albumInLibrary}
+							<p class="mt-2 text-sm text-emerald-300">
+								Already in local library ({albumLibraryTrackCount} track{albumLibraryTrackCount === 1 ? '' : 's'} found). Click "Redownload Album" to overwrite.
+							</p>
+						{/if}
+						{#if repairMessage}
+							<p class="mt-2 text-sm text-emerald-300">{repairMessage}</p>
+						{/if}
+						{#if downloadError}
+							<p class="mt-2 text-sm text-red-400">{downloadError}</p>
+						{/if}
 				{/if}
 			</div>
 		</div>

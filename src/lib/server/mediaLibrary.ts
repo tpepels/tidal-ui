@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { createHash } from 'node:crypto';
 import { parseFile } from 'music-metadata';
 import { getDownloadDir, sanitizeDirName } from '../../routes/api/download-track/_shared';
+import { validateAudioFileIntegrity } from './download/audioIntegrity';
 
 const AUDIO_EXTENSIONS = new Set([
 	'.flac',
@@ -51,6 +52,34 @@ export interface LocalMediaSnapshot {
 	files: LocalMediaFile[];
 }
 
+export interface AlbumIntegrityTrackInput {
+	trackId: number;
+	trackTitle?: string;
+	trackNumber?: number;
+	expectedDurationSeconds?: number;
+}
+
+export type AlbumIntegrityTrackStatus = 'healthy' | 'missing' | 'corrupt';
+
+export interface AlbumIntegrityTrackResult extends AlbumIntegrityTrackInput {
+	status: AlbumIntegrityTrackStatus;
+	filePath?: string;
+	relativePath?: string;
+	reason?: string;
+}
+
+export interface AlbumIntegrityReport {
+	scannedAt: number;
+	totalFilesInAlbumDir: number;
+	tracks: AlbumIntegrityTrackResult[];
+	summary: {
+		expected: number;
+		healthy: number;
+		missing: number;
+		corrupt: number;
+	};
+}
+
 type EmbeddedTags = {
 	artistKey: string;
 	albumArtistKey: string;
@@ -92,6 +121,73 @@ function stripTrackPrefix(value: string): string {
 function normalizeTrackFilename(filename: string): string {
 	const stem = normalizeKey(stripExtension(filename));
 	return normalizeKey(stripTrackPrefix(stem));
+}
+
+function parseTrackNumberFromFilename(filename: string): number | undefined {
+	const stem = stripExtension(filename).trim();
+	const discTrackMatch = /^(\d{1,2})\s*[-_]\s*(\d{1,2})\s*-\s*/.exec(stem);
+	if (discTrackMatch?.[2]) {
+		const parsed = Number.parseInt(discTrackMatch[2], 10);
+		return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+	}
+	const trackOnlyMatch = /^(\d{1,3})\s*-\s*/.exec(stem);
+	if (trackOnlyMatch?.[1]) {
+		const parsed = Number.parseInt(trackOnlyMatch[1], 10);
+		return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+	}
+	return undefined;
+}
+
+function keysLooselyMatch(a: string, b: string): boolean {
+	if (!a || !b) return false;
+	return a === b || a.includes(b) || b.includes(a);
+}
+
+async function scoreAlbumTrackCandidate(
+	file: LocalMediaFile,
+	expected: AlbumIntegrityTrackInput
+): Promise<number> {
+	const titleKey = normalizeKey(expected.trackTitle);
+	const expectedTrackNo = toPositiveInt(expected.trackNumber);
+	const tags = await getEmbeddedTags(file);
+	const filenameTrackNo = parseTrackNumberFromFilename(file.filename);
+	const filenameTrackKey = normalizeTrackFilename(file.filename);
+
+	let score = 0;
+	if (expectedTrackNo && tags?.trackNo === expectedTrackNo) {
+		score += 100;
+	}
+	if (expectedTrackNo && filenameTrackNo === expectedTrackNo) {
+		score += 80;
+	}
+	if (titleKey.length > 0 && tags?.titleKey && keysLooselyMatch(tags.titleKey, titleKey)) {
+		score += tags.titleKey === titleKey ? 70 : 45;
+	}
+	if (titleKey.length > 0 && keysLooselyMatch(filenameTrackKey, titleKey)) {
+		score += filenameTrackKey === titleKey ? 60 : 35;
+	}
+
+	return score;
+}
+
+async function mapWithConcurrency<T>(
+	items: T[],
+	concurrency: number,
+	worker: (item: T) => Promise<void>
+): Promise<void> {
+	if (items.length === 0) return;
+	const limit = Math.max(1, Math.min(concurrency, items.length));
+	let nextIndex = 0;
+
+	const runners = Array.from({ length: limit }, async () => {
+		while (true) {
+			const index = nextIndex++;
+			if (index >= items.length) return;
+			await worker(items[index]);
+		}
+	});
+
+	await Promise.all(runners);
 }
 
 function toPositiveInt(value: unknown): number | undefined {
@@ -410,6 +506,126 @@ export async function checkTrackInLibrary(input: {
 	return {
 		exists: metadataMatches.length > 0,
 		matches: metadataMatches
+	};
+}
+
+export async function inspectAlbumIntegrity(input: {
+	artistName?: string;
+	albumTitle?: string;
+	tracks: AlbumIntegrityTrackInput[];
+	force?: boolean;
+	validationConcurrency?: number;
+}): Promise<AlbumIntegrityReport> {
+	const requestedTracks = Array.isArray(input.tracks)
+		? input.tracks
+				.map((track) => ({
+					trackId: Number(track.trackId),
+					trackTitle: track.trackTitle,
+					trackNumber: track.trackNumber,
+					expectedDurationSeconds: track.expectedDurationSeconds
+				}))
+				.filter((track) => Number.isFinite(track.trackId) && track.trackId > 0)
+		: [];
+
+	const snapshot = await scanLocalMediaLibrary({ force: input.force });
+	const albumFiles = await resolveAlbumMatches(snapshot.files, {
+		artistName: input.artistName,
+		albumTitle: input.albumTitle
+	});
+
+	const results: AlbumIntegrityTrackResult[] = requestedTracks.map((track) => ({
+		...track,
+		status: 'missing',
+		reason: 'No matching local file found'
+	}));
+	const resultByTrackId = new Map<number, AlbumIntegrityTrackResult>(
+		results.map((result) => [result.trackId, result])
+	);
+	const unusedFiles = [...albumFiles];
+	const candidates: Array<{
+		track: AlbumIntegrityTrackInput;
+		file: LocalMediaFile;
+		result: AlbumIntegrityTrackResult;
+	}> = [];
+
+	for (const track of requestedTracks) {
+		let bestIndex = -1;
+		let bestScore = 0;
+		for (let i = 0; i < unusedFiles.length; i++) {
+			const score = await scoreAlbumTrackCandidate(unusedFiles[i], track);
+			if (score > bestScore) {
+				bestScore = score;
+				bestIndex = i;
+			}
+		}
+		if (bestIndex < 0 || bestScore <= 0) {
+			continue;
+		}
+
+		const [matchedFile] = unusedFiles.splice(bestIndex, 1);
+		if (!matchedFile) continue;
+		const result = resultByTrackId.get(track.trackId);
+		if (!result) continue;
+		result.filePath = matchedFile.path;
+		result.relativePath = matchedFile.relativePath;
+		candidates.push({ track, file: matchedFile, result });
+	}
+
+	const configuredConcurrency = Number(
+		process.env.MEDIA_LIBRARY_VALIDATION_CONCURRENCY || '2'
+	);
+	const validationConcurrency =
+		toPositiveInt(input.validationConcurrency) ??
+		(toPositiveInt(configuredConcurrency) ?? 2);
+
+	await mapWithConcurrency(candidates, validationConcurrency, async ({ track, file, result }) => {
+		const expectedDurationSeconds =
+			typeof track.expectedDurationSeconds === 'number' &&
+			Number.isFinite(track.expectedDurationSeconds) &&
+			track.expectedDurationSeconds > 0
+				? track.expectedDurationSeconds
+				: undefined;
+		let integrity;
+		try {
+			integrity = await validateAudioFileIntegrity({
+				filePath: file.path,
+				expectedExtension: file.extension,
+				expectedDurationSeconds
+			});
+		} catch (error) {
+			result.status = 'corrupt';
+			result.reason = error instanceof Error ? error.message : String(error);
+			return;
+		}
+
+		if (!integrity.ok) {
+			const reason = integrity.error || 'Integrity validation failed';
+			if (reason.includes('binary not found')) {
+				throw new Error(`Integrity scanner unavailable: ${reason}`);
+			}
+			result.status = 'corrupt';
+			result.reason = reason;
+			return;
+		}
+
+		result.status = 'healthy';
+		result.reason = undefined;
+	});
+
+	const healthy = results.filter((track) => track.status === 'healthy').length;
+	const missing = results.filter((track) => track.status === 'missing').length;
+	const corrupt = results.filter((track) => track.status === 'corrupt').length;
+
+	return {
+		scannedAt: snapshot.scannedAt,
+		totalFilesInAlbumDir: albumFiles.length,
+		tracks: results,
+		summary: {
+			expected: results.length,
+			healthy,
+			missing,
+			corrupt
+		}
 	};
 }
 
