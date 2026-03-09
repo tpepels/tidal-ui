@@ -3,7 +3,12 @@ import type { Dirent } from 'node:fs';
 import * as path from 'node:path';
 import { createHash } from 'node:crypto';
 import { parseFile } from 'music-metadata';
-import { getDownloadDir, getTempDir, sanitizeDirName } from '../../routes/api/download-track/_shared';
+import {
+	getDownloadDir,
+	getTempDir,
+	moveFile,
+	sanitizeDirName
+} from '../../routes/api/download-track/_shared';
 import { validateAudioFileIntegrity } from './download/audioIntegrity';
 
 const AUDIO_EXTENSIONS = new Set([
@@ -1116,7 +1121,7 @@ async function moveToBackup(
 	await fs.mkdir(backupDir, { recursive: true });
 	const fileName = path.basename(filePath);
 	const backupPath = await ensureUniquePath(backupDir, fileName);
-	await fs.rename(filePath, backupPath);
+	await moveFile(filePath, backupPath);
 }
 
 export async function deduplicateMediaLibrary(options?: {
