@@ -32,7 +32,8 @@ describe('dynamic API target refresh', () => {
 		const result = await refreshApiTargets({
 			force: true,
 			fetchImpl: fetchMock as unknown as typeof fetch,
-			ttlMs: 0
+			ttlMs: 0,
+			isTrustedHostname: async () => true
 		});
 
 		expect(result.updated).toBe(true);
@@ -73,7 +74,8 @@ describe('dynamic API target refresh', () => {
 		const result = await refreshApiTargets({
 			force: true,
 			fetchImpl: fetchMock as unknown as typeof fetch,
-			ttlMs: 0
+			ttlMs: 0,
+			isTrustedHostname: async () => true
 		});
 
 		expect(result.updated).toBe(true);
@@ -82,5 +84,37 @@ describe('dynamic API target refresh', () => {
 			'https://hifi-two.spotisaver.net'
 		]);
 		expect(API_CONFIG.targets.some((target) => target.baseUrl.includes('samidy.com'))).toBe(false);
+	});
+
+	it('keeps only trusted allowlisted HTTPS hosts', async () => {
+		const payload = {
+			lastUpdated: '2026-03-06T22:40:49.638Z',
+			streaming: [
+				{ url: 'https://api.monochrome.tf', version: '2.5' },
+				{ url: 'https://evil.example.com', version: '9.9' },
+				{ url: 'http://hifi-one.spotisaver.net', version: '2.4' },
+				{ url: 'https://127.0.0.1', version: '9.9' }
+			],
+			down: []
+		};
+
+		const fetchMock = vi.fn(async () => {
+			return new Response(JSON.stringify(payload), {
+				status: 200,
+				headers: { 'content-type': 'application/json' }
+			});
+		});
+
+		const result = await refreshApiTargets({
+			force: true,
+			fetchImpl: fetchMock as unknown as typeof fetch,
+			ttlMs: 0,
+			isTrustedHostname: async (hostname: string) => hostname === 'api.monochrome.tf'
+		});
+
+		expect(result.updated).toBe(true);
+		expect(API_CONFIG.targets.map((target) => target.baseUrl)).toEqual([
+			'https://api.monochrome.tf'
+		]);
 	});
 });

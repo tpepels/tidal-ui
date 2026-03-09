@@ -18,6 +18,7 @@ type FfprobePayload = {
 };
 
 type ProbeRunner = (ffprobePath: string, filePath: string) => Promise<FfprobePayload>;
+type DecodeRunner = (ffmpegPath: string, filePath: string) => Promise<void>;
 
 type BinaryFinder = () => string | null;
 
@@ -29,7 +30,9 @@ export interface AudioIntegrityValidationInput {
 
 interface AudioIntegrityValidationDeps {
 	probeRunner?: ProbeRunner;
+	decodeRunner?: DecodeRunner;
 	binaryFinder?: BinaryFinder;
+	ffmpegBinaryFinder?: BinaryFinder;
 	durationToleranceSeconds?: number;
 }
 
@@ -42,6 +45,7 @@ export interface AudioIntegrityValidationResult {
 }
 
 let resolvedFfprobePath: string | null | undefined = undefined;
+let resolvedFfmpegPath: string | null | undefined = undefined;
 
 function normalizeExtension(value: string | undefined): string | undefined {
 	if (!value) return undefined;
@@ -104,6 +108,17 @@ function getFfprobeCandidates(): string[] {
 	].filter((entry): entry is string => Boolean(entry));
 }
 
+function getFfmpegCandidates(): string[] {
+	return [
+		process.env.FFMPEG_PATH,
+		'ffmpeg',
+		'/usr/bin/ffmpeg',
+		'/usr/local/bin/ffmpeg',
+		'/opt/ffmpeg/ffmpeg',
+		'/snap/bin/ffmpeg'
+	].filter((entry): entry is string => Boolean(entry));
+}
+
 function findFfprobeBinary(): string | null {
 	if (resolvedFfprobePath !== undefined) return resolvedFfprobePath;
 
@@ -123,6 +138,28 @@ function findFfprobeBinary(): string | null {
 	}
 
 	resolvedFfprobePath = null;
+	return null;
+}
+
+function findFfmpegBinary(): string | null {
+	if (resolvedFfmpegPath !== undefined) return resolvedFfmpegPath;
+
+	for (const candidate of getFfmpegCandidates()) {
+		try {
+			const result = spawnSync(candidate, ['-version'], {
+				stdio: ['ignore', 'pipe', 'ignore'],
+				timeout: 5000
+			});
+			if (!result.error && result.status === 0) {
+				resolvedFfmpegPath = candidate;
+				return resolvedFfmpegPath;
+			}
+		} catch {
+			// Try next candidate.
+		}
+	}
+
+	resolvedFfmpegPath = null;
 	return null;
 }
 
@@ -150,6 +187,24 @@ function runFfprobeJson(ffprobePath: string, filePath: string): Promise<FfprobeP
 						)
 					);
 				}
+			}
+		);
+	});
+}
+
+function runFfmpegDecode(ffmpegPath: string, filePath: string): Promise<void> {
+	return new Promise((resolve, reject) => {
+		execFile(
+			ffmpegPath,
+			['-v', 'error', '-nostdin', '-i', filePath, '-f', 'null', '-'],
+			{ timeout: 45000 },
+			(error, _stdout, stderr) => {
+				if (error) {
+					const stderrText = stderr?.trim();
+					reject(new Error(stderrText ? `ffmpeg decode failed: ${stderrText}` : error.message));
+					return;
+				}
+				resolve();
 			}
 		);
 	});
@@ -196,6 +251,8 @@ export async function validateAudioFileIntegrity(
 ): Promise<AudioIntegrityValidationResult> {
 	const binaryFinder = deps?.binaryFinder ?? findFfprobeBinary;
 	const probeRunner = deps?.probeRunner ?? runFfprobeJson;
+	const ffmpegBinaryFinder = deps?.ffmpegBinaryFinder ?? findFfmpegBinary;
+	const decodeRunner = deps?.decodeRunner ?? runFfmpegDecode;
 	const ffprobePath = binaryFinder();
 
 	if (!ffprobePath) {
@@ -248,6 +305,19 @@ export async function validateAudioFileIntegrity(
 		}
 	}
 
+	const ffmpegPath = ffmpegBinaryFinder();
+	if (!ffmpegPath) {
+		return { ok: false, error: 'ffmpeg binary not found for decode validation' };
+	}
+	try {
+		await decodeRunner(ffmpegPath, input.filePath);
+	} catch (error) {
+		return {
+			ok: false,
+			error: error instanceof Error ? error.message : String(error)
+		};
+	}
+
 	return {
 		ok: true,
 		durationSeconds: extracted.durationSeconds,
@@ -262,5 +332,6 @@ export const __test = {
 	extractProbeValues,
 	resetCache(): void {
 		resolvedFfprobePath = undefined;
+		resolvedFfmpegPath = undefined;
 	}
 };

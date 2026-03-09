@@ -11,6 +11,22 @@ describe('audioIntegrity', () => {
 		expect(result.error).toMatch(/ffprobe/i);
 	});
 
+	it('fails when ffmpeg is unavailable', async () => {
+		const result = await validateAudioFileIntegrity(
+			{ filePath: '/tmp/example.flac' },
+			{
+				binaryFinder: () => '/usr/bin/ffprobe',
+				ffmpegBinaryFinder: () => null,
+				probeRunner: async () => ({
+					format: { format_name: 'flac', duration: '200.10' },
+					streams: [{ codec_type: 'audio', codec_name: 'flac', duration: '200.05' }]
+				})
+			}
+		);
+		expect(result.ok).toBe(false);
+		expect(result.error).toMatch(/ffmpeg/i);
+	});
+
 	it('validates codec/container and duration from probe payload', async () => {
 		const result = await validateAudioFileIntegrity(
 			{
@@ -20,11 +36,13 @@ describe('audioIntegrity', () => {
 			},
 			{
 				binaryFinder: () => '/usr/bin/ffprobe',
+				ffmpegBinaryFinder: () => '/usr/bin/ffmpeg',
 				durationToleranceSeconds: 5,
 				probeRunner: async () => ({
 					format: { format_name: 'flac', duration: '200.10' },
 					streams: [{ codec_type: 'audio', codec_name: 'flac', duration: '200.05' }]
-				})
+				}),
+				decodeRunner: async () => {}
 			}
 		);
 
@@ -42,11 +60,13 @@ describe('audioIntegrity', () => {
 			},
 			{
 				binaryFinder: () => '/usr/bin/ffprobe',
+				ffmpegBinaryFinder: () => '/usr/bin/ffmpeg',
 				durationToleranceSeconds: 2,
 				probeRunner: async () => ({
 					format: { format_name: 'flac', duration: '198' },
 					streams: [{ codec_type: 'audio', codec_name: 'flac', duration: '198' }]
-				})
+				}),
+				decodeRunner: async () => {}
 			}
 		);
 
@@ -62,15 +82,40 @@ describe('audioIntegrity', () => {
 			},
 			{
 				binaryFinder: () => '/usr/bin/ffprobe',
+				ffmpegBinaryFinder: () => '/usr/bin/ffmpeg',
 				probeRunner: async () => ({
 					format: { format_name: 'mov,mp4,m4a,3gp,3g2,mj2', duration: '120' },
 					streams: [{ codec_type: 'audio', codec_name: 'aac', duration: '120' }]
-				})
+				}),
+				decodeRunner: async () => {}
 			}
 		);
 
 		expect(result.ok).toBe(false);
 		expect(result.error).toMatch(/container\/codec mismatch/i);
+	});
+
+	it('fails when ffmpeg decode step fails', async () => {
+		const result = await validateAudioFileIntegrity(
+			{
+				filePath: '/tmp/example.flac',
+				expectedExtension: '.flac'
+			},
+			{
+				binaryFinder: () => '/usr/bin/ffprobe',
+				ffmpegBinaryFinder: () => '/usr/bin/ffmpeg',
+				probeRunner: async () => ({
+					format: { format_name: 'flac', duration: '120' },
+					streams: [{ codec_type: 'audio', codec_name: 'flac', duration: '120' }]
+				}),
+				decodeRunner: async () => {
+					throw new Error('ffmpeg decode failed: invalid data');
+				}
+			}
+		);
+
+		expect(result.ok).toBe(false);
+		expect(result.error).toMatch(/decode failed/i);
 	});
 
 	it('extracts stream and format values safely', () => {

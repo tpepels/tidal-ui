@@ -186,6 +186,7 @@ export interface QueuedJob {
 	progress: number; // 0-1
 	error?: string;
 	errorCategory?: ErrorCategory;
+	failureCode?: string;
 	createdAt: number;
 	startedAt?: number;
 	completedAt?: number;
@@ -470,6 +471,7 @@ export async function enqueueJob(
 					status: 'queued',
 					progress: 0,
 					error: undefined,
+					failureCode: undefined,
 					retryCount: (duplicate.retryCount || 0) + 1,
 					nextRetryAt: undefined,
 					cancellationRequested: false,
@@ -898,6 +900,7 @@ export async function requestRetry(jobId: string): Promise<boolean> {
 		progress: 0,
 		error: undefined,
 		errorCategory: undefined,
+		failureCode: undefined,
 		completedAt: undefined,
 		startedAt: undefined,
 		downloadTimeMs: undefined,
@@ -969,6 +972,7 @@ export async function getMetrics(): Promise<{
 	avg_retry_count: number;
 	total_download_time_ms: number;
 	avg_job_duration_ms: number;
+	failure_by_code: Record<string, number>;
 }> {
 	const jobs = await getAllJobs();
 	const completed = jobs.filter(j => j.status === 'completed');
@@ -983,6 +987,11 @@ export async function getMetrics(): Promise<{
 	}, 0);
 	
 	const avgRetries = jobs.reduce((sum, j) => sum + (j.retryCount || 0), 0) / Math.max(jobs.length, 1);
+	const failureByCode: Record<string, number> = {};
+	for (const job of failed) {
+		const code = job.failureCode || 'UNKNOWN';
+		failureByCode[code] = (failureByCode[code] || 0) + 1;
+	}
 	
 	return {
 		total_jobs: jobs.length,
@@ -995,6 +1004,7 @@ export async function getMetrics(): Promise<{
 		avg_success_rate: total > 0 ? Math.round((completed.length / total) * 100) : 0,
 		avg_retry_count: Math.round(avgRetries * 100) / 100,
 		total_download_time_ms: totalTime,
-		avg_job_duration_ms: total > 0 ? Math.round(totalTime / total) : 0
+		avg_job_duration_ms: total > 0 ? Math.round(totalTime / total) : 0,
+		failure_by_code: failureByCode
 	};
 }

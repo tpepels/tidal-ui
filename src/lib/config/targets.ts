@@ -32,6 +32,7 @@ type RefreshOptions = {
 	force?: boolean;
 	fetchImpl?: typeof fetch;
 	ttlMs?: number;
+	isTrustedHostname?: (hostname: string) => Promise<boolean>;
 };
 
 type RefreshResult = {
@@ -127,6 +128,7 @@ const DEFAULT_FALLBACK_BASE_URL = 'https://tidal.401658.xyz';
 const DEFAULT_DYNAMIC_WEIGHT = 15;
 const DEFAULT_REFRESH_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_REFRESH_TIMEOUT_MS = 5000;
+const DYNAMIC_HOSTNAME_CACHE_TTL_MS = 10 * 60 * 1000;
 
 const UPTIME_ENDPOINTS = [
 	'https://tidal-uptime.jiffy-puffs-1j.workers.dev/',
@@ -134,6 +136,23 @@ const UPTIME_ENDPOINTS = [
 ] as const;
 
 const EXCLUDED_STREAMING_HOSTS = new Set(['monochrome-api.samidy.com']);
+const DEFAULT_DYNAMIC_ALLOWED_HOSTS = new Set([
+	'api.monochrome.tf',
+	'arran.monochrome.tf',
+	'eu-central.monochrome.tf',
+	'us-west.monochrome.tf',
+	'hifi-one.spotisaver.net',
+	'hifi-two.spotisaver.net',
+	'triton.squid.wtf',
+	'wolf.qqdl.site',
+	'maus.qqdl.site',
+	'vogel.qqdl.site',
+	'katze.qqdl.site',
+	'hund.qqdl.site',
+	'tidal.kinoplus.online',
+	'tidal-api.binimum.org'
+]);
+const hostnameTrustCache = new Map<string, { trusted: boolean; expiresAt: number }>();
 const staticWeightByBaseUrl = new Map<string, number>();
 for (const target of DEFAULT_API_TARGETS) {
 	const normalized = normalizeTargetUrl(target.baseUrl);
@@ -183,6 +202,18 @@ function getRefreshTimeoutMs(): number {
 	);
 }
 
+function getDynamicAllowedHosts(): Set<string> {
+	const configured = getEnvValue('API_TARGET_ALLOWED_HOSTS');
+	if (!configured) {
+		return new Set(DEFAULT_DYNAMIC_ALLOWED_HOSTS);
+	}
+	const parsed = configured
+		.split(',')
+		.map((entry) => entry.trim().toLowerCase())
+		.filter((entry) => entry.length > 0);
+	return parsed.length > 0 ? new Set(parsed) : new Set(DEFAULT_DYNAMIC_ALLOWED_HOSTS);
+}
+
 function isDynamicRefreshEnabled(force: boolean): boolean {
 	if (force) return true;
 	if (getEnvValue('DISABLE_DYNAMIC_API_TARGETS') === 'true') return false;
@@ -203,6 +234,120 @@ function normalizeTargetUrl(value: string): string | null {
 	} catch {
 		return null;
 	}
+}
+
+function isIpv4PrivateOrLocal(hostname: string): boolean {
+	const parts = hostname.split('.');
+	if (parts.length !== 4) return false;
+	const octets = parts.map((part) => Number.parseInt(part, 10));
+	if (octets.some((octet) => !Number.isFinite(octet) || octet < 0 || octet > 255)) {
+		return false;
+	}
+	const [a, b] = octets;
+	if (a === 10 || a === 127 || a === 0) return true;
+	if (a === 169 && b === 254) return true;
+	if (a === 172 && b >= 16 && b <= 31) return true;
+	if (a === 192 && b === 168) return true;
+	if (a === 100 && b >= 64 && b <= 127) return true;
+	return false;
+}
+
+function isIpv6PrivateOrLocal(hostname: string): boolean {
+	const normalized = hostname.toLowerCase();
+	if (normalized.startsWith('::ffff:')) {
+		return isIpv4PrivateOrLocal(normalized.slice('::ffff:'.length));
+	}
+	return (
+		normalized === '::1' ||
+		normalized.startsWith('fc') ||
+		normalized.startsWith('fd') ||
+		normalized.startsWith('fe80:')
+	);
+}
+
+function isPrivateOrLocalHostname(hostname: string): boolean {
+	const normalized = hostname.toLowerCase();
+	if (
+		normalized === 'localhost' ||
+		normalized.endsWith('.localhost') ||
+		normalized.endsWith('.local')
+	) {
+		return true;
+	}
+	if (normalized.includes(':')) {
+		return isIpv6PrivateOrLocal(normalized);
+	}
+	return isIpv4PrivateOrLocal(normalized);
+}
+
+async function defaultIsTrustedHostname(hostname: string): Promise<boolean> {
+	const normalized = hostname.trim().toLowerCase();
+	if (!normalized) return false;
+	if (isPrivateOrLocalHostname(normalized)) return false;
+
+	const cached = hostnameTrustCache.get(normalized);
+	if (cached && cached.expiresAt > Date.now()) {
+		return cached.trusted;
+	}
+
+	if (typeof process === 'undefined' || !process.versions?.node) {
+		return false;
+	}
+
+	try {
+		const dns = await import('node:dns/promises');
+		const records = await dns.lookup(normalized, { all: true, verbatim: true });
+		if (!Array.isArray(records) || records.length === 0) {
+			hostnameTrustCache.set(normalized, {
+				trusted: false,
+				expiresAt: Date.now() + DYNAMIC_HOSTNAME_CACHE_TTL_MS
+			});
+			return false;
+		}
+		const trusted = records.every((record) => !isPrivateOrLocalHostname(record.address));
+		hostnameTrustCache.set(normalized, {
+			trusted,
+			expiresAt: Date.now() + DYNAMIC_HOSTNAME_CACHE_TTL_MS
+		});
+		return trusted;
+	} catch {
+		hostnameTrustCache.set(normalized, {
+			trusted: false,
+			expiresAt: Date.now() + DYNAMIC_HOSTNAME_CACHE_TTL_MS
+		});
+		return false;
+	}
+}
+
+async function filterTrustedDynamicTargets(
+	targets: ApiClusterTarget[],
+	isTrustedHostname: (hostname: string) => Promise<boolean>
+): Promise<ApiClusterTarget[]> {
+	const allowedHosts = getDynamicAllowedHosts();
+	const trusted: ApiClusterTarget[] = [];
+	for (const target of targets) {
+		let parsed: URL;
+		try {
+			parsed = new URL(target.baseUrl);
+		} catch {
+			continue;
+		}
+		const hostname = parsed.hostname.toLowerCase();
+		if (parsed.protocol !== 'https:') {
+			continue;
+		}
+		if (!allowedHosts.has(hostname)) {
+			continue;
+		}
+		if (isPrivateOrLocalHostname(hostname)) {
+			continue;
+		}
+		if (!(await isTrustedHostname(hostname))) {
+			continue;
+		}
+		trusted.push(target);
+	}
+	return trusted;
 }
 
 function normalizeName(value: string): string {
@@ -420,8 +565,12 @@ export async function refreshApiTargets(options?: RefreshOptions): Promise<Refre
 			}
 
 			const resolvedTargets = resolveTargetsFromPayload(chosen);
-			if (resolvedTargets.length === 0) {
-				const errorMessage = 'Uptime payload had no usable streaming targets';
+			const trustedTargets = await filterTrustedDynamicTargets(
+				resolvedTargets,
+				options?.isTrustedHostname ?? defaultIsTrustedHostname
+			);
+			if (trustedTargets.length === 0) {
+				const errorMessage = 'Uptime payload had no trusted streaming targets';
 				lastRefreshError = errorMessage;
 				return {
 					updated: false,
@@ -433,7 +582,7 @@ export async function refreshApiTargets(options?: RefreshOptions): Promise<Refre
 				};
 			}
 
-			applyTargets(resolvedTargets, 'uptime');
+			applyTargets(trustedTargets, 'uptime');
 			lastRefreshError = null;
 			lastSuccessfulRefreshAt = Date.now();
 			return {
@@ -485,6 +634,7 @@ export const __test = {
 		lastSuccessfulRefreshAt = 0;
 		lastRefreshError = null;
 		refreshInFlight = null;
+		hostnameTrustCache.clear();
 	},
 	resolveTargetsFromPayload
 };

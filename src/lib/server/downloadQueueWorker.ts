@@ -6,6 +6,7 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'path';
 import {
+	enqueueJob,
 	dequeueJob,
 	updateJobStatus,
 	cleanupOldJobs,
@@ -66,6 +67,14 @@ const TRACK_RETRY_MAX_DELAY_MS = Math.max(
 	TRACK_RETRY_BASE_DELAY_MS,
 	Number(process.env.DOWNLOAD_TRACK_RETRY_MAX_DELAY_MS || 30_000)
 );
+const ALBUM_RETRY_BASE_DELAY_MS = Math.max(
+	1000,
+	Number(process.env.ALBUM_RETRY_BASE_DELAY_MS || 5000)
+);
+const ALBUM_RETRY_MAX_DELAY_MS = Math.max(
+	ALBUM_RETRY_BASE_DELAY_MS,
+	Number(process.env.ALBUM_RETRY_MAX_DELAY_MS || 5 * 60 * 1000)
+);
 const DOWNLOAD_ENABLE_QUALITY_FALLBACK = process.env.DOWNLOAD_ENABLE_QUALITY_FALLBACK !== 'false';
 const DEFAULT_ALBUM_TRACK_MAX_ATTEMPTS = 12;
 const legacyAlbumTrackRetriesRaw = Number(process.env.ALBUM_TRACK_RETRY_ATTEMPTS || '');
@@ -82,6 +91,13 @@ const ALBUM_TRACK_MAX_ATTEMPTS =
 		: DEFAULT_ALBUM_TRACK_MAX_ATTEMPTS;
 const DEFAULT_ALBUM_TRACK_CONCURRENCY = 2;
 const ALBUM_STAGING_ROOT = path.join(getTempDir(), 'album-staging');
+const AUDIO_EXTENSIONS = new Set(['.flac', '.m4a', '.mp4', '.mp3', '.aac', '.wav', '.ogg', '.opus']);
+
+type ExpectedAlbumTrack = {
+	trackId: number;
+	trackTitle: string;
+	trackNumber: number;
+};
 
 function formatMegabytes(bytes: number | undefined): string {
 	if (!Number.isFinite(bytes) || !bytes) return '0 MB';
@@ -169,6 +185,197 @@ function isDefinitiveExternalTrackFailure(result: {
 		message.includes('unsupported quality') ||
 		message.includes('not found')
 	);
+}
+
+function isAlbumCategoryRetryable(category: ErrorCategory | undefined): boolean {
+	return (
+		category === 'network' ||
+		category === 'rate_limit' ||
+		category === 'server_error' ||
+		category === 'unknown'
+	);
+}
+
+function deriveFailureCode(category: ErrorCategory | undefined, message: string): string {
+	const lower = message.toLowerCase();
+	if (lower.includes('integrity') || lower.includes('ffprobe') || lower.includes('decode')) {
+		return 'INTEGRITY_VALIDATION_FAILED';
+	}
+	if (lower.includes('enospc') || lower.includes('disk full') || lower.includes('no space left')) {
+		return 'DISK_FULL';
+	}
+	if (lower.includes('permission') || lower.includes('eacces')) {
+		return 'PERMISSION_DENIED';
+	}
+	if (lower.includes('album removed due external error')) {
+		return 'ALBUM_EXTERNAL_ABORT';
+	}
+	if (lower.includes('reconciliation') || lower.includes('missing track')) {
+		return 'ALBUM_RECONCILIATION_MISSING_TRACKS';
+	}
+	if (category === 'rate_limit') return 'UPSTREAM_RATE_LIMITED';
+	if (category === 'network' && lower.includes('timeout')) return 'UPSTREAM_TIMEOUT';
+	if (category === 'network') return 'UPSTREAM_NETWORK';
+	if (category === 'auth') return 'UPSTREAM_AUTH';
+	if (category === 'not_found') return 'UPSTREAM_NOT_FOUND';
+	if (category === 'server_error') return 'UPSTREAM_SERVER_ERROR';
+	if (category === 'api_error') return 'UPSTREAM_API_ERROR';
+	return 'UNKNOWN';
+}
+
+function resetTrackProgressForAlbumRetry(
+	trackProgress: QueuedJob['trackProgress']
+): QueuedJob['trackProgress'] | undefined {
+	if (!Array.isArray(trackProgress)) return undefined;
+	return trackProgress.map((track) => ({
+		...track,
+		status: 'pending',
+		error: undefined
+	}));
+}
+
+function findMissingPublishedTracks(params: {
+	expectedTracks: ExpectedAlbumTrack[];
+	expectedFileByTrackId: Map<number, string>;
+	publishedFiles: Set<string>;
+}): ExpectedAlbumTrack[] {
+	const missing: ExpectedAlbumTrack[] = [];
+	for (const track of params.expectedTracks) {
+		const expectedFile = params.expectedFileByTrackId.get(track.trackId);
+		if (expectedFile) {
+			if (!params.publishedFiles.has(expectedFile)) {
+				missing.push(track);
+			}
+			continue;
+		}
+		const prefix = `${String(track.trackNumber).padStart(2, '0')} - `;
+		const hasFallbackMatch = [...params.publishedFiles].some((name) => name.startsWith(prefix));
+		if (!hasFallbackMatch) {
+			missing.push(track);
+		}
+	}
+	return missing;
+}
+
+async function reconcilePublishedAlbum(params: {
+	quality: AudioQuality;
+	artistName: string;
+	albumTitle: string;
+	coverUrl?: string;
+	finalAlbumDir: string;
+	expectedTracks: ExpectedAlbumTrack[];
+	expectedFileByTrackId: Map<number, string>;
+}): Promise<{ ok: true } | { ok: false; reason: string; queuedTrackJobIds: string[] }> {
+	const entries = await fs.readdir(params.finalAlbumDir, { withFileTypes: true });
+	const publishedFiles = new Set(
+		entries
+			.filter((entry) => entry.isFile())
+			.map((entry) => entry.name)
+			.filter((name) => AUDIO_EXTENSIONS.has(path.extname(name).toLowerCase()))
+	);
+
+	const missingTracks = findMissingPublishedTracks({
+		expectedTracks: params.expectedTracks,
+		expectedFileByTrackId: params.expectedFileByTrackId,
+		publishedFiles
+	});
+
+	if (missingTracks.length === 0) {
+		return { ok: true };
+	}
+
+	const queuedTrackJobIds: string[] = [];
+	for (const missingTrack of missingTracks) {
+		const jobId = await enqueueJob(
+			{
+				type: 'track',
+				trackId: missingTrack.trackId,
+				quality: params.quality,
+				albumTitle: params.albumTitle,
+				artistName: params.artistName,
+				trackTitle: missingTrack.trackTitle,
+				trackNumber: missingTrack.trackNumber,
+				coverUrl: params.coverUrl
+			},
+			{
+				priority: 'high',
+				maxRetries: 6,
+				checkDuplicate: true
+			}
+		);
+		queuedTrackJobIds.push(jobId);
+	}
+
+	return {
+		ok: false,
+		reason:
+			`Reconciliation found ${missingTracks.length} missing track(s) after publish. ` +
+			`Queued ${queuedTrackJobIds.length} track job(s) for recovery.`,
+		queuedTrackJobIds
+	};
+}
+
+async function failOrRequeueAlbumJob(params: {
+	job: QueuedJob;
+	errorMessage: string;
+	errorCategory: ErrorCategory;
+	retryAfterMs?: number;
+	downloadTimeMs?: number;
+	completedTracks?: number;
+	totalTracks?: number;
+	trackProgress?: QueuedJob['trackProgress'];
+}): Promise<'requeued' | 'failed'> {
+	const retryCount = params.job.retryCount ?? 0;
+	const maxRetries = Math.max(0, params.job.maxRetries ?? 3);
+	const failureCode = deriveFailureCode(params.errorCategory, params.errorMessage);
+
+	if (isAlbumCategoryRetryable(params.errorCategory) && retryCount < maxRetries) {
+		const nextRetryCount = retryCount + 1;
+		const backoffMs = Math.min(
+			ALBUM_RETRY_BASE_DELAY_MS * Math.pow(2, Math.max(0, nextRetryCount - 1)),
+			ALBUM_RETRY_MAX_DELAY_MS
+		);
+		const delayMs = params.retryAfterMs && params.retryAfterMs > 0 ? params.retryAfterMs : backoffMs;
+		await updateJobStatus(params.job.id, {
+			status: 'queued',
+			progress: 0,
+			error: `Auto-retrying album (${nextRetryCount}/${maxRetries}) in ${Math.round(delayMs / 1000)}s: ${params.errorMessage}`,
+			errorCategory: params.errorCategory,
+			failureCode,
+			lastError: params.errorMessage,
+			retryCount: nextRetryCount,
+			nextRetryAt: Date.now() + delayMs,
+			startedAt: undefined,
+			completedAt: undefined,
+			completedTracks: 0,
+			trackProgress: resetTrackProgressForAlbumRetry(params.trackProgress),
+			cancellationRequested: false,
+			pauseRequested: false
+		});
+		console.warn(
+			`[Worker] Album job ${params.job.id} requeued (${nextRetryCount}/${maxRetries}) after ${params.errorCategory}: ${params.errorMessage}`
+		);
+		return 'requeued';
+	}
+
+	const progress =
+		params.totalTracks && params.totalTracks > 0
+			? (params.completedTracks ?? 0) / params.totalTracks
+			: params.job.progress;
+	await updateJobStatus(params.job.id, {
+		status: 'failed',
+		error: `${params.errorMessage} (action required: retry or adjust quality/settings)`,
+		errorCategory: params.errorCategory,
+		failureCode,
+		completedAt: Date.now(),
+		downloadTimeMs: params.downloadTimeMs,
+		completedTracks: params.completedTracks,
+		progress,
+		lastError: params.errorMessage,
+		retryCount,
+		trackProgress: params.trackProgress
+	});
+	return 'failed';
 }
 
 async function waitWithJitter(baseMs: number): Promise<void> {
@@ -474,6 +681,7 @@ async function processTrackJob(job: QueuedJob): Promise<void> {
 		progress: 0,
 		error: undefined,
 		errorCategory: undefined,
+		failureCode: undefined,
 		nextRetryAt: undefined
 	});
 
@@ -507,16 +715,17 @@ async function processTrackJob(job: QueuedJob): Promise<void> {
 
 		if (result.success) {
 			const duration = Date.now() - startTime;
-			await updateJobStatus(job.id, {
-				status: 'completed',
-				progress: 1,
-				completedAt: Date.now(),
-				downloadTimeMs: duration,
-				error: undefined,
-				errorCategory: undefined,
-				retryCount,
-				job: { ...trackJob, quality: currentQuality },
-				fallbackHistory
+				await updateJobStatus(job.id, {
+					status: 'completed',
+					progress: 1,
+					completedAt: Date.now(),
+					downloadTimeMs: duration,
+					error: undefined,
+					errorCategory: undefined,
+					failureCode: undefined,
+					retryCount,
+					job: { ...trackJob, quality: currentQuality },
+					fallbackHistory
 			});
 			return;
 		}
@@ -564,6 +773,7 @@ async function processTrackJob(job: QueuedJob): Promise<void> {
 			status: 'failed',
 			error: `${result.error ?? 'Download failed'} (action required: retry or adjust quality settings)`,
 			errorCategory,
+			failureCode: deriveFailureCode(errorCategory, result.error ?? 'Download failed'),
 			completedAt: Date.now(),
 			retryCount,
 			lastError: result.error,
@@ -683,6 +893,7 @@ async function downloadAlbumTrackWithPolicy(options: {
 	attempts: number;
 	finalQuality: AudioQuality;
 	terminalExternal: boolean;
+	filepath?: string;
 }> {
 	let currentQuality = options.quality;
 	let attempts = 0;
@@ -708,7 +919,8 @@ async function downloadAlbumTrackWithPolicy(options: {
 				retries,
 				attempts,
 				finalQuality: currentQuality,
-				terminalExternal: false
+				terminalExternal: false,
+				filepath: result.filepath
 			};
 		}
 
@@ -787,6 +999,7 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		startedAt: Date.now(),
 		progress: 0,
 		error: undefined,
+		failureCode: undefined,
 		cancellationRequested: false
 	});
 
@@ -965,12 +1178,17 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		let completedTracks = 0;
 		let failedTracks = 0;
 		const startTime = Date.now();
-
-		const trackProgress = tracks.map((track, idx) => ({
+		const expectedTracks: ExpectedAlbumTrack[] = tracks.map((track, idx) => ({
 			trackId: typeof track.id === 'number' ? track.id : 0,
 			trackTitle:
-				(typeof track.title === 'string' ? track.title : undefined) ||
-				`Track ${idx + 1}`,
+				(typeof track.title === 'string' ? track.title : undefined) || `Track ${idx + 1}`,
+			trackNumber: typeof track.trackNumber === 'number' ? track.trackNumber : idx + 1
+		}));
+		const publishedFilenameByTrackId = new Map<number, string>();
+
+		const trackProgress = expectedTracks.map((track) => ({
+			trackId: track.trackId,
+			trackTitle: track.trackTitle,
 			status: 'pending' as 'pending' | 'downloading' | 'completed' | 'failed',
 			error: undefined as string | undefined
 		}));
@@ -1069,6 +1287,7 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 					attempts: number;
 					finalQuality: AudioQuality;
 					terminalExternal: boolean;
+					filepath?: string;
 				};
 				try {
 					result = await downloadAlbumTrackWithPolicy({
@@ -1091,6 +1310,9 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 				if (result.success) {
 					completedTracks++;
 					trackProgress[i].status = 'completed';
+					if (result.filepath) {
+						publishedFilenameByTrackId.set(trackId, path.basename(result.filepath));
+					}
 				} else {
 					failedTracks++;
 					trackProgress[i].status = 'failed';
@@ -1160,14 +1382,15 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 				progress: totalTracks > 0 ? completedTracks / totalTracks : 0,
 				completedTracks
 			});
-			await updateJobStatus(job.id, {
-				status: 'failed',
-				error: failureMessage,
-				errorCategory: terminalAlbumFailure.errorCategory ?? 'api_error',
-				completedAt: Date.now(),
+			const terminalCategory = terminalAlbumFailure.errorCategory ?? 'api_error';
+			await failOrRequeueAlbumJob({
+				job,
+				errorMessage: failureMessage,
+				errorCategory: terminalCategory,
 				downloadTimeMs: duration,
-				progress: totalTracks > 0 ? completedTracks / totalTracks : 0,
-				completedTracks
+				completedTracks,
+				totalTracks,
+				trackProgress
 			});
 			return;
 		}
@@ -1175,32 +1398,62 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		if (failedTracks > 0) {
 			// ANY track failure = album failure (no partial albums allowed)
 			// This ensures albums are either complete or marked as failed for retry/deletion
-			await updateJobStatus(job.id, {
-				status: 'failed',
-				error: failedTracks === totalTracks 
-					? 'All tracks failed (action required: retry or use a lower quality setting)'
-					: `Album incomplete: ${failedTracks} of ${totalTracks} tracks could not be downloaded`,
+			const errorMessage =
+				failedTracks === totalTracks
+					? 'All tracks failed'
+					: `Album incomplete: ${failedTracks} of ${totalTracks} tracks could not be downloaded`;
+			await failOrRequeueAlbumJob({
+				job,
+				errorMessage,
 				errorCategory: 'api_error',
-				completedAt: Date.now(),
 				downloadTimeMs: duration,
-				progress: completedTracks / totalTracks
+				completedTracks,
+				totalTracks,
+				trackProgress
 			});
 			return;
 		} else {
 			if (!stagingRoot) {
 				throw new Error('Album staging root missing before publish');
 			}
+			const finalAlbumDir = path.join(getDownloadDir(), artistDirName, albumDirName);
 			await publishAlbumFromStaging({
 				jobId: job.id,
 				stagingRoot,
 				artistDirName,
 				albumDirName
 			});
+
+			const validExpectedTracks = expectedTracks.filter((track) => track.trackId > 0);
+			const reconciliation = await reconcilePublishedAlbum({
+				quality: albumJob.quality,
+				artistName,
+				albumTitle,
+				coverUrl,
+				finalAlbumDir,
+				expectedTracks: validExpectedTracks,
+				expectedFileByTrackId: publishedFilenameByTrackId
+			});
+			if (!reconciliation.ok) {
+				await failOrRequeueAlbumJob({
+					job,
+					errorMessage: reconciliation.reason,
+					errorCategory: 'api_error',
+					downloadTimeMs: duration,
+					completedTracks,
+					totalTracks,
+					trackProgress
+				});
+				return;
+			}
 			await updateJobStatus(job.id, {
 				status: 'completed',
 				completedAt: Date.now(),
 				downloadTimeMs: duration,
-				progress: 1
+				progress: 1,
+				error: undefined,
+				errorCategory: undefined,
+				failureCode: undefined
 			});
 		}
 
@@ -1226,11 +1479,11 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		console.error(`[Worker] Album ${albumJob.albumId} failed: ${errorMsg}`);
 		const categorized = categorizeError(errorMsg);
 
-		await updateJobStatus(job.id, {
-			status: 'failed',
-			error: `${errorMsg} (action required: retry or adjust quality/settings)`,
+		await failOrRequeueAlbumJob({
+			job,
+			errorMessage: errorMsg,
 			errorCategory: categorized.category,
-			completedAt: Date.now()
+			retryAfterMs: categorized.retryAfterMs
 		});
 	} finally {
 		await cleanupAlbumStaging(stagingRoot);
@@ -1415,5 +1668,8 @@ export function getWorkerStatus(): {
 
 export const __test = {
 	cleanupStaleAlbumStagingOnStartup,
-	getAlbumStagingRoot: (): string => ALBUM_STAGING_ROOT
+	getAlbumStagingRoot: (): string => ALBUM_STAGING_ROOT,
+	isDefinitiveExternalTrackFailure,
+	deriveFailureCode,
+	findMissingPublishedTracks
 };
