@@ -113,6 +113,18 @@ export type MediaLibraryDeduplicateResult = {
 	duplicateTrackGroups?: number;
 	duplicateFilesBackedUp?: number;
 	backupRoot?: string;
+	report?: {
+		startedAt: number;
+		finishedAt: number;
+		durationMs: number;
+		dryRun: boolean;
+		albumsScanned: number;
+		albumsMerged: number;
+		filesMovedBetweenAlbums: number;
+		duplicateTrackGroups: number;
+		duplicateFilesBackedUp: number;
+		backupRoot?: string;
+	};
 	error?: string;
 };
 
@@ -151,6 +163,18 @@ export type MediaLibraryDeduplicateStatusResult = {
 		albumsMerged: number;
 		filesMovedBetweenAlbums: number;
 		albumsWithTrackDuplicates: number;
+		duplicateTrackGroups: number;
+		duplicateFilesBackedUp: number;
+		backupRoot?: string;
+	} | null;
+	report?: {
+		startedAt: number;
+		finishedAt: number;
+		durationMs: number;
+		dryRun: boolean;
+		albumsScanned: number;
+		albumsMerged: number;
+		filesMovedBetweenAlbums: number;
 		duplicateTrackGroups: number;
 		duplicateFilesBackedUp: number;
 		backupRoot?: string;

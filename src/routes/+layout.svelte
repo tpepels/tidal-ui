@@ -86,6 +86,9 @@
 	let isCacheClearing = $state(false);
 	let isLibraryTransientSweeping = $state(false);
 	let libraryTransientSweepSummary = $state<string | null>(null);
+	let isCorrectionDedupRunning = $state(false);
+	let correctionDedupSummary = $state<string | null>(null);
+	let correctionDedupProgress = $state<string | null>(null);
 	let isFullLibraryRepairing = $state(false);
 	let fullLibraryRepairSummary = $state<string | null>(null);
 	let fullLibraryRepairProgress = $state<string | null>(null);
@@ -120,6 +123,8 @@
 		'Scan your full local library and queue automatic repairs for corrupt tracks only? This can queue many downloads.';
 	const LIBRARY_TRANSIENT_SWEEP_CONFIRMATION =
 		'Remove stale temporary publish/backup album folders left from interrupted jobs?';
+	const LIBRARY_CORRECTION_DEDUP_CONFIRMATION =
+		'Run correction sweep first and then deduplicate the library in one run?';
 	const LIBRARY_DEDUP_CONFIRMATION =
 		'Merge duplicate album folders and remove duplicate tracks by track number? Duplicates are moved to a backup folder first.';
 	let diagnosticsOpen = $state(false);
@@ -435,8 +440,66 @@
 		}
 	}
 
+	async function handleCorrectionSweepThenDedupe(): Promise<void> {
+		if (isCorrectionDedupRunning || isLibraryTransientSweeping || isLibraryDeduplicating) return;
+
+		if (typeof window !== 'undefined') {
+			const confirmed = window.confirm(LIBRARY_CORRECTION_DEDUP_CONFIRMATION);
+			if (!confirmed) return;
+		}
+
+		isCorrectionDedupRunning = true;
+		correctionDedupSummary = null;
+		correctionDedupProgress = 'Step 1/2: Sweeping stale publish/backup folders...';
+
+		try {
+			const sweepResult = await sweepTemporaryLibraryArtifacts({ dryRun: false });
+			if (!sweepResult.success) {
+				throw new Error(sweepResult.error || 'Correction sweep failed');
+			}
+
+			const found = sweepResult.artifactDirsFound ?? 0;
+			const removed = sweepResult.artifactDirsRemoved ?? 0;
+			correctionDedupProgress = 'Step 2/2: Deduplicating media library...';
+
+			const dedupeResult = await deduplicateLibraryInLibrary({
+				dryRun: false,
+				forceRescan: true
+			});
+			if (!dedupeResult.success) {
+				throw new Error(dedupeResult.error || 'Deduplication failed');
+			}
+
+			const report = dedupeResult.report;
+			const durationLabel =
+				report && Number.isFinite(report.durationMs)
+					? ` in ${Math.max(1, Math.round(report.durationMs / 1000))}s`
+					: '';
+			const summary =
+				`Correction + dedupe complete${durationLabel}: swept ${removed}/${found} temp folder(s), ` +
+				`merged ${dedupeResult.albumsMerged ?? 0} album folder(s), moved ${dedupeResult.filesMovedBetweenAlbums ?? 0} file(s), ` +
+				`and backed up ${dedupeResult.duplicateFilesBackedUp ?? 0} duplicate track file(s).`;
+			correctionDedupProgress = null;
+			correctionDedupSummary = summary;
+			toasts.success(summary);
+			if (dedupeResult.backupRoot) {
+				toasts.info(`Duplicate backups saved to ${dedupeResult.backupRoot}`);
+			}
+		} catch (error) {
+			const message =
+				error instanceof Error && error.message
+					? error.message
+					: 'Failed to run correction sweep + dedupe';
+			correctionDedupProgress = null;
+			correctionDedupSummary = null;
+			toasts.error(message);
+		} finally {
+			isCorrectionDedupRunning = false;
+		}
+	}
+
 	async function handleLibraryDeduplicate(): Promise<void> {
-		if (isLibraryDeduplicating) return;
+		if (isLibraryDeduplicating || isCorrectionDedupRunning) return;
 		if (typeof window !== 'undefined') {
 			const confirmed = window.confirm(LIBRARY_DEDUP_CONFIRMATION);
 			if (!confirmed) return;
@@ -456,7 +519,15 @@
 				throw new Error(result.error || 'Failed to deduplicate media library');
 			}
 
-			const summary = `Merged ${result.albumsMerged ?? 0} album folder(s), moved ${result.filesMovedBetweenAlbums ?? 0} file(s), and backed up ${result.duplicateFilesBackedUp ?? 0} duplicate track file(s).`;
+			const report = result.report;
+			const durationLabel =
+				report && Number.isFinite(report.durationMs)
+					? ` in ${Math.max(1, Math.round(report.durationMs / 1000))}s`
+					: '';
+			const summary =
+				`Dedupe complete${durationLabel}: scanned ${result.albumsScanned ?? 0} album folder(s), ` +
+				`merged ${result.albumsMerged ?? 0}, moved ${result.filesMovedBetweenAlbums ?? 0}, ` +
+				`duplicate groups ${result.duplicateTrackGroups ?? 0}, backed up ${result.duplicateFilesBackedUp ?? 0}.`;
 			libraryDeduplicateProgress = null;
 			libraryDeduplicateSummary = summary;
 			toasts.success(summary);
@@ -1323,13 +1394,13 @@
 											</section>
 											<section class="settings-section">
 												<p class="section-heading">Library Maintenance</p>
-												<button
-													type="button"
-													onclick={handleFullLibraryRepair}
-													class="glass-option glass-option--wide glass-option--primary"
-													disabled={isFullLibraryRepairing}
-													aria-busy={isFullLibraryRepairing}
-												>
+													<button
+														type="button"
+														onclick={handleFullLibraryRepair}
+														class="glass-option glass-option--wide glass-option--primary"
+														disabled={isFullLibraryRepairing || isLibraryTransientSweeping || isLibraryDeduplicating || isCorrectionDedupRunning}
+														aria-busy={isFullLibraryRepairing}
+													>
 													<span class="glass-option__content">
 														<span class="glass-option__label">
 															<Download size={16} />
@@ -1349,13 +1420,13 @@
 												{#if fullLibraryRepairProgress}
 													<p class="section-footnote">{fullLibraryRepairProgress}</p>
 												{/if}
-												<button
-													type="button"
-													onclick={handleSweepTransientArtifacts}
-													class="glass-option glass-option--wide"
-													disabled={isLibraryTransientSweeping}
-													aria-busy={isLibraryTransientSweeping}
-												>
+													<button
+														type="button"
+														onclick={handleSweepTransientArtifacts}
+														class="glass-option glass-option--wide"
+														disabled={isLibraryTransientSweeping || isFullLibraryRepairing || isLibraryDeduplicating || isCorrectionDedupRunning}
+														aria-busy={isLibraryTransientSweeping}
+													>
 													<span class="glass-option__content">
 														<span class="glass-option__label">
 															<Trash2 size={16} />
@@ -1369,16 +1440,42 @@
 														<LoaderCircle size={16} class="glass-option__check animate-spin" />
 													{/if}
 												</button>
-												{#if libraryTransientSweepSummary}
-													<p class="section-footnote">{libraryTransientSweepSummary}</p>
-												{/if}
-												<button
-													type="button"
-													onclick={handleLibraryDeduplicate}
-													class="glass-option glass-option--wide"
-													disabled={isLibraryDeduplicating}
-													aria-busy={isLibraryDeduplicating}
-												>
+													{#if libraryTransientSweepSummary}
+														<p class="section-footnote">{libraryTransientSweepSummary}</p>
+													{/if}
+													<button
+														type="button"
+														onclick={handleCorrectionSweepThenDedupe}
+														class="glass-option glass-option--wide"
+														disabled={isCorrectionDedupRunning || isFullLibraryRepairing || isLibraryTransientSweeping || isLibraryDeduplicating}
+														aria-busy={isCorrectionDedupRunning}
+													>
+														<span class="glass-option__content">
+															<span class="glass-option__label">
+																<Trash2 size={16} />
+																<span>{isCorrectionDedupRunning ? 'Running correction + dedupe…' : 'Correction sweep + dedupe'}</span>
+															</span>
+															<span class="glass-option__description">
+																First sweeps stale publish/backup folders, then runs full library deduplication with a final report.
+															</span>
+														</span>
+														{#if isCorrectionDedupRunning}
+															<LoaderCircle size={16} class="glass-option__check animate-spin" />
+														{/if}
+													</button>
+													{#if correctionDedupSummary}
+														<p class="section-footnote">{correctionDedupSummary}</p>
+													{/if}
+													{#if correctionDedupProgress}
+														<p class="section-footnote">{correctionDedupProgress}</p>
+													{/if}
+													<button
+														type="button"
+														onclick={handleLibraryDeduplicate}
+														class="glass-option glass-option--wide"
+														disabled={isLibraryDeduplicating || isFullLibraryRepairing || isLibraryTransientSweeping || isCorrectionDedupRunning}
+														aria-busy={isLibraryDeduplicating}
+													>
 													<span class="glass-option__content">
 														<span class="glass-option__label">
 															<Trash2 size={16} />

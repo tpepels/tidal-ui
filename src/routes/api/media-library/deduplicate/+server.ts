@@ -14,6 +14,19 @@ type DeduplicateRequestBody = {
 
 type DeduplicateRunStatus = 'idle' | 'running' | 'completed' | 'failed';
 
+type DeduplicateCompletionReport = {
+	startedAt: number;
+	finishedAt: number;
+	durationMs: number;
+	dryRun: boolean;
+	albumsScanned: number;
+	albumsMerged: number;
+	filesMovedBetweenAlbums: number;
+	duplicateTrackGroups: number;
+	duplicateFilesBackedUp: number;
+	backupRoot?: string;
+};
+
 type DeduplicateStatusPayload = {
 	success: true;
 	status: DeduplicateRunStatus;
@@ -21,6 +34,7 @@ type DeduplicateStatusPayload = {
 	finishedAt: number | null;
 	progress: MediaLibraryDedupeProgress | null;
 	result: MediaLibraryDedupeSummary | null;
+	report: DeduplicateCompletionReport | null;
 	error: string | null;
 };
 
@@ -30,6 +44,7 @@ let runStartedAt: number | null = null;
 let runFinishedAt: number | null = null;
 let runProgress: MediaLibraryDedupeProgress | null = null;
 let runResult: MediaLibraryDedupeSummary | null = null;
+let runReport: DeduplicateCompletionReport | null = null;
 let runError: string | null = null;
 
 function setRunStarted(startedAt: number): void {
@@ -38,6 +53,7 @@ function setRunStarted(startedAt: number): void {
 	runFinishedAt = null;
 	runProgress = null;
 	runResult = null;
+	runReport = null;
 	runError = null;
 }
 
@@ -45,10 +61,15 @@ function setRunProgress(progress: MediaLibraryDedupeProgress): void {
 	runProgress = progress;
 }
 
-function setRunCompleted(finishedAt: number, result: MediaLibraryDedupeSummary): void {
+function setRunCompleted(
+	finishedAt: number,
+	result: MediaLibraryDedupeSummary,
+	report: DeduplicateCompletionReport
+): void {
 	runStatus = 'completed';
 	runFinishedAt = finishedAt;
 	runResult = result;
+	runReport = report;
 }
 
 function setRunFailed(finishedAt: number, error: string): void {
@@ -95,12 +116,27 @@ export const POST: RequestHandler = async ({ request }) => {
 			}
 		});
 		const result = await activeRun;
-		setRunCompleted(Date.now(), result);
+		const finishedAt = Date.now();
+		const report: DeduplicateCompletionReport = {
+			startedAt,
+			finishedAt,
+			durationMs: Math.max(0, finishedAt - startedAt),
+			dryRun: result.dryRun,
+			albumsScanned: result.albumsScanned,
+			albumsMerged: result.albumsMerged,
+			filesMovedBetweenAlbums: result.filesMovedBetweenAlbums,
+			duplicateTrackGroups: result.duplicateTrackGroups,
+			duplicateFilesBackedUp: result.duplicateFilesBackedUp,
+			backupRoot: result.backupRoot
+		};
+		setRunCompleted(finishedAt, result, report);
 		console.log('[Media Library API] deduplicate completed', JSON.stringify(result));
+		console.log('[Media Library API] deduplicate report', JSON.stringify(report));
 
 		return json({
 			success: true,
-			...result
+			...result,
+			report
 		});
 	} catch (error) {
 		console.error('[Media Library API] deduplicate error:', error);
@@ -127,6 +163,7 @@ export const GET: RequestHandler = async () => {
 		finishedAt: runFinishedAt,
 		progress: runProgress,
 		result: runResult,
+		report: runReport,
 		error: runError
 	};
 	return json(payload);
