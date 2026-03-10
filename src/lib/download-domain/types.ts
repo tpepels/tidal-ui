@@ -19,6 +19,7 @@ export interface DownloadRequest {
 	storage: DownloadStorage;
 	convertAacToMp3: boolean;
 	downloadCoverSeperately: boolean;
+	experimentalMusicBrainzTagging: boolean;
 	conflictResolution?: 'overwrite' | 'skip' | 'rename' | 'overwrite_if_different';
 	signal?: AbortSignal;
 	onProgress?: (progress: DownloadProgress) => void;

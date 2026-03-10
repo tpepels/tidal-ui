@@ -3,7 +3,10 @@ import { detectAudioFormat, detectAudioFormatFromBlob } from './utils/audioForma
 import { API_CONFIG, fetchWithCORS, selectApiTargetForRegion } from '$lib/config';
 import type { RegionOption } from '$lib/stores/region';
 import { parseTidalUrl } from './utils/urlParser';
-import { buildStandardMetadataEntries } from './utils/metadataStandard';
+import {
+	buildStandardMetadataEntries,
+	type StandardMetadataKey
+} from './utils/metadataStandard';
 import { z } from 'zod';
 import { prepareAlbum, prepareArtist, prepareTrack } from './api/normalizers';
 import { getAlbum, getArtist, getCover, getLyrics, getPlaylist } from './api/catalog';
@@ -84,12 +87,14 @@ export interface DownloadTrackOptions {
 	ffmpegAutoTriggered?: boolean;
 	convertAacToMp3?: boolean;
 	downloadCoverSeperately?: boolean;
+	enableExperimentalMusicBrainz?: boolean;
 	skipMetadataEmbedding?: boolean;
 }
 
 class LosslessAPI {
 	public baseUrl: string;
 	private metadataQueue: Promise<void> = Promise.resolve();
+	private musicBrainzTagCache = new Map<number, Record<string, string> | null>();
 
 	constructor(baseUrl: string = API_BASE) {
 		this.baseUrl = baseUrl;
@@ -1132,7 +1137,8 @@ class LosslessAPI {
 		contentType: string | null,
 		options: DownloadTrackOptions | undefined,
 		quality: AudioQuality,
-		convertToMp3: boolean
+		convertToMp3: boolean,
+		extraMetadataTags?: Record<string, string>
 	): Promise<Blob | null> {
 		const job = this.metadataQueue.then(() =>
 			this.runMetadataEmbedding(
@@ -1142,7 +1148,8 @@ class LosslessAPI {
 				contentType ?? undefined,
 				options,
 				quality,
-				convertToMp3
+				convertToMp3,
+				extraMetadataTags
 			)
 		);
 		this.metadataQueue = job.then(
@@ -1277,8 +1284,70 @@ class LosslessAPI {
 		return null;
 	}
 
-	private buildMetadataEntries(lookup: TrackLookup): Array<[string, string]> {
-		return buildStandardMetadataEntries(lookup);
+	private buildMetadataEntries(
+		lookup: TrackLookup,
+		extraMetadata?: Record<string, string>
+	): Array<[string, string]> {
+		return buildStandardMetadataEntries(
+			lookup,
+			undefined,
+			extraMetadata as Partial<Record<StandardMetadataKey, string>> | undefined
+		);
+	}
+
+	private trimMusicBrainzCache(): void {
+		const maxEntries = 500;
+		if (this.musicBrainzTagCache.size <= maxEntries) return;
+		while (this.musicBrainzTagCache.size > maxEntries) {
+			const firstKey = this.musicBrainzTagCache.keys().next().value;
+			if (typeof firstKey !== 'number') break;
+			this.musicBrainzTagCache.delete(firstKey);
+		}
+	}
+
+	private async lookupMusicBrainzTags(
+		track: Track,
+		signal?: AbortSignal
+	): Promise<Record<string, string> | undefined> {
+		const cacheKey = Number(track.id);
+		if (Number.isFinite(cacheKey)) {
+			const cached = this.musicBrainzTagCache.get(cacheKey);
+			if (cached) {
+				return { ...cached };
+			}
+			if (cached === null) {
+				return undefined;
+			}
+		}
+
+		try {
+			const response = await fetch('/api/metadata/musicbrainz', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ track }),
+				signal
+			});
+			if (!response.ok) {
+				throw new Error(`MusicBrainz lookup failed (${response.status})`);
+			}
+			const payload = (await response.json()) as {
+				success?: boolean;
+				tags?: Record<string, string>;
+			};
+			const tags = payload.success ? payload.tags ?? {} : {};
+			const hasTags = Object.keys(tags).length > 0;
+			if (Number.isFinite(cacheKey)) {
+				this.musicBrainzTagCache.set(cacheKey, hasTags ? tags : null);
+				this.trimMusicBrainzCache();
+			}
+			return hasTags ? tags : undefined;
+		} catch (error) {
+			if (error instanceof DOMException && error.name === 'AbortError') {
+				throw error;
+			}
+			console.warn('[MusicBrainz] Client lookup failed:', error);
+			return undefined;
+		}
 	}
 
 	private async runMetadataEmbedding(
@@ -1288,7 +1357,8 @@ class LosslessAPI {
 		contentType: string | undefined,
 		options: DownloadTrackOptions | undefined,
 		quality: AudioQuality,
-		convertToMp3: boolean
+		convertToMp3: boolean,
+		extraMetadataTags?: Record<string, string>
 	): Promise<Blob | null> {
 		if (typeof window === 'undefined') {
 			return null;
@@ -1555,7 +1625,7 @@ class LosslessAPI {
 			}
 
 			// Track metadata (title, artist, album, etc.)
-			for (const [key, value] of this.buildMetadataEntries(lookup)) {
+			for (const [key, value] of this.buildMetadataEntries(lookup, extraMetadataTags)) {
 				args.push('-metadata', `${key}=${value}`);
 			}
 
@@ -1844,7 +1914,12 @@ class LosslessAPI {
 
 			const shouldConvertToMp3 =
 				options?.convertAacToMp3 === true && (quality === 'HIGH' || quality === 'LOW');
-			const processedBlob = options?.skipMetadataEmbedding
+			const shouldEmbedMetadata = options?.skipMetadataEmbedding !== true;
+			const experimentalTags =
+				shouldEmbedMetadata && options?.enableExperimentalMusicBrainz
+					? await this.lookupMusicBrainzTags(metadataLookup.track, options?.signal)
+					: undefined;
+			const processedBlob = !shouldEmbedMetadata
 				? null
 				: await this.embedMetadataIntoBlob(
 						downloadBlob,
@@ -1853,7 +1928,8 @@ class LosslessAPI {
 						contentType,
 						options,
 						quality,
-						shouldConvertToMp3
+						shouldConvertToMp3,
+						experimentalTags
 					);
 			const finalBlob = processedBlob ?? downloadBlob;
 

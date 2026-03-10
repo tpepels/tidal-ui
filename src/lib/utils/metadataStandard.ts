@@ -23,12 +23,21 @@ export const STANDARD_METADATA_KEY_ORDER = [
 	'date',
 	'year',
 	'ISRC',
+	'BARCODE',
 	'copyright',
 	'REPLAYGAIN_TRACK_GAIN',
 	'REPLAYGAIN_TRACK_PEAK',
 	'REPLAYGAIN_ALBUM_GAIN',
 	'REPLAYGAIN_ALBUM_PEAK',
-	'comment'
+	'comment',
+	'MUSICBRAINZ_TRACKID',
+	'MUSICBRAINZ_ARTISTID',
+	'MUSICBRAINZ_ALBUMARTISTID',
+	'MUSICBRAINZ_ALBUMID',
+	'MUSICBRAINZ_RELEASEGROUPID',
+	'MUSICBRAINZ_RELEASESTATUS',
+	'MUSICBRAINZ_RELEASETYPE',
+	'MUSICBRAINZ_RELEASECOUNTRY'
 ] as const;
 
 export type StandardMetadataKey = (typeof STANDARD_METADATA_KEY_ORDER)[number];
@@ -82,7 +91,8 @@ export function isStandardMetadataKey(key: string): key is StandardMetadataKey {
 
 export function buildStandardMetadataEntries(
 	lookup: TrackLookup,
-	overrides?: MetadataBuildOverrides
+	overrides?: MetadataBuildOverrides,
+	extraMetadata?: Partial<Record<StandardMetadataKey, string>>
 ): Array<[StandardMetadataKey, string]> {
 	const { track } = lookup;
 	const album = track.album;
@@ -127,6 +137,7 @@ export function buildStandardMetadataEntries(
 	}
 
 	setMetadataValue(metadata, 'ISRC', track.isrc);
+	setMetadataValue(metadata, 'BARCODE', album?.upc);
 	setMetadataValue(metadata, 'copyright', album?.copyright);
 
 	if (lookup.info) {
@@ -155,6 +166,12 @@ export function buildStandardMetadataEntries(
 	}
 
 	setMetadataValue(metadata, 'comment', STANDARD_METADATA_COMMENT);
+	if (extraMetadata) {
+		for (const [key, value] of Object.entries(extraMetadata)) {
+			if (!isStandardMetadataKey(key)) continue;
+			setMetadataValue(metadata, key, value);
+		}
+	}
 
 	const entries: Array<[StandardMetadataKey, string]> = [];
 	for (const key of STANDARD_METADATA_KEY_ORDER) {
@@ -168,7 +185,8 @@ export function buildStandardMetadataEntries(
 
 export function buildStandardMetadataObject(
 	lookup: TrackLookup,
-	overrides?: MetadataBuildOverrides
+	overrides?: MetadataBuildOverrides,
+	extraMetadata?: Partial<Record<StandardMetadataKey, string>>
 ): Record<string, string> {
-	return Object.fromEntries(buildStandardMetadataEntries(lookup, overrides));
+	return Object.fromEntries(buildStandardMetadataEntries(lookup, overrides, extraMetadata));
 }

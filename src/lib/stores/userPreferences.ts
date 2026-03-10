@@ -12,6 +12,7 @@ export interface UserPreferencesState {
 	playbackQuality: AudioQuality;
 	convertAacToMp3: boolean;
 	downloadCoversSeperately: boolean;
+	experimentalMusicBrainzTagging: boolean;
 	performanceMode: PerformanceMode;
 }
 
@@ -20,17 +21,45 @@ const DEFAULT_STATE: UserPreferencesState = {
 	playbackQuality: 'HI_RES_LOSSLESS',
 	convertAacToMp3: false,
 	downloadCoversSeperately: false,
+	experimentalMusicBrainzTagging: false,
 	performanceMode: 'low'
 };
+
+function normalizePerformanceMode(value: unknown): PerformanceMode {
+	return value === 'medium' ? 'medium' : 'low';
+}
+
+function normalizePlaybackQuality(value: unknown): AudioQuality {
+	if (
+		value === 'HI_RES_LOSSLESS' ||
+		value === 'LOSSLESS' ||
+		value === 'HIGH' ||
+		value === 'LOW'
+	) {
+		return value;
+	}
+	return DEFAULT_STATE.playbackQuality;
+}
+
+function normalizePreferences(value: unknown): UserPreferencesState {
+	const raw = value as Partial<UserPreferencesState> | null | undefined;
+	return {
+		playbackQuality: normalizePlaybackQuality(raw?.playbackQuality),
+		convertAacToMp3: raw?.convertAacToMp3 === true,
+		downloadCoversSeperately: raw?.downloadCoversSeperately === true,
+		experimentalMusicBrainzTagging: raw?.experimentalMusicBrainzTagging === true,
+		performanceMode: normalizePerformanceMode(raw?.performanceMode)
+	};
+}
 
 const readInitialPreferences = (): UserPreferencesState => {
 	if (!browser) {
 		return DEFAULT_STATE;
 	}
 	try {
-		const stored = loadFromStorage(STORAGE_KEY, null) as UserPreferencesState | null;
+		const stored = loadFromStorage(STORAGE_KEY, null) as unknown;
 		if (stored && typeof stored === 'object') {
-			return stored;
+			return normalizePreferences(stored);
 		}
 
 		return DEFAULT_STATE;
@@ -56,8 +85,8 @@ const createUserPreferencesStore = () => {
 		const legacyKey = `tidal-ui:${STORAGE_KEY}`;
 		window.addEventListener('storage', (event) => {
 			if (event.key === scopedKey || event.key === legacyKey) {
-				const stored = loadFromStorage(STORAGE_KEY, DEFAULT_STATE) as UserPreferencesState;
-				set(stored);
+				const stored = loadFromStorage(STORAGE_KEY, DEFAULT_STATE) as unknown;
+				set(normalizePreferences(stored));
 				return;
 			}
 		});
@@ -94,6 +123,20 @@ const createUserPreferencesStore = () => {
 		},
 		toggleDownloadCoversSeperately() {
 			update((state) => ({ ...state, downloadCoversSeperately: !state.downloadCoversSeperately }));
+		},
+		setExperimentalMusicBrainzTagging(value: boolean) {
+			update((state) => {
+				if (state.experimentalMusicBrainzTagging === value) {
+					return state;
+				}
+				return { ...state, experimentalMusicBrainzTagging: value };
+			});
+		},
+		toggleExperimentalMusicBrainzTagging() {
+			update((state) => ({
+				...state,
+				experimentalMusicBrainzTagging: !state.experimentalMusicBrainzTagging
+			}));
 		},
 		setPerformanceMode(mode: PerformanceMode) {
 			update((state) => {

@@ -59,6 +59,9 @@ export interface DownloadOrchestratorOptions {
 	/** Whether to download cover art separately */
 	downloadCoversSeperately?: boolean;
 
+	/** Experimental: enrich embedded tags using MusicBrainz lookups */
+	experimentalMusicBrainzTagging?: boolean;
+
 	/** Whether to attempt auto-conversion of Songlink tracks */
 	autoConvertSonglink?: boolean;
 
@@ -221,9 +224,10 @@ export class DownloadOrchestrator {
 							type: 'track',
 							trackId: track.id,
 							quality: effectiveOptions.quality || 'LOSSLESS',
-						albumTitle: 'album' in track ? track.album?.title : undefined,
-						artistName
-					}
+							albumTitle: 'album' in track ? track.album?.title : undefined,
+							artistName,
+							experimentalMusicBrainzTagging: effectiveOptions.experimentalMusicBrainzTagging
+						}
 				})
 			});
 
@@ -342,6 +346,7 @@ export class DownloadOrchestrator {
 					storage: effectiveOptions.storage,
 					convertAacToMp3: effectiveConvertAacToMp3,
 					downloadCoverSeperately: effectiveOptions.downloadCoversSeperately,
+					experimentalMusicBrainzTagging: effectiveOptions.experimentalMusicBrainzTagging,
 					conflictResolution: effectiveOptions.conflictResolution,
 					signal: effectiveOptions.signal ?? controller.signal,
 					onProgress: progressTracker
@@ -370,6 +375,7 @@ export class DownloadOrchestrator {
 					storage: effectiveOptions.storage,
 					convertAacToMp3: effectiveConvertAacToMp3,
 					downloadCoverSeperately: effectiveOptions.downloadCoversSeperately,
+					experimentalMusicBrainzTagging: effectiveOptions.experimentalMusicBrainzTagging,
 					conflictResolution: effectiveOptions.conflictResolution,
 					signal: effectiveOptions.signal ?? controller.signal,
 					onProgress: progressTracker
@@ -393,6 +399,7 @@ export class DownloadOrchestrator {
 					storage: effectiveOptions.storage,
 					convertAacToMp3: effectiveConvertAacToMp3,
 					downloadCoverSeperately: effectiveOptions.downloadCoversSeperately,
+					experimentalMusicBrainzTagging: effectiveOptions.experimentalMusicBrainzTagging,
 					signal: effectiveOptions.signal ?? controller.signal,
 					ffmpegAutoTriggered: effectiveOptions.ffmpegAutoTriggered ?? false,
 					onProgress: progressTracker,
@@ -629,6 +636,7 @@ export class DownloadOrchestrator {
 			storage?: 'server' | 'client';
 			convertAacToMp3?: boolean;
 			downloadCoversSeperately?: boolean;
+			experimentalMusicBrainzTagging?: boolean;
 			conflictResolution?: 'overwrite' | 'skip' | 'rename' | 'overwrite_if_different';
 			artistName?: string;
 		}
@@ -659,6 +667,7 @@ export class DownloadOrchestrator {
 					storage: options?.storage || 'server',
 					convertAacToMp3: options?.convertAacToMp3 || false,
 					downloadCoversSeperately: options?.downloadCoversSeperately || false,
+					experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging || false,
 					conflictResolution: options?.conflictResolution || 'overwrite_if_different',
 					albumId: album.id,
 					albumTitle,

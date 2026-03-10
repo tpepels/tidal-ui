@@ -33,6 +33,7 @@ export interface DownloadOptions {
 	quality?: AudioQuality;
 	convertAacToMp3?: boolean;
 	downloadCoversSeperately?: boolean;
+	experimentalMusicBrainzTagging?: boolean;
 	signal?: AbortSignal;
 	callbacks?: DownloadCallbacks;
 }
@@ -135,6 +136,7 @@ export async function downloadTrack(
 		await losslessAPI.downloadTrack(track.id, quality, filename, {
 			convertAacToMp3,
 			downloadCoverSeperately: downloadCoversSeperately,
+			enableExperimentalMusicBrainz: options?.experimentalMusicBrainzTagging ?? false,
 			signal: options?.signal,
 			onProgress: (progress: TrackDownloadProgress) => {
 				if (progress.stage === 'downloading') {

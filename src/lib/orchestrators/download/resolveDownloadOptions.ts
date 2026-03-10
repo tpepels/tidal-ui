@@ -4,6 +4,7 @@ import type { DownloadOrchestratorOptions } from '../downloadOrchestrator';
 export interface UserPreferencesSnapshot {
 	convertAacToMp3: boolean;
 	downloadCoversSeperately: boolean;
+	experimentalMusicBrainzTagging: boolean;
 }
 
 export interface DownloadPreferencesSnapshot {
@@ -21,6 +22,8 @@ export const resolveDownloadOptions = (
 	quality: options?.quality ?? 'LOSSLESS',
 	convertAacToMp3: options?.convertAacToMp3 ?? userPrefs.convertAacToMp3,
 	downloadCoversSeperately: options?.downloadCoversSeperately ?? userPrefs.downloadCoversSeperately,
+	experimentalMusicBrainzTagging:
+		options?.experimentalMusicBrainzTagging ?? userPrefs.experimentalMusicBrainzTagging,
 	autoConvertSonglink: options?.autoConvertSonglink ?? true,
 	notificationMode: options?.notificationMode ?? 'alert',
 	subtitle: options?.subtitle ?? '',

@@ -32,6 +32,7 @@ export const createDownloadSink = (): DownloadSink => ({
 			{
 				conflictResolution: request.conflictResolution,
 				downloadCoverSeperately: request.downloadCoverSeperately,
+				experimentalMusicBrainzTagging: request.experimentalMusicBrainzTagging,
 				coverUrl,
 				signal: request.signal,
 				onProgress: (progress) => {

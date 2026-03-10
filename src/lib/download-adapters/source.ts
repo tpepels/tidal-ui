@@ -17,6 +17,7 @@ export const createDownloadSource = (): DownloadSource => ({
 		const result = await downloadTrackWithRetry(track.id, quality, filename, track, undefined, {
 			convertAacToMp3,
 			downloadCoverSeperately: false,
+			experimentalMusicBrainzTagging: request.experimentalMusicBrainzTagging,
 			storage: request.storage,
 			signal,
 			onProgress: (progress) => {

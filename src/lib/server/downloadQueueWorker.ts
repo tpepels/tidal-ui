@@ -269,6 +269,7 @@ async function reconcilePublishedAlbum(params: {
 	albumTitle: string;
 	coverUrl?: string;
 	forceOverwrite?: boolean;
+	experimentalMusicBrainzTagging?: boolean;
 	finalAlbumDir: string;
 	expectedTracks: ExpectedAlbumTrack[];
 	expectedFileByTrackId: Map<number, string>;
@@ -303,6 +304,7 @@ async function reconcilePublishedAlbum(params: {
 				trackTitle: missingTrack.trackTitle,
 				trackNumber: missingTrack.trackNumber,
 				coverUrl: params.coverUrl,
+				experimentalMusicBrainzTagging: params.experimentalMusicBrainzTagging === true,
 				forceOverwrite: params.forceOverwrite === true
 			},
 			{
@@ -547,6 +549,7 @@ async function downloadTrack(
 		targetAlbumDir?: string;
 		targetFilenameHint?: string;
 		requireMetadata?: boolean;
+		experimentalMusicBrainzTagging?: boolean;
 	}
 ): Promise<{
 	success: boolean;
@@ -577,6 +580,7 @@ async function downloadTrack(
 			coverUrl,
 			conflictResolution,
 			apiClient: losslessAPI, // Main branch's API client with all the tested logic
+			experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging === true,
 			segmentTimeoutMs: SEGMENT_TIMEOUT_MS
 		});
 
@@ -664,6 +668,7 @@ async function downloadTrack(
 			detectedMimeType: result.mimeType,
 			downloadCoverSeperately: options?.downloadCover ?? true,
 			coverUrl,
+			experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging === true,
 			outputBaseDir: options?.outputBaseDir
 		});
 		const finalizeDurationMs = Date.now() - finalizeStart;
@@ -753,6 +758,7 @@ async function processTrackJob(job: QueuedJob): Promise<void> {
 				targetArtistDir: trackJob.targetArtistDir,
 				targetAlbumDir: trackJob.targetAlbumDir,
 				targetFilenameHint: trackJob.targetFilenameHint,
+				experimentalMusicBrainzTagging: trackJob.experimentalMusicBrainzTagging === true,
 				requireMetadata: Boolean(
 					trackJob.targetArtistDir && trackJob.targetAlbumDir && trackJob.targetFilenameHint
 				)
@@ -932,6 +938,7 @@ async function downloadAlbumTrackWithPolicy(options: {
 	coverUrl?: string;
 	outputBaseDir?: string;
 	forceOverwrite?: boolean;
+	experimentalMusicBrainzTagging?: boolean;
 }): Promise<{
 	success: boolean;
 	error?: string;
@@ -960,7 +967,8 @@ async function downloadAlbumTrackWithPolicy(options: {
 			{
 				downloadCover: false,
 				outputBaseDir: options.outputBaseDir,
-				forceOverwrite: options.forceOverwrite === true
+				forceOverwrite: options.forceOverwrite === true,
+				experimentalMusicBrainzTagging: options.experimentalMusicBrainzTagging === true
 			}
 		);
 
@@ -1350,6 +1358,7 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 						trackNumber,
 						coverUrl,
 						outputBaseDir: stagingRoot,
+						experimentalMusicBrainzTagging: albumJob.experimentalMusicBrainzTagging === true,
 						forceOverwrite: albumJob.forceOverwrite === true
 					});
 				} finally {
@@ -1493,6 +1502,7 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 					albumTitle,
 					coverUrl,
 					forceOverwrite: albumJob.forceOverwrite === true,
+					experimentalMusicBrainzTagging: albumJob.experimentalMusicBrainzTagging === true,
 					finalAlbumDir,
 					expectedTracks: validExpectedTracks,
 					expectedFileByTrackId: publishedFilenameByTrackId

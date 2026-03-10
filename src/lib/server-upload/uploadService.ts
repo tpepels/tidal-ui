@@ -163,6 +163,7 @@ export const downloadTrackServerSide = async (
 		conflictResolution?: 'overwrite' | 'skip' | 'rename' | 'overwrite_if_different';
 		checkExisting?: boolean;
 		downloadCoverSeperately?: boolean;
+		experimentalMusicBrainzTagging?: boolean;
 		coverUrl?: string;
 		detectedMimeType?: string;
 		signal?: AbortSignal;
@@ -244,6 +245,7 @@ export const downloadTrackServerSide = async (
 						trackTitle,
 						trackNumber: track?.trackNumber,
 						trackMetadata,
+						experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? false,
 						detectedMimeType: options?.detectedMimeType
 					}),
 					timeout: 5000,
@@ -286,6 +288,7 @@ export const downloadTrackServerSide = async (
 				checksum,
 				conflictResolution,
 				downloadCoverSeperately: options?.downloadCoverSeperately ?? false,
+				experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? false,
 				coverUrl: options?.coverUrl,
 				trackMetadata,
 				detectedMimeType: options?.detectedMimeType
@@ -328,6 +331,8 @@ export const downloadTrackServerSide = async (
 			const base64 = await blobToBase64(blob);
 			// Prepare track metadata for server-side embedding
 			const downloadCoverSeperately = options?.downloadCoverSeperately ?? false;
+			const experimentalMusicBrainzTagging =
+				options?.experimentalMusicBrainzTagging ?? false;
 
 			const uploadResponse = await fetch('/api/download-track', {
 				method: 'POST',
@@ -342,6 +347,7 @@ export const downloadTrackServerSide = async (
 					blob: base64,
 					conflictResolution: options?.conflictResolution || 'overwrite_if_different',
 					downloadCoverSeperately,
+					experimentalMusicBrainzTagging,
 					coverUrl: options?.coverUrl,
 					trackMetadata,
 					detectedMimeType: options?.detectedMimeType

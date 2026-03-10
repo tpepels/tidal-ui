@@ -299,6 +299,9 @@
 
 	const convertAacToMp3 = $derived($userPreferencesStore.convertAacToMp3);
 	const downloadCoversSeperately = $derived($userPreferencesStore.downloadCoversSeperately);
+	const experimentalMusicBrainzTagging = $derived(
+		$userPreferencesStore.experimentalMusicBrainzTagging
+	);
 
 	function selectDownloadQuality(quality: AudioQuality): void {
 		downloadPreferencesStore.setDownloadQuality(quality);
@@ -1114,7 +1117,8 @@
 				const filename = buildQueueFilename(track, index, quality);
 				const { blob } = await losslessAPI.fetchTrackBlob(track.id, quality, filename, {
 					ffmpegAutoTriggered: false,
-					convertAacToMp3
+					convertAacToMp3,
+					enableExperimentalMusicBrainz: experimentalMusicBrainzTagging
 				});
 				zip.file(filename, blob);
 			}
@@ -1206,6 +1210,7 @@
 						const progressHandler = createServerProgressHandler(taskId);
 						const serverResult = await downloadTrackToServer(resolvedTrack, quality, {
 							downloadCoverSeperately: downloadCoversSeperately,
+							experimentalMusicBrainzTagging,
 							conflictResolution: 'overwrite_if_different',
 							signal: controller.signal,
 							onProgress: progressHandler
@@ -1245,7 +1250,8 @@
 						onFfmpegError: (error) => downloadUiStore.errorFfmpeg(error),
 						ffmpegAutoTriggered: false,
 						convertAacToMp3,
-						downloadCoverSeperately: downloadCoversSeperately
+						downloadCoverSeperately: downloadCoversSeperately,
+						enableExperimentalMusicBrainz: experimentalMusicBrainzTagging
 					});
 					downloadUiStore.completeTrackDownload(taskId);
 				} catch (error) {

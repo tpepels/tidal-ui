@@ -121,6 +121,9 @@ import {
 	const downloadCoverSeperatelyPreference = $derived(
 		$userPreferencesStore.downloadCoversSeperately
 	);
+	const experimentalMusicBrainzTaggingPreference = $derived(
+		$userPreferencesStore.experimentalMusicBrainzTagging
+	);
 	let selectedRegion = $state<RegionOption>('us');
 
 
@@ -585,6 +588,7 @@ import {
 					mode: albumDownloadMode,
 					convertAacToMp3: convertAacToMp3Preference,
 					downloadCoverSeperately: downloadCoverSeperatelyPreference,
+					experimentalMusicBrainzTagging: experimentalMusicBrainzTaggingPreference,
 					storage: $downloadPreferencesStore.storage,
 					forceOverwrite
 				}

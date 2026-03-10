@@ -61,6 +61,9 @@
 	let downloadError = $state<string | null>(null);
 	const albumDownloadMode = $derived($downloadPreferencesStore.mode);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
+	const experimentalMusicBrainzTaggingPreference = $derived(
+		$userPreferencesStore.experimentalMusicBrainzTagging
+	);
 	const downloadStoragePreference = $derived($downloadPreferencesStore.storage);
 	type AlbumQueueStatus = AlbumDownloadStatus;
 	let queueStatus = $state<AlbumQueueStatus>('idle');
@@ -460,6 +463,7 @@
 				{
 					mode,
 					convertAacToMp3: convertAacToMp3Preference,
+					experimentalMusicBrainzTagging: experimentalMusicBrainzTaggingPreference,
 					storage: downloadStoragePreference,
 					forceOverwrite
 				}

@@ -345,6 +345,7 @@ export interface ServerDownloadParams {
 	trackTitle?: string;
 	trackNumber?: number;
 	coverUrl?: string;
+	experimentalMusicBrainzTagging?: boolean;
 	conflictResolution?: 'overwrite' | 'skip' | 'overwrite_if_different';
 	apiClient: ApiClient; // Pass losslessAPI - it has fetchWithCORS with target rotation
 	segmentTimeoutMs?: number;

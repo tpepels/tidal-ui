@@ -44,6 +44,7 @@ export interface FinalizeTrackParams {
 	detectedMimeType?: string;
 	downloadCoverSeperately?: boolean;
 	coverUrl?: string;
+	experimentalMusicBrainzTagging?: boolean;
 }
 
 export type FinalizeTrackResult =
@@ -155,7 +156,8 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 		checksum,
 		detectedMimeType,
 		downloadCoverSeperately = false,
-		coverUrl
+		coverUrl,
+		experimentalMusicBrainzTagging = false
 	} = params;
 
 	let workingBuffer: Buffer | undefined;
@@ -427,7 +429,10 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 			finalOutputPath = await embedMetadataToFile(
 				finalOutputPath,
 				trackLookup,
-				hasMetadataOverrides ? metadataOverrides : undefined
+				hasMetadataOverrides ? metadataOverrides : undefined,
+				{
+					enableExperimentalMusicBrainzTagging: experimentalMusicBrainzTagging
+				}
 			);
 			metadataEmbedded = true;
 		} catch {

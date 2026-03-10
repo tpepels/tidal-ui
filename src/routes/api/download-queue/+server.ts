@@ -46,6 +46,18 @@ export const POST: RequestHandler = async ({ request }) => {
 					{ status: 400 }
 				);
 			}
+			if (
+				job.experimentalMusicBrainzTagging !== undefined &&
+				typeof job.experimentalMusicBrainzTagging !== 'boolean'
+			) {
+				return json(
+					{
+						success: false,
+						error: 'Track job experimentalMusicBrainzTagging must be a boolean'
+					},
+					{ status: 400 }
+				);
+			}
 		}
 
 		// Validate album job
@@ -53,6 +65,18 @@ export const POST: RequestHandler = async ({ request }) => {
 			if (!job.albumId || !job.quality) {
 				return json(
 					{ success: false, error: 'Album job requires albumId and quality' },
+					{ status: 400 }
+				);
+			}
+			if (
+				job.experimentalMusicBrainzTagging !== undefined &&
+				typeof job.experimentalMusicBrainzTagging !== 'boolean'
+			) {
+				return json(
+					{
+						success: false,
+						error: 'Album job experimentalMusicBrainzTagging must be a boolean'
+					},
 					{ status: 400 }
 				);
 			}

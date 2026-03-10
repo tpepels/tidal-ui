@@ -3,7 +3,11 @@ import { execFile } from 'node:child_process';
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { buildStandardMetadataObject } from '../utils/metadataStandard';
+import {
+	buildStandardMetadataObject,
+	type StandardMetadataKey
+} from '../utils/metadataStandard';
+import { lookupMusicBrainzTagsForTrack } from './musicBrainzLookup';
 
 export interface ServerMetadataOptions {
 	downloadCoverSeperately?: boolean;
@@ -75,15 +79,20 @@ export interface MetadataOverrides {
 	totalDiscs?: number;
 }
 
+export interface MetadataEmbeddingOptions {
+	enableExperimentalMusicBrainzTagging?: boolean;
+}
+
 export async function embedMetadataToFile(
 	filePath: string,
 	lookup: TrackLookup,
-	overrides?: MetadataOverrides
+	overrides?: MetadataOverrides,
+	options?: MetadataEmbeddingOptions
 ): Promise<string> {
 	const ffmpegPath = findFfmpeg();
 	if (!ffmpegPath) return filePath;
 
-	const metadata = buildMetadataObject(lookup, overrides);
+	const metadata = await buildMetadataObjectWithEnhancements(lookup, overrides, options);
 	const entries = Object.entries(metadata);
 	if (entries.length === 0) {
 		console.warn('[Server Metadata] No metadata entries to embed for:', filePath);
@@ -171,4 +180,25 @@ function runFfmpeg(ffmpegPath: string, args: string[]): Promise<string> {
 
 export function buildMetadataObject(lookup: TrackLookup, overrides?: MetadataOverrides) {
 	return buildStandardMetadataObject(lookup, overrides);
+}
+
+async function buildMetadataObjectWithEnhancements(
+	lookup: TrackLookup,
+	overrides?: MetadataOverrides,
+	options?: MetadataEmbeddingOptions
+): Promise<Record<string, string>> {
+	const baseMetadata = buildMetadataObject(lookup, overrides);
+	if (!options?.enableExperimentalMusicBrainzTagging) {
+		return baseMetadata;
+	}
+
+	const musicBrainzTags = await lookupMusicBrainzTagsForTrack(lookup.track);
+	if (Object.keys(musicBrainzTags).length === 0) {
+		return baseMetadata;
+	}
+
+	return {
+		...baseMetadata,
+		...(musicBrainzTags as Partial<Record<StandardMetadataKey, string>>)
+	};
 }

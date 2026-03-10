@@ -29,6 +29,7 @@ const makeRequest = (overrides?: Partial<DownloadRequest>): DownloadRequest => (
 	storage: 'client',
 	convertAacToMp3: false,
 	downloadCoverSeperately: false,
+	experimentalMusicBrainzTagging: false,
 	...overrides
 });
 

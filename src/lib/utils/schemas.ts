@@ -51,11 +51,11 @@ export const TrackSchema = z.object({
 			picture: OptionalStringSchema
 		})
 		.optional(),
-	album: z
-		.object({
-			id: z.number().optional(),
-			title: z.string(),
-			cover: z.string().optional(),
+			album: z
+				.object({
+					id: z.number().optional(),
+					title: z.string(),
+					cover: z.string().optional(),
 			artist: z
 				.object({
 					id: z.number().optional(),
@@ -83,6 +83,7 @@ export const TrackSchema = z.object({
 				releaseDate: z.string().optional(),
 				numberOfTracks: z.number().optional(),
 				numberOfVolumes: z.number().optional(),
+				upc: z.string().optional(),
 				copyright: OptionalStringFromNullableSchema,
 				popularity: z.number().optional()
 			})
@@ -136,6 +137,7 @@ export const AlbumSchema = z.object({
 	releaseDate: z.string().optional(),
 	numberOfTracks: z.number().optional(),
 	numberOfVolumes: z.number().optional(),
+	upc: z.string().optional(),
 	copyright: OptionalStringFromNullableSchema,
 	popularity: z.number().optional(),
 	explicit: z.boolean().optional()

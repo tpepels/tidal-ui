@@ -44,7 +44,8 @@ const {
 		mockUserPreferencesStore: {
 			subscribe: vi.fn(),
 			convertAacToMp3: true,
-			downloadCoversSeperately: false
+			downloadCoversSeperately: false,
+			experimentalMusicBrainzTagging: false
 		},
 		mockDownloadPreferencesStore: {
 			subscribe: vi.fn(),

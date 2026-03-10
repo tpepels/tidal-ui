@@ -166,6 +166,7 @@ export interface TrackJob {
 	trackTitle?: string;
 	trackNumber?: number;
 	coverUrl?: string;
+	experimentalMusicBrainzTagging?: boolean;
 	targetArtistDir?: string;
 	targetAlbumDir?: string;
 	targetFilenameHint?: string;
@@ -179,6 +180,7 @@ export interface AlbumJob {
 	albumTitle?: string;
 	artistName?: string;
 	trackCount?: number;
+	experimentalMusicBrainzTagging?: boolean;
 	forceOverwrite?: boolean;
 }
 
@@ -543,13 +545,19 @@ export async function findDuplicateJob(job: DownloadJob): Promise<QueuedJob | nu
 		// Check if same type and ID
 		if (existingJob.job.type === job.type) {
 			if (job.type === 'track' && existingJob.job.type === 'track') {
+				const existingMusicBrainz = existingJob.job.experimentalMusicBrainzTagging === true;
+				const requestedMusicBrainz = job.experimentalMusicBrainzTagging === true;
 				if (existingJob.job.trackId === job.trackId && 
-				    existingJob.job.quality === job.quality) {
+				    existingJob.job.quality === job.quality &&
+					existingMusicBrainz === requestedMusicBrainz) {
 					return existingJob;
 				}
 			} else if (job.type === 'album' && existingJob.job.type === 'album') {
+				const existingMusicBrainz = existingJob.job.experimentalMusicBrainzTagging === true;
+				const requestedMusicBrainz = job.experimentalMusicBrainzTagging === true;
 				if (existingJob.job.albumId === job.albumId && 
-				    existingJob.job.quality === job.quality) {
+				    existingJob.job.quality === job.quality &&
+					existingMusicBrainz === requestedMusicBrainz) {
 					return existingJob;
 				}
 			}

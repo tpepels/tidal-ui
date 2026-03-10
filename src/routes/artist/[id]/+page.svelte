@@ -109,6 +109,9 @@
 	);
 	const downloadMode = $derived($downloadPreferencesStore.mode);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
+	const experimentalMusicBrainzTaggingPreference = $derived(
+		$userPreferencesStore.experimentalMusicBrainzTagging
+	);
 	const downloadStoragePreference = $derived($downloadPreferencesStore.storage);
 
 	type AlbumDownloadState = {
@@ -1035,6 +1038,7 @@
 				{
 					mode: downloadMode,
 					convertAacToMp3: convertAacToMp3Preference,
+					experimentalMusicBrainzTagging: experimentalMusicBrainzTaggingPreference,
 					storage: downloadStoragePreference,
 					forceOverwrite
 				}
@@ -1129,6 +1133,7 @@
 					{
 						mode: downloadMode,
 						convertAacToMp3: convertAacToMp3Preference,
+						experimentalMusicBrainzTagging: experimentalMusicBrainzTaggingPreference,
 						storage: downloadStoragePreference
 					}
 				);

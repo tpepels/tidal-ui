@@ -105,6 +105,9 @@
 	);
 	const convertAacToMp3 = $derived($userPreferencesStore.convertAacToMp3);
 	const downloadCoversSeperately = $derived($userPreferencesStore.downloadCoversSeperately);
+	const experimentalMusicBrainzTagging = $derived(
+		$userPreferencesStore.experimentalMusicBrainzTagging
+	);
 
 	const QUALITY_OPTIONS: Array<{
 		value: AudioQuality;
@@ -224,6 +227,10 @@
 
 	function toggleDownloadCoversSeperately(): void {
 		userPreferencesStore.toggleDownloadCoversSeperately();
+	}
+
+	function toggleExperimentalMusicBrainzTagging(): void {
+		userPreferencesStore.toggleExperimentalMusicBrainzTagging();
 	}
 
 	function setDownloadMode(mode: DownloadMode): void {
@@ -808,7 +815,8 @@
 				const filename = buildQueueFilename(track, index, quality);
 				const { blob } = await losslessAPI.fetchTrackBlob(track.id, quality, filename, {
 					ffmpegAutoTriggered: false,
-					convertAacToMp3
+					convertAacToMp3,
+					enableExperimentalMusicBrainz: experimentalMusicBrainzTagging
 				});
 				zip.file(filename, blob);
 			}
@@ -884,6 +892,7 @@
 						const progressHandler = createServerProgressHandler(taskId);
 						const serverResult = await downloadTrackToServer(resolvedTrack, quality, {
 							downloadCoverSeperately: downloadCoversSeperately,
+							experimentalMusicBrainzTagging,
 							conflictResolution: 'overwrite_if_different',
 							signal: controller.signal,
 							onProgress: progressHandler
@@ -918,7 +927,8 @@
 						onFfmpegError: (error) => downloadUiStore.errorFfmpeg(error),
 						ffmpegAutoTriggered: false,
 						convertAacToMp3,
-						downloadCoverSeperately: downloadCoversSeperately
+						downloadCoverSeperately: downloadCoversSeperately,
+						enableExperimentalMusicBrainz: experimentalMusicBrainzTagging
 					});
 					downloadUiStore.completeTrackDownload(taskId);
 				} catch (error) {
@@ -1038,6 +1048,23 @@
 			</span>
 			<span class={`glass-option__chip ${downloadCoversSeperately ? 'is-active' : ''}`}>
 				{downloadCoversSeperately ? 'On' : 'Off'}
+			</span>
+		</button>
+		<button
+			type="button"
+			onclick={toggleExperimentalMusicBrainzTagging}
+			class={`glass-option ${experimentalMusicBrainzTagging ? 'is-active' : ''}`}
+			aria-pressed={experimentalMusicBrainzTagging}
+		>
+			<span class="glass-option__content">
+				<span class="glass-option__label">Experimental: MusicBrainz tagging & lookup</span>
+				<span class="glass-option__description">
+					Attempt MusicBrainz lookups for album/track IDs and embed extra release metadata. May
+					add latency or occasional mismatches.
+				</span>
+			</span>
+			<span class={`glass-option__chip ${experimentalMusicBrainzTagging ? 'is-active' : ''}`}>
+				{experimentalMusicBrainzTagging ? 'On' : 'Off'}
 			</span>
 		</button>
 	</section>

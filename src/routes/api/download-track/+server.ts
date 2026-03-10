@@ -131,6 +131,17 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				if (!trackMetadataResult.success) {
 					return json({ error: trackMetadataResult.error }, { status: 400 });
 				}
+				if (
+					body.experimentalMusicBrainzTagging !== undefined &&
+					typeof body.experimentalMusicBrainzTagging !== 'boolean'
+				)
+					return json(
+						{
+							error:
+								'Invalid experimentalMusicBrainzTagging: must be a boolean or undefined'
+						},
+						{ status: 400 }
+					);
 				const trackMetadata = trackMetadataResult.data;
 				const finalizeResult = await finalizeTrack({
 					trackId: body.trackId,
@@ -144,7 +155,9 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					checksum: pendingUpload?.checksum,
 					detectedMimeType: body.detectedMimeType ?? pendingUpload?.detectedMimeType,
 					downloadCoverSeperately: body.downloadCoverSeperately ?? pendingUpload?.downloadCoverSeperately,
-					coverUrl: body.coverUrl ?? pendingUpload?.coverUrl
+					coverUrl: body.coverUrl ?? pendingUpload?.coverUrl,
+					experimentalMusicBrainzTagging:
+						body.experimentalMusicBrainzTagging ?? pendingUpload?.experimentalMusicBrainzTagging
 				});
 
 				if (bodyUploadId) {
@@ -191,6 +204,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					conflictResolution,
 					downloadCoverSeperately,
 					coverUrl,
+					experimentalMusicBrainzTagging,
 					trackMetadata,
 					detectedMimeType
 				} = body;
@@ -271,6 +285,17 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				if (coverUrl !== undefined && typeof coverUrl !== 'string')
 					return json({ error: 'Invalid coverUrl: must be a string or undefined' }, { status: 400 });
 				if (
+					experimentalMusicBrainzTagging !== undefined &&
+					typeof experimentalMusicBrainzTagging !== 'boolean'
+				)
+					return json(
+						{
+							error:
+								'Invalid experimentalMusicBrainzTagging: must be a boolean or undefined'
+						},
+						{ status: 400 }
+					);
+				if (
 					trackMetadata !== undefined &&
 					(typeof trackMetadata !== 'object' || trackMetadata === null)
 				)
@@ -338,6 +363,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					detectedMimeType: typeof detectedMimeType === 'string' ? detectedMimeType : undefined,
 					downloadCoverSeperately,
 					coverUrl,
+					experimentalMusicBrainzTagging,
 					timestamp: Date.now(),
 					totalSize: blobSize,
 					checksum,
@@ -415,7 +441,8 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				checksum: uploadData.checksum,
 				detectedMimeType: uploadData.detectedMimeType,
 				downloadCoverSeperately: uploadData.downloadCoverSeperately,
-				coverUrl: uploadData.coverUrl
+				coverUrl: uploadData.coverUrl,
+				experimentalMusicBrainzTagging: uploadData.experimentalMusicBrainzTagging
 			});
 
 			if (!finalizeResult.success) {

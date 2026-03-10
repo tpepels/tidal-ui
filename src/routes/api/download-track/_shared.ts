@@ -72,6 +72,7 @@ export interface PendingUpload {
 	detectedMimeType?: string;
 	downloadCoverSeperately?: boolean;
 	coverUrl?: string;
+	experimentalMusicBrainzTagging?: boolean;
 	timestamp: number;
 	totalSize?: number;
 	uploadedChunks?: number[];

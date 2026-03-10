@@ -169,6 +169,7 @@ export async function downloadTrackWithRetry(
 	options?: {
 		convertAacToMp3?: boolean;
 		downloadCoverSeperately?: boolean;
+		experimentalMusicBrainzTagging?: boolean;
 		storage?: DownloadStorage;
 		signal?: AbortSignal;
 		onProgress?: (
@@ -208,6 +209,7 @@ export async function downloadTrackWithRetry(
 			const { blob, mimeType } = await losslessAPI.fetchTrackBlob(trackId, quality, filename, {
 				ffmpegAutoTriggered: false,
 				convertAacToMp3: storage === 'client' ? options?.convertAacToMp3 : false,
+				enableExperimentalMusicBrainz: options?.experimentalMusicBrainzTagging ?? false,
 				skipMetadataEmbedding: storage === 'server',
 				signal: options?.signal,
 				onProgress: options?.onProgress
@@ -265,6 +267,7 @@ export async function downloadTrackToServer(
 	options?: {
 		convertAacToMp3?: boolean;
 		downloadCoverSeperately?: boolean;
+		experimentalMusicBrainzTagging?: boolean;
 		conflictResolution?: 'overwrite' | 'skip' | 'rename' | 'overwrite_if_different';
 		signal?: AbortSignal;
 		onProgress?: (progress: ServerDownloadProgress) => void;
@@ -295,6 +298,7 @@ export async function downloadTrackToServer(
 		{
 			convertAacToMp3,
 			downloadCoverSeperately: false,
+			experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? false,
 			storage: 'server',
 			signal: options?.signal,
 			onProgress: (progress) => {
@@ -343,6 +347,7 @@ export async function downloadTrackToServer(
 		{
 			conflictResolution: options?.conflictResolution,
 			downloadCoverSeperately: options?.downloadCoverSeperately ?? false,
+			experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? false,
 			coverUrl,
 			detectedMimeType: fetchResult.mimeType,
 			signal: options?.signal,
@@ -416,6 +421,7 @@ export async function downloadAlbum(
 		mode?: DownloadMode;
 		convertAacToMp3?: boolean;
 		downloadCoverSeperately?: boolean;
+		experimentalMusicBrainzTagging?: boolean;
 		storage?: DownloadStorage;
 		forceOverwrite?: boolean;
 	}
@@ -448,6 +454,7 @@ export async function downloadAlbum(
 					artistName,
 					albumTitle,
 					trackCount,
+					experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? false,
 					forceOverwrite: options?.forceOverwrite === true
 				},
 				forceOverwrite: options?.forceOverwrite === true
@@ -488,6 +495,7 @@ export async function downloadAlbum(
 	const artistName = preferredArtistName ?? canonicalAlbum.artist?.name ?? 'Unknown Artist';
 	const convertAacToMp3 = options?.convertAacToMp3 ?? false;
 	const downloadCoverSeperately = options?.downloadCoverSeperately ?? false;
+	const experimentalMusicBrainzTagging = options?.experimentalMusicBrainzTagging ?? false;
 
 	let completedTracks = 0;
 	let failedTracks = 0;
@@ -504,6 +512,7 @@ export async function downloadAlbum(
 		const result = await downloadTrackWithRetry(track.id, quality, filename, track, callbacks, {
 			convertAacToMp3,
 			downloadCoverSeperately,
+			experimentalMusicBrainzTagging,
 			storage: 'client'
 		});
 

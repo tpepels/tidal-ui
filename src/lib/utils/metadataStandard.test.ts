@@ -88,4 +88,16 @@ describe('metadataStandard', () => {
 		expect(metadata.track).toBe('7/12');
 		expect(metadata.disc).toBe('2/3');
 	});
+
+	it('includes barcode and optional external metadata tags', () => {
+		const lookup = buildLookup();
+		lookup.track.album.upc = '012345678905';
+		const metadata = buildStandardMetadataObject(lookup, undefined, {
+			MUSICBRAINZ_TRACKID: 'dc108a25-f24f-4b5d-a583-4ebad40f80f9',
+			MUSICBRAINZ_ALBUMID: '8d9f8f6b-5cd9-4b90-8356-1b4b7a98ef62'
+		});
+		expect(metadata.BARCODE).toBe('012345678905');
+		expect(metadata.MUSICBRAINZ_TRACKID).toBe('dc108a25-f24f-4b5d-a583-4ebad40f80f9');
+		expect(metadata.MUSICBRAINZ_ALBUMID).toBe('8d9f8f6b-5cd9-4b90-8356-1b4b7a98ef62');
+	});
 });

@@ -13,6 +13,7 @@ export const createCoordinatorExecutor = (
 			storage: request.storage,
 			convertAacToMp3: request.convertAacToMp3,
 			downloadCoverSeperately: request.downloadCoverSeperately,
+			experimentalMusicBrainzTagging: request.experimentalMusicBrainzTagging,
 			conflictResolution: request.conflictResolution,
 			signal: request.signal,
 			onProgress: request.onProgress
