@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
-import type { AudioQuality } from '$lib/types';
+import type { AudioQuality, TrackLookup } from '$lib/types';
 import { randomBytes } from 'crypto';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -21,14 +21,50 @@ import {
 } from './_shared';
 import { createDownloadOperationLogger, downloadLogger } from '$lib/server/observability';
 import { finalizeTrack } from '$lib/server/download/finalizeTrack';
+import { z } from 'zod';
+import { TrackInfoSchema, TrackSchema, safeValidateApiResponse } from '$lib/utils/schemas';
 
 // Start the cleanup interval when the module loads (with await to ensure state is loaded)
 const initPromise = startCleanupInterval();
 
+const UploadTrackLookupSchema = z.object({
+	track: TrackSchema,
+	info: TrackInfoSchema.optional()
+});
+
+function validateTrackMetadataInput(
+	value: unknown,
+	expectedTrackId?: number
+): { success: true; data: TrackLookup | undefined } | { success: false; error: string } {
+	if (value === undefined) {
+		return { success: true, data: undefined };
+	}
+	const validation = safeValidateApiResponse(value, UploadTrackLookupSchema, {
+		endpoint: 'download-track.trackMetadata',
+		correlationId: 'server',
+		allowUnvalidated: false
+	});
+	if (!validation.success) {
+		return { success: false, error: `Invalid trackMetadata payload: ${validation.error}` };
+	}
+	const trackMetadata = validation.data as TrackLookup;
+	if (
+		typeof expectedTrackId === 'number' &&
+		Number.isFinite(expectedTrackId) &&
+		trackMetadata.track.id !== expectedTrackId
+	) {
+		return {
+			success: false,
+			error: `Invalid trackMetadata payload: track.id (${trackMetadata.track.id}) does not match request trackId (${expectedTrackId})`
+		};
+	}
+	return { success: true, data: trackMetadata };
+}
+
 export const POST: RequestHandler = async ({ request, url }) => {
 	// Ensure initialization completes before processing requests
 	await initPromise;
-	
+
 	let startedUploadId: string | undefined;
 	const pathParts = url.pathname.split('/');
 	const uploadId = pathParts[pathParts.indexOf('download-track') + 1];
@@ -88,7 +124,14 @@ export const POST: RequestHandler = async ({ request, url }) => {
 						{ error: 'Invalid trackMetadata: must be an object or undefined' },
 						{ status: 400 }
 					);
-				const trackMetadata = body.trackMetadata ?? pendingUpload?.trackMetadata;
+				const trackMetadataResult = validateTrackMetadataInput(
+					body.trackMetadata ?? pendingUpload?.trackMetadata,
+					body.trackId
+				);
+				if (!trackMetadataResult.success) {
+					return json({ error: trackMetadataResult.error }, { status: 400 });
+				}
+				const trackMetadata = trackMetadataResult.data;
 				const finalizeResult = await finalizeTrack({
 					trackId: body.trackId,
 					quality: body.quality,
@@ -235,6 +278,10 @@ export const POST: RequestHandler = async ({ request, url }) => {
 						{ error: 'Invalid trackMetadata: must be an object or undefined' },
 						{ status: 400 }
 					);
+				const validatedTrackMetadata = validateTrackMetadataInput(trackMetadata, trackId);
+				if (!validatedTrackMetadata.success) {
+					return json({ error: validatedTrackMetadata.error }, { status: 400 });
+				}
 				if (MAX_FILE_SIZE > 0 && blobSize !== undefined && blobSize > MAX_FILE_SIZE)
 					return json(
 						{ error: `File too large (${(blobSize / 1024 / 1024).toFixed(2)}MB) for track "${body.trackTitle || 'Unknown'}" by ${body.artistName || 'Unknown'}: maximum ${MAX_FILE_SIZE} bytes allowed` },
@@ -287,7 +334,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					albumTitle,
 					artistName,
 					trackTitle,
-					trackMetadata,
+					trackMetadata: validatedTrackMetadata.data,
 					detectedMimeType: typeof detectedMimeType === 'string' ? detectedMimeType : undefined,
 					downloadCoverSeperately,
 					coverUrl,

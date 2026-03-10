@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { downloadLogStore } from '$lib/stores/downloadLog';
 	import { getSessionHeaders } from '$lib/core/session';
-	import { X, Copy, Trash2, Heart } from 'lucide-svelte';
+	import { Copy, Trash2, Heart } from 'lucide-svelte';
 	import { tick } from 'svelte';
 
 	let scrollContainer: HTMLDivElement | null = null;
@@ -86,10 +86,7 @@
 	}
 </script>
 
-<!-- Compact progress indicator removed (superseded by DownloadManager). -->
-
-<!-- Full download log (only when toggled) -->
-<div class="download-log-container" class:is-visible={$downloadLogStore.isVisible} on:click|stopPropagation role="presentation">
+<section class="download-log-container">
 	<div class="download-log-panel">
 		<div class="download-log-header">
 			<h3 class="download-log-title">Download Log</h3>
@@ -107,14 +104,6 @@
 					on:click={() => downloadLogStore.clear()}
 				>
 					<Trash2 size={16} />
-				</button>
-				<button
-					type="button"
-					class="download-log-btn"
-					title="Close"
-					on:click={() => downloadLogStore.hide()}
-				>
-					<X size={16} />
 				</button>
 			</div>
 		</div>
@@ -178,33 +167,22 @@
 			{/each}
 		</div>
 	</div>
-</div>
+</section>
 
 <style>
 	.download-log-container {
-		position: fixed;
-		bottom: 0;
-		right: 0;
-		left: 0;
-
-		/* IMPORTANT: use height rather than max-height to give inner flex a stable box */
-		height: 0;
+		height: clamp(360px, 65vh, 780px);
+		border-radius: 14px;
 		overflow: hidden;
-		transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-
-		z-index: 100000;
-	}
-
-	.download-log-container.is-visible {
-		height: 450px;
+		border: 1px solid rgba(148, 163, 184, 0.2);
+		box-shadow: 0 20px 50px rgba(2, 6, 23, 0.35);
 	}
 
 	.download-log-panel {
 		display: flex;
 		flex-direction: column;
 		height: 100%;
-		background: rgba(0, 0, 0, 0.9);
-		border-top: 1px solid rgba(255, 255, 255, 0.1);
+		background: rgba(0, 0, 0, 0.82);
 		backdrop-filter: blur(10px);
 	}
 

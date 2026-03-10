@@ -59,4 +59,22 @@ describe('buildMetadataObject', () => {
 		const metadata = buildMetadataObject(buildLookup(4), { trackNumber: 0 });
 		expect(metadata.track).toBe('4/10');
 	});
+
+	it('uses canonical ISRC key casing', () => {
+		const lookup = buildLookup(1);
+		lookup.track.isrc = 'USABC1234567';
+		const metadata = buildMetadataObject(lookup);
+		expect(metadata.ISRC).toBe('USABC1234567');
+		expect(metadata).not.toHaveProperty('isrc');
+	});
+
+	it('sanitizes control characters in metadata values', () => {
+		const lookup = buildLookup(1);
+		lookup.track.title = 'Track\tTitle\nInjected';
+		const metadata = buildMetadataObject(lookup, {
+			albumTitle: 'Album\r\nTitle'
+		});
+		expect(metadata.title).toBe('Track Title Injected');
+		expect(metadata.album).toBe('Album Title');
+	});
 });

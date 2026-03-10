@@ -3,8 +3,7 @@ import { detectAudioFormat, detectAudioFormatFromBlob } from './utils/audioForma
 import { API_CONFIG, fetchWithCORS, selectApiTargetForRegion } from '$lib/config';
 import type { RegionOption } from '$lib/stores/region';
 import { parseTidalUrl } from './utils/urlParser';
-import { formatArtistsForMetadata } from './utils/formatters';
-import { buildTrackDiscMetadataEntries } from './utils/trackDiscMetadata';
+import { buildStandardMetadataEntries } from './utils/metadataStandard';
 import { z } from 'zod';
 import { prepareAlbum, prepareArtist, prepareTrack } from './api/normalizers';
 import { getAlbum, getArtist, getCover, getLyrics, getPlaylist } from './api/catalog';
@@ -1279,80 +1278,7 @@ class LosslessAPI {
 	}
 
 	private buildMetadataEntries(lookup: TrackLookup): Array<[string, string]> {
-		const entries: Array<[string, string]> = [];
-		const { track } = lookup;
-		const album = track.album;
-		const mainArtist = formatArtistsForMetadata(track.artists);
-		const albumArtist =
-			album?.artist?.name ??
-			(album?.artists && album.artists.length > 0 ? album.artists[0]?.name : undefined) ??
-			track.artists?.[0]?.name;
-
-		if (track.title) entries.push(['title', track.title]);
-		if (mainArtist) entries.push(['artist', mainArtist]);
-		if (albumArtist) entries.push(['album_artist', albumArtist]);
-		if (album?.title) entries.push(['album', album.title]);
-		entries.push(
-			...buildTrackDiscMetadataEntries({
-				trackNumber: track.trackNumber,
-				totalTracks: album?.numberOfTracks,
-				discNumber: track.volumeNumber,
-				totalDiscs: album?.numberOfVolumes
-			})
-		);
-
-		const releaseDate = album?.releaseDate ?? track.streamStartDate;
-		if (releaseDate) {
-			const yearMatch = /^(\d{4})/.exec(releaseDate);
-			if (yearMatch?.[1]) {
-				entries.push(['date', yearMatch[1]]);
-				entries.push(['year', yearMatch[1]]);
-			}
-		}
-
-		// API does not include genre
-		/*
-		const tags = track.mediaMetadata?.tags ?? album?.mediaMetadata?.tags;
-		if (tags && tags.length > 0) {
-			entries.push(['genre', tags.join('; ')]);
-		}
-		*/
-
-		if (track.isrc) {
-			entries.push(['ISRC', track.isrc]);
-		}
-
-		if (album?.copyright) {
-			entries.push(['copyright', album.copyright]);
-		}
-
-		// ReplayGain
-		if (lookup.info) {
-			const { trackReplayGain, trackPeakAmplitude, albumReplayGain, albumPeakAmplitude } =
-				lookup.info;
-
-			if (trackReplayGain !== undefined && trackReplayGain !== null) {
-				entries.push(['REPLAYGAIN_TRACK_GAIN', `${trackReplayGain} dB`]);
-			}
-			if (trackPeakAmplitude !== undefined && trackPeakAmplitude !== null) {
-				entries.push(['REPLAYGAIN_TRACK_PEAK', `${trackPeakAmplitude}`]);
-			}
-			if (albumReplayGain !== undefined && albumReplayGain !== null) {
-				entries.push(['REPLAYGAIN_ALBUM_GAIN', `${albumReplayGain} dB`]);
-			}
-			if (albumPeakAmplitude !== undefined && albumPeakAmplitude !== null) {
-				entries.push(['REPLAYGAIN_ALBUM_PEAK', `${albumPeakAmplitude}`]);
-			}
-		} else if (track.replayGain) {
-			entries.push(['REPLAYGAIN_TRACK_GAIN', `${track.replayGain} dB`]);
-			if (track.peak) {
-				entries.push(['REPLAYGAIN_TRACK_PEAK', `${track.peak}`]);
-			}
-		}
-
-		entries.push(['comment', 'Downloaded from music.binimum.org/tidal.squid.wtf']);
-
-		return entries;
+		return buildStandardMetadataEntries(lookup);
 	}
 
 	private async runMetadataEmbedding(

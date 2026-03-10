@@ -11,7 +11,6 @@ export interface DownloadLogEntry {
 
 interface DownloadLogState {
 	entries: DownloadLogEntry[];
-	isVisible: boolean;
 }
 
 const STORAGE_KEY = 'downloadLog';
@@ -65,8 +64,7 @@ function readInitialEntries(): DownloadLogEntry[] {
 
 export function createDownloadLogStore() {
 	const { subscribe, set, update } = writable<DownloadLogState>({
-		entries: readInitialEntries(),
-		isVisible: false
+		entries: readInitialEntries()
 	});
 
 	function addEntry(message: string, level: 'info' | 'success' | 'error' | 'warning') {
@@ -109,26 +107,15 @@ export function createDownloadLogStore() {
 		warning: (message: string) => {
 			addEntry(message, 'warning');
 		},
-		show: () => {
-			update((state) => ({ ...state, isVisible: true }));
-		},
-		hide: () => {
-			update((state) => ({ ...state, isVisible: false }));
-		},
-		toggle: () => {
-			update((state) => {
-				return { ...state, isVisible: !state.isVisible };
-			});
-		},
 		clear: () => {
 			if (browser) {
 				try {
-				localStorage.removeItem(getScopedStorageKey());
+					localStorage.removeItem(getScopedStorageKey());
 				} catch (error) {
 					console.warn('Failed to clear download log from storage', error);
 				}
 			}
-			set({ entries: [], isVisible: false });
+			set({ entries: [] });
 		}
 	};
 }

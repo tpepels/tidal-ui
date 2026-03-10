@@ -3,8 +3,7 @@ import { execFile } from 'node:child_process';
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { formatArtistsForMetadata } from '../utils/formatters';
-import { buildTrackDiscMetadataEntries } from '../utils/trackDiscMetadata';
+import { buildStandardMetadataObject } from '../utils/metadataStandard';
 
 export interface ServerMetadataOptions {
 	downloadCoverSeperately?: boolean;
@@ -170,97 +169,6 @@ function runFfmpeg(ffmpegPath: string, args: string[]): Promise<string> {
 	});
 }
 
-/**
- * Build metadata key-value pairs from a TrackLookup object.
- */
-function normalizePositiveInteger(value: number | undefined): number | undefined {
-	const parsed = Number(value);
-	if (!Number.isFinite(parsed) || parsed <= 0) {
-		return undefined;
-	}
-	return Math.trunc(parsed);
-}
-
 export function buildMetadataObject(lookup: TrackLookup, overrides?: MetadataOverrides) {
-	const { track } = lookup;
-	const album = track.album;
-	const mainArtist = formatArtistsForMetadata(track.artists);
-	const overrideAlbumTitle =
-		overrides?.albumTitle && overrides.albumTitle.trim().length > 0
-			? overrides.albumTitle.trim()
-			: undefined;
-	const overrideAlbumArtist =
-		overrides?.albumArtist && overrides.albumArtist.trim().length > 0
-			? overrides.albumArtist.trim()
-			: undefined;
-	const albumArtist =
-		overrideAlbumArtist ??
-		album?.artist?.name ??
-		(album?.artists && album.artists.length > 0 ? album.artists[0]?.name : undefined) ??
-		track.artists?.[0]?.name;
-
-	const metadata: Record<string, string> = {};
-
-	// Basic track information
-	if (track.title) metadata.title = track.title;
-	if (mainArtist) metadata.artist = mainArtist;
-	if (albumArtist) metadata.album_artist = albumArtist;
-	if (overrideAlbumTitle || album?.title) metadata.album = overrideAlbumTitle ?? album.title;
-
-	// Track and disc numbers
-	const trackNumberOverride = normalizePositiveInteger(overrides?.trackNumber);
-	const totalTracksOverride = normalizePositiveInteger(overrides?.totalTracks);
-	const discNumberOverride = normalizePositiveInteger(overrides?.discNumber);
-	const totalDiscsOverride = normalizePositiveInteger(overrides?.totalDiscs);
-	for (const [key, value] of buildTrackDiscMetadataEntries({
-		trackNumber: trackNumberOverride ?? track.trackNumber,
-		totalTracks: totalTracksOverride ?? album?.numberOfTracks,
-		discNumber: discNumberOverride ?? track.volumeNumber,
-		totalDiscs: totalDiscsOverride ?? album?.numberOfVolumes
-	})) {
-		metadata[key] = value;
-	}
-
-	// Release date
-	const releaseDate = album?.releaseDate ?? track.streamStartDate;
-	if (releaseDate) {
-		const yearMatch = /^(\d{4})/.exec(releaseDate);
-		if (yearMatch?.[1]) {
-			metadata.date = yearMatch[1];
-			metadata.year = yearMatch[1];
-		}
-	}
-
-	// ISRC and copyright
-	if (track.isrc) metadata.isrc = track.isrc;
-	if (album?.copyright) metadata.copyright = album.copyright;
-
-	// ReplayGain information
-	if (lookup.info) {
-		const { trackReplayGain, trackPeakAmplitude, albumReplayGain, albumPeakAmplitude } =
-			lookup.info;
-
-		if (trackReplayGain !== undefined && trackReplayGain !== null) {
-			metadata.REPLAYGAIN_TRACK_GAIN = `${trackReplayGain} dB`;
-		}
-		if (trackPeakAmplitude !== undefined && trackPeakAmplitude !== null) {
-			metadata.REPLAYGAIN_TRACK_PEAK = `${trackPeakAmplitude}`;
-		}
-		if (albumReplayGain !== undefined && albumReplayGain !== null) {
-			metadata.REPLAYGAIN_ALBUM_GAIN = `${albumReplayGain} dB`;
-		}
-		if (albumPeakAmplitude !== undefined && albumPeakAmplitude !== null) {
-			metadata.REPLAYGAIN_ALBUM_PEAK = `${albumPeakAmplitude}`;
-		}
-	} else if (track.replayGain) {
-		metadata.REPLAYGAIN_TRACK_GAIN = `${track.replayGain} dB`;
-		if (track.peak) {
-			metadata.REPLAYGAIN_TRACK_PEAK = `${track.peak}`;
-		}
-	}
-
-	// Comment with source attribution
-	metadata.comment = 'Downloaded from music.binimum.org/tidal.squid.wtf';
-
-	return metadata;
+	return buildStandardMetadataObject(lookup, overrides);
 }

@@ -4,9 +4,7 @@
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import LyricsPopup from '$lib/components/LyricsPopup.svelte';
-	import DownloadLog from '$lib/components/DownloadLog.svelte';
 	import DownloadManager from '$lib/components/DownloadManager.svelte';
-	import DiagnosticsOverlay from '$lib/components/DiagnosticsOverlay.svelte';
 
 
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
@@ -62,16 +60,14 @@
 	import {
 		Archive,
 		FileSpreadsheet,
-		ChevronDown,
 		LoaderCircle,
 		Download,
 		Check,
 		Settings,
 		Trash2,
-		House,
 		Search,
 		Logs,
-		Wrench,
+		Activity,
 		PanelLeft,
 		PanelRight,
 		Music2,
@@ -88,7 +84,6 @@
 		null
 	);
 	let viewportHeight = $state(0);
-	let showSettingsMenu = $state(false);
 	let isSidebarCollapsed = $state(false);
 
 	let isZipDownloading = $state(false);
@@ -112,7 +107,29 @@
 	let libraryDeduplicatePollToken = $state(0);
 	let fullLibraryRepairPollInterval = $state<ReturnType<typeof setInterval> | null>(null);
 	let fullLibraryRepairPollToken = $state(0);
-	let settingsMenuContainer = $state<HTMLDivElement | null>(null);
+	let statusPollInterval = $state<ReturnType<typeof setInterval> | null>(null);
+	let apiTargetsStatusLoading = $state(false);
+	let statusTargets = $state<{
+		success?: boolean;
+		source?: string;
+		targetCount?: number;
+		lastSuccessfulRefreshIso?: string | null;
+		error?: string | null;
+		targets?: Array<{ name: string; baseUrl: string; weight: number }>;
+		refresh?: {
+			updated?: boolean;
+			count?: number;
+			source?: string;
+			lastUpdated?: string;
+		};
+	} | null>(null);
+	let statusQueueMetrics = $state<{
+		source?: string;
+		queue?: Record<string, unknown>;
+		metrics?: Record<string, unknown>;
+		error?: string;
+	} | null>(null);
+	let statusLastUpdatedAt = $state<number | null>(null);
 	const downloadMode = $derived($downloadPreferencesStore.mode);
 	const isServerStorage = $derived($downloadPreferencesStore.storage === 'server');
 	const queueActionBusy = $derived(
@@ -130,7 +147,6 @@
 	});
 
 	const isEmbed = $derived($page.url.pathname.startsWith('/embed'));
-	const diagnosticsEnabled = dev || import.meta.env.VITE_E2E === 'true';
 	const MAX_QUEUE_ZIP_TRACKS = 75;
 	const FULL_LIBRARY_REPAIR_CONFIRMATION =
 		'Scan your full local library and queue automatic repairs for corrupt tracks only? This can queue many downloads.';
@@ -140,7 +156,6 @@
 		'Run correction sweep first and then deduplicate the library in one run?';
 	const LIBRARY_DEDUP_CONFIRMATION =
 		'Merge duplicate album folders and remove duplicate tracks by track number? Duplicates are moved to a backup folder first.';
-	let diagnosticsOpen = $state(false);
 	let diagnosticsLoading = $state(false);
 	let diagnosticsSummary = $state<ReturnType<typeof getErrorSummary> | null>(null);
 	let diagnosticsDomains = $state<Record<string, number> | null>(null);
@@ -217,7 +232,6 @@
 	});
 
 	const mainMarginBottom = $derived(() => Math.max(playerHeight, 128));
-	const settingsMenuOffset = $derived(() => Math.max(0, headerHeight + 12));
 
 	const ensureAudioPlayerLoaded = async () => {
 		if (AudioPlayerComponent) return;
@@ -298,7 +312,6 @@
 
 	function selectDownloadQuality(quality: AudioQuality): void {
 		downloadPreferencesStore.setDownloadQuality(quality);
-		showSettingsMenu = false;
 	}
 
 	function toggleAacConversion(): void {
@@ -319,10 +332,6 @@
 
 	function setPerformanceMode(mode: 'medium' | 'low'): void {
 		userPreferencesStore.setPerformanceMode(mode);
-	}
-
-	function toggleDownloadLog(): void {
-		downloadLogStore.toggle();
 	}
 
 	function toggleSidebarCollapsed(): void {
@@ -902,21 +911,73 @@
 		diagnosticsRetries = getRetrySummary();
 		diagnosticsErrors = errorTracker.getErrors({ limit: 50 });
 		try {
-			const res = await fetch('/api/health');
-			diagnosticsHealth = (await res.json()) as typeof diagnosticsHealth;
+			const [healthResponse, targetsResponse, queueMetricsResponse] = await Promise.all([
+				fetch('/api/health'),
+				fetch('/api/targets/status'),
+				fetch('/api/download-queue/metrics')
+			]);
+			diagnosticsHealth = (await healthResponse.json()) as typeof diagnosticsHealth;
+			statusTargets = (await targetsResponse.json()) as typeof statusTargets;
+			statusQueueMetrics = (await queueMetricsResponse.json()) as typeof statusQueueMetrics;
+			statusLastUpdatedAt = Date.now();
 		} catch {
 			diagnosticsHealth = null;
+			statusTargets = null;
+			statusQueueMetrics = null;
 		} finally {
 			diagnosticsLoading = false;
 		}
 	}
 
-	function toggleDiagnostics(): void {
-		diagnosticsOpen = !diagnosticsOpen;
-		if (diagnosticsOpen) {
-			void refreshDiagnostics();
+	async function refreshTargetsStatus(forceRefresh = false): Promise<void> {
+		apiTargetsStatusLoading = true;
+		const existing = statusTargets;
+		try {
+			const suffix = forceRefresh ? '?refresh=1' : '';
+			const response = await fetch(`/api/targets/status${suffix}`);
+			if (!response.ok) {
+				throw new Error(`Failed to fetch API target status (${response.status})`);
+			}
+			statusTargets = (await response.json()) as typeof statusTargets;
+			statusLastUpdatedAt = Date.now();
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Failed to fetch API target status';
+			statusTargets = existing
+				? { ...existing, success: false, error: message }
+				: { success: false, source: 'unknown', targetCount: 0, error: message, targets: [] };
+		} finally {
+			apiTargetsStatusLoading = false;
 		}
 	}
+
+	$effect(() => {
+		const currentPath = $page.url.pathname;
+		const isStatusPage = currentPath === '/status';
+		const isSettingsPage = currentPath === '/settings';
+		if (!isStatusPage && !isSettingsPage) {
+			if (statusPollInterval) {
+				clearInterval(statusPollInterval);
+				statusPollInterval = null;
+			}
+			return;
+		}
+
+		if (isStatusPage) {
+			void refreshDiagnostics();
+		} else {
+			void refreshTargetsStatus();
+		}
+		if (statusPollInterval) {
+			clearInterval(statusPollInterval);
+		}
+		statusPollInterval = setInterval(() => {
+			if (isStatusPage) {
+				void refreshDiagnostics();
+				return;
+			}
+			void refreshTargetsStatus();
+		}, isStatusPage ? 5000 : 15000);
+	});
 
 	$effect(() => {
 		if (!isPlayerVisible && typeof document !== 'undefined') {
@@ -928,6 +989,10 @@
 		stopCorrectionDedupPolling();
 		stopFullLibraryRepairPolling();
 		stopLibraryDeduplicatePolling();
+		if (statusPollInterval) {
+			clearInterval(statusPollInterval);
+			statusPollInterval = null;
+		}
 	});
 
 
@@ -946,20 +1011,6 @@
 		} else {
 			document.title = pageTitle;
 		}
-	});
-
-	onMount(() => {
-		if (!diagnosticsEnabled) {
-			return;
-		}
-		const handler = (event: KeyboardEvent) => {
-			if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'd') {
-				event.preventDefault();
-				toggleDiagnostics();
-			}
-		};
-		window.addEventListener('keydown', handler);
-		return () => window.removeEventListener('keydown', handler);
 	});
 
 	function collectQueueState(): { tracks: PlayableTrack[]; quality: AudioQuality } {
@@ -1103,12 +1154,10 @@
 	async function handleExportQueueCsv(): Promise<void> {
 		const { tracks, quality } = collectQueueState();
 		if (tracks.length === 0) {
-			showSettingsMenu = false;
 			toasts.warning('Add tracks to the queue before exporting.');
 			return;
 		}
 
-		showSettingsMenu = false;
 		await exportQueueAsCsv(tracks, quality);
 	}
 
@@ -1234,12 +1283,9 @@
 		const { tracks, quality } = collectQueueState();
 		const storage = get(downloadPreferencesStore).storage;
 		if (tracks.length === 0) {
-			showSettingsMenu = false;
 			toasts.warning('Add tracks to the queue before downloading.');
 			return;
 		}
-
-		showSettingsMenu = false;
 
 		if (storage === 'server' && downloadMode !== 'individual') {
 			setDownloadMode('individual');
@@ -1289,16 +1335,6 @@
 		};
 		updateViewportHeight();
 		window.addEventListener('resize', updateViewportHeight);
-		const handleDocumentClick = (event: MouseEvent) => {
-			const target = event.target as Node | null;
-			if (showSettingsMenu) {
-				const root = settingsMenuContainer;
-				if (!root || !target || !root.contains(target)) {
-					showSettingsMenu = false;
-				}
-			}
-		};
-		document.addEventListener('click', handleDocumentClick);
 
 		// Check if we're in a local/dev environment where SW should be disabled
 		const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
@@ -1400,7 +1436,6 @@
 		}
 		return () => {
 			window.removeEventListener('resize', updateViewportHeight);
-			document.removeEventListener('click', handleDocumentClick);
 			unsubPerf();
 			if (controllerChangeHandler) {
 				navigator.serviceWorker.removeEventListener('controllerchange', controllerChangeHandler);
@@ -1432,419 +1467,32 @@
 {:else}
 	<div class="app-root" data-sveltekit-preload-data="hover">
 	<div class="app-shell">
-		<div class="settings-fab" bind:this={settingsMenuContainer}>
-			<button
-				onclick={() => {
-					showSettingsMenu = !showSettingsMenu;
-				}}
-				type="button"
-				class={`toolbar-button glass-button ${showSettingsMenu ? 'is-active' : ''}`}
-				aria-haspopup="true"
-				aria-expanded={showSettingsMenu}
-				aria-label={`Settings menu (${downloadQualityLabel()})`}
+		<div class="settings-fab">
+			<a
+				class={`toolbar-button glass-button ${isRouteActive('/settings') ? 'is-active' : ''}`}
+				href="/settings"
+				aria-current={isRouteActive('/settings') ? 'page' : undefined}
+				aria-label={`Settings (${downloadQualityLabel()})`}
 			>
 				<span class="toolbar-button__label">
 					<Settings size={16} />
 					<span class="toolbar-button__text">Settings</span>
 				</span>
 				<span class="text-gray-400">{downloadQualityLabel()}</span>
-				<span class={`toolbar-button__chevron ${showSettingsMenu ? 'is-open' : ''}`}>
-					<ChevronDown size={16} />
+			</a>
+			<a
+				class={`toolbar-button glass-button ${isRouteActive('/status') ? 'is-active' : ''}`}
+				href="/status"
+				aria-current={isRouteActive('/status') ? 'page' : undefined}
+				aria-label="Status"
+			>
+				<span class="toolbar-button__label">
+					<Activity size={16} />
+					<span class="toolbar-button__text">Status</span>
 				</span>
-			</button>
-				{#if showSettingsMenu}
-					<div class="settings-menu glass-popover" style={`--settings-menu-offset: ${settingsMenuOffset()}px;`} onclick={(e) => e.stopPropagation()} onkeydown={(e) => { if (e.key === 'Escape') showSettingsMenu = false; }} role="menu" tabindex="-1">
-						<div class="settings-grid">
-										<section class="settings-section settings-section--wide">
-											<p class="section-heading">Streaming & Downloads</p>
-											<div class="option-grid">
-												{#each QUALITY_OPTIONS as option (option.value)}
-													<button
-														type="button"
-														onclick={() => selectDownloadQuality(option.value)}
-													class={`glass-option ${option.value === $downloadPreferencesStore.downloadQuality ? 'is-active' : ''} ${option.disabled ? 'cursor-not-allowed opacity-50' : ''}`}
-													aria-pressed={option.value === $downloadPreferencesStore.downloadQuality}
-														disabled={option.disabled}
-													>
-														<div class="glass-option__content">
-															<span class="glass-option__label">{option.label}</span>
-															<span class="glass-option__description">{option.description}</span>
-														</div>
-														{#if option.value === $downloadPreferencesStore.downloadQuality}
-															<Check size={16} class="glass-option__check" />
-														{/if}
-													</button>
-												{/each}
-											</div>
-										</section>
-										<section class="settings-section">
-											<p class="section-heading">Conversions</p>
-											<button
-												type="button"
-												onclick={toggleAacConversion}
-												class={`glass-option ${convertAacToMp3 ? 'is-active' : ''} ${isServerStorage ? 'cursor-not-allowed opacity-50' : ''}`}
-												aria-pressed={convertAacToMp3}
-												disabled={isServerStorage}
-											>
-												<span class="glass-option__content">
-													<span class="glass-option__label">Convert AAC downloads to MP3</span>
-													<span class="glass-option__description">
-														{isServerStorage
-															? 'Client-only. Server downloads keep the original AAC codec.'
-															: 'Applies to 320kbps and 96kbps downloads.'}
-													</span>
-												</span>
-												<span class={`glass-option__chip ${convertAacToMp3 ? 'is-active' : ''}`}>
-													{convertAacToMp3 ? 'On' : 'Off'}
-												</span>
-											</button>
-											<button
-												type="button"
-												onclick={toggleDownloadCoversSeperately}
-												class={`glass-option ${downloadCoversSeperately ? 'is-active' : ''} ${isServerStorage ? 'cursor-not-allowed opacity-50' : ''}`}
-												aria-pressed={downloadCoversSeperately}
-												disabled={isServerStorage}
-											>
-												<span class="glass-option__content">
-													<span class="glass-option__label">Download covers separately</span>
-													<span class="glass-option__description">
-														{isServerStorage
-															? 'Server downloads store cover art next to audio files.'
-															: 'Save cover.jpg alongside audio files.'}
-													</span>
-												</span>
-												<span
-													class={`glass-option__chip ${downloadCoversSeperately ? 'is-active' : ''}`}
-												>
-													{downloadCoversSeperately ? 'On' : 'Off'}
-												</span>
-											</button>
-										</section>
-										<section class="settings-section">
-											<p class="section-heading">Queue exports</p>
-											<div class="option-grid option-grid--compact">
-												<button
-													type="button"
-													onclick={() => setDownloadMode('individual')}
-													class={`glass-option glass-option--compact ${downloadMode === 'individual' ? 'is-active' : ''}`}
-													aria-pressed={downloadMode === 'individual'}
-												>
-													<span class="glass-option__content">
-														<span class="glass-option__label">
-															<Download size={16} />
-															<span>Individual files</span>
-														</span>
-													</span>
-													{#if downloadMode === 'individual'}
-														<Check size={14} class="glass-option__check" />
-													{/if}
-												</button>
-												<button
-													type="button"
-													onclick={() => setDownloadMode('zip')}
-													class={`glass-option glass-option--compact ${downloadMode === 'zip' ? 'is-active' : ''} ${isServerStorage ? 'cursor-not-allowed opacity-50' : ''}`}
-													aria-pressed={downloadMode === 'zip'}
-													disabled={isServerStorage}
-												>
-													<span class="glass-option__content">
-														<span class="glass-option__label">
-															<Archive size={16} />
-															<span>ZIP archive</span>
-														</span>
-													</span>
-													{#if downloadMode === 'zip'}
-														<Check size={14} class="glass-option__check" />
-													{/if}
-												</button>
-												<button
-													type="button"
-													onclick={() => setDownloadMode('csv')}
-													class={`glass-option glass-option--compact ${downloadMode === 'csv' ? 'is-active' : ''} ${isServerStorage ? 'cursor-not-allowed opacity-50' : ''}`}
-													aria-pressed={downloadMode === 'csv'}
-													disabled={isServerStorage}
-												>
-													<span class="glass-option__content">
-														<span class="glass-option__label">
-															<FileSpreadsheet size={16} />
-															<span>Export links</span>
-														</span>
-													</span>
-													{#if downloadMode === 'csv'}
-														<Check size={14} class="glass-option__check" />
-													{/if}
-												</button>
-											</div>
-											{#if isServerStorage}
-												<p class="section-footnote">
-													Server downloads are saved as individual files. ZIP and CSV exports are client-only.
-												</p>
-											{/if}
-										</section>
-										<section class="settings-section">
-											<p class="section-heading">Download Storage</p>
-											<div class="option-grid option-grid--compact">
-												<button
-													type="button"
-													onclick={() => setDownloadStorage('client')}
-													class={`glass-option glass-option--compact ${$downloadPreferencesStore.storage === 'client' ? 'is-active' : ''}`}
-													aria-pressed={$downloadPreferencesStore.storage === 'client'}
-												>
-													<span class="glass-option__content">
-														<span class="glass-option__label">
-															<Download size={16} />
-															<span>Client-side</span>
-														</span>
-													</span>
-													{#if $downloadPreferencesStore.storage === 'client'}
-														<Check size={14} class="glass-option__check" />
-													{/if}
-												</button>
-												<button
-													type="button"
-													onclick={() => setDownloadStorage('server')}
-													class={`glass-option glass-option--compact ${$downloadPreferencesStore.storage === 'server' ? 'is-active' : ''}`}
-													aria-pressed={$downloadPreferencesStore.storage === 'server'}
-												>
-													<span class="glass-option__content">
-														<span class="glass-option__label">
-															<Download size={16} />
-															<span>Server-side</span>
-														</span>
-													</span>
-													{#if $downloadPreferencesStore.storage === 'server'}
-														<Check size={14} class="glass-option__check" />
-													{/if}
-												</button>
-											</div>
-											<p class="section-footnote">
-												{isServerStorage
-													? 'Files are saved on the server disk. Use Download Log for path and status.'
-													: 'Downloads are saved to your browser.'}
-											</p>
-										</section>
-										<section class="settings-section">
-											<p class="section-heading">Download Log</p>
-											<button
-												type="button"
-												onclick={toggleDownloadLog}
-												class="glass-option glass-option--wide glass-option--primary"
-												disabled={false}
-											>
-												<span class="glass-option__content">
-													<span class="glass-option__label">
-														View Download Log
-													</span>
-													<span class="glass-option__description">
-														{$downloadLogStore.isVisible
-															? 'Hide real-time download progress'
-															: isServerStorage
-																? 'Show server download status and file location.'
-																: 'Show real-time download progress'}
-													</span>
-												</span>
-											</button>
-										</section>
-										<section class="settings-section">
-											<p class="section-heading">Performance Mode</p>
-											<div class="option-grid option-grid--compact">
-												{#each PERFORMANCE_OPTIONS as option (option.value)}
-													<button
-														type="button"
-														onclick={() => setPerformanceMode(option.value)}
-														class={`glass-option glass-option--compact ${option.value === $userPreferencesStore.performanceMode ? 'is-active' : ''}`}
-														aria-pressed={option.value === $userPreferencesStore.performanceMode}
-													>
-														<div class="glass-option__content">
-															<span class="glass-option__label">{option.label}</span>
-														</div>
-														{#if option.value === $userPreferencesStore.performanceMode}
-															<Check size={14} class="glass-option__check" />
-														{/if}
-													</button>
-												{/each}
-											</div>
-										</section>
-											<section class="settings-section">
-												<p class="section-heading">Cache</p>
-												<button
-												type="button"
-												onclick={handleClearCaches}
-												class="glass-option glass-option--wide"
-												disabled={isCacheClearing}
-											>
-												<span class="glass-option__content">
-													<span class="glass-option__label">
-														<Trash2 size={16} />
-														<span>{isCacheClearing ? 'Clearing cache...' : 'Clear app cache'}</span>
-													</span>
-													<span class="glass-option__description">
-														Clears artist discography cache, official TIDAL enrichment cache, and proxied cover cache.
-													</span>
-												</span>
-												{#if isCacheClearing}
-													<LoaderCircle size={16} class="glass-option__check animate-spin" />
-													{/if}
-												</button>
-											</section>
-											<section class="settings-section">
-												<p class="section-heading">Library Maintenance</p>
-													<button
-														type="button"
-														onclick={handleFullLibraryRepair}
-														class="glass-option glass-option--wide glass-option--primary"
-														disabled={isFullLibraryRepairing || isLibraryTransientSweeping || isLibraryDeduplicating || isCorrectionDedupRunning}
-														aria-busy={isFullLibraryRepairing}
-													>
-													<span class="glass-option__content">
-														<span class="glass-option__label">
-															<Download size={16} />
-															<span>{isFullLibraryRepairing ? 'Auto-repair running…' : 'Auto-repair full library'}</span>
-														</span>
-														<span class="glass-option__description">
-															Scans all local albums, validates integrity, and queues corrupt tracks for repair.
-														</span>
-													</span>
-													{#if isFullLibraryRepairing}
-														<LoaderCircle size={16} class="glass-option__check animate-spin" />
-													{/if}
-												</button>
-												{#if fullLibraryRepairSummary}
-													<p class="section-footnote">{fullLibraryRepairSummary}</p>
-												{/if}
-												{#if fullLibraryRepairProgress}
-													<p class="section-footnote">{fullLibraryRepairProgress}</p>
-												{/if}
-													<button
-														type="button"
-														onclick={handleSweepTransientArtifacts}
-														class="glass-option glass-option--wide"
-														disabled={isLibraryTransientSweeping || isFullLibraryRepairing || isLibraryDeduplicating || isCorrectionDedupRunning}
-														aria-busy={isLibraryTransientSweeping}
-													>
-													<span class="glass-option__content">
-														<span class="glass-option__label">
-															<Trash2 size={16} />
-															<span>{isLibraryTransientSweeping ? 'Sweeping temporary folders…' : 'Sweep stale publish/backup folders'}</span>
-														</span>
-														<span class="glass-option__description">
-															Deletes leftover `*.publishing-*` and `*.backup-*` album folders from interrupted server downloads.
-														</span>
-													</span>
-													{#if isLibraryTransientSweeping}
-														<LoaderCircle size={16} class="glass-option__check animate-spin" />
-													{/if}
-												</button>
-													{#if libraryTransientSweepSummary}
-														<p class="section-footnote">{libraryTransientSweepSummary}</p>
-													{/if}
-													<button
-														type="button"
-														onclick={handleCorrectionSweepThenDedupe}
-														class="glass-option glass-option--wide"
-														disabled={isCorrectionDedupRunning || isFullLibraryRepairing || isLibraryTransientSweeping || isLibraryDeduplicating}
-														aria-busy={isCorrectionDedupRunning}
-													>
-														<span class="glass-option__content">
-															<span class="glass-option__label">
-																<Trash2 size={16} />
-																<span>{isCorrectionDedupRunning ? 'Running correction + dedupe…' : 'Correction sweep + dedupe'}</span>
-															</span>
-															<span class="glass-option__description">
-																First sweeps stale publish/backup folders, then runs full library deduplication with a final report.
-															</span>
-														</span>
-														{#if isCorrectionDedupRunning}
-															<LoaderCircle size={16} class="glass-option__check animate-spin" />
-														{/if}
-													</button>
-													{#if correctionDedupSummary}
-														<p class="section-footnote">{correctionDedupSummary}</p>
-													{/if}
-													{#if correctionDedupProgress}
-														<p class="section-footnote">{correctionDedupProgress}</p>
-													{/if}
-													<button
-														type="button"
-														onclick={handleLibraryDeduplicate}
-														class="glass-option glass-option--wide"
-														disabled={isLibraryDeduplicating || isFullLibraryRepairing || isLibraryTransientSweeping || isCorrectionDedupRunning}
-														aria-busy={isLibraryDeduplicating}
-													>
-													<span class="glass-option__content">
-														<span class="glass-option__label">
-															<Trash2 size={16} />
-															<span>{isLibraryDeduplicating ? 'Consolidating duplicates…' : 'Consolidate duplicate album files'}</span>
-														</span>
-														<span class="glass-option__description">
-															Merges duplicate album folders and keeps the healthiest/full-length duplicate track variant.
-														</span>
-													</span>
-													{#if isLibraryDeduplicating}
-														<LoaderCircle size={16} class="glass-option__check animate-spin" />
-													{/if}
-												</button>
-												{#if libraryDeduplicateSummary}
-													<p class="section-footnote">{libraryDeduplicateSummary}</p>
-												{/if}
-												{#if libraryDeduplicateProgress}
-													<p class="section-footnote">{libraryDeduplicateProgress}</p>
-												{/if}
-											</section>
-											<section class="settings-section settings-section--bordered settings-section--wide">
-												<p class="section-heading">Queue actions</p>
-											<div class="actions-column">
-												<button
-													onclick={handleQueueDownload}
-													type="button"
-													class="glass-action"
-													disabled={queueActionBusy}
-												>
-													<span class="glass-action__label">
-														{#if isServerStorage}
-															<Download size={16} />
-															<span>Save queue to server</span>
-														{:else if downloadMode === 'zip'}
-															<Archive size={16} />
-															<span>Download queue</span>
-														{:else if downloadMode === 'csv'}
-															<FileSpreadsheet size={16} />
-															<span>Export queue links</span>
-														{:else}
-															<Download size={16} />
-															<span>Download queue</span>
-														{/if}
-													</span>
-													{#if queueActionBusy}
-														<LoaderCircle size={16} class="glass-action__spinner" />
-													{/if}
-												</button>
-												{#if !isServerStorage}
-													<button
-														onclick={handleExportQueueCsv}
-														type="button"
-														class="glass-action"
-														disabled={isCsvExporting}
-													>
-														<span class="glass-action__label">
-															<FileSpreadsheet size={16} />
-															<span>Export links as CSV</span>
-														</span>
-														{#if isCsvExporting}
-															<LoaderCircle size={16} class="glass-action__spinner" />
-														{/if}
-													</button>
-												{/if}
-											</div>
-											<p class="section-footnote">
-												{isServerStorage
-													? 'Server saves use individual files and keep your browser clean. Use the Download Log to track progress and see the server path.'
-													: 'Queue actions follow your selection above. ZIP bundles require at least two tracks, while CSV exports capture the track links without downloading audio.'}
-											</p>
-										</section>
+				<span class="text-gray-400">{diagnosticsLoading ? 'Refreshing…' : 'Live'}</span>
+			</a>
 		</div>
-	</div>
-{/if}
-			</div>
 
 				<div class={`app-workspace ${isSidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}>
 					<aside class="app-sidebar glass-panel" aria-label="Primary navigation">
@@ -1874,20 +1522,11 @@
 								class={`sidebar-action ${isRouteActive('/') ? 'is-active' : ''}`}
 								href="/"
 								aria-current={isRouteActive('/') ? 'page' : undefined}
-								title="Home"
-							>
-								<House size={16} />
-								<span class="sidebar-action__label">Home</span>
-							</a>
-							<button
-								type="button"
-								class={`sidebar-action ${$page.url.pathname === '/' ? 'is-active' : ''}`}
-								onclick={() => goto('/')}
 								title="Browse and search"
 							>
 								<Search size={16} />
 								<span class="sidebar-action__label">Browse & Search</span>
-							</button>
+							</a>
 								<button
 									type="button"
 									class={`sidebar-action ${currentTrackRoute && isRouteActive(currentTrackRoute) ? 'is-active' : ''}`}
@@ -1916,37 +1555,33 @@
 
 							<div class="app-sidebar__section">
 								<p class="app-sidebar__section-title">Tools</p>
-							<button
-								type="button"
-								class={`sidebar-action ${showSettingsMenu ? 'is-active' : ''}`}
-								onclick={() => {
-									showSettingsMenu = !showSettingsMenu;
-								}}
+							<a
+								class={`sidebar-action ${isRouteActive('/settings') ? 'is-active' : ''}`}
+								href="/settings"
+								aria-current={isRouteActive('/settings') ? 'page' : undefined}
 								title="Open settings"
 							>
 								<Settings size={16} />
 								<span class="sidebar-action__label">Settings</span>
-							</button>
-							<button
-								type="button"
-								class={`sidebar-action ${$downloadLogStore.isVisible ? 'is-active' : ''}`}
-								onclick={toggleDownloadLog}
-								title={$downloadLogStore.isVisible ? 'Hide download log' : 'Show download log'}
+							</a>
+							<a
+								class={`sidebar-action ${isRouteActive('/download-log') ? 'is-active' : ''}`}
+								href="/download-log"
+								aria-current={isRouteActive('/download-log') ? 'page' : undefined}
+								title="Download log"
 							>
 								<Logs size={16} />
 								<span class="sidebar-action__label">Download Log</span>
-							</button>
-							{#if diagnosticsEnabled}
-								<button
-									type="button"
-									class={`sidebar-action ${diagnosticsOpen ? 'is-active' : ''}`}
-									onclick={toggleDiagnostics}
-									title={diagnosticsOpen ? 'Hide diagnostics' : 'Show diagnostics'}
-								>
-									<Wrench size={16} />
-									<span class="sidebar-action__label">Diagnostics</span>
-								</button>
-							{/if}
+							</a>
+							<a
+								class={`sidebar-action ${isRouteActive('/status') ? 'is-active' : ''}`}
+								href="/status"
+								aria-current={isRouteActive('/status') ? 'page' : undefined}
+								title="System status"
+							>
+								<Activity size={16} />
+								<span class="sidebar-action__label">Status</span>
+							</a>
 						</div>
 
 						<div class="app-sidebar__meta">
@@ -1960,8 +1595,545 @@
 						style={`min-height: ${mainMinHeight}px; margin-bottom: ${mainMarginBottom}px;`}
 					>
 						<div class="app-main__inner">
-								<Breadcrumb />
+							<Breadcrumb />
+							{#if $page.url.pathname === '/settings'}
+								<div class="settings-grid settings-grid--page">
+									<section class="settings-section settings-section--wide">
+										<p class="section-heading">Streaming & Downloads</p>
+										<div class="option-grid">
+											{#each QUALITY_OPTIONS as option (option.value)}
+												<button
+													type="button"
+													onclick={() => selectDownloadQuality(option.value)}
+													class={`glass-option ${option.value === $downloadPreferencesStore.downloadQuality ? 'is-active' : ''} ${option.disabled ? 'cursor-not-allowed opacity-50' : ''}`}
+													aria-pressed={option.value === $downloadPreferencesStore.downloadQuality}
+													disabled={option.disabled}
+												>
+													<div class="glass-option__content">
+														<span class="glass-option__label">{option.label}</span>
+														<span class="glass-option__description">{option.description}</span>
+													</div>
+													{#if option.value === $downloadPreferencesStore.downloadQuality}
+														<Check size={16} class="glass-option__check" />
+													{/if}
+												</button>
+											{/each}
+										</div>
+									</section>
+									<section class="settings-section">
+										<p class="section-heading">Conversions</p>
+										<button
+											type="button"
+											onclick={toggleAacConversion}
+											class={`glass-option ${convertAacToMp3 ? 'is-active' : ''} ${isServerStorage ? 'cursor-not-allowed opacity-50' : ''}`}
+											aria-pressed={convertAacToMp3}
+											disabled={isServerStorage}
+										>
+											<span class="glass-option__content">
+												<span class="glass-option__label">Convert AAC downloads to MP3</span>
+												<span class="glass-option__description">
+													{isServerStorage
+														? 'Client-only. Server downloads keep the original AAC codec.'
+														: 'Applies to 320kbps and 96kbps downloads.'}
+												</span>
+											</span>
+											<span class={`glass-option__chip ${convertAacToMp3 ? 'is-active' : ''}`}>
+												{convertAacToMp3 ? 'On' : 'Off'}
+											</span>
+										</button>
+										<button
+											type="button"
+											onclick={toggleDownloadCoversSeperately}
+											class={`glass-option ${downloadCoversSeperately ? 'is-active' : ''} ${isServerStorage ? 'cursor-not-allowed opacity-50' : ''}`}
+											aria-pressed={downloadCoversSeperately}
+											disabled={isServerStorage}
+										>
+											<span class="glass-option__content">
+												<span class="glass-option__label">Download covers separately</span>
+												<span class="glass-option__description">
+													{isServerStorage
+														? 'Server downloads store cover art next to audio files.'
+														: 'Save cover.jpg alongside audio files.'}
+												</span>
+											</span>
+											<span class={`glass-option__chip ${downloadCoversSeperately ? 'is-active' : ''}`}>
+												{downloadCoversSeperately ? 'On' : 'Off'}
+											</span>
+										</button>
+									</section>
+									<section class="settings-section">
+										<p class="section-heading">Queue exports</p>
+										<div class="option-grid option-grid--compact">
+											<button
+												type="button"
+												onclick={() => setDownloadMode('individual')}
+												class={`glass-option glass-option--compact ${downloadMode === 'individual' ? 'is-active' : ''}`}
+												aria-pressed={downloadMode === 'individual'}
+											>
+												<span class="glass-option__content">
+													<span class="glass-option__label">
+														<Download size={16} />
+														<span>Individual files</span>
+													</span>
+												</span>
+												{#if downloadMode === 'individual'}
+													<Check size={14} class="glass-option__check" />
+												{/if}
+											</button>
+											<button
+												type="button"
+												onclick={() => setDownloadMode('zip')}
+												class={`glass-option glass-option--compact ${downloadMode === 'zip' ? 'is-active' : ''} ${isServerStorage ? 'cursor-not-allowed opacity-50' : ''}`}
+												aria-pressed={downloadMode === 'zip'}
+												disabled={isServerStorage}
+											>
+												<span class="glass-option__content">
+													<span class="glass-option__label">
+														<Archive size={16} />
+														<span>ZIP archive</span>
+													</span>
+												</span>
+												{#if downloadMode === 'zip'}
+													<Check size={14} class="glass-option__check" />
+												{/if}
+											</button>
+											<button
+												type="button"
+												onclick={() => setDownloadMode('csv')}
+												class={`glass-option glass-option--compact ${downloadMode === 'csv' ? 'is-active' : ''} ${isServerStorage ? 'cursor-not-allowed opacity-50' : ''}`}
+												aria-pressed={downloadMode === 'csv'}
+												disabled={isServerStorage}
+											>
+												<span class="glass-option__content">
+													<span class="glass-option__label">
+														<FileSpreadsheet size={16} />
+														<span>Export links</span>
+													</span>
+												</span>
+												{#if downloadMode === 'csv'}
+													<Check size={14} class="glass-option__check" />
+												{/if}
+											</button>
+										</div>
+										{#if isServerStorage}
+											<p class="section-footnote">
+												Server downloads are saved as individual files. ZIP and CSV exports are client-only.
+											</p>
+										{/if}
+									</section>
+									<section class="settings-section">
+										<p class="section-heading">Download Storage</p>
+										<div class="option-grid option-grid--compact">
+											<button
+												type="button"
+												onclick={() => setDownloadStorage('client')}
+												class={`glass-option glass-option--compact ${$downloadPreferencesStore.storage === 'client' ? 'is-active' : ''}`}
+												aria-pressed={$downloadPreferencesStore.storage === 'client'}
+											>
+												<span class="glass-option__content">
+													<span class="glass-option__label">
+														<Download size={16} />
+														<span>Client-side</span>
+													</span>
+												</span>
+												{#if $downloadPreferencesStore.storage === 'client'}
+													<Check size={14} class="glass-option__check" />
+												{/if}
+											</button>
+											<button
+												type="button"
+												onclick={() => setDownloadStorage('server')}
+												class={`glass-option glass-option--compact ${$downloadPreferencesStore.storage === 'server' ? 'is-active' : ''}`}
+												aria-pressed={$downloadPreferencesStore.storage === 'server'}
+											>
+												<span class="glass-option__content">
+													<span class="glass-option__label">
+														<Download size={16} />
+														<span>Server-side</span>
+													</span>
+												</span>
+												{#if $downloadPreferencesStore.storage === 'server'}
+													<Check size={14} class="glass-option__check" />
+												{/if}
+											</button>
+										</div>
+										<p class="section-footnote">
+											{isServerStorage
+												? 'Files are saved on the server disk. Use Download Log for path and status.'
+												: 'Downloads are saved to your browser.'}
+										</p>
+									</section>
+									<section class="settings-section">
+										<p class="section-heading">Download Log</p>
+										<a
+											href="/download-log"
+											class="glass-option glass-option--wide glass-option--primary"
+										>
+											<span class="glass-option__content">
+												<span class="glass-option__label">
+													Open Download Log
+												</span>
+												<span class="glass-option__description">
+													{isServerStorage
+														? 'View server download status and file locations.'
+														: 'View real-time download progress and logs.'}
+												</span>
+											</span>
+										</a>
+									</section>
+									<section class="settings-section">
+										<p class="section-heading">API Status</p>
+										<button
+											type="button"
+											onclick={() => void refreshTargetsStatus(true)}
+											class="glass-option glass-option--wide"
+											disabled={apiTargetsStatusLoading}
+										>
+											<span class="glass-option__content">
+												<span class="glass-option__label">
+													<Activity size={16} />
+													<span>{apiTargetsStatusLoading ? 'Refreshing API targets…' : 'Refresh API targets'}</span>
+												</span>
+												<span class="glass-option__description">
+													Check current API source, availability, and uptime refresh status.
+												</span>
+											</span>
+											{#if apiTargetsStatusLoading}
+												<LoaderCircle size={16} class="glass-option__check animate-spin" />
+											{/if}
+										</button>
+										<p class="section-footnote">
+											Source: <strong>{statusTargets?.source ?? 'unknown'}</strong>
+										</p>
+										<p class="section-footnote">
+											Available targets: {statusTargets?.targetCount ?? 0}
+										</p>
+										{#if statusTargets?.lastSuccessfulRefreshIso}
+											<p class="section-footnote">
+												Last successful refresh: {new Date(statusTargets.lastSuccessfulRefreshIso).toLocaleString()}
+											</p>
+										{/if}
+										{#if statusTargets?.refresh}
+											<p class="section-footnote">
+												Refresh check: {statusTargets.refresh.updated ? 'updated targets' : 'no update'} ({statusTargets.refresh.count ?? 0} target(s))
+											</p>
+										{/if}
+										{#if statusLastUpdatedAt}
+											<p class="section-footnote">
+												Checked in UI: {new Date(statusLastUpdatedAt).toLocaleTimeString()}
+											</p>
+										{/if}
+										{#if statusTargets?.error}
+											<p class="section-footnote">{statusTargets.error}</p>
+										{/if}
+									</section>
+									<section class="settings-section">
+										<p class="section-heading">Performance Mode</p>
+										<div class="option-grid option-grid--compact">
+											{#each PERFORMANCE_OPTIONS as option (option.value)}
+												<button
+													type="button"
+													onclick={() => setPerformanceMode(option.value)}
+													class={`glass-option glass-option--compact ${option.value === $userPreferencesStore.performanceMode ? 'is-active' : ''}`}
+													aria-pressed={option.value === $userPreferencesStore.performanceMode}
+												>
+													<div class="glass-option__content">
+														<span class="glass-option__label">{option.label}</span>
+													</div>
+													{#if option.value === $userPreferencesStore.performanceMode}
+														<Check size={14} class="glass-option__check" />
+													{/if}
+												</button>
+											{/each}
+										</div>
+									</section>
+									<section class="settings-section">
+										<p class="section-heading">Cache</p>
+										<button
+											type="button"
+											onclick={handleClearCaches}
+											class="glass-option glass-option--wide"
+											disabled={isCacheClearing}
+										>
+											<span class="glass-option__content">
+												<span class="glass-option__label">
+													<Trash2 size={16} />
+													<span>{isCacheClearing ? 'Clearing cache...' : 'Clear app cache'}</span>
+												</span>
+												<span class="glass-option__description">
+													Clears artist discography cache, official TIDAL enrichment cache, and proxied cover cache.
+												</span>
+											</span>
+											{#if isCacheClearing}
+												<LoaderCircle size={16} class="glass-option__check animate-spin" />
+											{/if}
+										</button>
+									</section>
+									<section class="settings-section">
+										<p class="section-heading">Library Maintenance</p>
+										<button
+											type="button"
+											onclick={handleFullLibraryRepair}
+											class="glass-option glass-option--wide glass-option--primary"
+											disabled={isFullLibraryRepairing || isLibraryTransientSweeping || isLibraryDeduplicating || isCorrectionDedupRunning}
+											aria-busy={isFullLibraryRepairing}
+										>
+											<span class="glass-option__content">
+												<span class="glass-option__label">
+													<Download size={16} />
+													<span>{isFullLibraryRepairing ? 'Auto-repair running…' : 'Auto-repair full library'}</span>
+												</span>
+												<span class="glass-option__description">
+													Scans all local albums, validates integrity, and queues corrupt tracks for repair.
+												</span>
+											</span>
+											{#if isFullLibraryRepairing}
+												<LoaderCircle size={16} class="glass-option__check animate-spin" />
+											{/if}
+										</button>
+										{#if fullLibraryRepairSummary}
+											<p class="section-footnote">{fullLibraryRepairSummary}</p>
+										{/if}
+										{#if fullLibraryRepairProgress}
+											<p class="section-footnote">{fullLibraryRepairProgress}</p>
+										{/if}
+										<button
+											type="button"
+											onclick={handleSweepTransientArtifacts}
+											class="glass-option glass-option--wide"
+											disabled={isLibraryTransientSweeping || isFullLibraryRepairing || isLibraryDeduplicating || isCorrectionDedupRunning}
+											aria-busy={isLibraryTransientSweeping}
+										>
+											<span class="glass-option__content">
+												<span class="glass-option__label">
+													<Trash2 size={16} />
+													<span>{isLibraryTransientSweeping ? 'Sweeping temporary folders…' : 'Sweep stale publish/backup folders'}</span>
+												</span>
+												<span class="glass-option__description">
+													Deletes leftover `*.publishing-*` and `*.backup-*` album folders from interrupted server downloads.
+												</span>
+											</span>
+											{#if isLibraryTransientSweeping}
+												<LoaderCircle size={16} class="glass-option__check animate-spin" />
+											{/if}
+										</button>
+										{#if libraryTransientSweepSummary}
+											<p class="section-footnote">{libraryTransientSweepSummary}</p>
+										{/if}
+										<button
+											type="button"
+											onclick={handleCorrectionSweepThenDedupe}
+											class="glass-option glass-option--wide"
+											disabled={isCorrectionDedupRunning || isFullLibraryRepairing || isLibraryTransientSweeping || isLibraryDeduplicating}
+											aria-busy={isCorrectionDedupRunning}
+										>
+											<span class="glass-option__content">
+												<span class="glass-option__label">
+													<Trash2 size={16} />
+													<span>{isCorrectionDedupRunning ? 'Running correction + dedupe…' : 'Correction sweep + dedupe'}</span>
+												</span>
+												<span class="glass-option__description">
+													First sweeps stale publish/backup folders, then runs full library deduplication with a final report.
+												</span>
+											</span>
+											{#if isCorrectionDedupRunning}
+												<LoaderCircle size={16} class="glass-option__check animate-spin" />
+											{/if}
+										</button>
+										{#if correctionDedupSummary}
+											<p class="section-footnote">{correctionDedupSummary}</p>
+										{/if}
+										{#if correctionDedupProgress}
+											<p class="section-footnote">{correctionDedupProgress}</p>
+										{/if}
+										<button
+											type="button"
+											onclick={handleLibraryDeduplicate}
+											class="glass-option glass-option--wide"
+											disabled={isLibraryDeduplicating || isFullLibraryRepairing || isLibraryTransientSweeping || isCorrectionDedupRunning}
+											aria-busy={isLibraryDeduplicating}
+										>
+											<span class="glass-option__content">
+												<span class="glass-option__label">
+													<Trash2 size={16} />
+													<span>{isLibraryDeduplicating ? 'Consolidating duplicates…' : 'Consolidate duplicate album files'}</span>
+												</span>
+												<span class="glass-option__description">
+													Merges duplicate album folders and keeps the healthiest/full-length duplicate track variant.
+												</span>
+											</span>
+											{#if isLibraryDeduplicating}
+												<LoaderCircle size={16} class="glass-option__check animate-spin" />
+											{/if}
+										</button>
+										{#if libraryDeduplicateSummary}
+											<p class="section-footnote">{libraryDeduplicateSummary}</p>
+										{/if}
+										{#if libraryDeduplicateProgress}
+											<p class="section-footnote">{libraryDeduplicateProgress}</p>
+										{/if}
+									</section>
+									<section class="settings-section settings-section--bordered settings-section--wide">
+										<p class="section-heading">Queue actions</p>
+										<div class="actions-column">
+											<button
+												onclick={handleQueueDownload}
+												type="button"
+												class="glass-action"
+												disabled={queueActionBusy}
+											>
+												<span class="glass-action__label">
+													{#if isServerStorage}
+														<Download size={16} />
+														<span>Save queue to server</span>
+													{:else if downloadMode === 'zip'}
+														<Archive size={16} />
+														<span>Download queue</span>
+													{:else if downloadMode === 'csv'}
+														<FileSpreadsheet size={16} />
+														<span>Export queue links</span>
+													{:else}
+														<Download size={16} />
+														<span>Download queue</span>
+													{/if}
+												</span>
+												{#if queueActionBusy}
+													<LoaderCircle size={16} class="glass-action__spinner" />
+												{/if}
+											</button>
+											{#if !isServerStorage}
+												<button
+													onclick={handleExportQueueCsv}
+													type="button"
+													class="glass-action"
+													disabled={isCsvExporting}
+												>
+													<span class="glass-action__label">
+														<FileSpreadsheet size={16} />
+														<span>Export links as CSV</span>
+													</span>
+													{#if isCsvExporting}
+														<LoaderCircle size={16} class="glass-action__spinner" />
+													{/if}
+												</button>
+											{/if}
+										</div>
+										<p class="section-footnote">
+											{isServerStorage
+												? 'Server saves use individual files and keep your browser clean. Use the Download Log to track progress and see the server path.'
+												: 'Queue actions follow your selection above. ZIP bundles require at least two tracks, while CSV exports capture the track links without downloading audio.'}
+										</p>
+									</section>
+								</div>
+							{:else if $page.url.pathname === '/status'}
+								<section class="status-page">
+									<div class="status-page__header">
+										<div>
+											<h1>Status</h1>
+											<p class="status-page__subtitle">
+												{#if statusLastUpdatedAt}
+													Last updated {new Date(statusLastUpdatedAt).toLocaleTimeString()}
+												{:else}
+													Waiting for first refresh…
+												{/if}
+											</p>
+										</div>
+										<button
+											type="button"
+											class="glass-action"
+											onclick={() => void refreshDiagnostics()}
+											disabled={diagnosticsLoading}
+										>
+											<span class="glass-action__label">
+												<Activity size={16} />
+												<span>{diagnosticsLoading ? 'Refreshing…' : 'Refresh now'}</span>
+											</span>
+										</button>
+									</div>
+
+									<div class="status-page__grid">
+										<section class="settings-section">
+											<p class="section-heading">Health</p>
+											<p class="section-footnote">
+												Status: <strong>{diagnosticsHealth?.status ?? 'unknown'}</strong>
+											</p>
+											<p class="section-footnote">
+												Response: {diagnosticsHealth?.responseTime ?? '—'} ms
+											</p>
+											{#if diagnosticsHealth?.issues?.length}
+												<ul class="status-page__issues">
+													{#each diagnosticsHealth.issues as issue (issue)}
+														<li>{issue}</li>
+													{/each}
+												</ul>
+											{/if}
+										</section>
+
+										<section class="settings-section">
+											<p class="section-heading">API Targets</p>
+											<p class="section-footnote">
+												Source: <strong>{statusTargets?.source ?? 'unknown'}</strong>
+											</p>
+											<p class="section-footnote">
+												Targets: {statusTargets?.targetCount ?? 0}
+											</p>
+											{#if statusTargets?.lastSuccessfulRefreshIso}
+												<p class="section-footnote">
+													Last refresh: {new Date(statusTargets.lastSuccessfulRefreshIso).toLocaleString()}
+												</p>
+											{/if}
+											{#if statusTargets?.error}
+												<p class="section-footnote">{statusTargets.error}</p>
+											{/if}
+										</section>
+
+										<section class="settings-section">
+											<p class="section-heading">Queue</p>
+											<pre class="status-page__json">{JSON.stringify(statusQueueMetrics?.queue ?? {}, null, 2)}</pre>
+										</section>
+
+										<section class="settings-section">
+											<p class="section-heading">Queue Metrics</p>
+											<pre class="status-page__json">{JSON.stringify(statusQueueMetrics?.metrics ?? {}, null, 2)}</pre>
+										</section>
+
+										<section class="settings-section">
+											<p class="section-heading">Errors (Last Hour)</p>
+											<p class="section-footnote">
+												Total: {diagnosticsSummary?.totalErrors ?? 0} ·
+												Unique: {diagnosticsSummary?.uniqueErrors ?? 0} ·
+												Critical: {diagnosticsSummary?.criticalErrors ?? 0}
+											</p>
+											{#if diagnosticsDomains && Object.keys(diagnosticsDomains).length > 0}
+												<ul class="status-page__issues">
+													{#each Object.entries(diagnosticsDomains) as [domain, count] (domain)}
+														<li>{domain}: {count}</li>
+													{/each}
+												</ul>
+											{/if}
+										</section>
+
+										<section class="settings-section settings-section--wide">
+											<p class="section-heading">Recent Errors</p>
+											{#if diagnosticsErrors && diagnosticsErrors.length > 0}
+												<ul class="status-page__errors">
+													{#each diagnosticsErrors.slice(0, 20) as errorReport (errorReport.id)}
+														<li>
+															<strong>{errorReport.context?.domain ?? 'unknown'}</strong>
+															<span>{new Date(errorReport.timestamp).toLocaleTimeString()}</span>
+															<p>{errorReport.error.message}</p>
+														</li>
+													{/each}
+												</ul>
+											{:else}
+												<p class="section-footnote">No errors recorded.</p>
+											{/if}
+										</section>
+									</div>
+								</section>
+							{:else}
 								{@render children?.()}
+							{/if}
 						</div>
 					</main>
 				</div>
@@ -1979,26 +2151,7 @@
 
 	<LyricsPopup />
 	<ToastContainer />
-	<DownloadLog />
 	<DownloadManager />
-	{#if diagnosticsEnabled && !isEmbed}
-		<button class="diagnostics-toggle" type="button" onclick={toggleDiagnostics}>
-			Diagnostics
-		</button>
-		<DiagnosticsOverlay
-			open={diagnosticsOpen}
-			loading={diagnosticsLoading}
-			summary={diagnosticsSummary}
-			domainCounts={diagnosticsDomains}
-			health={diagnosticsHealth}
-			persisted={diagnosticsPersisted}
-			retries={diagnosticsRetries}
-			errors={diagnosticsErrors}
-			onClose={() => {
-				diagnosticsOpen = false;
-			}}
-		/>
-	{/if}
 {/if}
 
 
@@ -2258,6 +2411,7 @@
 		line-height: 1;
 		font-weight: 600;
 		color: inherit;
+		text-decoration: none;
 		cursor: pointer;
 		background: transparent;
 		backdrop-filter: blur(var(--perf-blur-low, 24px)) saturate(var(--perf-saturate, 160%));
@@ -2349,6 +2503,10 @@
 		gap: 0.85rem;
 	}
 
+	.settings-grid--page {
+		padding-top: 0.25rem;
+	}
+
 	.settings-section {
 		display: flex;
 		flex-direction: column;
@@ -2393,6 +2551,7 @@
 			saturate(var(--perf-saturate, 160%));
 		padding: 0.5rem 0.65rem;
 		color: inherit;
+		text-decoration: none;
 		font-size: 0.8rem;
 		cursor: pointer;
 		text-align: left;
@@ -2482,6 +2641,70 @@
 	.settings-section--bordered {
 		padding-top: 0.65rem;
 		border-top: 1px solid rgba(148, 163, 184, 0.12);
+	}
+
+	.status-page {
+		display: flex;
+		flex-direction: column;
+		gap: 0.9rem;
+	}
+
+	.status-page__header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.8rem;
+		flex-wrap: wrap;
+	}
+
+	.status-page__header h1 {
+		margin: 0;
+		font-size: 1.2rem;
+	}
+
+	.status-page__subtitle {
+		margin: 0.2rem 0 0;
+		font-size: 0.8rem;
+		opacity: 0.75;
+	}
+
+	.status-page__grid {
+		display: grid;
+		gap: 0.85rem;
+		grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+	}
+
+	.status-page__json {
+		margin: 0;
+		padding: 0.55rem 0.65rem;
+		border-radius: 10px;
+		border: 1px solid rgba(148, 163, 184, 0.18);
+		background: rgba(10, 12, 24, 0.35);
+		font-size: 0.68rem;
+		line-height: 1.45;
+		overflow-x: auto;
+		white-space: pre-wrap;
+		word-break: break-word;
+	}
+
+	.status-page__issues,
+	.status-page__errors {
+		margin: 0;
+		padding-left: 1.1rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+	}
+
+	.status-page__errors li {
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+	}
+
+	.status-page__errors p {
+		margin: 0;
+		opacity: 0.88;
 	}
 
 	@media (min-width: 960px) {
