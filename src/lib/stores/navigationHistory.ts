@@ -178,6 +178,12 @@ function createNavigationHistoryStore() {
 		},
 		clear(): void {
 			set(EMPTY_STATE);
+		},
+		clearAlbums(): void {
+			update((state) => ({ ...state, albums: [] }));
+		},
+		clearArtists(): void {
+			update((state) => ({ ...state, artists: [] }));
 		}
 	};
 }

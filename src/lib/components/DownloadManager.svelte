@@ -1450,7 +1450,7 @@
 
 <style>
 	.download-manager-container {
-		--color-primary: #3b82f6;
+		--color-primary: #f5f5f5;
 		--color-success: #10b981;
 		--color-warning: #f59e0b;
 		--color-error: #ef4444;
@@ -1480,15 +1480,15 @@
 		height: 56px;
 		border-radius: 50%;
 		background: var(--color-primary);
-		color: white;
+		color: #070707;
 		font-size: 24px;
-		box-shadow: 0 4px 20px rgba(59, 130, 246, 0.4);
+		box-shadow: 0 4px 20px rgba(255, 255, 255, 0.22);
 		transition: all 0.3s ease;
 	}
 
 	.download-manager-toggle:hover {
 		transform: scale(1.1);
-		box-shadow: 0 6px 24px rgba(59, 130, 246, 0.5);
+		box-shadow: 0 6px 24px rgba(255, 255, 255, 0.28);
 	}
 
 	.download-manager-badge {
@@ -1619,7 +1619,7 @@
 
 	.download-manager-compact-indicator {
 		font-size: 11px;
-		color: #bfdbfe;
+		color: #d4d4d4;
 	}
 
 	.download-manager-redis {
@@ -1712,9 +1712,9 @@
 	}
 
 	.download-manager-notice[data-tone='info'] {
-		background: rgba(59, 130, 246, 0.16);
-		color: #dbeafe;
-		border-color: rgba(59, 130, 246, 0.4);
+		background: rgba(245, 245, 245, 0.12);
+		color: #f5f5f5;
+		border-color: rgba(245, 245, 245, 0.28);
 	}
 
 	.download-manager-top-strip {
@@ -1725,6 +1725,9 @@
 		border-bottom: 1px solid var(--color-border);
 		padding: 12px 16px;
 		background: rgba(255, 255, 255, 0.02);
+		position: sticky;
+		top: 0;
+		z-index: 2;
 		flex-shrink: 0;
 	}
 
@@ -1889,8 +1892,8 @@
 	}
 
 	.current-item {
-		background: rgba(59, 130, 246, 0.1);
-		border: 1px solid rgba(59, 130, 246, 0.3);
+		background: rgba(255, 255, 255, 0.06);
+		border: 1px solid rgba(255, 255, 255, 0.2);
 		border-radius: 8px;
 		padding: 12px;
 		display: flex;
@@ -1959,7 +1962,7 @@
 
 	.progress-fill {
 		height: 100%;
-		background: linear-gradient(90deg, #10b981, #06b6d4);
+		background: linear-gradient(90deg, #f5f5f5, #a3a3a3);
 		transition: width 0.2s ease;
 	}
 
@@ -2010,9 +2013,9 @@
 	}
 
 	.filter-pill.is-active {
-		background: rgba(59, 130, 246, 0.2);
-		border-color: rgba(59, 130, 246, 0.4);
-		color: #bfdbfe;
+		background: rgba(255, 255, 255, 0.14);
+		border-color: rgba(255, 255, 255, 0.42);
+		color: #f5f5f5;
 	}
 
 	.filter-empty-state {
@@ -2348,9 +2351,9 @@
 	}
 
 	.item-action-btn--primary {
-		border-color: rgba(59, 130, 246, 0.5);
-		color: #bfdbfe;
-		background: rgba(59, 130, 246, 0.14);
+		border-color: rgba(245, 245, 245, 0.45);
+		color: #f5f5f5;
+		background: rgba(245, 245, 245, 0.12);
 	}
 
 	.item-action-btn--warning {
@@ -2372,13 +2375,13 @@
 	}
 
 	.control-btn--primary {
-		background: rgba(59, 130, 246, 0.2);
-		color: #dbeafe;
-		border-color: rgba(59, 130, 246, 0.5);
+		background: rgba(245, 245, 245, 0.16);
+		color: #f5f5f5;
+		border-color: rgba(245, 245, 245, 0.45);
 	}
 
 	.control-btn--primary:hover {
-		background: rgba(59, 130, 246, 0.3);
+		background: rgba(245, 245, 245, 0.24);
 	}
 
 	.control-btn--warning {
@@ -2451,9 +2454,9 @@
 		justify-content: center;
 		padding: 8px 12px;
 		border-radius: 8px;
-		border: 1px solid rgba(59, 130, 246, 0.4);
-		background: rgba(59, 130, 246, 0.14);
-		color: #bfdbfe;
+		border: 1px solid rgba(245, 245, 245, 0.45);
+		background: rgba(245, 245, 245, 0.14);
+		color: #f5f5f5;
 		font-size: 12px;
 		font-weight: 600;
 		text-decoration: none;
@@ -2461,7 +2464,7 @@
 	}
 
 	.empty-cta-btn:hover {
-		background: rgba(59, 130, 246, 0.24);
+		background: rgba(245, 245, 245, 0.24);
 	}
 
 	.empty-steps {
