@@ -68,6 +68,32 @@ export type FinalizeTrackResult =
 			status: number;
 	  };
 
+function logMusicBrainzFinalizeSummary(
+	trackId: number,
+	summary: MusicBrainzLookupSummary | undefined,
+	context: 'skip' | 'finalize'
+): void {
+	if (!summary?.enabled) {
+		return;
+	}
+
+	const mode = summary.strictMatch ? 'strict ISRC' : 'flex';
+	const phase = context === 'skip' ? 'skip' : 'finalize';
+	if (!summary.lookupAttempted) {
+		console.warn(
+			`[MusicBrainz] Track ${trackId} (${phase}, ${mode}): lookup enabled but not attempted.`
+		);
+		return;
+	}
+	if (summary.tagsApplied > 0) {
+		console.log(
+			`[MusicBrainz] Track ${trackId} (${phase}, ${mode}): applied ${summary.tagsApplied} tag(s).`
+		);
+		return;
+	}
+	console.log(`[MusicBrainz] Track ${trackId} (${phase}, ${mode}): lookup completed with no tags.`);
+}
+
 const toDownloadError = (
 	error: NodeJS.ErrnoException,
 	message: string,
@@ -362,6 +388,7 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 		if (tempFilePath) {
 			await fs.unlink(tempFilePath).catch(() => {});
 		}
+		logMusicBrainzFinalizeSummary(trackId, musicBrainzSummary, 'skip');
 		return {
 			success: true,
 			filepath: finalPath,
@@ -458,10 +485,6 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 		} catch {
 			metadataEmbedded = false;
 		}
-	} else if (experimentalMusicBrainzTagging) {
-		console.warn(
-			`[MusicBrainz] Lookup skipped for track ${trackId}: track metadata unavailable during finalize`
-		);
 	}
 
 	let coverDownloaded = false;
@@ -547,6 +570,7 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 		};
 	}
 
+	logMusicBrainzFinalizeSummary(trackId, musicBrainzSummary, 'finalize');
 	return {
 		success: true,
 		filepath: finalOutputPath,
