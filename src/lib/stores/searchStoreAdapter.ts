@@ -42,7 +42,7 @@ type SearchCommitPayload = {
 
 const searchStoreBase = writable<SearchStoreState>({
 	query: '',
-	activeTab: 'tracks',
+	activeTab: 'albums',
 	isLoading: false,
 	error: null,
 	results: null,
@@ -218,7 +218,7 @@ export const searchStoreActions = {
 	resetSearch() {
 		this.commit({
 			query: '',
-			activeTab: 'tracks',
+			activeTab: 'albums',
 			isLoading: false,
 			error: null,
 			results: null,

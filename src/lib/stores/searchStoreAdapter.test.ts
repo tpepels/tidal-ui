@@ -10,7 +10,7 @@ describe('searchStoreAdapter', () => {
 	it('initializes with safe defaults', () => {
 		const state = get(searchStore);
 		expect(state.query).toBe('');
-		expect(state.activeTab).toBe('tracks');
+		expect(state.activeTab).toBe('albums');
 		expect(state.results).toBeNull();
 		expect(state.tabLoading.tracks).toBe(false);
 	});
