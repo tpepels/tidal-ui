@@ -514,6 +514,13 @@ async function runRepairAll(input: {
 		let queuedForAlbum = 0;
 		if (input.queue) {
 			const coverUrl = buildCoverUrl(albumDetails.album.cover);
+			const canonicalAlbumTitle = albumDetails.album.title || localAlbum.localAlbumTitle;
+			const canonicalArtistName =
+				albumDetails.album.artist?.name ??
+				(albumDetails.album.artists && albumDetails.album.artists.length > 0
+					? albumDetails.album.artists[0]?.name
+					: undefined) ??
+				localAlbum.localArtistName;
 			for (const target of repairTargets) {
 				if (!target.relativePath) {
 					console.warn(
@@ -531,8 +538,8 @@ async function runRepairAll(input: {
 						type: 'track',
 						trackId: target.trackId,
 						quality: input.quality,
-						albumTitle: localAlbum.localAlbumTitle,
-						artistName: localAlbum.localArtistName,
+						albumTitle: canonicalAlbumTitle,
+						artistName: canonicalArtistName,
 						targetArtistDir: localAlbum.artistDir,
 						targetAlbumDir: localAlbum.albumDir,
 						targetFilenameHint: path.basename(target.relativePath),

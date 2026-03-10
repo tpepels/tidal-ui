@@ -31,6 +31,7 @@
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 	import { artistCacheStore } from '$lib/stores/artistCache';
+	import { navigationHistoryStore } from '$lib/stores/navigationHistory';
 
 	let artist = $state<ArtistDetails | null>(null);
 	let artistImage = $state<string | null>(null);
@@ -1176,6 +1177,10 @@
 				: null;
 			isLoading = false;
 			breadcrumbStore.setCurrentLabel(normalizedCached.name, `/artist/${normalizedCached.id}`);
+			navigationHistoryStore.visitArtist({
+				id: normalizedCached.id,
+				name: normalizedCached.name
+			});
 		}
 
 		try {
@@ -1195,6 +1200,10 @@
 			artistCacheStore.set(normalizedData);
 
 			breadcrumbStore.setCurrentLabel(normalizedData.name, `/artist/${normalizedData.id}`);
+			navigationHistoryStore.visitArtist({
+				id: normalizedData.id,
+				name: normalizedData.name
+			});
 
 			// Get artist picture
 			if (artist.picture) {

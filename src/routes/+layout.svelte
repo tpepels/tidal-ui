@@ -67,7 +67,15 @@
 		Download,
 		Check,
 		Settings,
-		Trash2
+		Trash2,
+		House,
+		Search,
+		Logs,
+		Wrench,
+		PanelLeft,
+		PanelRight,
+		Music2,
+		History
 	} from 'lucide-svelte';
 	import { type Track, type AudioQuality, type PlayableTrack, isSonglinkTrack } from '$lib/types';
 
@@ -81,6 +89,7 @@
 	);
 	let viewportHeight = $state(0);
 	let showSettingsMenu = $state(false);
+	let isSidebarCollapsed = $state(false);
 
 	let isZipDownloading = $state(false);
 	let isCsvExporting = $state(false);
@@ -141,6 +150,41 @@
 	let diagnosticsPersisted = $state<ReturnType<typeof getPersistedErrorSummary> | null>(null);
 	let diagnosticsRetries = $state<RetrySummary | null>(null);
 	let diagnosticsErrors = $state<ErrorReport[] | null>(null);
+	const maintenanceLogLastByScope: Record<string, string> = {};
+
+	type DownloadLogLevel = 'info' | 'success' | 'warning' | 'error';
+
+	function resetMaintenanceLogScope(scope: string): void {
+		delete maintenanceLogLastByScope[scope];
+	}
+
+	function logMaintenanceMessage(
+		scope: string,
+		message: string,
+		level: DownloadLogLevel = 'info',
+		dedupe: boolean = true
+	): void {
+		const normalized = message.trim();
+		if (!normalized) return;
+		if (dedupe && maintenanceLogLastByScope[scope] === normalized) {
+			return;
+		}
+		maintenanceLogLastByScope[scope] = normalized;
+		const formatted = `[${scope}] ${normalized}`;
+		switch (level) {
+			case 'success':
+				downloadLogStore.success(formatted);
+				return;
+			case 'warning':
+				downloadLogStore.warning(formatted);
+				return;
+			case 'error':
+				downloadLogStore.error(formatted);
+				return;
+			default:
+				downloadLogStore.log(formatted);
+		}
+	}
 
 	$effect(() => {
 		if (typeof window === 'undefined') return;
@@ -163,6 +207,14 @@
 		}
 	});
 	const mainMinHeight = $derived(() => Math.max(0, viewportHeight - headerHeight - playerHeight));
+	const queueTrackCount = $derived(Array.isArray($machineQueue) ? $machineQueue.length : 0);
+	const currentTrackRoute = $derived.by(() => {
+		const current = $machineCurrentTrack;
+		if (!current || isSonglinkTrack(current)) return null;
+		const parsedId = Number(current.id);
+		if (!Number.isFinite(parsedId) || parsedId <= 0) return null;
+		return `/track/${parsedId}`;
+	});
 
 	const mainMarginBottom = $derived(() => Math.max(playerHeight, 128));
 	const settingsMenuOffset = $derived(() => Math.max(0, headerHeight + 12));
@@ -273,6 +325,16 @@
 		downloadLogStore.toggle();
 	}
 
+	function toggleSidebarCollapsed(): void {
+		isSidebarCollapsed = !isSidebarCollapsed;
+	}
+
+	function isRouteActive(href: string): boolean {
+		const path = $page.url.pathname;
+		if (href === '/') return path === '/';
+		return path === href || path.startsWith(`${href}/`);
+	}
+
 	async function handleClearCaches(): Promise<void> {
 		if (isCacheClearing) return;
 		isCacheClearing = true;
@@ -345,6 +407,7 @@
 		}
 		if (status.status === 'running') {
 			fullLibraryRepairProgress = formatFullLibraryRepairProgress(status);
+			logMaintenanceMessage('Library Repair', fullLibraryRepairProgress);
 		}
 	}
 
@@ -368,6 +431,8 @@
 		isFullLibraryRepairing = true;
 		fullLibraryRepairSummary = null;
 		fullLibraryRepairProgress = 'Starting full-library integrity scan...';
+		resetMaintenanceLogScope('Library Repair');
+		logMaintenanceMessage('Library Repair', fullLibraryRepairProgress, 'info', false);
 		startFullLibraryRepairPolling();
 
 		try {
@@ -386,16 +451,17 @@
 			fullLibraryRepairProgress = null;
 			fullLibraryRepairSummary = summaryLine;
 			toasts.success(summaryLine);
+			logMaintenanceMessage('Library Repair', summaryLine, 'success');
 
 			if (summary.albumsUnresolved > 0) {
-				toasts.warning(
-					`${summary.albumsUnresolved} album(s) could not be confidently matched to TIDAL and were skipped.`
-				);
+				const warning = `${summary.albumsUnresolved} album(s) could not be confidently matched to TIDAL and were skipped.`;
+				toasts.warning(warning);
+				logMaintenanceMessage('Library Repair', warning, 'warning', false);
 			}
 			if (summary.albumsErrored > 0) {
-				toasts.warning(
-					`${summary.albumsErrored} album(s) failed during auto-repair. Check server logs for details.`
-				);
+				const warning = `${summary.albumsErrored} album(s) failed during auto-repair. Check server logs for details.`;
+				toasts.warning(warning);
+				logMaintenanceMessage('Library Repair', warning, 'warning', false);
 			}
 		} catch (error) {
 			const message =
@@ -405,6 +471,7 @@
 			fullLibraryRepairProgress = null;
 			fullLibraryRepairSummary = null;
 			toasts.error(message);
+			logMaintenanceMessage('Library Repair', message, 'error', false);
 		} finally {
 			stopFullLibraryRepairPolling();
 			isFullLibraryRepairing = false;
@@ -421,6 +488,8 @@
 
 		isLibraryTransientSweeping = true;
 		libraryTransientSweepSummary = null;
+		resetMaintenanceLogScope('Library Sweep');
+		logMaintenanceMessage('Library Sweep', 'Starting stale publish/backup folder sweep...', 'info', false);
 
 		try {
 			const result = await sweepTemporaryLibraryArtifacts({ dryRun: false });
@@ -432,21 +501,24 @@
 			const summary =
 				`Transient sweep complete: removed ${removed}/${found} temporary folder(s). ` +
 				`Skipped active ${result.skippedActive ?? 0}, too fresh ${result.skippedTooFresh ?? 0}.`;
-			libraryTransientSweepSummary = summary;
-			toasts.success(summary);
-			if (result.reportPath) {
-				toasts.info(`Sweep report saved to ${result.reportPath}`);
-			}
-		} catch (error) {
+				libraryTransientSweepSummary = summary;
+				toasts.success(summary);
+				logMaintenanceMessage('Library Sweep', summary, 'success');
+				if (result.reportPath) {
+					toasts.info(`Sweep report saved to ${result.reportPath}`);
+					logMaintenanceMessage('Library Sweep', `Report saved to ${result.reportPath}`, 'info', false);
+				}
+			} catch (error) {
 			const message =
 				error instanceof Error && error.message
 					? error.message
 					: 'Failed to sweep temporary album artifacts';
-			libraryTransientSweepSummary = null;
-			toasts.error(message);
-		} finally {
-			isLibraryTransientSweeping = false;
-		}
+				libraryTransientSweepSummary = null;
+				toasts.error(message);
+				logMaintenanceMessage('Library Sweep', message, 'error', false);
+			} finally {
+				isLibraryTransientSweeping = false;
+			}
 	}
 
 	async function handleCorrectionSweepThenDedupe(): Promise<void> {
@@ -460,6 +532,8 @@
 		isCorrectionDedupRunning = true;
 		correctionDedupSummary = null;
 		correctionDedupProgress = 'Running correction dry-run...';
+		resetMaintenanceLogScope('Correction + Dedupe');
+		logMaintenanceMessage('Correction + Dedupe', correctionDedupProgress, 'info', false);
 		let executionStarted = false;
 
 		try {
@@ -474,39 +548,53 @@
 			const previewFound = preview.sweep.artifactDirsFound ?? 0;
 			const previewRemoved = preview.sweep.artifactDirsRemoved ?? 0;
 			const previewDedupe = preview.deduplicate;
-			const previewSummary =
-				`Dry-run plan: sweep ${previewRemoved}/${previewFound} temp folder(s), ` +
-				`merge ${previewDedupe.albumsMerged ?? 0} album folder(s), move ${previewDedupe.filesMovedBetweenAlbums ?? 0} file(s), ` +
-				`backup ${previewDedupe.duplicateFilesBackedUp ?? 0} duplicate track file(s), ` +
-				`manual review ${previewDedupe.manualReviewRequired ?? 0}.`;
-			const plannedChanges =
-				(previewDedupe.filesMovedBetweenAlbums ?? 0) + (previewDedupe.duplicateFilesBackedUp ?? 0);
+				const previewSummary =
+					`Dry-run plan: sweep ${previewRemoved}/${previewFound} temp folder(s), ` +
+					`merge ${previewDedupe.albumsMerged ?? 0} album folder(s), move ${previewDedupe.filesMovedBetweenAlbums ?? 0} file(s), ` +
+					`backup ${previewDedupe.duplicateFilesBackedUp ?? 0} duplicate track file(s), ` +
+					`manual review ${previewDedupe.manualReviewRequired ?? 0}.`;
+				logMaintenanceMessage('Correction + Dedupe', previewSummary, 'info', false);
+				const plannedChanges =
+					(previewDedupe.filesMovedBetweenAlbums ?? 0) + (previewDedupe.duplicateFilesBackedUp ?? 0);
 
-			if (preview.reportPath) {
-				toasts.info(`Correction dry-run report saved to ${preview.reportPath}`);
-			}
+				if (preview.reportPath) {
+					toasts.info(`Correction dry-run report saved to ${preview.reportPath}`);
+					logMaintenanceMessage(
+						'Correction + Dedupe',
+						`Dry-run report saved to ${preview.reportPath}`,
+						'info',
+						false
+					);
+				}
 
-			if (plannedChanges <= 0) {
-				correctionDedupProgress = null;
-				correctionDedupSummary = `${previewSummary} No execute pass needed.`;
-				toasts.success('Correction dry-run found no actionable changes.');
-				return;
-			}
+				if (plannedChanges <= 0) {
+					correctionDedupProgress = null;
+					correctionDedupSummary = `${previewSummary} No execute pass needed.`;
+					toasts.success('Correction dry-run found no actionable changes.');
+					logMaintenanceMessage(
+						'Correction + Dedupe',
+						'Dry-run found no actionable changes. Execute pass skipped.',
+						'success'
+					);
+					return;
+				}
 
 			let executeNow = true;
 			if (typeof window !== 'undefined') {
 				executeNow = window.confirm(`${previewSummary}\n\nRun execute pass now?`);
 			}
-			if (!executeNow) {
-				correctionDedupProgress = null;
-				correctionDedupSummary = `${previewSummary} Execute pass cancelled.`;
-				toasts.info('Correction dry-run complete. Execute pass cancelled.');
-				return;
-			}
+				if (!executeNow) {
+					correctionDedupProgress = null;
+					correctionDedupSummary = `${previewSummary} Execute pass cancelled.`;
+					toasts.info('Correction dry-run complete. Execute pass cancelled.');
+					logMaintenanceMessage('Correction + Dedupe', 'Execute pass cancelled by user.', 'warning', false);
+					return;
+				}
 
-			correctionDedupProgress = 'Running correction sweep + dedupe...';
-			startCorrectionDedupPolling();
-			executionStarted = true;
+				correctionDedupProgress = 'Running correction sweep + dedupe...';
+				logMaintenanceMessage('Correction + Dedupe', correctionDedupProgress, 'info', false);
+				startCorrectionDedupPolling();
+				executionStarted = true;
 
 			const result = await correctAndDeduplicateLibrary({
 				dryRun: false,
@@ -528,26 +616,40 @@
 				`and backed up ${dedupeResult.duplicateFilesBackedUp ?? 0} duplicate track file(s). ` +
 				`Skipped active ${result.sweep.skippedActive ?? 0}, too fresh ${result.sweep.skippedTooFresh ?? 0}, ` +
 				`manual review ${dedupeResult.manualReviewRequired ?? 0}.`;
-			correctionDedupProgress = null;
-			correctionDedupSummary = summary;
-			toasts.success(summary);
-			if (result.reportPath) {
-				toasts.info(`Correction report saved to ${result.reportPath}`);
-			}
-			if (dedupeResult.backupRoot) {
-				toasts.info(`Duplicate backups saved to ${dedupeResult.backupRoot}`);
-			}
-		} catch (error) {
+				correctionDedupProgress = null;
+				correctionDedupSummary = summary;
+				toasts.success(summary);
+				logMaintenanceMessage('Correction + Dedupe', summary, 'success');
+				if (result.reportPath) {
+					toasts.info(`Correction report saved to ${result.reportPath}`);
+					logMaintenanceMessage(
+						'Correction + Dedupe',
+						`Report saved to ${result.reportPath}`,
+						'info',
+						false
+					);
+				}
+				if (dedupeResult.backupRoot) {
+					toasts.info(`Duplicate backups saved to ${dedupeResult.backupRoot}`);
+					logMaintenanceMessage(
+						'Correction + Dedupe',
+						`Duplicate backups saved to ${dedupeResult.backupRoot}`,
+						'info',
+						false
+					);
+				}
+			} catch (error) {
 			const message =
 				error instanceof Error && error.message
 					? error.message
 					: 'Failed to run correction sweep + dedupe';
-			correctionDedupProgress = null;
-			correctionDedupSummary = null;
-			toasts.error(message);
-		} finally {
-			if (executionStarted) {
-				stopCorrectionDedupPolling();
+				correctionDedupProgress = null;
+				correctionDedupSummary = null;
+				toasts.error(message);
+				logMaintenanceMessage('Correction + Dedupe', message, 'error', false);
+			} finally {
+				if (executionStarted) {
+					stopCorrectionDedupPolling();
 			}
 			isCorrectionDedupRunning = false;
 		}
@@ -598,6 +700,7 @@
 		}
 		if (status.status === 'running') {
 			correctionDedupProgress = formatCorrectionDedupProgress(status);
+			logMaintenanceMessage('Correction + Dedupe', correctionDedupProgress);
 		}
 	}
 
@@ -620,6 +723,8 @@
 		isLibraryDeduplicating = true;
 		libraryDeduplicateSummary = null;
 		libraryDeduplicateProgress = 'Running deduplication dry-run...';
+		resetMaintenanceLogScope('Library Dedupe');
+		logMaintenanceMessage('Library Dedupe', libraryDeduplicateProgress, 'info', false);
 		let executionStarted = false;
 
 		try {
@@ -630,34 +735,48 @@
 			if (!preview.success) {
 				throw new Error(preview.error || 'Failed to run dedupe dry-run');
 			}
-			const previewSummary =
-				`Dry-run plan: merge ${preview.albumsMerged ?? 0} album folder(s), move ${preview.filesMovedBetweenAlbums ?? 0} file(s), ` +
-				`backup ${preview.duplicateFilesBackedUp ?? 0} duplicate track file(s), manual review ${preview.manualReviewRequired ?? 0}.`;
-			const plannedChanges =
-				(preview.filesMovedBetweenAlbums ?? 0) + (preview.duplicateFilesBackedUp ?? 0);
-			if (preview.report?.reportPath) {
-				toasts.info(`Dedupe dry-run report saved to ${preview.report.reportPath}`);
-			}
-			if (plannedChanges <= 0) {
-				libraryDeduplicateProgress = null;
-				libraryDeduplicateSummary = `${previewSummary} No execute pass needed.`;
-				toasts.success('Dedupe dry-run found no actionable changes.');
-				return;
-			}
+				const previewSummary =
+					`Dry-run plan: merge ${preview.albumsMerged ?? 0} album folder(s), move ${preview.filesMovedBetweenAlbums ?? 0} file(s), ` +
+					`backup ${preview.duplicateFilesBackedUp ?? 0} duplicate track file(s), manual review ${preview.manualReviewRequired ?? 0}.`;
+				logMaintenanceMessage('Library Dedupe', previewSummary, 'info', false);
+				const plannedChanges =
+					(preview.filesMovedBetweenAlbums ?? 0) + (preview.duplicateFilesBackedUp ?? 0);
+				if (preview.report?.reportPath) {
+					toasts.info(`Dedupe dry-run report saved to ${preview.report.reportPath}`);
+					logMaintenanceMessage(
+						'Library Dedupe',
+						`Dry-run report saved to ${preview.report.reportPath}`,
+						'info',
+						false
+					);
+				}
+				if (plannedChanges <= 0) {
+					libraryDeduplicateProgress = null;
+					libraryDeduplicateSummary = `${previewSummary} No execute pass needed.`;
+					toasts.success('Dedupe dry-run found no actionable changes.');
+					logMaintenanceMessage(
+						'Library Dedupe',
+						'Dry-run found no actionable changes. Execute pass skipped.',
+						'success'
+					);
+					return;
+				}
 			let executeNow = true;
 			if (typeof window !== 'undefined') {
 				executeNow = window.confirm(`${previewSummary}\n\nRun execute pass now?`);
 			}
-			if (!executeNow) {
-				libraryDeduplicateProgress = null;
-				libraryDeduplicateSummary = `${previewSummary} Execute pass cancelled.`;
-				toasts.info('Dedupe dry-run complete. Execute pass cancelled.');
-				return;
-			}
+				if (!executeNow) {
+					libraryDeduplicateProgress = null;
+					libraryDeduplicateSummary = `${previewSummary} Execute pass cancelled.`;
+					toasts.info('Dedupe dry-run complete. Execute pass cancelled.');
+					logMaintenanceMessage('Library Dedupe', 'Execute pass cancelled by user.', 'warning', false);
+					return;
+				}
 
-			libraryDeduplicateProgress = 'Starting library deduplication...';
-			startLibraryDeduplicatePolling();
-			executionStarted = true;
+				libraryDeduplicateProgress = 'Starting library deduplication...';
+				logMaintenanceMessage('Library Dedupe', libraryDeduplicateProgress, 'info', false);
+				startLibraryDeduplicatePolling();
+				executionStarted = true;
 
 			const result = await deduplicateLibraryInLibrary({
 				dryRun: false,
@@ -677,26 +796,40 @@
 				`merged ${result.albumsMerged ?? 0}, moved ${result.filesMovedBetweenAlbums ?? 0}, ` +
 				`duplicate groups ${result.duplicateTrackGroups ?? 0}, backed up ${result.duplicateFilesBackedUp ?? 0}, ` +
 				`move errors ${result.filesMoveErrors ?? 0}, backup errors ${result.backupErrors ?? 0}, manual review ${result.manualReviewRequired ?? 0}.`;
-			libraryDeduplicateProgress = null;
-			libraryDeduplicateSummary = summary;
-			toasts.success(summary);
-			if (report?.reportPath) {
-				toasts.info(`Dedupe report saved to ${report.reportPath}`);
-			}
-			if (result.backupRoot) {
-				toasts.info(`Duplicate backups saved to ${result.backupRoot}`);
-			}
-		} catch (error) {
+				libraryDeduplicateProgress = null;
+				libraryDeduplicateSummary = summary;
+				toasts.success(summary);
+				logMaintenanceMessage('Library Dedupe', summary, 'success');
+				if (report?.reportPath) {
+					toasts.info(`Dedupe report saved to ${report.reportPath}`);
+					logMaintenanceMessage(
+						'Library Dedupe',
+						`Report saved to ${report.reportPath}`,
+						'info',
+						false
+					);
+				}
+				if (result.backupRoot) {
+					toasts.info(`Duplicate backups saved to ${result.backupRoot}`);
+					logMaintenanceMessage(
+						'Library Dedupe',
+						`Duplicate backups saved to ${result.backupRoot}`,
+						'info',
+						false
+					);
+				}
+			} catch (error) {
 			const message =
 				error instanceof Error && error.message
 					? error.message
 					: 'Failed to deduplicate media library';
-			libraryDeduplicateProgress = null;
-			libraryDeduplicateSummary = null;
-			toasts.error(message);
-		} finally {
-			if (executionStarted) {
-				stopLibraryDeduplicatePolling();
+				libraryDeduplicateProgress = null;
+				libraryDeduplicateSummary = null;
+				toasts.error(message);
+				logMaintenanceMessage('Library Dedupe', message, 'error', false);
+			} finally {
+				if (executionStarted) {
+					stopLibraryDeduplicatePolling();
 			}
 			isLibraryDeduplicating = false;
 		}
@@ -748,6 +881,7 @@
 		}
 		if (status.status === 'running') {
 			libraryDeduplicateProgress = formatLibraryDeduplicateProgress(status);
+			logMaintenanceMessage('Library Dedupe', libraryDeduplicateProgress);
 		}
 	}
 
@@ -1712,15 +1846,125 @@
 {/if}
 			</div>
 
-			<main
-				class="app-main glass-panel !sm:mb-40 !mb-56"
-				style={`min-height: ${mainMinHeight}px; margin-bottom: ${mainMarginBottom}px;`}
-			>
-				<div class="app-main__inner">
-						<Breadcrumb />
-						{@render children?.()}
+				<div class={`app-workspace ${isSidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}>
+					<aside class="app-sidebar glass-panel" aria-label="Primary navigation">
+						<div class="app-sidebar__header">
+							<div class="app-sidebar__brand">
+								<p class="app-sidebar__title">BiniLossless</p>
+								<p class="app-sidebar__subtitle">Library Control</p>
+							</div>
+							<button
+								type="button"
+								class="sidebar-icon-btn"
+								onclick={toggleSidebarCollapsed}
+								aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+								title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+							>
+								{#if isSidebarCollapsed}
+									<PanelRight size={16} />
+								{:else}
+									<PanelLeft size={16} />
+								{/if}
+							</button>
+						</div>
+
+						<div class="app-sidebar__section">
+							<p class="app-sidebar__section-title">Navigation</p>
+							<a
+								class={`sidebar-action ${isRouteActive('/') ? 'is-active' : ''}`}
+								href="/"
+								aria-current={isRouteActive('/') ? 'page' : undefined}
+								title="Home"
+							>
+								<House size={16} />
+								<span class="sidebar-action__label">Home</span>
+							</a>
+							<button
+								type="button"
+								class={`sidebar-action ${$page.url.pathname === '/' ? 'is-active' : ''}`}
+								onclick={() => goto('/')}
+								title="Browse and search"
+							>
+								<Search size={16} />
+								<span class="sidebar-action__label">Browse & Search</span>
+							</button>
+								<button
+									type="button"
+									class={`sidebar-action ${currentTrackRoute && isRouteActive(currentTrackRoute) ? 'is-active' : ''}`}
+									onclick={() => {
+										if (!currentTrackRoute) return;
+										void goto(currentTrackRoute);
+									}}
+									disabled={!currentTrackRoute}
+									title={currentTrackRoute ? 'Open currently playing track' : 'No active track'}
+								>
+									<Music2 size={16} />
+									<span class="sidebar-action__label">
+										{currentTrackRoute ? 'Now Playing' : 'No Track Active'}
+									</span>
+								</button>
+								<a
+									class={`sidebar-action ${isRouteActive('/history') ? 'is-active' : ''}`}
+									href="/history"
+									aria-current={isRouteActive('/history') ? 'page' : undefined}
+									title="Navigation history"
+								>
+									<History size={16} />
+									<span class="sidebar-action__label">History</span>
+								</a>
+							</div>
+
+							<div class="app-sidebar__section">
+								<p class="app-sidebar__section-title">Tools</p>
+							<button
+								type="button"
+								class={`sidebar-action ${showSettingsMenu ? 'is-active' : ''}`}
+								onclick={() => {
+									showSettingsMenu = !showSettingsMenu;
+								}}
+								title="Open settings"
+							>
+								<Settings size={16} />
+								<span class="sidebar-action__label">Settings</span>
+							</button>
+							<button
+								type="button"
+								class={`sidebar-action ${$downloadLogStore.isVisible ? 'is-active' : ''}`}
+								onclick={toggleDownloadLog}
+								title={$downloadLogStore.isVisible ? 'Hide download log' : 'Show download log'}
+							>
+								<Logs size={16} />
+								<span class="sidebar-action__label">Download Log</span>
+							</button>
+							{#if diagnosticsEnabled}
+								<button
+									type="button"
+									class={`sidebar-action ${diagnosticsOpen ? 'is-active' : ''}`}
+									onclick={toggleDiagnostics}
+									title={diagnosticsOpen ? 'Hide diagnostics' : 'Show diagnostics'}
+								>
+									<Wrench size={16} />
+									<span class="sidebar-action__label">Diagnostics</span>
+								</button>
+							{/if}
+						</div>
+
+						<div class="app-sidebar__meta">
+							<span class="app-sidebar__meta-chip">Queue {queueTrackCount}</span>
+							<span class="app-sidebar__meta-chip">{isServerStorage ? 'Server Save' : 'Client Save'}</span>
+						</div>
+					</aside>
+
+					<main
+						class="app-main app-main--workspace glass-panel !sm:mb-40 !mb-56"
+						style={`min-height: ${mainMinHeight}px; margin-bottom: ${mainMarginBottom}px;`}
+					>
+						<div class="app-main__inner">
+								<Breadcrumb />
+								{@render children?.()}
+						</div>
+					</main>
 				</div>
-			</main>
 
 			{#if $machineCurrentTrack && AudioPlayerComponent}
 				<AudioPlayerComponent
@@ -1800,6 +2044,162 @@
 		display: flex;
 		flex-direction: column;
 		min-height: 100vh;
+	}
+
+	.app-workspace {
+		flex: 1;
+		display: grid;
+		grid-template-columns: clamp(230px, 20vw, 270px) minmax(0, 1fr);
+		gap: clamp(0.75rem, 1.5vw, 1.25rem);
+		padding: clamp(0.8rem, 1.6vw, 1.4rem);
+		align-items: start;
+	}
+
+	.app-workspace.is-sidebar-collapsed {
+		grid-template-columns: 84px minmax(0, 1fr);
+	}
+
+	.app-sidebar {
+		position: sticky;
+		top: clamp(0.8rem, 1.6vw, 1.4rem);
+		display: flex;
+		flex-direction: column;
+		gap: 0.85rem;
+		padding: 0.9rem;
+		border-radius: 20px;
+		max-height: calc(100vh - clamp(1.6rem, 3.2vw, 2.8rem) - var(--player-height, 0px));
+		overflow-y: auto;
+	}
+
+	.app-sidebar__header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+	}
+
+	.app-sidebar__brand {
+		min-width: 0;
+	}
+
+	.app-sidebar__title {
+		margin: 0;
+		font-size: 0.9rem;
+		font-weight: 700;
+		letter-spacing: 0.02em;
+		color: rgba(241, 245, 249, 0.95);
+	}
+
+	.app-sidebar__subtitle {
+		margin: 0.15rem 0 0;
+		font-size: 0.68rem;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: rgba(148, 163, 184, 0.85);
+	}
+
+	.app-sidebar__section {
+		display: flex;
+		flex-direction: column;
+		gap: 0.45rem;
+		padding-top: 0.2rem;
+	}
+
+	.app-sidebar__section-title {
+		margin: 0;
+		font-size: 0.62rem;
+		font-weight: 700;
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
+		color: rgba(148, 163, 184, 0.72);
+	}
+
+	.sidebar-icon-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2rem;
+		height: 2rem;
+		border-radius: 10px;
+		border: 1px solid rgba(148, 163, 184, 0.25);
+		background: rgba(15, 23, 42, 0.35);
+		color: rgba(226, 232, 240, 0.9);
+		cursor: pointer;
+		transition: border-color 150ms ease, background-color 150ms ease;
+	}
+
+	.sidebar-icon-btn:hover {
+		border-color: rgba(96, 165, 250, 0.55);
+		background: rgba(30, 41, 59, 0.45);
+	}
+
+	.sidebar-action {
+		display: flex;
+		align-items: center;
+		gap: 0.55rem;
+		padding: 0.56rem 0.62rem;
+		border-radius: 12px;
+		border: 1px solid rgba(148, 163, 184, 0.2);
+		background: rgba(15, 23, 42, 0.18);
+		color: rgba(226, 232, 240, 0.9);
+		text-decoration: none;
+		font-size: 0.78rem;
+		font-weight: 600;
+		line-height: 1.1;
+		cursor: pointer;
+		transition:
+			border-color 140ms ease,
+			transform 140ms ease,
+			background-color 160ms ease,
+			box-shadow 160ms ease;
+	}
+
+	.sidebar-action:hover:not(:disabled) {
+		transform: translateY(-1px);
+		border-color: rgba(96, 165, 250, 0.55);
+		background: rgba(30, 41, 59, 0.32);
+		box-shadow: 0 8px 20px rgba(8, 11, 19, 0.25);
+	}
+
+	.sidebar-action.is-active {
+		border-color: rgba(96, 165, 250, 0.68);
+		background: rgba(37, 99, 235, 0.22);
+		box-shadow:
+			0 12px 24px rgba(37, 99, 235, 0.2),
+			inset 0 0 20px rgba(147, 197, 253, 0.12);
+	}
+
+	.sidebar-action:disabled {
+		opacity: 0.55;
+		cursor: not-allowed;
+	}
+
+	.sidebar-action__label {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.app-sidebar__meta {
+		margin-top: auto;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.45rem;
+		padding-top: 0.35rem;
+	}
+
+	.app-sidebar__meta-chip {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0.25rem 0.55rem;
+		border-radius: 999px;
+		border: 1px solid rgba(148, 163, 184, 0.35);
+		background: rgba(15, 23, 42, 0.26);
+		font-size: 0.62rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: rgba(191, 219, 254, 0.92);
 	}
 
 	.diagnostics-toggle {
@@ -2160,9 +2560,38 @@
 		z-index: 1;
 	}
 
+	.app-main--workspace {
+		margin: 0;
+		min-width: 0;
+	}
+
 	.app-main__inner {
 		max-width: min(1100px, 100%);
 		margin: 0 auto;
+	}
+
+	.app-workspace.is-sidebar-collapsed .app-sidebar {
+		padding-inline: 0.5rem;
+	}
+
+	.app-workspace.is-sidebar-collapsed .app-sidebar__header {
+		justify-content: center;
+	}
+
+	.app-workspace.is-sidebar-collapsed .app-sidebar__brand,
+	.app-workspace.is-sidebar-collapsed .app-sidebar__section-title,
+	.app-workspace.is-sidebar-collapsed .sidebar-action__label,
+	.app-workspace.is-sidebar-collapsed .app-sidebar__meta {
+		display: none;
+	}
+
+	.app-workspace.is-sidebar-collapsed .app-sidebar__section {
+		align-items: center;
+	}
+
+	.app-workspace.is-sidebar-collapsed .sidebar-action {
+		width: 100%;
+		justify-content: center;
 	}
 
 	.navigation-overlay {
@@ -2287,6 +2716,21 @@
 		.settings-section--bordered {
 			border-top: none;
 			padding-top: 0;
+		}
+	}
+
+	@media (max-width: 1023px) {
+		.app-workspace {
+			display: block;
+			padding: 0;
+		}
+
+		.app-sidebar {
+			display: none;
+		}
+
+		.app-main--workspace {
+			margin: clamp(1rem, 1.5vw, 1.75rem) clamp(0.75rem, 2vw, 1.5rem);
 		}
 	}
 

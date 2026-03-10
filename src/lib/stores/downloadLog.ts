@@ -16,6 +16,7 @@ interface DownloadLogState {
 
 const STORAGE_KEY = 'downloadLog';
 const LEGACY_STORAGE_KEY = 'tidal-ui.downloadLog';
+const MAX_DOWNLOAD_LOG_ENTRIES = 300;
 
 const getScopedStorageKey = (): string => getSessionStorageKey(STORAGE_KEY);
 
@@ -76,7 +77,7 @@ export function createDownloadLogStore() {
 			level
 		};
 		update((state) => {
-			const newEntries = [...state.entries, entry].slice(-100); // Keep only last 100 entries
+			const newEntries = [...state.entries, entry].slice(-MAX_DOWNLOAD_LOG_ENTRIES);
 
 			// Persist to localStorage
 			if (browser) {

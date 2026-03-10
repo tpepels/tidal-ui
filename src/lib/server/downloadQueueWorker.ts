@@ -546,6 +546,7 @@ async function downloadTrack(
 		targetArtistDir?: string;
 		targetAlbumDir?: string;
 		targetFilenameHint?: string;
+		requireMetadata?: boolean;
 	}
 ): Promise<{
 	success: boolean;
@@ -598,6 +599,21 @@ async function downloadTrack(
 			};
 		}
 
+		if (!result.trackLookup && options?.requireMetadata) {
+			const metadataError =
+				result.warning || `Metadata lookup unavailable for track ${trackId} (required for repair)`;
+			const categorized = categorizeError(metadataError);
+			console.warn(
+				`[Worker] Track ${trackId} metadata missing in strict repair mode; retrying: ${metadataError}`
+			);
+			return {
+				success: false,
+				error: metadataError,
+				retryable: categorized.isRetryable,
+				errorCategory: categorized.category,
+				retryAfterMs: categorized.retryAfterMs
+			};
+		}
 		if (!result.trackLookup) {
 			console.warn(
 				`[Worker] Track ${trackId} downloaded without track metadata; proceeding with filename-only finalization.`
@@ -736,7 +752,10 @@ async function processTrackJob(job: QueuedJob): Promise<void> {
 				forceOverwrite: trackJob.forceOverwrite === true,
 				targetArtistDir: trackJob.targetArtistDir,
 				targetAlbumDir: trackJob.targetAlbumDir,
-				targetFilenameHint: trackJob.targetFilenameHint
+				targetFilenameHint: trackJob.targetFilenameHint,
+				requireMetadata: Boolean(
+					trackJob.targetArtistDir && trackJob.targetAlbumDir && trackJob.targetFilenameHint
+				)
 			}
 		);
 

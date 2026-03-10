@@ -36,6 +36,7 @@
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 	import { browseState } from '$lib/stores/browseState';
 	import { artistCacheStore } from '$lib/stores/artistCache';
+	import { navigationHistoryStore } from '$lib/stores/navigationHistory';
 	import { fetchAlbumLibraryStatus, repairAlbumInLibrary } from '$lib/utils/mediaLibraryClient';
 	import { getCoverCacheKey, getUnifiedCoverCandidates } from '$lib/utils/coverPipeline';
 
@@ -146,6 +147,11 @@
 				breadcrumbStore.setLabel(`/artist/${albumData.artist.id}`, albumData.artist.name);
 			}
 			breadcrumbStore.setCurrentLabel(albumData.title, `/album/${albumData.id}`);
+			navigationHistoryStore.visitAlbum({
+				id: albumData.id,
+				title: albumData.title,
+				artistName: albumData.artist?.name
+			});
 
 			if (albumData.cover) {
 				const artistId = albumData.artist?.id;
