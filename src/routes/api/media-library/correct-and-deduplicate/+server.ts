@@ -101,6 +101,8 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	let lock: Awaited<ReturnType<typeof acquireMediaMaintenanceLock>> | null = null;
 	let currentRunId: string | null = null;
+	let partialSweep: MediaLibraryTransientSweepSummary | null = null;
+	let partialDeduplicate: MediaLibraryDedupeSummary | null = null;
 	try {
 		const body = (await request.json().catch(() => ({}))) as CorrectAndDeduplicateRequestBody;
 		const dryRun = body.dryRun === true;
@@ -144,6 +146,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				dryRun,
 				activeJobIds
 			});
+			partialSweep = sweep;
 			setRunPhase('deduplicate');
 			const deduplicate = await deduplicateMediaLibrary({
 				dryRun,
@@ -154,6 +157,7 @@ export const POST: RequestHandler = async ({ request }) => {
 					setRunProgress(progress);
 				}
 			});
+			partialDeduplicate = deduplicate;
 			const finishedAt = Date.now();
 			const result: CorrectAndDeduplicateReport = {
 				runId: currentRunId,
@@ -185,6 +189,10 @@ export const POST: RequestHandler = async ({ request }) => {
 			error instanceof Error
 				? error.message
 				: 'Failed to run correction sweep and deduplication';
+		const partial = {
+			sweep: partialSweep,
+			deduplicate: partialDeduplicate
+		};
 		if (currentRunId) {
 			await writeMediaMaintenanceRunReport({
 				runId: currentRunId,
@@ -194,7 +202,8 @@ export const POST: RequestHandler = async ({ request }) => {
 					startedAt: runStartedAt,
 					finishedAt: Date.now(),
 					phase: runPhase,
-					progress: runProgress
+					progress: runProgress,
+					partial
 				}
 			});
 		}
@@ -202,7 +211,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json(
 			{
 				success: false,
-				error: message
+				error: message,
+				partial
 			},
 			{ status: 500 }
 		);

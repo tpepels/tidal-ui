@@ -248,6 +248,10 @@ export type MediaLibraryCorrectAndDeduplicateResult = {
 	dryRun?: boolean;
 	sweep?: MediaLibrarySweepTemporaryResult;
 	deduplicate?: MediaLibraryDeduplicateResult;
+	partial?: {
+		sweep?: MediaLibrarySweepTemporaryResult | null;
+		deduplicate?: MediaLibraryDeduplicateResult | null;
+	};
 	error?: string;
 };
 

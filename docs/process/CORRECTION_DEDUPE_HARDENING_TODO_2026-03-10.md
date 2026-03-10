@@ -70,7 +70,7 @@
 ## Test Plan TODO
 - [x] Sweep does not remove fresh publish/backup folders.
 - [x] Sweep does not remove folders for active queue jobs.
-- [ ] Lock conflict returns `409` across concurrent maintenance operations.
-- [ ] Combined endpoint reports both phases correctly on partial failure.
-- [ ] Dedupe merge handles EXDEV path without aborting full run.
-- [ ] Persisted report retention works and does not leak disk.
+- [x] Lock conflict returns `409` across concurrent maintenance operations.
+- [x] Combined endpoint reports both phases correctly on partial failure.
+- [x] Dedupe merge handles EXDEV path without aborting full run.
+- [x] Persisted report retention works and does not leak disk.

@@ -268,4 +268,5 @@ describe('mediaLibrary', () => {
 		expect(result.duplicateFilesBackedUp).toBe(1);
 		expect(result.backupRoot).toBeTruthy();
 	});
+
 });

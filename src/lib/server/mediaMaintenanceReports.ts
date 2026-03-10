@@ -1,7 +1,9 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
-const REPORTS_ROOT = path.join(process.cwd(), 'data', 'media-maintenance', 'runs');
+const REPORTS_ROOT =
+	process.env.MEDIA_MAINTENANCE_REPORTS_DIR?.trim() ||
+	path.join(process.cwd(), 'data', 'media-maintenance', 'runs');
 const REPORT_RETENTION = Math.max(
 	5,
 	Number(process.env.MEDIA_MAINTENANCE_REPORT_RETENTION || 100)

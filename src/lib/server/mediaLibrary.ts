@@ -1220,10 +1220,22 @@ async function moveDirectoryContents(
 			await moveFile(sourcePath, resolvedTargetPath);
 			movedFiles += 1;
 		} catch (error) {
+			let effectiveError = error;
+			const exdevLike = (error as NodeJS.ErrnoException | undefined)?.code === 'EXDEV';
+			if (exdevLike) {
+				try {
+					await fs.copyFile(sourcePath, resolvedTargetPath);
+					await fs.unlink(sourcePath);
+					movedFiles += 1;
+					continue;
+				} catch (fallbackError) {
+					effectiveError = fallbackError;
+				}
+			}
 			moveErrors.push({
 				sourcePath,
 				targetPath: resolvedTargetPath,
-				error: error instanceof Error ? error.message : String(error)
+				error: effectiveError instanceof Error ? effectiveError.message : String(effectiveError)
 			});
 		}
 	}
