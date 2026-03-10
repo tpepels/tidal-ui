@@ -82,6 +82,19 @@ export interface MetadataOverrides {
 export interface MetadataEmbeddingOptions {
 	enableExperimentalMusicBrainzTagging?: boolean;
 	strictMusicBrainzMatching?: boolean;
+	onMusicBrainzLookupResult?: (summary: MusicBrainzLookupSummary) => void;
+}
+
+export interface MusicBrainzLookupSummary {
+	enabled: boolean;
+	strictMatch: boolean;
+	lookupAttempted: boolean;
+	tagsApplied: number;
+}
+
+interface MetadataEnhancementResult {
+	metadata: Record<string, string>;
+	musicBrainz: MusicBrainzLookupSummary;
 }
 
 export async function embedMetadataToFile(
@@ -93,7 +106,9 @@ export async function embedMetadataToFile(
 	const ffmpegPath = findFfmpeg();
 	if (!ffmpegPath) return filePath;
 
-	const metadata = await buildMetadataObjectWithEnhancements(lookup, overrides, options);
+	const enhancementResult = await buildMetadataObjectWithEnhancements(lookup, overrides, options);
+	options?.onMusicBrainzLookupResult?.(enhancementResult.musicBrainz);
+	const metadata = enhancementResult.metadata;
 	const entries = Object.entries(metadata);
 	if (entries.length === 0) {
 		console.warn('[Server Metadata] No metadata entries to embed for:', filePath);
@@ -187,21 +202,48 @@ async function buildMetadataObjectWithEnhancements(
 	lookup: TrackLookup,
 	overrides?: MetadataOverrides,
 	options?: MetadataEmbeddingOptions
-): Promise<Record<string, string>> {
+): Promise<MetadataEnhancementResult> {
 	const baseMetadata = buildMetadataObject(lookup, overrides);
+	const strictMatch = options?.strictMusicBrainzMatching === true;
 	if (!options?.enableExperimentalMusicBrainzTagging) {
-		return baseMetadata;
+		return {
+			metadata: baseMetadata,
+			musicBrainz: {
+				enabled: false,
+				strictMatch,
+				lookupAttempted: false,
+				tagsApplied: 0
+			}
+		};
 	}
 
+	const trackLabel = `${lookup.track?.id ?? 'unknown'}:${lookup.track?.title ?? 'Unknown Track'}`;
+	console.log(
+		`[MusicBrainz] Lookup ${strictMatch ? 'strict' : 'flex'} for ${trackLabel}`
+	);
 	const musicBrainzTags = await lookupMusicBrainzTagsForTrack(lookup.track, {
-		strictIsrcMatch: options?.strictMusicBrainzMatching === true
+		strictIsrcMatch: strictMatch
 	});
-	if (Object.keys(musicBrainzTags).length === 0) {
-		return baseMetadata;
+	const tagsApplied = Object.keys(musicBrainzTags).length;
+	if (tagsApplied > 0) {
+		console.log(`[MusicBrainz] Applied ${tagsApplied} tag(s) for ${trackLabel}`);
+	} else {
+		console.log(`[MusicBrainz] No tags found for ${trackLabel}`);
 	}
 
 	return {
-		...baseMetadata,
-		...(musicBrainzTags as Partial<Record<StandardMetadataKey, string>>)
+		metadata:
+			tagsApplied === 0
+				? baseMetadata
+				: {
+						...baseMetadata,
+						...(musicBrainzTags as Partial<Record<StandardMetadataKey, string>>)
+					},
+		musicBrainz: {
+			enabled: true,
+			strictMatch,
+			lookupAttempted: true,
+			tagsApplied
+		}
 	};
 }

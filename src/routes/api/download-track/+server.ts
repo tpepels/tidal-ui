@@ -191,17 +191,18 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					message = `File renamed and saved to ${artistDir}/${albumDir}/${finalizeResult.filename}`;
 				}
 
-				return json(
-					{
-						success: true,
-						filepath: finalizeResult.filepath,
-						filename: finalizeResult.filename,
-						action: finalizeResult.action,
-						message,
-						coverDownloaded: finalizeResult.coverDownloaded
-					},
-					{ status: 201 }
-				);
+					return json(
+						{
+							success: true,
+							filepath: finalizeResult.filepath,
+							filename: finalizeResult.filename,
+							action: finalizeResult.action,
+							message,
+							coverDownloaded: finalizeResult.coverDownloaded,
+							musicBrainz: finalizeResult.musicBrainz
+						},
+						{ status: 201 }
+					);
 			} else {
 				// Metadata
 				const {
@@ -484,16 +485,17 @@ export const POST: RequestHandler = async ({ request, url }) => {
 			const albumDir = sanitizeDirName(albumTitle || 'Unknown Album');
 			let message = `File saved to ${artistDir}/${albumDir}/${finalizeResult.filename}`;
 			if (finalizeResult.action === 'rename') message = `File renamed`;
-			return json(
-				{
-					success: true,
-					filepath: finalizeResult.filepath,
-					filename: finalizeResult.filename,
-					action: finalizeResult.action,
-					message
-				},
-				{ status: 201 }
-			);
+				return json(
+					{
+						success: true,
+						filepath: finalizeResult.filepath,
+						filename: finalizeResult.filename,
+						action: finalizeResult.action,
+						message,
+						musicBrainz: finalizeResult.musicBrainz
+					},
+					{ status: 201 }
+				);
 		}
 	} catch (error) {
 		const errorMsg = error instanceof Error ? error.message : String(error);

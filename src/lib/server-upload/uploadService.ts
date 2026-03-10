@@ -41,6 +41,38 @@ const formatDownloadError = (payload: unknown, fallback: string): string => {
 	return directMessage ?? fallback;
 };
 
+interface MusicBrainzUploadSummary {
+	enabled: boolean;
+	strictMatch: boolean;
+	lookupAttempted: boolean;
+	tagsApplied: number;
+}
+
+const buildTrackLabel = (trackId: number, trackTitle?: string): string =>
+	trackTitle && trackTitle.trim().length > 0 ? `"${trackTitle.trim()}"` : `track ${trackId}`;
+
+const logMusicBrainzOutcome = (
+	trackId: number,
+	trackTitle: string | undefined,
+	summary: MusicBrainzUploadSummary | undefined
+): void => {
+	const label = buildTrackLabel(trackId, trackTitle);
+	if (!summary?.enabled) {
+		return;
+	}
+	if (!summary.lookupAttempted) {
+		downloadLogStore.warning(`[MusicBrainz] ${label}: lookup was enabled but not attempted.`);
+		return;
+	}
+	if (summary.tagsApplied > 0) {
+		downloadLogStore.success(
+			`[MusicBrainz] ${label}: applied ${summary.tagsApplied} tag(s).`
+		);
+		return;
+	}
+	downloadLogStore.log(`[MusicBrainz] ${label}: lookup completed with no additional tags.`);
+};
+
 // Convert blob to base64
 const blobToBase64 = async (blob: Blob): Promise<string> => {
 	return new Promise((resolve, reject) => {
@@ -65,6 +97,7 @@ const uploadInChunks = async (
 	message?: string;
 	error?: string;
 	action?: string;
+	musicBrainz?: MusicBrainzUploadSummary;
 }> => {
 	if (!Number.isFinite(totalChunks) || totalChunks <= 0) {
 		throw new Error('Invalid totalChunks for upload');
@@ -80,6 +113,7 @@ const uploadInChunks = async (
 		filepath?: string;
 		message?: string;
 		action?: string;
+		musicBrainz?: MusicBrainzUploadSummary;
 	} | null = null;
 
 	for (let i = 0; i < totalChunks; i++) {
@@ -145,7 +179,8 @@ const uploadInChunks = async (
 		success: true,
 		filepath: finalData.filepath,
 		message: finalData.message,
-		action: finalData.action || 'overwrite'
+		action: finalData.action || 'overwrite',
+		musicBrainz: finalData.musicBrainz
 	};
 };
 
@@ -181,6 +216,7 @@ export const downloadTrackServerSide = async (
 	message?: string;
 	error?: string;
 	action?: string;
+	musicBrainz?: MusicBrainzUploadSummary;
 }> => {
 	try {
 		if (!blob) {
@@ -195,9 +231,16 @@ export const downloadTrackServerSide = async (
 		const useChunks = options?.useChunks ?? blob.size > 1024 * 1024; // Use chunks for files > 1MB for better progress granularity
 		const chunkSize = options?.chunkSize ?? 2 * 1024 * 1024; // 2MB chunks (reduced CPU load)
 		const conflictResolution = options?.conflictResolution ?? 'overwrite_if_different';
+		const musicBrainzEnabled = options?.experimentalMusicBrainzTagging === true;
+		const strictMusicBrainzMatch = options?.strictMusicBrainzMatching === true;
 
 		const sizeMsg = `[Server Download] Phase 1: Sending metadata for "${trackTitle}" (${(blob.size / 1024 / 1024).toFixed(2)} MB)${useChunks ? ' (chunked)' : ''}`;
 		downloadLogStore.log(sizeMsg);
+		if (musicBrainzEnabled) {
+			downloadLogStore.log(
+				`[MusicBrainz] ${buildTrackLabel(trackId, trackTitle)}: tagging enabled (${strictMusicBrainzMatch ? 'strict ISRC' : 'flex'} mode).`
+			);
+		}
 
 		// Generate checksum for integrity check
 		const checksum = await calculateBlobChecksum(blob);
@@ -327,6 +370,7 @@ export const downloadTrackServerSide = async (
 			if (uploadResult.success) {
 				const logMessage = uploadResult.message ?? 'Server download completed';
 				console.log(`[Server Download] ${logMessage}`);
+				logMusicBrainzOutcome(trackId, trackTitle, uploadResult.musicBrainz);
 			}
 			return uploadResult;
 		} else {
@@ -369,11 +413,13 @@ export const downloadTrackServerSide = async (
 
 			const data = await uploadResponse.json();
 			console.log(`[Server Download] Completed: ${data.message}`);
+			logMusicBrainzOutcome(trackId, trackTitle, data.musicBrainz as MusicBrainzUploadSummary | undefined);
 			return {
 				success: true,
 				filepath: data.filepath,
 				message: data.message,
-				action: data.action
+				action: data.action,
+				musicBrainz: data.musicBrainz as MusicBrainzUploadSummary | undefined
 			};
 		}
 	} catch (error) {

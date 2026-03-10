@@ -96,16 +96,17 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				: `File saved to ${artistDir}/${albumDir}/${finalizeResult.filename}`
 					+ (finalizeResult.coverDownloaded ? ' (with cover)' : '');
 
-		return json(
-			{
-				success: true,
-				filepath: finalizeResult.filepath,
-				filename: finalizeResult.filename,
-				action: finalizeResult.action,
-				message
-			},
-			{ status: 201 }
-		);
+			return json(
+				{
+					success: true,
+					filepath: finalizeResult.filepath,
+					filename: finalizeResult.filename,
+					action: finalizeResult.action,
+					message,
+					musicBrainz: finalizeResult.musicBrainz
+				},
+				{ status: 201 }
+			);
 	} catch (error) {
 		const errorMsg = error instanceof Error ? error.message : String(error);
 		console.error(`[Server Download] Error: ${errorMsg}`, error);

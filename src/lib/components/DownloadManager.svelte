@@ -27,6 +27,8 @@
 			albumTitle?: string;
 			albumId?: number;
 			quality?: string;
+			experimentalMusicBrainzTagging?: boolean;
+			strictMusicBrainzMatching?: boolean;
 		};
 		progress: number; // 0-1
 		createdAt: number;
@@ -233,6 +235,13 @@
 		return `${title}${artist}`;
 	}
 
+	function describeMusicBrainzMode(job: QueueJob): string | null {
+		if (job.job.experimentalMusicBrainzTagging !== true) {
+			return null;
+		}
+		return job.job.strictMusicBrainzMatching === true ? 'strict ISRC mode' : 'flex mode';
+	}
+
 	function jobShortId(jobId: string): string {
 		return jobId.slice(0, 8);
 	}
@@ -270,8 +279,15 @@
 			const label = summarizeJob(job);
 			const shortId = jobShortId(job.id);
 			const next = buildObservation(job);
+			const musicBrainzMode = describeMusicBrainzMode(job);
 
 			if (!prev) {
+				if (musicBrainzMode) {
+					logDownloadEvent(
+						'info',
+						`[MusicBrainz] ${label} (job ${shortId}): tagging enabled (${musicBrainzMode}).`
+					);
+				}
 				if (job.status === 'completed') {
 					logDownloadEvent('success', `[Queue] ${label} completed (job ${shortId}).`);
 				} else if (job.status === 'failed') {
@@ -304,6 +320,17 @@
 						logDownloadEvent('warning', `[Queue] Cancelled ${label} (job ${shortId}).`);
 					} else if (job.status === 'queued') {
 						logDownloadEvent('info', `[Queue] Re-queued ${label} (job ${shortId}).`);
+					}
+					if (musicBrainzMode && job.status === 'completed') {
+						logDownloadEvent(
+							'success',
+							`[MusicBrainz] ${label} (job ${shortId}): server tagging finished.`
+						);
+					} else if (musicBrainzMode && job.status === 'failed') {
+						logDownloadEvent(
+							'warning',
+							`[MusicBrainz] ${label} (job ${shortId}): job failed before tagging could complete.`
+						);
 					}
 				}
 

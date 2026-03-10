@@ -1,7 +1,11 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { AudioQuality, TrackLookup } from '$lib/types';
-import { embedMetadataToFile, type MetadataOverrides } from '$lib/server/metadataEmbedder';
+import {
+	embedMetadataToFile,
+	type MetadataOverrides,
+	type MusicBrainzLookupSummary
+} from '$lib/server/metadataEmbedder';
 import { validateAudioFileIntegrity } from '$lib/server/download/audioIntegrity';
 import {
 	buildServerFilename,
@@ -56,6 +60,7 @@ export type FinalizeTrackResult =
 			action: 'overwrite' | 'skip' | 'rename';
 			coverDownloaded: boolean;
 			metadataEmbedded: boolean;
+			musicBrainz?: MusicBrainzLookupSummary;
 	  }
 	| {
 			success: false;
@@ -288,6 +293,14 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 	const effectiveConflictResolution: ConflictResolution = requireExistingTargetDir
 		? 'overwrite'
 		: conflictResolution;
+	let musicBrainzSummary: MusicBrainzLookupSummary | undefined = experimentalMusicBrainzTagging
+		? {
+				enabled: true,
+				strictMatch: strictMusicBrainzMatching,
+				lookupAttempted: false,
+				tagsApplied: 0
+			}
+		: undefined;
 
 	let newFileSize = 0;
 	if (workingBuffer) {
@@ -355,7 +368,8 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 			filename: path.basename(finalPath),
 			action,
 			coverDownloaded: false,
-			metadataEmbedded: false
+			metadataEmbedded: false,
+			musicBrainz: musicBrainzSummary
 		};
 	}
 
@@ -434,13 +448,20 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 				hasMetadataOverrides ? metadataOverrides : undefined,
 				{
 					enableExperimentalMusicBrainzTagging: experimentalMusicBrainzTagging,
-					strictMusicBrainzMatching
+					strictMusicBrainzMatching,
+					onMusicBrainzLookupResult: (summary) => {
+						musicBrainzSummary = summary;
+					}
 				}
 			);
 			metadataEmbedded = true;
 		} catch {
 			metadataEmbedded = false;
 		}
+	} else if (experimentalMusicBrainzTagging) {
+		console.warn(
+			`[MusicBrainz] Lookup skipped for track ${trackId}: track metadata unavailable during finalize`
+		);
 	}
 
 	let coverDownloaded = false;
@@ -532,6 +553,7 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 		filename: path.basename(finalOutputPath),
 		action,
 		coverDownloaded,
-		metadataEmbedded
+		metadataEmbedded,
+		musicBrainz: musicBrainzSummary
 	};
 }

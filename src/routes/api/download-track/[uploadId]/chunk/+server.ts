@@ -227,17 +227,18 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				trackTitle
 			});
 
-			return json(
-				{
-					success: true,
-					filepath: finalizeResult.filepath,
-					filename: finalizeResult.filename,
-					action: finalizeResult.action,
-					message,
-					coverDownloaded: finalizeResult.coverDownloaded
-				},
-				{ status: 201 }
-			);
+				return json(
+					{
+						success: true,
+						filepath: finalizeResult.filepath,
+						filename: finalizeResult.filename,
+						action: finalizeResult.action,
+						message,
+						coverDownloaded: finalizeResult.coverDownloaded,
+						musicBrainz: finalizeResult.musicBrainz
+					},
+					{ status: 201 }
+				);
 		};
 
 		if (chunkIndex >= chunkState.totalChunks) {
