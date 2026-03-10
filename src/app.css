@@ -79,6 +79,7 @@ a[aria-disabled='true'] {
 	--mono-surface-2: rgba(255, 255, 255, 0.14);
 	--mono-border-1: rgba(255, 255, 255, 0.22);
 	--mono-border-2: rgba(255, 255, 255, 0.4);
+	--mono-surface-card: linear-gradient(160deg, rgba(14, 14, 14, 0.64), rgba(7, 7, 7, 0.46));
 }
 
 html,
@@ -271,4 +272,111 @@ body {
 
 .btn-ghost {
 	@apply bg-transparent text-gray-300 hover:bg-gray-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+/* Shared route page chrome */
+.ui-page {
+	display: flex;
+	flex-direction: column;
+	gap: 0.9rem;
+}
+
+.ui-page__header {
+	display: flex;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: 0.85rem;
+	flex-wrap: wrap;
+}
+
+.ui-page__title-group {
+	display: flex;
+	flex-direction: column;
+	gap: 0.14rem;
+}
+
+.ui-page__eyebrow {
+	margin: 0;
+	font-size: 0.62rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.2em;
+	color: rgba(212, 212, 212, 0.7);
+}
+
+.ui-page__title {
+	margin: 0;
+	font-size: clamp(1.2rem, 1.06rem + 0.62vw, 1.54rem);
+	line-height: 1.14;
+}
+
+.ui-page__subtitle {
+	margin: 0;
+	font-size: 0.78rem;
+	color: rgba(212, 212, 212, 0.74);
+	line-height: 1.35;
+}
+
+.ui-page__actions {
+	display: inline-flex;
+	flex-wrap: wrap;
+	gap: 0.45rem;
+}
+
+.ui-chip-link,
+.ui-chip-button {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	padding: 0.4rem 0.62rem;
+	border-radius: 10px;
+	border: 1px solid rgba(212, 212, 212, 0.28);
+	background: rgba(255, 255, 255, 0.05);
+	font-size: 0.72rem;
+	font-weight: 600;
+	color: inherit;
+	text-decoration: none;
+	transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+
+.ui-chip-link:hover,
+.ui-chip-button:hover:not(:disabled) {
+	border-color: rgba(255, 255, 255, 0.45);
+	background: rgba(255, 255, 255, 0.09);
+	transform: translateY(-1px);
+}
+
+.ui-chip-button {
+	cursor: pointer;
+}
+
+.ui-chip-button:disabled {
+	opacity: 0.58;
+	cursor: not-allowed;
+	transform: none;
+}
+
+.ui-chip-button--compact {
+	padding: 0.28rem 0.46rem;
+	font-size: 0.66rem;
+}
+
+.ui-surface-card {
+	border-radius: var(--ui-radius-md, 14px);
+	border: 1px solid rgba(212, 212, 212, 0.22);
+	background: var(--mono-surface-card);
+	backdrop-filter: blur(var(--perf-blur-medium, 18px)) saturate(var(--perf-saturate, 145%));
+	-webkit-backdrop-filter: blur(var(--perf-blur-medium, 18px)) saturate(var(--perf-saturate, 145%));
+	padding: 0.78rem 0.86rem;
+}
+
+.ui-surface-grid {
+	display: grid;
+	gap: 0.85rem;
+}
+
+@media (min-width: 940px) {
+	.ui-surface-grid {
+		grid-template-columns: repeat(2, minmax(260px, 1fr));
+	}
 }

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { navigationHistoryStore } from '$lib/stores/navigationHistory';
+	import PageState from '$lib/components/ui/PageState.svelte';
 	import { Library, User, Trash2, Clock3, ArrowUpRight } from 'lucide-svelte';
 	import { getRouteMeta } from '$lib/config/routeMeta';
 
@@ -13,7 +14,8 @@
 	const hasHistory = $derived(
 		$navigationHistoryStore.albums.length > 0 || $navigationHistoryStore.artists.length > 0
 	);
-
+	const hasAlbumHistory = $derived($navigationHistoryStore.albums.length > 0);
+	const hasArtistHistory = $derived($navigationHistoryStore.artists.length > 0);
 	const latestAlbum = $derived($navigationHistoryStore.albums[0] ?? null);
 	const latestArtist = $derived($navigationHistoryStore.artists[0] ?? null);
 
@@ -34,121 +36,295 @@
 	<title>{meta?.title ?? 'History'} | BiniLossless</title>
 </svelte:head>
 
-<div class="mx-auto w-full max-w-6xl px-4 py-8 md:px-6">
-	<div class="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-		<div>
-			<p class="text-xs uppercase tracking-[0.2em] text-slate-400">Navigation</p>
-			<h1 class="text-3xl font-bold text-slate-100 md:text-4xl">{meta?.title ?? 'History'}</h1>
-			<p class="mt-2 text-sm text-slate-300">Last 25 visited albums and last 10 visited artists.</p>
+<section class="ui-page history-page">
+	<header class="ui-page__header">
+		<div class="ui-page__title-group">
+			<p class="ui-page__eyebrow">Navigation</p>
+			<h1 class="ui-page__title">{meta?.title ?? 'History'}</h1>
+			<p class="ui-page__subtitle">{meta?.subtitle ?? 'Recently visited artists and albums'}</p>
 		</div>
-		<button
-			type="button"
-			class="inline-flex items-center gap-2 self-start rounded-lg border border-slate-600/60 bg-slate-900/50 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:border-slate-400 hover:bg-slate-800/60 disabled:cursor-not-allowed disabled:opacity-50"
-			onclick={clearHistory}
-			disabled={!hasHistory}
-		>
-			<Trash2 size={16} />
-			<span>Clear all history</span>
-		</button>
+		<div class="ui-page__actions">
+			<button type="button" class="ui-chip-button" onclick={clearHistory} disabled={!hasHistory}>
+				<Trash2 size={14} />
+				<span>Clear all history</span>
+			</button>
+		</div>
+	</header>
+
+	<div class="ui-surface-grid history-page__overview">
+		<article class="ui-surface-card history-highlight-card">
+			<div class="history-highlight-card__heading">
+				<Clock3 size={16} />
+				<p>Resume last album</p>
+			</div>
+			{#if latestAlbum}
+				<a class="history-highlight-card__link" href={latestAlbum.href}>
+					<strong>{latestAlbum.title}</strong>
+					<span>{latestAlbum.artistName}</span>
+					<span class="history-highlight-card__timestamp">
+						{formatVisitedAt(latestAlbum.visitedAt)}
+						<ArrowUpRight size={13} />
+					</span>
+				</a>
+			{:else}
+				<PageState kind="empty" title="No album history yet" message="Visit albums to populate this shortcut." />
+			{/if}
+		</article>
+
+		<article class="ui-surface-card history-highlight-card">
+			<div class="history-highlight-card__heading">
+				<Clock3 size={16} />
+				<p>Resume last artist</p>
+			</div>
+			{#if latestArtist}
+				<a class="history-highlight-card__link" href={latestArtist.href}>
+					<strong>{latestArtist.name}</strong>
+					<span class="history-highlight-card__timestamp">
+						{formatVisitedAt(latestArtist.visitedAt)}
+						<ArrowUpRight size={13} />
+					</span>
+				</a>
+			{:else}
+				<PageState kind="empty" title="No artist history yet" message="Visit artists to populate this shortcut." />
+			{/if}
+		</article>
 	</div>
 
-	<section class="mb-4 grid gap-3 rounded-2xl border border-slate-700/60 bg-slate-900/45 p-4 lg:grid-cols-2">
-		<div class="flex items-start gap-3">
-			<Clock3 size={16} class="mt-0.5 text-slate-300" />
-			<div>
-				<p class="text-xs uppercase tracking-[0.18em] text-slate-400">Resume</p>
-				{#if latestAlbum}
-					<a class="mt-1 inline-flex items-center gap-1 text-sm font-semibold text-slate-100 hover:text-white" href={latestAlbum.href}>
-						<span>Last album: {latestAlbum.title}</span>
-						<ArrowUpRight size={14} />
-					</a>
-				{:else}
-					<p class="mt-1 text-sm text-slate-400">No recent album.</p>
-				{/if}
-			</div>
-		</div>
-		<div class="flex items-start gap-3">
-			<Clock3 size={16} class="mt-0.5 text-slate-300" />
-			<div>
-				<p class="text-xs uppercase tracking-[0.18em] text-slate-400">Resume</p>
-				{#if latestArtist}
-					<a class="mt-1 inline-flex items-center gap-1 text-sm font-semibold text-slate-100 hover:text-white" href={latestArtist.href}>
-						<span>Last artist: {latestArtist.name}</span>
-						<ArrowUpRight size={14} />
-					</a>
-				{:else}
-					<p class="mt-1 text-sm text-slate-400">No recent artist.</p>
-				{/if}
-			</div>
-		</div>
-	</section>
-
-	<div class="grid gap-4 lg:grid-cols-2">
-		<section class="rounded-2xl border border-slate-700/60 bg-slate-900/45 p-4">
-			<div class="mb-3 flex items-center justify-between gap-2 text-slate-100">
-				<div class="flex items-center gap-2">
+	<div class="history-page__columns">
+		<section class="ui-surface-card history-list-card">
+			<div class="history-list-card__header">
+				<div class="history-list-card__title">
 					<Library size={16} />
-					<h2 class="text-lg font-semibold">Albums ({$navigationHistoryStore.albums.length}/25)</h2>
+					<h2>Albums ({$navigationHistoryStore.albums.length}/25)</h2>
 				</div>
 				<button
 					type="button"
-					class="rounded-md border border-slate-600/60 px-2 py-1 text-xs font-semibold text-slate-200 hover:border-slate-400 hover:bg-slate-800/60 disabled:opacity-50"
+					class="ui-chip-button ui-chip-button--compact"
 					onclick={clearAlbumHistory}
-					disabled={$navigationHistoryStore.albums.length === 0}
+					disabled={!hasAlbumHistory}
 				>
 					Clear albums
 				</button>
 			</div>
-			{#if $navigationHistoryStore.albums.length === 0}
-				<p class="text-sm text-slate-400">No album visits yet.</p>
+
+			{#if !hasAlbumHistory}
+				<PageState kind="empty" title="No album visits yet" message="Visited albums will appear here." />
 			{:else}
-				<ul class="space-y-2">
-					{#each $navigationHistoryStore.albums as entry (entry.id)}
-						<li class="rounded-lg border border-slate-700/50 bg-slate-950/40 px-3 py-2">
-							<a class="block text-sm font-semibold text-slate-100 hover:text-white" href={entry.href}>
-								{entry.title}
+				<ol class="history-card-grid">
+					{#each $navigationHistoryStore.albums as entry, index (entry.id)}
+						<li>
+							<a class="history-entry-card" href={entry.href}>
+								<span class="history-entry-card__index">#{index + 1}</span>
+								<span class="history-entry-card__body">
+									<span class="history-entry-card__title">{entry.title}</span>
+									<span class="history-entry-card__meta">{entry.artistName}</span>
+									<span class="history-entry-card__timestamp">{formatVisitedAt(entry.visitedAt)}</span>
+								</span>
+								<ArrowUpRight size={14} />
 							</a>
-							<p class="text-xs text-slate-400">{entry.artistName}</p>
-							<p class="mt-1 text-[11px] uppercase tracking-[0.14em] text-slate-500">
-								{formatVisitedAt(entry.visitedAt)}
-							</p>
 						</li>
 					{/each}
-				</ul>
+				</ol>
 			{/if}
 		</section>
 
-		<section class="rounded-2xl border border-slate-700/60 bg-slate-900/45 p-4">
-			<div class="mb-3 flex items-center justify-between gap-2 text-slate-100">
-				<div class="flex items-center gap-2">
+		<section class="ui-surface-card history-list-card">
+			<div class="history-list-card__header">
+				<div class="history-list-card__title">
 					<User size={16} />
-					<h2 class="text-lg font-semibold">Artists ({$navigationHistoryStore.artists.length}/10)</h2>
+					<h2>Artists ({$navigationHistoryStore.artists.length}/10)</h2>
 				</div>
 				<button
 					type="button"
-					class="rounded-md border border-slate-600/60 px-2 py-1 text-xs font-semibold text-slate-200 hover:border-slate-400 hover:bg-slate-800/60 disabled:opacity-50"
+					class="ui-chip-button ui-chip-button--compact"
 					onclick={clearArtistHistory}
-					disabled={$navigationHistoryStore.artists.length === 0}
+					disabled={!hasArtistHistory}
 				>
 					Clear artists
 				</button>
 			</div>
-			{#if $navigationHistoryStore.artists.length === 0}
-				<p class="text-sm text-slate-400">No artist visits yet.</p>
+
+			{#if !hasArtistHistory}
+				<PageState kind="empty" title="No artist visits yet" message="Visited artists will appear here." />
 			{:else}
-				<ul class="space-y-2">
-					{#each $navigationHistoryStore.artists as entry (entry.id)}
-						<li class="rounded-lg border border-slate-700/50 bg-slate-950/40 px-3 py-2">
-							<a class="block text-sm font-semibold text-slate-100 hover:text-white" href={entry.href}>
-								{entry.name}
+				<ol class="history-card-grid">
+					{#each $navigationHistoryStore.artists as entry, index (entry.id)}
+						<li>
+							<a class="history-entry-card" href={entry.href}>
+								<span class="history-entry-card__index">#{index + 1}</span>
+								<span class="history-entry-card__body">
+									<span class="history-entry-card__title">{entry.name}</span>
+									<span class="history-entry-card__timestamp">{formatVisitedAt(entry.visitedAt)}</span>
+								</span>
+								<ArrowUpRight size={14} />
 							</a>
-							<p class="mt-1 text-[11px] uppercase tracking-[0.14em] text-slate-500">
-								{formatVisitedAt(entry.visitedAt)}
-							</p>
 						</li>
 					{/each}
-				</ul>
+				</ol>
 			{/if}
 		</section>
 	</div>
-</div>
+</section>
+
+<style>
+	.history-page {
+		gap: 0.95rem;
+	}
+
+	.history-page__overview {
+		grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+	}
+
+	.history-highlight-card {
+		display: flex;
+		flex-direction: column;
+		gap: 0.6rem;
+	}
+
+	.history-highlight-card__heading {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		font-size: 0.72rem;
+		font-weight: 600;
+		color: rgba(212, 212, 212, 0.85);
+	}
+
+	.history-highlight-card__heading p {
+		margin: 0;
+	}
+
+	.history-highlight-card__link {
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+		padding: 0.58rem 0.66rem;
+		border-radius: 10px;
+		border: 1px solid rgba(212, 212, 212, 0.2);
+		background: rgba(255, 255, 255, 0.03);
+		color: inherit;
+		text-decoration: none;
+		transition: border-color 140ms ease, background 140ms ease;
+	}
+
+	.history-highlight-card__link strong {
+		font-size: 0.9rem;
+		line-height: 1.28;
+	}
+
+	.history-highlight-card__link span {
+		font-size: 0.72rem;
+		color: rgba(212, 212, 212, 0.78);
+	}
+
+	.history-highlight-card__timestamp {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+	}
+
+	.history-highlight-card__link:hover {
+		border-color: rgba(255, 255, 255, 0.45);
+		background: rgba(255, 255, 255, 0.08);
+	}
+
+	.history-page__columns {
+		display: grid;
+		gap: 0.85rem;
+	}
+
+	.history-list-card {
+		display: flex;
+		flex-direction: column;
+		gap: 0.62rem;
+	}
+
+	.history-list-card__header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.8rem;
+		flex-wrap: wrap;
+	}
+
+	.history-list-card__title {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.45rem;
+	}
+
+	.history-list-card__title h2 {
+		margin: 0;
+		font-size: 0.92rem;
+	}
+
+	.history-card-grid {
+		list-style: none;
+		display: grid;
+		gap: 0.52rem;
+		padding: 0;
+		margin: 0;
+	}
+
+	.history-entry-card {
+		display: grid;
+		grid-template-columns: auto 1fr auto;
+		align-items: center;
+		gap: 0.62rem;
+		padding: 0.56rem 0.66rem;
+		border-radius: 10px;
+		border: 1px solid rgba(212, 212, 212, 0.2);
+		background: rgba(255, 255, 255, 0.03);
+		color: inherit;
+		text-decoration: none;
+		transition: border-color 140ms ease, background 140ms ease;
+	}
+
+	.history-entry-card:hover {
+		border-color: rgba(255, 255, 255, 0.45);
+		background: rgba(255, 255, 255, 0.08);
+	}
+
+	.history-entry-card__index {
+		display: inline-flex;
+		min-width: 2.2rem;
+		justify-content: center;
+		padding: 0.18rem 0.36rem;
+		border-radius: 999px;
+		font-size: 0.62rem;
+		font-weight: 700;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		border: 1px solid rgba(212, 212, 212, 0.28);
+		background: rgba(0, 0, 0, 0.35);
+		color: rgba(212, 212, 212, 0.85);
+	}
+
+	.history-entry-card__body {
+		display: flex;
+		flex-direction: column;
+		gap: 0.1rem;
+		min-width: 0;
+	}
+
+	.history-entry-card__title {
+		font-size: 0.8rem;
+		font-weight: 600;
+		line-height: 1.26;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.history-entry-card__meta,
+	.history-entry-card__timestamp {
+		font-size: 0.68rem;
+		color: rgba(212, 212, 212, 0.74);
+	}
+
+	@media (min-width: 960px) {
+		.history-page__columns {
+			grid-template-columns: repeat(2, minmax(260px, 1fr));
+		}
+	}
+</style>

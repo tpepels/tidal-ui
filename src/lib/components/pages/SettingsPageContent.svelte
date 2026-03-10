@@ -1380,6 +1380,10 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
+		padding: 0.72rem 0.78rem;
+		border-radius: var(--ui-radius-md, 14px);
+		border: 1px solid rgba(212, 212, 212, 0.2);
+		background: linear-gradient(160deg, rgba(12, 12, 12, 0.54), rgba(7, 7, 7, 0.38));
 	}
 
 	.settings-section--wide {

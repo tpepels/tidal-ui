@@ -720,7 +720,7 @@
 		>
 			<div class="download-manager-header">
 				<div>
-					<h3 class="download-manager-title">Download Center</h3>
+					<h3 class="download-manager-title">Queue Monitor</h3>
 					<p class="download-manager-subtitle-text">
 						Live server queue status for tracks and albums
 					</p>

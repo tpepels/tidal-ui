@@ -95,11 +95,12 @@
 	});
 </script>
 
-<section class="status-page">
-	<div class="status-page__header">
-		<div>
-			<h1>Status</h1>
-			<p class="status-page__subtitle">
+<section class="status-page ui-page">
+	<div class="ui-page__header">
+		<div class="ui-page__title-group">
+			<p class="ui-page__eyebrow">Tools</p>
+			<h1 class="ui-page__title">Status</h1>
+			<p class="ui-page__subtitle">
 				{#if statusLastUpdatedAt}
 					Last updated {new Date(statusLastUpdatedAt).toLocaleTimeString()}
 				{:else}
@@ -107,21 +108,26 @@
 				{/if}
 			</p>
 		</div>
-		<div class="status-page__header-actions">
-			<a href="/download-center" class="status-link-btn">
+		<div class="ui-page__actions">
+			<a href="/download-center" class="ui-chip-link">
 				<Download size={14} />
 				<span>Download Center</span>
 			</a>
-			<a href="/download-log" class="status-link-btn">
+			<a href="/download-log" class="ui-chip-link">
 				<Logs size={14} />
 				<span>Download Log</span>
 			</a>
-			<a href="/settings" class="status-link-btn">
+			<a href="/settings" class="ui-chip-link">
 				<Settings size={14} />
 				<span>Settings</span>
 			</a>
-			<button type="button" class="glass-action" onclick={() => void refreshDiagnostics()} disabled={diagnosticsLoading}>
-				<span class="glass-action__label">
+			<button
+				type="button"
+				class="ui-chip-button status-page__refresh-btn"
+				onclick={() => void refreshDiagnostics()}
+				disabled={diagnosticsLoading}
+			>
+				<span class="status-page__refresh-label">
 					<Activity size={16} />
 					<span>{diagnosticsLoading ? 'Refreshing…' : 'Refresh now'}</span>
 				</span>
@@ -241,48 +247,7 @@
 
 <style>
 	.status-page {
-		display: flex;
-		flex-direction: column;
-		gap: 0.9rem;
-	}
-
-	.status-page__header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.8rem;
-		flex-wrap: wrap;
-	}
-
-	.status-page__header h1 {
-		margin: 0;
-		font-size: 1.2rem;
-	}
-
-	.status-page__subtitle {
-		margin: 0.2rem 0 0;
-		font-size: 0.8rem;
-		opacity: 0.75;
-	}
-
-	.status-page__header-actions {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.45rem;
-	}
-
-	.status-link-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.35rem;
-		padding: 0.4rem 0.6rem;
-		border-radius: 10px;
-		border: 1px solid rgba(212, 212, 212, 0.28);
-		background: rgba(255, 255, 255, 0.05);
-		font-size: 0.72rem;
-		font-weight: 600;
-		text-decoration: none;
-		color: inherit;
+		gap: 0.92rem;
 	}
 
 	.status-page__grid {
@@ -295,6 +260,10 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
+		padding: 0.72rem 0.78rem;
+		border-radius: var(--ui-radius-md, 14px);
+		border: 1px solid rgba(212, 212, 212, 0.2);
+		background: linear-gradient(160deg, rgba(12, 12, 12, 0.54), rgba(7, 7, 7, 0.38));
 	}
 
 	.settings-section--wide {
@@ -317,30 +286,14 @@
 		line-height: 1.4;
 	}
 
-	.glass-action {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.85rem;
-		border-radius: var(--ui-radius-md, 14px);
-		border: 1px solid rgba(212, 212, 212, 0.24);
-		background: linear-gradient(155deg, rgba(15, 15, 15, 0.62), rgba(8, 8, 8, 0.44));
-		padding: 0.45rem 0.7rem;
-		font-size: 0.72rem;
-		font-weight: 600;
-		color: inherit;
-		cursor: pointer;
-	}
-
-	.glass-action:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-	}
-
-	.glass-action__label {
+	.status-page__refresh-label {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.45rem;
+	}
+
+	.status-page__refresh-btn {
+		padding-inline: 0.7rem;
 	}
 
 	.status-page__json {

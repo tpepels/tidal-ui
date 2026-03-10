@@ -89,7 +89,7 @@
 <section class="download-log-container">
 	<div class="download-log-panel">
 		<div class="download-log-header">
-			<h3 class="download-log-title">Download Log</h3>
+			<h3 class="download-log-title">Event Stream</h3>
 			<div class="download-log-actions">
 				<button type="button" class="download-log-btn" title="Check server health" on:click={fetchHealth} disabled={loadingHealth}>
 					<Heart size={16} />
@@ -172,18 +172,19 @@
 <style>
 	.download-log-container {
 		height: clamp(360px, 65vh, 780px);
-		border-radius: 14px;
+		border-radius: var(--ui-radius-md, 14px);
 		overflow: hidden;
-		border: 1px solid rgba(148, 163, 184, 0.2);
-		box-shadow: 0 20px 50px rgba(2, 6, 23, 0.35);
+		border: 1px solid rgba(212, 212, 212, 0.22);
+		box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
 	}
 
 	.download-log-panel {
 		display: flex;
 		flex-direction: column;
 		height: 100%;
-		background: rgba(0, 0, 0, 0.82);
-		backdrop-filter: blur(10px);
+		background: linear-gradient(160deg, rgba(12, 12, 12, 0.74), rgba(6, 6, 6, 0.54));
+		backdrop-filter: blur(var(--perf-blur-medium, 18px));
+		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 18px));
 	}
 
 	.download-log-header {
@@ -191,16 +192,17 @@
 		align-items: center;
 		justify-content: space-between;
 		padding: 12px 16px;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+		border-bottom: 1px solid rgba(212, 212, 212, 0.18);
 		flex-shrink: 0;
 	}
 
 	.download-log-title {
 		margin: 0;
-		font-size: 14px;
+		font-size: 0.78rem;
 		font-weight: 600;
-		color: #fff;
-		letter-spacing: 0.5px;
+		color: rgba(245, 245, 245, 0.96);
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
 	}
 
 	.download-log-actions {
@@ -211,22 +213,25 @@
 	.download-log-btn {
 		all: unset;
 		cursor: pointer;
-		padding: 6px;
-		border-radius: 4px;
-		color: #aaa;
-		transition: all 0.2s;
+		padding: 0.34rem;
+		border-radius: 8px;
+		border: 1px solid rgba(212, 212, 212, 0.22);
+		background: rgba(255, 255, 255, 0.04);
+		color: rgba(212, 212, 212, 0.82);
+		transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 	}
 
 	.download-log-btn:hover {
+		border-color: rgba(255, 255, 255, 0.44);
 		background: rgba(255, 255, 255, 0.1);
-		color: #fff;
+		color: rgba(255, 255, 255, 0.96);
 	}
 
 	.download-log-btn:active {
-		background: rgba(255, 255, 255, 0.15);
+		background: rgba(255, 255, 255, 0.14);
 	}
 
 	.download-log-content {
@@ -241,7 +246,7 @@
 		font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
 		font-size: 12px;
 		padding: 8px 12px;
-		color: #ccc;
+		color: rgba(212, 212, 212, 0.88);
 		line-height: 1.4;
 
 		display: flex;
@@ -255,7 +260,7 @@
 	}
 
 	.download-log-content::-webkit-scrollbar-track {
-		background: rgba(255, 255, 255, 0.05);
+		background: rgba(255, 255, 255, 0.04);
 		border-radius: 6px;
 	}
 
@@ -280,7 +285,7 @@
 	}
 
 	.download-log-time {
-		color: #666;
+		color: rgba(163, 163, 163, 0.82);
 		flex-shrink: 0;
 		min-width: 12ch;
 	}
@@ -297,62 +302,63 @@
 	}
 
 	.download-log-entry--info {
-		color: #aaa;
+		color: rgba(212, 212, 212, 0.84);
 	}
 
 	.download-log-entry--info .download-log-level {
-		color: #666;
+		color: rgba(163, 163, 163, 0.82);
 	}
 
 	.download-log-entry--success {
-		color: #4ade80;
+		color: #bbf7d0;
 	}
 
 	.download-log-entry--success .download-log-level {
-		color: #22c55e;
+		color: #86efac;
 	}
 
 	.download-log-entry--success .download-log-time {
-		color: #166534;
+		color: #4ade80;
 	}
 
 	.download-log-entry--warning {
-		color: #facc15;
+		color: #fde68a;
 	}
 
 	.download-log-entry--warning .download-log-level {
-		color: #eab308;
+		color: #fcd34d;
 	}
 
 	.download-log-entry--warning .download-log-time {
-		color: #713f12;
+		color: #f59e0b;
 	}
 
 	.download-log-entry--error {
-		color: #ef4444;
+		color: #fecaca;
 	}
 
 	.download-log-entry--error .download-log-level {
-		color: #dc2626;
+		color: #fca5a5;
 	}
 
 	.download-log-entry--error .download-log-time {
-		color: #7f1d1d;
+		color: #f87171;
 	}
 
 /* Health Summary Styles */
 .download-health-summary {
 	padding: 16px;
-	border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-	background: rgba(0, 0, 0, 0.2);
+	border-bottom: 1px solid rgba(212, 212, 212, 0.14);
+	background: rgba(255, 255, 255, 0.02);
 }
 
 .download-health-title {
 	margin: 0 0 12px 0;
-	font-size: 14px;
+	font-size: 0.74rem;
 	font-weight: 600;
-	color: #fff;
-	letter-spacing: 0.5px;
+	color: rgba(245, 245, 245, 0.96);
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
 }
 
 .download-health-stats {
@@ -376,42 +382,44 @@
 }
 
 .download-health-label {
-	color: #ccc;
+	color: rgba(212, 212, 212, 0.8);
 }
 
 .download-health-value {
-	color: #fff;
+	color: rgba(245, 245, 245, 0.96);
 	font-weight: 500;
 }
 
 .download-health-stat--wide .download-health-value {
 	font-size: 12px;
-	color: #e2e8f0;
+	color: rgba(212, 212, 212, 0.82);
 	word-break: break-all;
 }
 
 .download-health-value.connected {
-	color: #10b981;
+	color: #bbf7d0;
 }
 
 .download-health-btn {
 	all: unset;
 	cursor: pointer;
 	padding: 6px 12px;
-	border-radius: 4px;
-	background: rgba(255, 255, 255, 0.1);
-	color: #fff;
+	border-radius: 8px;
+	border: 1px solid rgba(212, 212, 212, 0.22);
+	background: rgba(255, 255, 255, 0.05);
+	color: rgba(245, 245, 245, 0.92);
 	font-size: 12px;
 	font-weight: 500;
-	transition: all 0.2s;
+	transition: border-color 140ms ease, background 140ms ease;
 }
 
 .download-health-btn:hover {
-	background: rgba(255, 255, 255, 0.2);
+	border-color: rgba(255, 255, 255, 0.4);
+	background: rgba(255, 255, 255, 0.12);
 }
 
 .download-health-btn:active {
-	background: rgba(255, 255, 255, 0.25);
+	background: rgba(255, 255, 255, 0.15);
 }
 
 /* Compact Progress Indicator Styles */
@@ -419,8 +427,8 @@
 	position: fixed;
 	bottom: calc(20px + var(--player-height, 0px) + env(safe-area-inset-bottom, 0px));
 	right: 20px;
-	background: rgba(11, 16, 26, 0.95);
-	border: 1px solid rgba(255, 255, 255, 0.1);
+	background: rgba(10, 10, 10, 0.93);
+	border: 1px solid rgba(212, 212, 212, 0.2);
 	border-radius: 12px;
 	padding: 12px 16px;
 	min-width: 280px;
@@ -498,7 +506,7 @@
 
 .download-progress-compact-bar-fill {
 	height: 100%;
-	background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+	background: linear-gradient(90deg, rgba(255, 255, 255, 0.9), rgba(212, 212, 212, 0.72));
 	border-radius: 2px;
 	transition: width 0.3s ease;
 }

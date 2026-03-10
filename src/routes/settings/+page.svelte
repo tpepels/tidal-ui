@@ -9,29 +9,18 @@
 	<title>{meta?.title ?? 'Settings'} | BiniLossless</title>
 </svelte:head>
 
-<section class="settings-page">
-	<header class="settings-page__header">
-		<h1>{meta?.title ?? 'Settings'}</h1>
-		<p>{meta?.subtitle ?? 'Streaming, download, and maintenance controls.'}</p>
+<section class="ui-page">
+	<header class="ui-page__header">
+		<div class="ui-page__title-group">
+			<p class="ui-page__eyebrow">Tools</p>
+			<h1 class="ui-page__title">{meta?.title ?? 'Settings'}</h1>
+			<p class="ui-page__subtitle">{meta?.subtitle ?? 'Streaming, download, and maintenance controls.'}</p>
+		</div>
+		<div class="ui-page__actions">
+			<a href="/status" class="ui-chip-link">Status</a>
+			<a href="/download-center" class="ui-chip-link">Download Center</a>
+			<a href="/download-log" class="ui-chip-link">Download Log</a>
+		</div>
 	</header>
 	<SettingsPageContent />
 </section>
-
-<style>
-	.settings-page {
-		display: flex;
-		flex-direction: column;
-		gap: 0.85rem;
-	}
-
-	.settings-page__header h1 {
-		margin: 0;
-		font-size: 1.2rem;
-	}
-
-	.settings-page__header p {
-		margin: 0.2rem 0 0;
-		font-size: 0.82rem;
-		opacity: 0.78;
-	}
-</style>
