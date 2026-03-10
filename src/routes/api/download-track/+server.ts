@@ -142,6 +142,17 @@ export const POST: RequestHandler = async ({ request, url }) => {
 						},
 						{ status: 400 }
 					);
+				if (
+					body.strictMusicBrainzMatching !== undefined &&
+					typeof body.strictMusicBrainzMatching !== 'boolean'
+				)
+					return json(
+						{
+							error:
+								'Invalid strictMusicBrainzMatching: must be a boolean or undefined'
+						},
+						{ status: 400 }
+					);
 				const trackMetadata = trackMetadataResult.data;
 				const finalizeResult = await finalizeTrack({
 					trackId: body.trackId,
@@ -157,7 +168,9 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					downloadCoverSeperately: body.downloadCoverSeperately ?? pendingUpload?.downloadCoverSeperately,
 					coverUrl: body.coverUrl ?? pendingUpload?.coverUrl,
 					experimentalMusicBrainzTagging:
-						body.experimentalMusicBrainzTagging ?? pendingUpload?.experimentalMusicBrainzTagging
+						body.experimentalMusicBrainzTagging ?? pendingUpload?.experimentalMusicBrainzTagging,
+					strictMusicBrainzMatching:
+						body.strictMusicBrainzMatching ?? pendingUpload?.strictMusicBrainzMatching
 				});
 
 				if (bodyUploadId) {
@@ -205,6 +218,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					downloadCoverSeperately,
 					coverUrl,
 					experimentalMusicBrainzTagging,
+					strictMusicBrainzMatching,
 					trackMetadata,
 					detectedMimeType
 				} = body;
@@ -296,6 +310,17 @@ export const POST: RequestHandler = async ({ request, url }) => {
 						{ status: 400 }
 					);
 				if (
+					strictMusicBrainzMatching !== undefined &&
+					typeof strictMusicBrainzMatching !== 'boolean'
+				)
+					return json(
+						{
+							error:
+								'Invalid strictMusicBrainzMatching: must be a boolean or undefined'
+						},
+						{ status: 400 }
+					);
+				if (
 					trackMetadata !== undefined &&
 					(typeof trackMetadata !== 'object' || trackMetadata === null)
 				)
@@ -364,6 +389,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					downloadCoverSeperately,
 					coverUrl,
 					experimentalMusicBrainzTagging,
+					strictMusicBrainzMatching,
 					timestamp: Date.now(),
 					totalSize: blobSize,
 					checksum,
@@ -442,7 +468,8 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				detectedMimeType: uploadData.detectedMimeType,
 				downloadCoverSeperately: uploadData.downloadCoverSeperately,
 				coverUrl: uploadData.coverUrl,
-				experimentalMusicBrainzTagging: uploadData.experimentalMusicBrainzTagging
+				experimentalMusicBrainzTagging: uploadData.experimentalMusicBrainzTagging,
+				strictMusicBrainzMatching: uploadData.strictMusicBrainzMatching
 			});
 
 			if (!finalizeResult.success) {

@@ -18,6 +18,7 @@ export const createDownloadSource = (): DownloadSource => ({
 			convertAacToMp3,
 			downloadCoverSeperately: false,
 			experimentalMusicBrainzTagging: request.experimentalMusicBrainzTagging,
+			strictMusicBrainzMatching: request.strictMusicBrainzMatching,
 			storage: request.storage,
 			signal,
 			onProgress: (progress) => {

@@ -112,6 +112,9 @@
 	const experimentalMusicBrainzTaggingPreference = $derived(
 		$userPreferencesStore.experimentalMusicBrainzTagging
 	);
+	const strictMusicBrainzMatchingPreference = $derived(
+		$userPreferencesStore.strictMusicBrainzMatching
+	);
 	const downloadStoragePreference = $derived($downloadPreferencesStore.storage);
 
 	type AlbumDownloadState = {
@@ -163,6 +166,8 @@
 	const COVER_CANDIDATE_DELIMITER = '\n';
 	const FORCE_OVERWRITE_CONFIRMATION =
 		'This album is already in your local library. Redownload it and overwrite existing files?';
+	const CLIENT_REDOWNLOAD_CONFIRMATION =
+		'This album is already in your local library. Browser downloads cannot overwrite existing files and may append (2) to filenames. Continue anyway?';
 
 	$effect(() => {
 		const id = Number(artistId);
@@ -988,8 +993,12 @@
 		const inLibrary = albumLibraryPresence[album.id]?.exists === true;
 		let forceOverwrite = false;
 		if (inLibrary && currentState.status === 'idle') {
-			forceOverwrite = window.confirm(FORCE_OVERWRITE_CONFIRMATION);
-			if (!forceOverwrite) {
+			if (downloadStoragePreference === 'server') {
+				forceOverwrite = window.confirm(FORCE_OVERWRITE_CONFIRMATION);
+				if (!forceOverwrite) {
+					return;
+				}
+			} else if (!window.confirm(CLIENT_REDOWNLOAD_CONFIRMATION)) {
 				return;
 			}
 		}
@@ -1039,6 +1048,7 @@
 					mode: downloadMode,
 					convertAacToMp3: convertAacToMp3Preference,
 					experimentalMusicBrainzTagging: experimentalMusicBrainzTaggingPreference,
+					strictMusicBrainzMatching: strictMusicBrainzMatchingPreference,
 					storage: downloadStoragePreference,
 					forceOverwrite
 				}
@@ -1134,6 +1144,7 @@
 						mode: downloadMode,
 						convertAacToMp3: convertAacToMp3Preference,
 						experimentalMusicBrainzTagging: experimentalMusicBrainzTaggingPreference,
+						strictMusicBrainzMatching: strictMusicBrainzMatchingPreference,
 						storage: downloadStoragePreference
 					}
 				);
@@ -1184,7 +1195,8 @@
 			breadcrumbStore.setCurrentLabel(normalizedCached.name, `/artist/${normalizedCached.id}`);
 			navigationHistoryStore.visitArtist({
 				id: normalizedCached.id,
-				name: normalizedCached.name
+				name: normalizedCached.name,
+				picture: normalizedCached.picture
 			});
 		}
 
@@ -1207,7 +1219,8 @@
 			breadcrumbStore.setCurrentLabel(normalizedData.name, `/artist/${normalizedData.id}`);
 			navigationHistoryStore.visitArtist({
 				id: normalizedData.id,
-				name: normalizedData.name
+				name: normalizedData.name,
+				picture: normalizedData.picture
 			});
 
 			// Get artist picture
@@ -1695,15 +1708,21 @@
 													<p class="mt-3 text-xs text-amber-300">Download stopped.</p>
 												{:else if albumDownloadState.status === 'paused'}
 													<p class="mt-3 text-xs text-amber-300">Download paused.</p>
-												{:else if albumDownloadState.error}
-													<p class="mt-3 text-xs text-red-400" role="alert">
-														{albumDownloadState.error}
-													</p>
-												{:else if albumInLibrary}
-													<p class="mt-3 text-xs text-emerald-300">Already in local library.</p>
-												{/if}
-											</div>
-										{/each}
+													{:else if albumDownloadState.error}
+														<p class="mt-3 text-xs text-red-400" role="alert">
+															{albumDownloadState.error}
+														</p>
+													{:else if albumInLibrary}
+														<p class="mt-3 text-xs text-emerald-300">
+															{#if downloadStoragePreference === 'server'}
+																Already in local library. Redownload will overwrite.
+															{:else}
+																Already in local library. Browser redownloads may append (2).
+															{/if}
+														</p>
+													{/if}
+												</div>
+											{/each}
 									</div>
 								</div>
 							{/if}

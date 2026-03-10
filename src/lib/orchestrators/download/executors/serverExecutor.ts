@@ -11,6 +11,7 @@ export const createServerExecutor = (
 		const result = await execution.downloadToServer(request.track, request.quality, {
 			downloadCoverSeperately: request.downloadCoverSeperately,
 			experimentalMusicBrainzTagging: request.experimentalMusicBrainzTagging,
+			strictMusicBrainzMatching: request.strictMusicBrainzMatching,
 			conflictResolution: request.conflictResolution,
 			signal: request.signal,
 			onProgress: (progress) => {

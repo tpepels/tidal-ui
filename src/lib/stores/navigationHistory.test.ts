@@ -45,4 +45,54 @@ describe('navigationHistoryStore', () => {
 		expect(state.albums).toHaveLength(0);
 		expect(state.artists).toHaveLength(0);
 	});
+
+	it('stores media metadata for album and artist entries', () => {
+		navigationHistoryStore.visitAlbum({
+			id: 12,
+			title: 'Album 12',
+			artistName: 'Artist 12',
+			cover: 'album-cover-id'
+		});
+		navigationHistoryStore.visitArtist({
+			id: 34,
+			name: 'Artist 34',
+			picture: 'artist-picture-id'
+		});
+
+		const state = get(navigationHistoryStore);
+		expect(state.albums[0]?.cover).toBe('album-cover-id');
+		expect(state.artists[0]?.picture).toBe('artist-picture-id');
+	});
+
+	it('updates media metadata when revisiting an existing entry', () => {
+		navigationHistoryStore.visitAlbum({
+			id: 5,
+			title: 'Album A',
+			artistName: 'Artist A',
+			cover: 'cover-old'
+		});
+		navigationHistoryStore.visitAlbum({
+			id: 5,
+			title: 'Album A (Remaster)',
+			artistName: 'Artist A',
+			cover: 'cover-new'
+		});
+		navigationHistoryStore.visitArtist({
+			id: 7,
+			name: 'Artist B',
+			picture: 'portrait-old'
+		});
+		navigationHistoryStore.visitArtist({
+			id: 7,
+			name: 'Artist B',
+			picture: 'portrait-new'
+		});
+
+		const state = get(navigationHistoryStore);
+		expect(state.albums).toHaveLength(1);
+		expect(state.albums[0]?.title).toBe('Album A (Remaster)');
+		expect(state.albums[0]?.cover).toBe('cover-new');
+		expect(state.artists).toHaveLength(1);
+		expect(state.artists[0]?.picture).toBe('portrait-new');
+	});
 });

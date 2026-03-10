@@ -26,6 +26,7 @@
 		machineIsPlaying,
 		machineQueue
 	} from '$lib/stores/playerDerived';
+	import { queueStats, serverQueue, workerStatus } from '$lib/stores/serverQueue.svelte';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { downloadLogStore } from '$lib/stores/downloadLog';
 	import {
@@ -224,6 +225,25 @@
 	});
 	const mainMinHeight = $derived(() => Math.max(0, viewportHeight - headerHeight - playerHeight));
 	const queueTrackCount = $derived(Array.isArray($machineQueue) ? $machineQueue.length : 0);
+	const DOWNLOAD_CENTER_BADGE_POLL_MS = 1_000;
+	const downloadCenterCurrentDownloads = $derived.by(() => {
+		const activeDownloads = Number($workerStatus.activeDownloads ?? 0);
+		const processing = Number($queueStats.processing ?? 0);
+		const normalizedActive = Number.isFinite(activeDownloads) ? Math.max(0, Math.trunc(activeDownloads)) : 0;
+		const normalizedProcessing = Number.isFinite(processing) ? Math.max(0, Math.trunc(processing)) : 0;
+		return Math.max(normalizedActive, normalizedProcessing);
+	});
+	const downloadCenterQueueSize = $derived.by(() => {
+		const queued = Number($queueStats.queued ?? 0);
+		const normalizedQueued = Number.isFinite(queued) ? Math.max(0, Math.trunc(queued)) : 0;
+		return downloadCenterCurrentDownloads + normalizedQueued;
+	});
+	const showDownloadCenterBadge = $derived(
+		downloadCenterCurrentDownloads > 0 || downloadCenterQueueSize > 0
+	);
+	const downloadCenterBadgeLabel = $derived(
+		`${downloadCenterCurrentDownloads}/${downloadCenterQueueSize}`
+	);
 	const currentTrackRoute = $derived.by(() => {
 		const current = $machineCurrentTrack;
 		if (!current || isSonglinkTrack(current)) return null;
@@ -301,6 +321,9 @@
 	const downloadCoversSeperately = $derived($userPreferencesStore.downloadCoversSeperately);
 	const experimentalMusicBrainzTagging = $derived(
 		$userPreferencesStore.experimentalMusicBrainzTagging
+	);
+	const strictMusicBrainzMatching = $derived(
+		$userPreferencesStore.strictMusicBrainzMatching
 	);
 
 	function selectDownloadQuality(quality: AudioQuality): void {
@@ -996,6 +1019,17 @@
 		}
 	});
 
+	$effect(() => {
+		if (typeof window === 'undefined' || isEmbed) {
+			serverQueue.stopPolling();
+			return;
+		}
+		serverQueue.startPolling(DOWNLOAD_CENTER_BADGE_POLL_MS);
+		return () => {
+			serverQueue.stopPolling();
+		};
+	});
+
 	onDestroy(() => {
 		stopCorrectionDedupPolling();
 		stopFullLibraryRepairPolling();
@@ -1115,11 +1149,12 @@
 			const zip = new JSZip();
 			for (const [index, track] of exportableTracks.entries()) {
 				const filename = buildQueueFilename(track, index, quality);
-				const { blob } = await losslessAPI.fetchTrackBlob(track.id, quality, filename, {
-					ffmpegAutoTriggered: false,
-					convertAacToMp3,
-					enableExperimentalMusicBrainz: experimentalMusicBrainzTagging
-				});
+					const { blob } = await losslessAPI.fetchTrackBlob(track.id, quality, filename, {
+						ffmpegAutoTriggered: false,
+						convertAacToMp3,
+						enableExperimentalMusicBrainz: experimentalMusicBrainzTagging,
+						strictMusicBrainzMatching
+					});
 				zip.file(filename, blob);
 			}
 
@@ -1208,12 +1243,13 @@
 						}
 
 						const progressHandler = createServerProgressHandler(taskId);
-						const serverResult = await downloadTrackToServer(resolvedTrack, quality, {
-							downloadCoverSeperately: downloadCoversSeperately,
-							experimentalMusicBrainzTagging,
-							conflictResolution: 'overwrite_if_different',
-							signal: controller.signal,
-							onProgress: progressHandler
+							const serverResult = await downloadTrackToServer(resolvedTrack, quality, {
+								downloadCoverSeperately: downloadCoversSeperately,
+								experimentalMusicBrainzTagging,
+								strictMusicBrainzMatching,
+								conflictResolution: 'overwrite_if_different',
+								signal: controller.signal,
+								onProgress: progressHandler
 						});
 
 						if (!serverResult.success) {
@@ -1251,7 +1287,8 @@
 						ffmpegAutoTriggered: false,
 						convertAacToMp3,
 						downloadCoverSeperately: downloadCoversSeperately,
-						enableExperimentalMusicBrainz: experimentalMusicBrainzTagging
+						enableExperimentalMusicBrainz: experimentalMusicBrainzTagging,
+						strictMusicBrainzMatching
 					});
 					downloadUiStore.completeTrackDownload(taskId);
 				} catch (error) {
@@ -1555,16 +1592,21 @@
 								<Settings size={16} />
 								<span class="sidebar-action__label">{routeNavLabel('/settings', 'Settings')}</span>
 							</a>
-							<a
-								class={`sidebar-action ${isRouteActive('/download-center') ? 'is-active' : ''}`}
-								href="/download-center"
-								aria-current={isRouteActive('/download-center') ? 'page' : undefined}
-								title="Download center"
-								data-sidebar-item
-							>
-								<Download size={16} />
-								<span class="sidebar-action__label">{routeNavLabel('/download-center', 'Download Center')}</span>
-							</a>
+								<a
+									class={`sidebar-action ${isRouteActive('/download-center') ? 'is-active' : ''}`}
+									href="/download-center"
+									aria-current={isRouteActive('/download-center') ? 'page' : undefined}
+									title="Download center"
+									data-sidebar-item
+								>
+									<Download size={16} />
+									<span class="sidebar-action__label">{routeNavLabel('/download-center', 'Download Center')}</span>
+									{#if showDownloadCenterBadge}
+										<span class="sidebar-action__bubble" title="Current downloads / queue size">
+											{downloadCenterBadgeLabel}
+										</span>
+									{/if}
+								</a>
 							<a
 								class={`sidebar-action ${isRouteActive('/download-log') ? 'is-active' : ''}`}
 								href="/download-log"
@@ -1862,6 +1904,25 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+
+	.sidebar-action__bubble {
+		margin-left: auto;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 2.45rem;
+		padding: 0.22rem 0.45rem;
+		border-radius: 999px;
+		border: 1px solid rgba(248, 222, 139, 0.45);
+		background: linear-gradient(150deg, rgba(248, 222, 139, 0.18), rgba(249, 177, 53, 0.28));
+		color: rgba(255, 247, 227, 0.96);
+		font-size: 0.64rem;
+		font-weight: 700;
+		letter-spacing: 0.02em;
+		line-height: 1;
+		position: relative;
+		z-index: 1;
 	}
 
 	.app-sidebar__meta {
@@ -2166,6 +2227,7 @@
 	.app-workspace.is-sidebar-collapsed .app-sidebar__brand,
 	.app-workspace.is-sidebar-collapsed .app-sidebar__section-title,
 	.app-workspace.is-sidebar-collapsed .sidebar-action__label,
+	.app-workspace.is-sidebar-collapsed .sidebar-action__bubble,
 	.app-workspace.is-sidebar-collapsed .app-sidebar__meta {
 		display: none;
 	}

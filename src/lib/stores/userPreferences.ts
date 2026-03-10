@@ -13,6 +13,7 @@ export interface UserPreferencesState {
 	convertAacToMp3: boolean;
 	downloadCoversSeperately: boolean;
 	experimentalMusicBrainzTagging: boolean;
+	strictMusicBrainzMatching: boolean;
 	performanceMode: PerformanceMode;
 }
 
@@ -22,6 +23,7 @@ const DEFAULT_STATE: UserPreferencesState = {
 	convertAacToMp3: false,
 	downloadCoversSeperately: false,
 	experimentalMusicBrainzTagging: false,
+	strictMusicBrainzMatching: false,
 	performanceMode: 'low'
 };
 
@@ -48,6 +50,7 @@ function normalizePreferences(value: unknown): UserPreferencesState {
 		convertAacToMp3: raw?.convertAacToMp3 === true,
 		downloadCoversSeperately: raw?.downloadCoversSeperately === true,
 		experimentalMusicBrainzTagging: raw?.experimentalMusicBrainzTagging === true,
+		strictMusicBrainzMatching: raw?.strictMusicBrainzMatching === true,
 		performanceMode: normalizePerformanceMode(raw?.performanceMode)
 	};
 }
@@ -136,6 +139,20 @@ const createUserPreferencesStore = () => {
 			update((state) => ({
 				...state,
 				experimentalMusicBrainzTagging: !state.experimentalMusicBrainzTagging
+			}));
+		},
+		setStrictMusicBrainzMatching(value: boolean) {
+			update((state) => {
+				if (state.strictMusicBrainzMatching === value) {
+					return state;
+				}
+				return { ...state, strictMusicBrainzMatching: value };
+			});
+		},
+		toggleStrictMusicBrainzMatching() {
+			update((state) => ({
+				...state,
+				strictMusicBrainzMatching: !state.strictMusicBrainzMatching
 			}));
 		},
 		setPerformanceMode(mode: PerformanceMode) {

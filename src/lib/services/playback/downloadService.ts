@@ -34,6 +34,7 @@ export interface DownloadOptions {
 	convertAacToMp3?: boolean;
 	downloadCoversSeperately?: boolean;
 	experimentalMusicBrainzTagging?: boolean;
+	strictMusicBrainzMatching?: boolean;
 	signal?: AbortSignal;
 	callbacks?: DownloadCallbacks;
 }
@@ -137,6 +138,7 @@ export async function downloadTrack(
 			convertAacToMp3,
 			downloadCoverSeperately: downloadCoversSeperately,
 			enableExperimentalMusicBrainz: options?.experimentalMusicBrainzTagging ?? false,
+			strictMusicBrainzMatching: options?.strictMusicBrainzMatching ?? false,
 			signal: options?.signal,
 			onProgress: (progress: TrackDownloadProgress) => {
 				if (progress.stage === 'downloading') {

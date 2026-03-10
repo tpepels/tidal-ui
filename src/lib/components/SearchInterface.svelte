@@ -124,6 +124,9 @@ import {
 	const experimentalMusicBrainzTaggingPreference = $derived(
 		$userPreferencesStore.experimentalMusicBrainzTagging
 	);
+	const strictMusicBrainzMatchingPreference = $derived(
+		$userPreferencesStore.strictMusicBrainzMatching
+	);
 	let selectedRegion = $state<RegionOption>('us');
 
 
@@ -182,6 +185,8 @@ import {
 	const ALBUM_QUEUE_POLL_INTERVAL_MS = 1000;
 	const FORCE_OVERWRITE_CONFIRMATION =
 		'This album is already in your local library. Redownload it and overwrite existing files?';
+	const CLIENT_REDOWNLOAD_CONFIRMATION =
+		'This album is already in your local library. Browser downloads cannot overwrite existing files and may append (2) to filenames. Continue anyway?';
 	let albumDownloadStates = $state<Record<number, AlbumDownloadState>>({});
 	let albumLibraryPresence = $state<Record<number, { exists: boolean; matchedTracks: number }>>({});
 	const albumQueuePollTimers = new Map<number, ReturnType<typeof setInterval>>();
@@ -544,9 +549,14 @@ import {
 		}
 		const inLibrary = albumLibraryPresence[album.id]?.exists === true;
 		let forceOverwrite = false;
+		const storage = $downloadPreferencesStore.storage;
 		if (inLibrary && currentState.status === 'idle') {
-			forceOverwrite = window.confirm(FORCE_OVERWRITE_CONFIRMATION);
-			if (!forceOverwrite) {
+			if (storage === 'server') {
+				forceOverwrite = window.confirm(FORCE_OVERWRITE_CONFIRMATION);
+				if (!forceOverwrite) {
+					return;
+				}
+			} else if (!window.confirm(CLIENT_REDOWNLOAD_CONFIRMATION)) {
 				return;
 			}
 		}
@@ -584,15 +594,16 @@ import {
 					}
 				},
 				album.artist?.name,
-				{
-					mode: albumDownloadMode,
-					convertAacToMp3: convertAacToMp3Preference,
-					downloadCoverSeperately: downloadCoverSeperatelyPreference,
-					experimentalMusicBrainzTagging: experimentalMusicBrainzTaggingPreference,
-					storage: $downloadPreferencesStore.storage,
-					forceOverwrite
-				}
-			);
+						{
+							mode: albumDownloadMode,
+							convertAacToMp3: convertAacToMp3Preference,
+							downloadCoverSeperately: downloadCoverSeperatelyPreference,
+							experimentalMusicBrainzTagging: experimentalMusicBrainzTaggingPreference,
+							strictMusicBrainzMatching: strictMusicBrainzMatchingPreference,
+							storage,
+							forceOverwrite
+						}
+				);
 
 			if (result.storage === 'server' && result.jobId) {
 				patchAlbumDownloadState(album.id, {
@@ -1393,15 +1404,21 @@ import {
 							<p class="mt-2 text-xs text-amber-300">Download stopped.</p>
 						{:else if albumDownloadState.status === 'paused'}
 							<p class="mt-2 text-xs text-amber-300">Download paused.</p>
-						{:else if albumDownloadState.error}
-							<p class="mt-2 text-xs text-red-400" role="alert">
-								{albumDownloadState.error}
-							</p>
-						{:else if albumInLibrary}
-							<p class="mt-2 text-xs text-emerald-300">Already in local library.</p>
-						{/if}
-					</div>
-				{/each}
+							{:else if albumDownloadState.error}
+								<p class="mt-2 text-xs text-red-400" role="alert">
+									{albumDownloadState.error}
+								</p>
+							{:else if albumInLibrary}
+								<p class="mt-2 text-xs text-emerald-300">
+									{#if $downloadPreferencesStore.storage === 'server'}
+										Already in local library. Redownload will overwrite.
+									{:else}
+										Already in local library. Browser redownloads may append (2).
+									{/if}
+								</p>
+							{/if}
+						</div>
+					{/each}
 			</div>
 		{:else if $searchStore.activeTab === 'artists' && ($searchStore.results?.artists ?? []).length > 0}
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">

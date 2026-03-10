@@ -164,7 +164,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				totalSize,
 				downloadCoverSeperately,
 				coverUrl,
-				experimentalMusicBrainzTagging
+				experimentalMusicBrainzTagging,
+				strictMusicBrainzMatching
 			} = uploadData;
 			if (MAX_FILE_SIZE > 0 && totalSize && totalSize > MAX_FILE_SIZE) {
 				const trackDesc = `track ID ${trackId} (${trackTitle || 'Unknown'})`;
@@ -189,7 +190,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				detectedMimeType: uploadData.detectedMimeType,
 				downloadCoverSeperately,
 				coverUrl,
-				experimentalMusicBrainzTagging
+				experimentalMusicBrainzTagging,
+				strictMusicBrainzMatching
 			});
 
 			if (!finalizeResult.success) {

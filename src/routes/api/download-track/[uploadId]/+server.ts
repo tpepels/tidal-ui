@@ -42,7 +42,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			checksum,
 			downloadCoverSeperately,
 			coverUrl,
-			experimentalMusicBrainzTagging
+			experimentalMusicBrainzTagging,
+			strictMusicBrainzMatching
 		} = uploadData;
 
 		const buffer = Buffer.from(arrayBuffer);
@@ -73,7 +74,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			detectedMimeType: uploadData.detectedMimeType,
 			downloadCoverSeperately,
 			coverUrl,
-			experimentalMusicBrainzTagging
+			experimentalMusicBrainzTagging,
+			strictMusicBrainzMatching
 		});
 
 		if (!finalizeResult.success) {

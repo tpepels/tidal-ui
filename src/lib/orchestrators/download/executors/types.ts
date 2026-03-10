@@ -10,6 +10,7 @@ export interface DownloadExecutionRequest {
 	convertAacToMp3: boolean;
 	downloadCoverSeperately: boolean;
 	experimentalMusicBrainzTagging: boolean;
+	strictMusicBrainzMatching: boolean;
 	conflictResolution?: 'overwrite' | 'skip' | 'rename' | 'overwrite_if_different';
 	signal?: AbortSignal;
 	onProgress?: (progress: DownloadProgress) => void;

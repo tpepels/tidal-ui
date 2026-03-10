@@ -23,7 +23,7 @@ export async function initializeQueue(): Promise<void> {
 
 			for (const [jobId, value] of Object.entries(jobs)) {
 				const job = JSON.parse(value) as QueuedJob;
-				
+
 				if (job.status === 'processing') {
 					console.log(`[Queue] Recovering job ${jobId} from crash (was processing)`);
 					// Re-queue jobs so local long-running downloads can resume after restart.
@@ -62,15 +62,16 @@ export async function initializeQueue(): Promise<void> {
 }
 
 export type JobType = 'track' | 'album';
-export type JobStatus =
-	| 'queued'
-	| 'processing'
-	| 'paused'
-	| 'completed'
-	| 'failed'
-	| 'cancelled';
+export type JobStatus = 'queued' | 'processing' | 'paused' | 'completed' | 'failed' | 'cancelled';
 export type JobPriority = 'low' | 'normal' | 'high';
-export type ErrorCategory = 'network' | 'api_error' | 'rate_limit' | 'auth' | 'not_found' | 'server_error' | 'unknown';
+export type ErrorCategory =
+	| 'network'
+	| 'api_error'
+	| 'rate_limit'
+	| 'auth'
+	| 'not_found'
+	| 'server_error'
+	| 'unknown';
 export type QueueSource = 'redis' | 'memory';
 
 /**
@@ -89,9 +90,13 @@ export interface CategorizedError {
 export function categorizeError(error: string | Error, statusCode?: number): CategorizedError {
 	const message = error instanceof Error ? error.message : error;
 	const lowerMsg = message.toLowerCase();
-	
+
 	// Rate limiting
-	if (statusCode === 429 || lowerMsg.includes('rate limit') || lowerMsg.includes('too many requests')) {
+	if (
+		statusCode === 429 ||
+		lowerMsg.includes('rate limit') ||
+		lowerMsg.includes('too many requests')
+	) {
 		return {
 			category: 'rate_limit',
 			isRetryable: true,
@@ -99,10 +104,14 @@ export function categorizeError(error: string | Error, statusCode?: number): Cat
 			message
 		};
 	}
-	
+
 	// Network errors (usually retryable)
-	if (lowerMsg.includes('timeout') || lowerMsg.includes('econnrefused') || 
-	    lowerMsg.includes('enotfound') || lowerMsg.includes('network')) {
+	if (
+		lowerMsg.includes('timeout') ||
+		lowerMsg.includes('econnrefused') ||
+		lowerMsg.includes('enotfound') ||
+		lowerMsg.includes('network')
+	) {
 		return {
 			category: 'network',
 			isRetryable: true,
@@ -110,16 +119,21 @@ export function categorizeError(error: string | Error, statusCode?: number): Cat
 			message
 		};
 	}
-	
+
 	// Authentication errors (not retryable without fixing config)
-	if (statusCode === 401 || statusCode === 403 || lowerMsg.includes('unauthorized') || lowerMsg.includes('forbidden')) {
+	if (
+		statusCode === 401 ||
+		statusCode === 403 ||
+		lowerMsg.includes('unauthorized') ||
+		lowerMsg.includes('forbidden')
+	) {
 		return {
 			category: 'auth',
 			isRetryable: false,
 			message
 		};
 	}
-	
+
 	// Not found (not retryable)
 	if (statusCode === 404 || lowerMsg.includes('not found')) {
 		return {
@@ -128,7 +142,7 @@ export function categorizeError(error: string | Error, statusCode?: number): Cat
 			message
 		};
 	}
-	
+
 	// Server errors (retryable with backoff)
 	if (statusCode && statusCode >= 500) {
 		return {
@@ -138,7 +152,7 @@ export function categorizeError(error: string | Error, statusCode?: number): Cat
 			message
 		};
 	}
-	
+
 	// API errors (might be retryable)
 	if (statusCode && statusCode >= 400) {
 		return {
@@ -147,7 +161,7 @@ export function categorizeError(error: string | Error, statusCode?: number): Cat
 			message
 		};
 	}
-	
+
 	// Unknown errors - cautiously mark as retryable
 	return {
 		category: 'unknown',
@@ -167,6 +181,7 @@ export interface TrackJob {
 	trackNumber?: number;
 	coverUrl?: string;
 	experimentalMusicBrainzTagging?: boolean;
+	strictMusicBrainzMatching?: boolean;
 	targetArtistDir?: string;
 	targetAlbumDir?: string;
 	targetFilenameHint?: string;
@@ -181,6 +196,7 @@ export interface AlbumJob {
 	artistName?: string;
 	trackCount?: number;
 	experimentalMusicBrainzTagging?: boolean;
+	strictMusicBrainzMatching?: boolean;
 	forceOverwrite?: boolean;
 }
 
@@ -231,10 +247,14 @@ const QUEUE_KEY = 'tidal:downloadQueue';
 const QUEUE_STATE_FILE = path.join(process.cwd(), 'data', 'download-queue-state.v1.json');
 const LOCAL_MODE_ENABLED = process.env.LOCAL_MODE !== 'false';
 const LOCAL_MODE_HIDE_MULTI_PROCESS_WARNING = LOCAL_MODE_ENABLED;
-const LOCAL_COMPLETED_RETENTION_MS =
-	Math.max(60_000, Number(process.env.LOCAL_COMPLETED_RETENTION_MS || 30 * 60 * 1000));
-const LOCAL_CANCELLED_RETENTION_MS =
-	Math.max(60_000, Number(process.env.LOCAL_CANCELLED_RETENTION_MS || 6 * 60 * 60 * 1000));
+const LOCAL_COMPLETED_RETENTION_MS = Math.max(
+	60_000,
+	Number(process.env.LOCAL_COMPLETED_RETENTION_MS || 30 * 60 * 1000)
+);
+const LOCAL_CANCELLED_RETENTION_MS = Math.max(
+	60_000,
+	Number(process.env.LOCAL_CANCELLED_RETENTION_MS || 6 * 60 * 60 * 1000)
+);
 const LOCAL_FAILED_RETENTION_MS = Math.max(
 	60_000,
 	Number(process.env.LOCAL_FAILED_RETENTION_MS || 7 * 24 * 60 * 60 * 1000)
@@ -290,10 +310,7 @@ async function loadMemoryQueueFromDisk(): Promise<void> {
 					status: 'queued',
 					progress: 0,
 					error: undefined,
-					lastError:
-						job.lastError ??
-						job.error ??
-						'Recovered after restart while processing',
+					lastError: job.lastError ?? job.error ?? 'Recovered after restart while processing',
 					completedAt: undefined,
 					lastUpdatedAt: now,
 					startedAt: undefined,
@@ -395,9 +412,9 @@ export async function getQueueSnapshot(): Promise<{
  * Add a job to the queue with duplicate detection
  */
 export async function enqueueJob(
-	job: DownloadJob, 
-	options?: { 
-		priority?: JobPriority; 
+	job: DownloadJob,
+	options?: {
+		priority?: JobPriority;
 		maxRetries?: number;
 		checkDuplicate?: boolean;
 		forceOverwrite?: boolean;
@@ -441,14 +458,17 @@ export async function enqueueJob(
 				maxRetries: options?.maxRetries ?? 3,
 				retryCount: 0,
 				trackCount: job.type === 'album' ? job.trackCount : undefined,
-				completedTracks: job.type === 'album' ? library.matchedTracks ?? job.trackCount : undefined
+				completedTracks:
+					job.type === 'album' ? (library.matchedTracks ?? job.trackCount) : undefined
 			};
 
 			const client = await getConnectedRedis();
 			if (client) {
 				try {
 					await client.hset(QUEUE_KEY, libraryJobId, JSON.stringify(completedLibraryJob));
-					console.log(`[Queue] Skipped ${job.type} job; already in local library (${libraryJobId})`);
+					console.log(
+						`[Queue] Skipped ${job.type} job; already in local library (${libraryJobId})`
+					);
 					return libraryJobId;
 				} catch (err) {
 					console.warn('[Queue] Redis save failed for library-skip job, using memory:', err);
@@ -458,7 +478,9 @@ export async function enqueueJob(
 			await loadMemoryQueueFromDisk();
 			memoryQueue.set(libraryJobId, completedLibraryJob);
 			await persistMemoryQueueIfNeeded(false);
-			console.log(`[Queue] Skipped ${job.type} job in memory; already in local library (${libraryJobId})`);
+			console.log(
+				`[Queue] Skipped ${job.type} job in memory; already in local library (${libraryJobId})`
+			);
 			return libraryJobId;
 		}
 	}
@@ -477,8 +499,11 @@ export async function enqueueJob(
 				return duplicate.id;
 			}
 			// If duplicate failed and is retryable, requeue it
-			if (duplicate.status === 'failed' && duplicate.errorCategory && 
-			    ['network', 'rate_limit', 'server_error', 'unknown'].includes(duplicate.errorCategory)) {
+			if (
+				duplicate.status === 'failed' &&
+				duplicate.errorCategory &&
+				['network', 'rate_limit', 'server_error', 'unknown'].includes(duplicate.errorCategory)
+			) {
 				await updateJobStatus(duplicate.id, {
 					status: 'queued',
 					progress: 0,
@@ -494,9 +519,9 @@ export async function enqueueJob(
 			}
 		}
 	}
-	
+
 	const jobId = `job-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-	
+
 	const queuedJob: QueuedJob = {
 		id: jobId,
 		job,
@@ -534,36 +559,57 @@ export async function enqueueJob(
 export async function findDuplicateJob(job: DownloadJob): Promise<QueuedJob | null> {
 	const jobs = await getAllJobs();
 	const now = Date.now();
-	
+
 	for (const existingJob of jobs) {
 		// Skip old completed jobs (older than 1 hour)
-		if (existingJob.status === 'completed' && existingJob.completedAt && 
-		    (now - existingJob.completedAt) > 3600000) {
+		if (
+			existingJob.status === 'completed' &&
+			existingJob.completedAt &&
+			now - existingJob.completedAt > 3600000
+		) {
 			continue;
 		}
-		
+
 		// Check if same type and ID
 		if (existingJob.job.type === job.type) {
 			if (job.type === 'track' && existingJob.job.type === 'track') {
 				const existingMusicBrainz = existingJob.job.experimentalMusicBrainzTagging === true;
 				const requestedMusicBrainz = job.experimentalMusicBrainzTagging === true;
-				if (existingJob.job.trackId === job.trackId && 
-				    existingJob.job.quality === job.quality &&
-					existingMusicBrainz === requestedMusicBrainz) {
+				const existingStrictMatch = existingJob.job.strictMusicBrainzMatching === true;
+				const requestedStrictMatch = job.strictMusicBrainzMatching === true;
+				const strictMatches =
+					existingMusicBrainz && requestedMusicBrainz
+						? existingStrictMatch === requestedStrictMatch
+						: true;
+				if (
+					existingJob.job.trackId === job.trackId &&
+					existingJob.job.quality === job.quality &&
+					existingMusicBrainz === requestedMusicBrainz &&
+					strictMatches
+				) {
 					return existingJob;
 				}
 			} else if (job.type === 'album' && existingJob.job.type === 'album') {
 				const existingMusicBrainz = existingJob.job.experimentalMusicBrainzTagging === true;
 				const requestedMusicBrainz = job.experimentalMusicBrainzTagging === true;
-				if (existingJob.job.albumId === job.albumId && 
-				    existingJob.job.quality === job.quality &&
-					existingMusicBrainz === requestedMusicBrainz) {
+				const existingStrictMatch = existingJob.job.strictMusicBrainzMatching === true;
+				const requestedStrictMatch = job.strictMusicBrainzMatching === true;
+				const strictMatches =
+					existingMusicBrainz && requestedMusicBrainz
+						? existingStrictMatch === requestedStrictMatch
+						: true;
+				if (
+					existingJob.job.albumId === job.albumId &&
+					existingJob.job.quality === job.quality &&
+					existingMusicBrainz === requestedMusicBrainz &&
+					strictMatches
+				) {
 					return existingJob;
 				}
 			}
 		}
 	}
-	
+
 	return null;
 }
 
@@ -578,10 +624,10 @@ export async function dequeueJob(): Promise<QueuedJob | null> {
 		try {
 			const jobs = await client.hgetall(QUEUE_KEY);
 			const priorityMap = { high: 3, normal: 2, low: 1 };
-			
+
 			const queuedJobs = Object.entries(jobs)
 				.map(([, value]) => JSON.parse(value) as QueuedJob)
-				.filter(j => {
+				.filter((j) => {
 					// Skip if already processing
 					if (processingJobs.has(j.id)) return false;
 					// Skip if cancellation requested
@@ -594,11 +640,12 @@ export async function dequeueJob(): Promise<QueuedJob | null> {
 				})
 				// Sort by priority (high to low) then by creation time (oldest first)
 				.sort((a, b) => {
-					const priorityDiff = priorityMap[b.priority || 'normal'] - priorityMap[a.priority || 'normal'];
+					const priorityDiff =
+						priorityMap[b.priority || 'normal'] - priorityMap[a.priority || 'normal'];
 					if (priorityDiff !== 0) return priorityDiff;
 					return a.createdAt - b.createdAt;
 				});
-			
+
 			if (queuedJobs.length > 0) {
 				const job = queuedJobs[0];
 				processingJobs.add(job.id);
@@ -614,7 +661,7 @@ export async function dequeueJob(): Promise<QueuedJob | null> {
 	await loadMemoryQueueFromDisk();
 	const priorityMap = { high: 3, normal: 2, low: 1 };
 	const availableJobs = Array.from(memoryQueue.values())
-		.filter(j => {
+		.filter((j) => {
 			if (processingJobs.has(j.id)) return false;
 			if (j.cancellationRequested) return false;
 			if (j.status !== 'queued') return false;
@@ -622,30 +669,28 @@ export async function dequeueJob(): Promise<QueuedJob | null> {
 			return true;
 		})
 		.sort((a, b) => {
-			const priorityDiff = priorityMap[b.priority || 'normal'] - priorityMap[a.priority || 'normal'];
+			const priorityDiff =
+				priorityMap[b.priority || 'normal'] - priorityMap[a.priority || 'normal'];
 			if (priorityDiff !== 0) return priorityDiff;
 			return a.createdAt - b.createdAt;
 		});
-		
+
 	if (availableJobs.length > 0) {
 		const job = availableJobs[0];
 		processingJobs.add(job.id);
 		return job;
 	}
-	
+
 	return null;
 }
 
 /**
  * Update job status
  */
-export async function updateJobStatus(
-	jobId: string, 
-	updates: Partial<QueuedJob>
-): Promise<void> {
+export async function updateJobStatus(jobId: string, updates: Partial<QueuedJob>): Promise<void> {
 	const client = await getConnectedRedis();
 	const stampedUpdates = { ...updates, lastUpdatedAt: Date.now() };
-	
+
 	if (client) {
 		try {
 			const existing = await client.hget(QUEUE_KEY, jobId);
@@ -653,7 +698,7 @@ export async function updateJobStatus(
 				const job = JSON.parse(existing) as QueuedJob;
 				const updated = { ...job, ...stampedUpdates };
 				await client.hset(QUEUE_KEY, jobId, JSON.stringify(updated));
-				
+
 				// Remove from processing set for any non-processing terminal or queued state transition.
 				if (updated.status && updated.status !== 'processing') {
 					processingJobs.delete(jobId);
@@ -682,7 +727,7 @@ export async function updateJobStatus(
  */
 export async function getJob(jobId: string): Promise<QueuedJob | null> {
 	const client = await getConnectedRedis();
-	
+
 	if (client) {
 		try {
 			const data = await client.hget(QUEUE_KEY, jobId);
@@ -720,11 +765,11 @@ export async function getQueueStats(): Promise<{
 }> {
 	const { jobs } = await getQueueSnapshot();
 	return {
-		queued: jobs.filter(j => j.status === 'queued').length,
-		processing: jobs.filter(j => j.status === 'processing').length,
-		paused: jobs.filter(j => j.status === 'paused').length,
-		completed: jobs.filter(j => j.status === 'completed').length,
-		failed: jobs.filter(j => j.status === 'failed').length,
+		queued: jobs.filter((j) => j.status === 'queued').length,
+		processing: jobs.filter((j) => j.status === 'processing').length,
+		paused: jobs.filter((j) => j.status === 'paused').length,
+		completed: jobs.filter((j) => j.status === 'completed').length,
+		failed: jobs.filter((j) => j.status === 'failed').length,
 		total: jobs.length
 	};
 }
@@ -762,7 +807,7 @@ export async function cleanupOldJobs(olderThanMs: number = 24 * 60 * 60 * 1000):
 	const failedRetention = LOCAL_MODE_ENABLED ? LOCAL_FAILED_RETENTION_MS : olderThanMs;
 	const cancelledRetention = LOCAL_MODE_ENABLED ? LOCAL_CANCELLED_RETENTION_MS : olderThanMs;
 	const pausedRetention = LOCAL_MODE_ENABLED ? LOCAL_PAUSED_RETENTION_MS : olderThanMs;
-	
+
 	for (const job of jobs) {
 		const endedAt = job.completedAt ?? job.lastUpdatedAt ?? job.startedAt ?? job.createdAt;
 		const ageMs = now - endedAt;
@@ -771,7 +816,7 @@ export async function cleanupOldJobs(olderThanMs: number = 24 * 60 * 60 * 1000):
 			(job.status === 'failed' && ageMs > failedRetention) ||
 			(job.status === 'cancelled' && ageMs > cancelledRetention) ||
 			(job.status === 'paused' && ageMs > pausedRetention);
-		
+
 		if (shouldClean) {
 			if (client) {
 				try {
@@ -792,7 +837,9 @@ export async function cleanupOldJobs(olderThanMs: number = 24 * 60 * 60 * 1000):
 	}
 
 	if (cleaned > 0) {
-		console.log(`[Queue] Cleaned up ${cleaned} old jobs (older than ${Math.round(olderThanMs / 1000)}s)`);
+		console.log(
+			`[Queue] Cleaned up ${cleaned} old jobs (older than ${Math.round(olderThanMs / 1000)}s)`
+		);
 	}
 	return cleaned;
 }
@@ -802,7 +849,7 @@ export async function cleanupOldJobs(olderThanMs: number = 24 * 60 * 60 * 1000):
  */
 export async function deleteJob(jobId: string): Promise<boolean> {
 	const client = await getConnectedRedis();
-	
+
 	if (client) {
 		try {
 			const result = await client.hdel(QUEUE_KEY, jobId);
@@ -823,7 +870,7 @@ export async function deleteJob(jobId: string): Promise<boolean> {
 		console.log(`[Queue] Job ${jobId} deleted from memory`);
 		return true;
 	}
-	
+
 	return false;
 }
 
@@ -833,7 +880,7 @@ export async function deleteJob(jobId: string): Promise<boolean> {
 export async function requestCancellation(jobId: string): Promise<boolean> {
 	const job = await getJob(jobId);
 	if (!job) return false;
-	
+
 	// If not yet processing, mark as cancelled immediately
 	if (job.status === 'queued' || job.status === 'paused') {
 		await updateJobStatus(jobId, {
@@ -846,7 +893,7 @@ export async function requestCancellation(jobId: string): Promise<boolean> {
 		console.log(`[Queue] Job ${jobId} cancelled (was ${job.status})`);
 		return true;
 	}
-	
+
 	// If processing, flag for cancellation (worker will check this)
 	if (job.status === 'processing') {
 		await updateJobStatus(jobId, {
@@ -856,7 +903,7 @@ export async function requestCancellation(jobId: string): Promise<boolean> {
 		console.log(`[Queue] Cancellation requested for job ${jobId} (currently processing)`);
 		return true;
 	}
-	
+
 	return false;
 }
 
@@ -970,18 +1017,19 @@ export async function cleanupStuckJobs(timeoutMs: number = 300000): Promise<numb
 		if (job.status === 'processing' && job.startedAt) {
 			const lastUpdate = job.lastUpdatedAt ?? job.startedAt;
 			const processingTime = now - lastUpdate;
-			
+
 			if (processingTime > timeoutMs) {
 				const minutes = Math.round(processingTime / 60000);
-				const duration = processingTime > 120000 ? `${minutes}m` : `${Math.round(processingTime / 1000)}s`;
-				
+				const duration =
+					processingTime > 120000 ? `${minutes}m` : `${Math.round(processingTime / 1000)}s`;
+
 				await updateJobStatus(job.id, {
 					status: 'failed',
 					error: `Job stuck in processing for ${duration}, likely crashed`,
 					errorCategory: 'unknown',
 					completedAt: Date.now()
 				});
-				
+
 				processingJobs.delete(job.id);
 				cleaned++;
 				console.log(`[Queue] Cleaned up stuck job ${job.id} (stuck for ${duration})`);
@@ -1013,32 +1061,33 @@ export async function getMetrics(): Promise<{
 	failure_by_code: Record<string, number>;
 }> {
 	const jobs = await getAllJobs();
-	const completed = jobs.filter(j => j.status === 'completed');
-	const failed = jobs.filter(j => j.status === 'failed');
+	const completed = jobs.filter((j) => j.status === 'completed');
+	const failed = jobs.filter((j) => j.status === 'failed');
 	const total = completed.length + failed.length;
-	
+
 	const totalTime = jobs.reduce((sum, j) => {
 		if (j.startedAt && j.completedAt) {
 			return sum + (j.completedAt - j.startedAt);
 		}
 		return sum;
 	}, 0);
-	
-	const avgRetries = jobs.reduce((sum, j) => sum + (j.retryCount || 0), 0) / Math.max(jobs.length, 1);
+
+	const avgRetries =
+		jobs.reduce((sum, j) => sum + (j.retryCount || 0), 0) / Math.max(jobs.length, 1);
 	const failureByCode: Record<string, number> = {};
 	for (const job of failed) {
 		const code = job.failureCode || 'UNKNOWN';
 		failureByCode[code] = (failureByCode[code] || 0) + 1;
 	}
-	
+
 	return {
 		total_jobs: jobs.length,
-		queued: jobs.filter(j => j.status === 'queued').length,
-		processing: jobs.filter(j => j.status === 'processing').length,
-		paused: jobs.filter(j => j.status === 'paused').length,
+		queued: jobs.filter((j) => j.status === 'queued').length,
+		processing: jobs.filter((j) => j.status === 'processing').length,
+		paused: jobs.filter((j) => j.status === 'paused').length,
 		completed: completed.length,
 		failed: failed.length,
-		cancelled: jobs.filter(j => j.status === 'cancelled').length,
+		cancelled: jobs.filter((j) => j.status === 'cancelled').length,
 		avg_success_rate: total > 0 ? Math.round((completed.length / total) * 100) : 0,
 		avg_retry_count: Math.round(avgRetries * 100) / 100,
 		total_download_time_ms: totalTime,

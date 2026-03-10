@@ -6,6 +6,7 @@ export interface AlbumHistoryEntry {
 	href: string;
 	title: string;
 	artistName: string;
+	cover: string | null;
 	visitedAt: number;
 }
 
@@ -13,6 +14,7 @@ export interface ArtistHistoryEntry {
 	id: number;
 	href: string;
 	name: string;
+	picture: string | null;
 	visitedAt: number;
 }
 
@@ -25,11 +27,13 @@ type AlbumVisitInput = {
 	id: number;
 	title?: string | null;
 	artistName?: string | null;
+	cover?: string | null;
 };
 
 type ArtistVisitInput = {
 	id: number;
 	name?: string | null;
+	picture?: string | null;
 };
 
 const STORAGE_KEY = 'tidal-ui.navigation-history';
@@ -51,6 +55,14 @@ function normalizeArtistName(value: string | null | undefined): string {
 	return trimmed.length > 0 ? trimmed : 'Unknown Artist';
 }
 
+function normalizeArtworkReference(value: unknown): string | null {
+	if (typeof value !== 'string') {
+		return null;
+	}
+	const trimmed = value.trim();
+	return trimmed.length > 0 ? trimmed : null;
+}
+
 function normalizeAlbumEntry(raw: unknown): AlbumHistoryEntry | null {
 	if (!raw || typeof raw !== 'object') {
 		return null;
@@ -65,6 +77,7 @@ function normalizeAlbumEntry(raw: unknown): AlbumHistoryEntry | null {
 		href: `/album/${id}`,
 		title: normalizeAlbumTitle(candidate.title),
 		artistName: normalizeArtistName(candidate.artistName),
+		cover: normalizeArtworkReference(candidate.cover),
 		visitedAt:
 			typeof candidate.visitedAt === 'number' && Number.isFinite(candidate.visitedAt)
 				? candidate.visitedAt
@@ -86,6 +99,7 @@ function normalizeArtistEntry(raw: unknown): ArtistHistoryEntry | null {
 		id,
 		href: `/artist/${id}`,
 		name,
+		picture: normalizeArtworkReference(candidate.picture),
 		visitedAt:
 			typeof candidate.visitedAt === 'number' && Number.isFinite(candidate.visitedAt)
 				? candidate.visitedAt
@@ -147,6 +161,7 @@ function createNavigationHistoryStore() {
 				href: `/album/${id}`,
 				title: normalizeAlbumTitle(input.title),
 				artistName: normalizeArtistName(input.artistName),
+				cover: normalizeArtworkReference(input.cover),
 				visitedAt: Date.now()
 			};
 			update((state) => ({
@@ -166,6 +181,7 @@ function createNavigationHistoryStore() {
 				id,
 				href: `/artist/${id}`,
 				name: normalizeArtistName(input.name),
+				picture: normalizeArtworkReference(input.picture),
 				visitedAt: Date.now()
 			};
 			update((state) => ({

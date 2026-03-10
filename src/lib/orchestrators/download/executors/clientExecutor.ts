@@ -13,6 +13,7 @@ export const createClientExecutor = (
 			convertAacToMp3: request.convertAacToMp3,
 			downloadCoverSeperately: request.downloadCoverSeperately,
 			enableExperimentalMusicBrainz: request.experimentalMusicBrainzTagging,
+			strictMusicBrainzMatching: request.strictMusicBrainzMatching,
 			ffmpegAutoTriggered: request.ffmpegAutoTriggered ?? false,
 			onProgress: (progress) => {
 				if (!request.onProgress) return;

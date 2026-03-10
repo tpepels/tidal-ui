@@ -5,6 +5,7 @@ export interface UserPreferencesSnapshot {
 	convertAacToMp3: boolean;
 	downloadCoversSeperately: boolean;
 	experimentalMusicBrainzTagging: boolean;
+	strictMusicBrainzMatching: boolean;
 }
 
 export interface DownloadPreferencesSnapshot {
@@ -24,6 +25,8 @@ export const resolveDownloadOptions = (
 	downloadCoversSeperately: options?.downloadCoversSeperately ?? userPrefs.downloadCoversSeperately,
 	experimentalMusicBrainzTagging:
 		options?.experimentalMusicBrainzTagging ?? userPrefs.experimentalMusicBrainzTagging,
+	strictMusicBrainzMatching:
+		options?.strictMusicBrainzMatching ?? userPrefs.strictMusicBrainzMatching,
 	autoConvertSonglink: options?.autoConvertSonglink ?? true,
 	notificationMode: options?.notificationMode ?? 'alert',
 	subtitle: options?.subtitle ?? '',

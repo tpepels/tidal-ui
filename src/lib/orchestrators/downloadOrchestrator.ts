@@ -7,10 +7,7 @@
  */
 
 import type { PlayableTrack, AudioQuality, Album } from '$lib/types';
-import {
-	buildDownloadFilename,
-	type DownloadError
-} from '$lib/services/playback/downloadService';
+import { buildDownloadFilename, type DownloadError } from '$lib/services/playback/downloadService';
 import { downloadPreferencesStore, type DownloadStorage } from '$lib/stores/downloadPreferences';
 import { userPreferencesStore } from '$lib/stores/userPreferences';
 import { resolveDownloadOptions } from './download/resolveDownloadOptions';
@@ -20,7 +17,11 @@ import {
 	createDownloadExecutionPort,
 	type DownloadExecutionPort
 } from './download/downloadExecutionPort';
-import { createTrackResolver, type TrackResolutionError, type TrackResolver } from './download/trackResolver';
+import {
+	createTrackResolver,
+	type TrackResolutionError,
+	type TrackResolver
+} from './download/trackResolver';
 import { createDownloadExecutors } from './download/executors';
 import { createProgressTracker } from './download/progressTracker';
 import { createDownloadLogPort, type DownloadLogPort } from './download/downloadLogPort';
@@ -62,6 +63,9 @@ export interface DownloadOrchestratorOptions {
 	/** Experimental: enrich embedded tags using MusicBrainz lookups */
 	experimentalMusicBrainzTagging?: boolean;
 
+	/** When enabled, only accept MusicBrainz matches that share the exact ISRC */
+	strictMusicBrainzMatching?: boolean;
+
 	/** Whether to attempt auto-conversion of Songlink tracks */
 	autoConvertSonglink?: boolean;
 
@@ -100,10 +104,7 @@ export type DownloadOrchestratorResult =
 /**
  * Unified error type combining conversion and download errors
  */
-export type DownloadOrchestratorError =
-	| TrackResolutionError
-	| MappedDownloadError
-	| DownloadError;
+export type DownloadOrchestratorError = TrackResolutionError | MappedDownloadError | DownloadError;
 
 /**
  * Stored download attempt for retry functionality
@@ -129,10 +130,22 @@ export class DownloadOrchestrator {
 	private downloadQueue: DownloadQueue;
 
 	/** Failed downloads for user visibility */
-	private failedDownloads = new Map<string, { taskId: string; error: string; track: PlayableTrack }>();
+	private failedDownloads = new Map<
+		string,
+		{ taskId: string; error: string; track: PlayableTrack }
+	>();
 
 	/** Store queued track downloads for execution */
-	private queuedDownloads = new Map<string, { id: string; track: PlayableTrack; options: DownloadOrchestratorOptions; albumId?: number | string; albumTitle?: string }>();
+	private queuedDownloads = new Map<
+		string,
+		{
+			id: string;
+			track: PlayableTrack;
+			options: DownloadOrchestratorOptions;
+			albumId?: number | string;
+			albumTitle?: string;
+		}
+	>();
 
 	/** Maximum number of stored attempts (prevents memory leak) */
 	private readonly MAX_STORED_ATTEMPTS = 50;
@@ -206,14 +219,13 @@ export class DownloadOrchestrator {
 		options?: DownloadOrchestratorOptions
 	): Promise<DownloadOrchestratorResult> {
 		const effectiveOptions = this.resolveOptions(options);
-		
+
 		// For server downloads, submit directly to server queue API
 		if (effectiveOptions.storage === 'server' && effectiveOptions.useCoordinator !== false) {
 			try {
 				// Get artist name - handle both Track and SonglinkTrack types
-				const artistName = 'artistName' in track 
-					? track.artistName 
-					: track.artists?.[0]?.name || 'Unknown Artist';
+				const artistName =
+					'artistName' in track ? track.artistName : track.artists?.[0]?.name || 'Unknown Artist';
 
 				// Submit track job to server queue
 				const response = await fetch('/api/download-queue', {
@@ -226,58 +238,64 @@ export class DownloadOrchestrator {
 							quality: effectiveOptions.quality || 'LOSSLESS',
 							albumTitle: 'album' in track ? track.album?.title : undefined,
 							artistName,
-							experimentalMusicBrainzTagging: effectiveOptions.experimentalMusicBrainzTagging
+							experimentalMusicBrainzTagging: effectiveOptions.experimentalMusicBrainzTagging,
+							strictMusicBrainzMatching: effectiveOptions.strictMusicBrainzMatching
 						}
-				})
-			});
+					})
+				});
 
-			if (!response.ok) {
-				const error = await response.text();
+				if (!response.ok) {
+					const error = await response.text();
+					this.log.error(`Failed to queue track "${track.title}" for server download: ${error}`);
+					return {
+						success: false,
+						error: {
+							code: 'SERVER_ERROR',
+							retry: true,
+							message: `Failed to queue track: ${error}`,
+							userMessage: 'Failed to queue track for download'
+						}
+					};
+				}
+
+				const result = (await response.json()) as { success: boolean; jobId: string };
+				this.log.log(
+					`Queued track "${track.title}" for server download (job ${result.jobId.slice(0, 8)}).`
+				);
+
+				// Placeholder filename - actual name will be determined when queue processes track
+				const filename = track.title || 'download';
+
+				// Return immediately - download will be processed by server queue
+				return {
+					success: true,
+					filename,
+					taskId: result.jobId
+				};
+			} catch (error) {
+				const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+				this.log.error(`Failed to submit "${track.title}" to server download queue: ${errorMsg}`);
 				return {
 					success: false,
 					error: {
 						code: 'SERVER_ERROR',
 						retry: true,
-						message: `Failed to queue track: ${error}`,
-						userMessage: 'Failed to queue track for download'
+						message: errorMsg,
+						userMessage: 'Failed to submit track to download queue'
 					}
 				};
 			}
+		}
 
-			const result = await response.json() as { success: boolean; jobId: string };
-		
-		// Placeholder filename - actual name will be determined when queue processes track
-		const filename = track.title || 'download';
-		
-		// Return immediately - download will be processed by server queue
-		return {
-			success: true,
-			filename,
-			taskId: result.jobId
-		};
-	} catch (error) {
-		const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-		return {
-			success: false,
-			error: {
-				code: 'SERVER_ERROR',
-				retry: true,
-				message: errorMsg,
-				userMessage: 'Failed to submit track to download queue'
-			}
-		};
-	}
-}
-	
-	const effectiveConvertAacToMp3 =
-		effectiveOptions.storage === 'client' ? effectiveOptions.convertAacToMp3 : false;
+		const effectiveConvertAacToMp3 =
+			effectiveOptions.storage === 'client' ? effectiveOptions.convertAacToMp3 : false;
 
-	// Step 1: Handle Songlink conversion if needed
-	const resolutionResult = await this.trackResolver.resolve(track, {
-		autoConvertSonglink: effectiveOptions.autoConvertSonglink
-	});
+		// Step 1: Handle Songlink conversion if needed
+		const resolutionResult = await this.trackResolver.resolve(track, {
+			autoConvertSonglink: effectiveOptions.autoConvertSonglink
+		});
 
-	if (!resolutionResult.success) {
+		if (!resolutionResult.success) {
 			if (resolutionResult.error.code === 'CONVERSION_FAILED') {
 				this.showNotification(
 					'error',
@@ -312,14 +330,10 @@ export class DownloadOrchestrator {
 		);
 
 		// Step 3: Initialize download task in UI store
-		const { taskId, controller } = this.ui.beginTrackDownload(
-			targetTrack,
-			filename,
-			{
-				subtitle: effectiveOptions.subtitle,
-				storage: effectiveOptions.storage
-			}
-		);
+		const { taskId, controller } = this.ui.beginTrackDownload(targetTrack, filename, {
+			subtitle: effectiveOptions.subtitle,
+			storage: effectiveOptions.storage
+		});
 
 		// Store attempt for potential retry
 		this.storeAttempt(taskId, track, effectiveOptions);
@@ -347,6 +361,7 @@ export class DownloadOrchestrator {
 					convertAacToMp3: effectiveConvertAacToMp3,
 					downloadCoverSeperately: effectiveOptions.downloadCoversSeperately,
 					experimentalMusicBrainzTagging: effectiveOptions.experimentalMusicBrainzTagging,
+					strictMusicBrainzMatching: effectiveOptions.strictMusicBrainzMatching,
 					conflictResolution: effectiveOptions.conflictResolution,
 					signal: effectiveOptions.signal ?? controller.signal,
 					onProgress: progressTracker
@@ -376,6 +391,7 @@ export class DownloadOrchestrator {
 					convertAacToMp3: effectiveConvertAacToMp3,
 					downloadCoverSeperately: effectiveOptions.downloadCoversSeperately,
 					experimentalMusicBrainzTagging: effectiveOptions.experimentalMusicBrainzTagging,
+					strictMusicBrainzMatching: effectiveOptions.strictMusicBrainzMatching,
 					conflictResolution: effectiveOptions.conflictResolution,
 					signal: effectiveOptions.signal ?? controller.signal,
 					onProgress: progressTracker
@@ -389,7 +405,9 @@ export class DownloadOrchestrator {
 				}
 
 				this.log.success(
-					serverResult.message ? `Server download complete: ${serverResult.message}` : 'Server download complete'
+					serverResult.message
+						? `Server download complete: ${serverResult.message}`
+						: 'Server download complete'
 				);
 			} else {
 				await this.executors.client.execute({
@@ -400,6 +418,7 @@ export class DownloadOrchestrator {
 					convertAacToMp3: effectiveConvertAacToMp3,
 					downloadCoverSeperately: effectiveOptions.downloadCoversSeperately,
 					experimentalMusicBrainzTagging: effectiveOptions.experimentalMusicBrainzTagging,
+					strictMusicBrainzMatching: effectiveOptions.strictMusicBrainzMatching,
 					signal: effectiveOptions.signal ?? controller.signal,
 					ffmpegAutoTriggered: effectiveOptions.ffmpegAutoTriggered ?? false,
 					onProgress: progressTracker,
@@ -426,7 +445,7 @@ export class DownloadOrchestrator {
 				});
 			}
 
-		// Download completed successfully
+			// Download completed successfully
 			this.ui.completeTrackDownload(taskId!);
 			const successMessage =
 				effectiveOptions.storage === 'server'
@@ -534,7 +553,7 @@ export class DownloadOrchestrator {
 
 		// Retry using the stored attempt
 		const result = await this.retryDownload(failed.taskId);
-		
+
 		// Remove from failed list if retry succeeds
 		if (result.success) {
 			this.failedDownloads.delete(failedId);
@@ -548,9 +567,7 @@ export class DownloadOrchestrator {
 	 */
 	async retryAllFailedDownloads(): Promise<DownloadOrchestratorResult[]> {
 		const failedIds = Array.from(this.failedDownloads.keys());
-		const results = await Promise.all(
-			failedIds.map(id => this.retryFailedDownload(id))
-		);
+		const results = await Promise.all(failedIds.map((id) => this.retryFailedDownload(id)));
 		return results;
 	}
 
@@ -569,7 +586,7 @@ export class DownloadOrchestrator {
 		try {
 			// Execute the download using existing downloadTrack logic
 			const result = await this.downloadTrack(track, options);
-			
+
 			if (!result.success) {
 				// Re-queue if retryable
 				if (result.error && 'retry' in result.error && result.error.retry) {
@@ -597,9 +614,9 @@ export class DownloadOrchestrator {
 		options?: DownloadOrchestratorOptions & { albumId?: number | string; albumTitle?: string }
 	): string {
 		const downloadId = `dl-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-		
+
 		const effectiveOptions = this.resolveOptions(options);
-		
+
 		// Store the track download details
 		this.queuedDownloads.set(downloadId, {
 			id: downloadId,
@@ -610,9 +627,8 @@ export class DownloadOrchestrator {
 		});
 
 		// Get artist name - handle both Track and SonglinkTrack types
-		const artistName = 'artistName' in track 
-			? track.artistName 
-			: track.artists?.[0]?.name || 'Unknown Artist';
+		const artistName =
+			'artistName' in track ? track.artistName : track.artists?.[0]?.name || 'Unknown Artist';
 
 		// Enqueue in the download queue
 		this.downloadQueue.enqueue(downloadId, track.id, {
@@ -637,17 +653,18 @@ export class DownloadOrchestrator {
 			convertAacToMp3?: boolean;
 			downloadCoversSeperately?: boolean;
 			experimentalMusicBrainzTagging?: boolean;
+			strictMusicBrainzMatching?: boolean;
 			conflictResolution?: 'overwrite' | 'skip' | 'rename' | 'overwrite_if_different';
 			artistName?: string;
 		}
 	): Promise<{ success: boolean; queuedCount: number; error?: string }> {
 		// Import dynamically to avoid issues
 		const { losslessAPI } = await import('$lib/api');
-		
+
 		try {
 			// Fetch album tracks
 			const { tracks } = await losslessAPI.getAlbum(album.id);
-			
+
 			if (!tracks || tracks.length === 0) {
 				const errorMsg = `No tracks found for album: ${album.title}`;
 				this.log.error(errorMsg);
@@ -668,6 +685,7 @@ export class DownloadOrchestrator {
 					convertAacToMp3: options?.convertAacToMp3 || false,
 					downloadCoversSeperately: options?.downloadCoversSeperately || false,
 					experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging || false,
+					strictMusicBrainzMatching: options?.strictMusicBrainzMatching || false,
 					conflictResolution: options?.conflictResolution || 'overwrite_if_different',
 					albumId: album.id,
 					albumTitle,
@@ -679,7 +697,7 @@ export class DownloadOrchestrator {
 			}
 
 			this.log.success(`Queued ${queuedCount} tracks from "${albumTitle}"`);
-			
+
 			return { success: true, queuedCount };
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Failed to queue album';
@@ -741,7 +759,8 @@ export class DownloadOrchestrator {
 
 	private resolveOptions(
 		options?: DownloadOrchestratorOptions
-	): Required<Omit<DownloadOrchestratorOptions, 'signal'>> & Pick<DownloadOrchestratorOptions, 'signal'> {
+	): Required<Omit<DownloadOrchestratorOptions, 'signal'>> &
+		Pick<DownloadOrchestratorOptions, 'signal'> {
 		const prefs = get(userPreferencesStore);
 		const downloadPrefs = get(downloadPreferencesStore);
 

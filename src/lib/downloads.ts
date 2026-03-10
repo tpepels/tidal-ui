@@ -9,7 +9,9 @@ const BASE_DELAY_MS = 1000;
 
 export const downloadTrackServerSide = downloadTrackServerSideImpl;
 
-export function detectImageFormat(data: Uint8Array): { extension: string; mimeType: string } | null {
+export function detectImageFormat(
+	data: Uint8Array
+): { extension: string; mimeType: string } | null {
 	if (!data || data.length < 4) {
 		return null;
 	}
@@ -170,6 +172,7 @@ export async function downloadTrackWithRetry(
 		convertAacToMp3?: boolean;
 		downloadCoverSeperately?: boolean;
 		experimentalMusicBrainzTagging?: boolean;
+		strictMusicBrainzMatching?: boolean;
 		storage?: DownloadStorage;
 		signal?: AbortSignal;
 		onProgress?: (
@@ -210,6 +213,7 @@ export async function downloadTrackWithRetry(
 				ffmpegAutoTriggered: false,
 				convertAacToMp3: storage === 'client' ? options?.convertAacToMp3 : false,
 				enableExperimentalMusicBrainz: options?.experimentalMusicBrainzTagging ?? false,
+				strictMusicBrainzMatching: options?.strictMusicBrainzMatching ?? false,
 				skipMetadataEmbedding: storage === 'server',
 				signal: options?.signal,
 				onProgress: options?.onProgress
@@ -268,6 +272,7 @@ export async function downloadTrackToServer(
 		convertAacToMp3?: boolean;
 		downloadCoverSeperately?: boolean;
 		experimentalMusicBrainzTagging?: boolean;
+		strictMusicBrainzMatching?: boolean;
 		conflictResolution?: 'overwrite' | 'skip' | 'rename' | 'overwrite_if_different';
 		signal?: AbortSignal;
 		onProgress?: (progress: ServerDownloadProgress) => void;
@@ -289,31 +294,25 @@ export async function downloadTrackToServer(
 		convertAacToMp3
 	);
 
-	const fetchResult = await downloadTrackWithRetry(
-		track.id,
-		quality,
-		filename,
-		track,
-		undefined,
-		{
-			convertAacToMp3,
-			downloadCoverSeperately: false,
-			experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? false,
-			storage: 'server',
-			signal: options?.signal,
-			onProgress: (progress) => {
-				if (progress.stage === 'downloading') {
-					options?.onProgress?.({
-						stage: 'downloading',
-						receivedBytes: progress.receivedBytes,
-						totalBytes: progress.totalBytes
-					});
-				} else if (progress.stage === 'embedding') {
-					options?.onProgress?.({ stage: 'embedding', progress: progress.progress });
-				}
+	const fetchResult = await downloadTrackWithRetry(track.id, quality, filename, track, undefined, {
+		convertAacToMp3,
+		downloadCoverSeperately: false,
+		experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? false,
+		strictMusicBrainzMatching: options?.strictMusicBrainzMatching ?? false,
+		storage: 'server',
+		signal: options?.signal,
+		onProgress: (progress) => {
+			if (progress.stage === 'downloading') {
+				options?.onProgress?.({
+					stage: 'downloading',
+					receivedBytes: progress.receivedBytes,
+					totalBytes: progress.totalBytes
+				});
+			} else if (progress.stage === 'embedding') {
+				options?.onProgress?.({ stage: 'embedding', progress: progress.progress });
 			}
 		}
-	);
+	});
 
 	if (!fetchResult.success || !fetchResult.blob) {
 		const errorMessage =
@@ -348,6 +347,7 @@ export async function downloadTrackToServer(
 			conflictResolution: options?.conflictResolution,
 			downloadCoverSeperately: options?.downloadCoverSeperately ?? false,
 			experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? false,
+			strictMusicBrainzMatching: options?.strictMusicBrainzMatching ?? false,
 			coverUrl,
 			detectedMimeType: fetchResult.mimeType,
 			signal: options?.signal,
@@ -422,6 +422,7 @@ export async function downloadAlbum(
 		convertAacToMp3?: boolean;
 		downloadCoverSeperately?: boolean;
 		experimentalMusicBrainzTagging?: boolean;
+		strictMusicBrainzMatching?: boolean;
 		storage?: DownloadStorage;
 		forceOverwrite?: boolean;
 	}
@@ -455,6 +456,7 @@ export async function downloadAlbum(
 					albumTitle,
 					trackCount,
 					experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? false,
+					strictMusicBrainzMatching: options?.strictMusicBrainzMatching ?? false,
 					forceOverwrite: options?.forceOverwrite === true
 				},
 				forceOverwrite: options?.forceOverwrite === true
@@ -496,6 +498,7 @@ export async function downloadAlbum(
 	const convertAacToMp3 = options?.convertAacToMp3 ?? false;
 	const downloadCoverSeperately = options?.downloadCoverSeperately ?? false;
 	const experimentalMusicBrainzTagging = options?.experimentalMusicBrainzTagging ?? false;
+	const strictMusicBrainzMatching = options?.strictMusicBrainzMatching ?? false;
 
 	let completedTracks = 0;
 	let failedTracks = 0;
@@ -513,6 +516,7 @@ export async function downloadAlbum(
 			convertAacToMp3,
 			downloadCoverSeperately,
 			experimentalMusicBrainzTagging,
+			strictMusicBrainzMatching,
 			storage: 'client'
 		});
 

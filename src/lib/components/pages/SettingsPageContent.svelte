@@ -108,6 +108,7 @@
 	const experimentalMusicBrainzTagging = $derived(
 		$userPreferencesStore.experimentalMusicBrainzTagging
 	);
+	const strictMusicBrainzMatching = $derived($userPreferencesStore.strictMusicBrainzMatching);
 
 	const QUALITY_OPTIONS: Array<{
 		value: AudioQuality;
@@ -231,6 +232,10 @@
 
 	function toggleExperimentalMusicBrainzTagging(): void {
 		userPreferencesStore.toggleExperimentalMusicBrainzTagging();
+	}
+
+	function toggleStrictMusicBrainzMatching(): void {
+		userPreferencesStore.toggleStrictMusicBrainzMatching();
 	}
 
 	function setDownloadMode(mode: DownloadMode): void {
@@ -816,7 +821,8 @@
 				const { blob } = await losslessAPI.fetchTrackBlob(track.id, quality, filename, {
 					ffmpegAutoTriggered: false,
 					convertAacToMp3,
-					enableExperimentalMusicBrainz: experimentalMusicBrainzTagging
+					enableExperimentalMusicBrainz: experimentalMusicBrainzTagging,
+					strictMusicBrainzMatching
 				});
 				zip.file(filename, blob);
 			}
@@ -893,6 +899,7 @@
 						const serverResult = await downloadTrackToServer(resolvedTrack, quality, {
 							downloadCoverSeperately: downloadCoversSeperately,
 							experimentalMusicBrainzTagging,
+							strictMusicBrainzMatching,
 							conflictResolution: 'overwrite_if_different',
 							signal: controller.signal,
 							onProgress: progressHandler
@@ -928,7 +935,8 @@
 						ffmpegAutoTriggered: false,
 						convertAacToMp3,
 						downloadCoverSeperately: downloadCoversSeperately,
-						enableExperimentalMusicBrainz: experimentalMusicBrainzTagging
+						enableExperimentalMusicBrainz: experimentalMusicBrainzTagging,
+						strictMusicBrainzMatching
 					});
 					downloadUiStore.completeTrackDownload(taskId);
 				} catch (error) {
@@ -1065,6 +1073,24 @@
 			</span>
 			<span class={`glass-option__chip ${experimentalMusicBrainzTagging ? 'is-active' : ''}`}>
 				{experimentalMusicBrainzTagging ? 'On' : 'Off'}
+			</span>
+		</button>
+		<button
+			type="button"
+			onclick={toggleStrictMusicBrainzMatching}
+			class={`glass-option ${strictMusicBrainzMatching ? 'is-active' : ''} ${!experimentalMusicBrainzTagging ? 'cursor-not-allowed opacity-50' : ''}`}
+			aria-pressed={strictMusicBrainzMatching}
+			disabled={!experimentalMusicBrainzTagging}
+		>
+			<span class="glass-option__content">
+				<span class="glass-option__label">MusicBrainz strict matching (ISRC only)</span>
+				<span class="glass-option__description">
+					Only accept MusicBrainz matches with an exact ISRC. Reduces mismatches but may skip
+					tags when ISRC is missing.
+				</span>
+			</span>
+			<span class={`glass-option__chip ${strictMusicBrainzMatching ? 'is-active' : ''}`}>
+				{strictMusicBrainzMatching ? 'On' : 'Off'}
 			</span>
 		</button>
 	</section>

@@ -5,7 +5,8 @@ import { TrackSchema, safeValidateApiResponse } from '$lib/utils/schemas';
 import { lookupMusicBrainzTagsForTrack } from '$lib/server/musicBrainzLookup';
 
 const MusicBrainzRequestSchema = z.object({
-	track: TrackSchema
+	track: TrackSchema,
+	strictIsrcMatch: z.boolean().optional()
 });
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -20,7 +21,9 @@ export const POST: RequestHandler = async ({ request }) => {
 			return json({ success: false, error: validation.error }, { status: 400 });
 		}
 
-		const tags = await lookupMusicBrainzTagsForTrack(validation.data.track);
+		const tags = await lookupMusicBrainzTagsForTrack(validation.data.track, {
+			strictIsrcMatch: validation.data.strictIsrcMatch === true
+		});
 		return json({
 			success: true,
 			tags,

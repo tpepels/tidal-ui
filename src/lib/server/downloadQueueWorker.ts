@@ -54,10 +54,7 @@ const targetHealth = new Map<string, number>();
 let albumTargetCursor = 0;
 const DEFAULT_SEGMENT_TIMEOUT_MS = 20000;
 const SEGMENT_TIMEOUT_MS = (() => {
-	const raw =
-		process.env.SEGMENT_TIMEOUT_MS ||
-		process.env.DOWNLOAD_SEGMENT_TIMEOUT_MS ||
-		'';
+	const raw = process.env.SEGMENT_TIMEOUT_MS || process.env.DOWNLOAD_SEGMENT_TIMEOUT_MS || '';
 	const parsed = Number(raw);
 	return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SEGMENT_TIMEOUT_MS;
 })();
@@ -93,7 +90,16 @@ const ALBUM_TRACK_MAX_ATTEMPTS =
 		: DEFAULT_ALBUM_TRACK_MAX_ATTEMPTS;
 const DEFAULT_ALBUM_TRACK_CONCURRENCY = 2;
 const ALBUM_STAGING_ROOT = path.join(getTempDir(), 'album-staging');
-const AUDIO_EXTENSIONS = new Set(['.flac', '.m4a', '.mp4', '.mp3', '.aac', '.wav', '.ogg', '.opus']);
+const AUDIO_EXTENSIONS = new Set([
+	'.flac',
+	'.m4a',
+	'.mp4',
+	'.mp3',
+	'.aac',
+	'.wav',
+	'.ogg',
+	'.opus'
+]);
 const MEDIA_LIBRARY_PUBLISH_LOCK_WAIT_MS = Math.max(
 	0,
 	Number(process.env.MEDIA_LIBRARY_PUBLISH_LOCK_WAIT_MS || 120_000)
@@ -150,9 +156,11 @@ function resolveNextFallbackQuality(
 	return null;
 }
 
-function shouldAttemptQualityFallback(
-	result: { errorCategory?: ErrorCategory; error?: string; retryable?: boolean }
-): boolean {
+function shouldAttemptQualityFallback(result: {
+	errorCategory?: ErrorCategory;
+	error?: string;
+	retryable?: boolean;
+}): boolean {
 	if (!DOWNLOAD_ENABLE_QUALITY_FALLBACK) return false;
 	if (result.retryable) return false;
 	if (result.errorCategory === 'not_found') return true;
@@ -270,6 +278,7 @@ async function reconcilePublishedAlbum(params: {
 	coverUrl?: string;
 	forceOverwrite?: boolean;
 	experimentalMusicBrainzTagging?: boolean;
+	strictMusicBrainzMatching?: boolean;
 	finalAlbumDir: string;
 	expectedTracks: ExpectedAlbumTrack[];
 	expectedFileByTrackId: Map<number, string>;
@@ -305,6 +314,7 @@ async function reconcilePublishedAlbum(params: {
 				trackNumber: missingTrack.trackNumber,
 				coverUrl: params.coverUrl,
 				experimentalMusicBrainzTagging: params.experimentalMusicBrainzTagging === true,
+				strictMusicBrainzMatching: params.strictMusicBrainzMatching === true,
 				forceOverwrite: params.forceOverwrite === true
 			},
 			{
@@ -346,7 +356,8 @@ async function failOrRequeueAlbumJob(params: {
 			ALBUM_RETRY_BASE_DELAY_MS * Math.pow(2, Math.max(0, nextRetryCount - 1)),
 			ALBUM_RETRY_MAX_DELAY_MS
 		);
-		const delayMs = params.retryAfterMs && params.retryAfterMs > 0 ? params.retryAfterMs : backoffMs;
+		const delayMs =
+			params.retryAfterMs && params.retryAfterMs > 0 ? params.retryAfterMs : backoffMs;
 		await updateJobStatus(params.job.id, {
 			status: 'queued',
 			progress: 0,
@@ -464,7 +475,11 @@ async function publishAlbumFromStaging(options: {
 	artistDirName: string;
 	albumDirName: string;
 }): Promise<void> {
-	const stagedAlbumDir = path.join(options.stagingRoot, options.artistDirName, options.albumDirName);
+	const stagedAlbumDir = path.join(
+		options.stagingRoot,
+		options.artistDirName,
+		options.albumDirName
+	);
 	if (!(await pathExists(stagedAlbumDir))) {
 		throw new Error('Album staging directory missing before publish');
 	}
@@ -550,6 +565,7 @@ async function downloadTrack(
 		targetFilenameHint?: string;
 		requireMetadata?: boolean;
 		experimentalMusicBrainzTagging?: boolean;
+		strictMusicBrainzMatching?: boolean;
 	}
 ): Promise<{
 	success: boolean;
@@ -564,10 +580,10 @@ async function downloadTrack(
 			`[Worker] Downloading track ${trackId} (${quality}) [segment timeout ${SEGMENT_TIMEOUT_MS}ms]`
 		);
 		const conflictResolution = options?.forceOverwrite ? 'overwrite' : 'overwrite_if_different';
-		
+
 		const apiTarget = API_CONFIG.baseUrl || API_CONFIG.targets[0]?.baseUrl || 'unknown';
 		const downloadStart = Date.now();
-		
+
 		// Call the server adapter directly (NO HTTP)
 		// Pass losslessAPI which uses fetchWithCORS for proper target rotation
 		const result = await downloadTrackServerSide({
@@ -581,6 +597,7 @@ async function downloadTrack(
 			conflictResolution,
 			apiClient: losslessAPI, // Main branch's API client with all the tested logic
 			experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging === true,
+			strictMusicBrainzMatching: options?.strictMusicBrainzMatching === true,
 			segmentTimeoutMs: SEGMENT_TIMEOUT_MS
 		});
 
@@ -631,14 +648,8 @@ async function downloadTrack(
 			`[Worker] Track ${trackId} download completed in ${downloadDurationMs}ms (${formatMegabytes(result.receivedBytes)})`
 		);
 
-		const resolvedArtist =
-			artistName ||
-			result.trackLookup?.track.artist?.name ||
-			'Unknown Artist';
-		const resolvedAlbum =
-			albumTitle ||
-			result.trackLookup?.track.album?.title ||
-			'Unknown Album';
+		const resolvedArtist = artistName || result.trackLookup?.track.artist?.name || 'Unknown Artist';
+		const resolvedAlbum = albumTitle || result.trackLookup?.track.album?.title || 'Unknown Album';
 		const lookupTitle = result.trackLookup?.track.title;
 		const lookupVersion = result.trackLookup?.track.version;
 		const computedTitle = lookupTitle
@@ -669,12 +680,11 @@ async function downloadTrack(
 			downloadCoverSeperately: options?.downloadCover ?? true,
 			coverUrl,
 			experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging === true,
+			strictMusicBrainzMatching: options?.strictMusicBrainzMatching === true,
 			outputBaseDir: options?.outputBaseDir
 		});
 		const finalizeDurationMs = Date.now() - finalizeStart;
-		console.log(
-			`[Worker] Track ${trackId} finalize completed in ${finalizeDurationMs}ms`
-		);
+		console.log(`[Worker] Track ${trackId} finalize completed in ${finalizeDurationMs}ms`);
 
 		if (!finalizeResult.success) {
 			console.error(`[Worker] Track ${trackId} finalize failed: ${finalizeResult.error.message}`);
@@ -696,8 +706,8 @@ async function downloadTrack(
 		const message = error instanceof Error ? error.message : String(error);
 		const categorized = categorizeError(message);
 		console.error(`[Worker] Track ${trackId} failed: ${message}`);
-		return { 
-			success: false, 
+		return {
+			success: false,
 			error: message,
 			retryable: categorized.isRetryable,
 			errorCategory: categorized.category,
@@ -759,6 +769,7 @@ async function processTrackJob(job: QueuedJob): Promise<void> {
 				targetAlbumDir: trackJob.targetAlbumDir,
 				targetFilenameHint: trackJob.targetFilenameHint,
 				experimentalMusicBrainzTagging: trackJob.experimentalMusicBrainzTagging === true,
+				strictMusicBrainzMatching: trackJob.strictMusicBrainzMatching === true,
 				requireMetadata: Boolean(
 					trackJob.targetArtistDir && trackJob.targetAlbumDir && trackJob.targetFilenameHint
 				)
@@ -767,17 +778,17 @@ async function processTrackJob(job: QueuedJob): Promise<void> {
 
 		if (result.success) {
 			const duration = Date.now() - startTime;
-				await updateJobStatus(job.id, {
-					status: 'completed',
-					progress: 1,
-					completedAt: Date.now(),
-					downloadTimeMs: duration,
-					error: undefined,
-					errorCategory: undefined,
-					failureCode: undefined,
-					retryCount,
-					job: { ...trackJob, quality: currentQuality },
-					fallbackHistory
+			await updateJobStatus(job.id, {
+				status: 'completed',
+				progress: 1,
+				completedAt: Date.now(),
+				downloadTimeMs: duration,
+				error: undefined,
+				errorCategory: undefined,
+				failureCode: undefined,
+				retryCount,
+				job: { ...trackJob, quality: currentQuality },
+				fallbackHistory
 			});
 			return;
 		}
@@ -838,11 +849,14 @@ async function processTrackJob(job: QueuedJob): Promise<void> {
 /**
  * Parse album response data which can be in multiple formats
  */
-function parseAlbumResponse(data: unknown): { album: Record<string, unknown>; tracks: Array<Record<string, unknown>> } {
+function parseAlbumResponse(data: unknown): {
+	album: Record<string, unknown>;
+	tracks: Array<Record<string, unknown>>;
+} {
 	if (!data) {
 		throw new Error('Empty response from API');
 	}
-	
+
 	// Handle v2 API format: { data: { items: [...] } }
 	if (data && typeof data === 'object' && 'data' in data) {
 		const dataObj = data as { data?: unknown };
@@ -850,81 +864,89 @@ function parseAlbumResponse(data: unknown): { album: Record<string, unknown>; tr
 			const items = (dataObj.data as { items?: unknown }).items;
 			if (Array.isArray(items) && items.length > 0) {
 				const firstItem = items[0];
-				const firstTrack = (firstItem && typeof firstItem === 'object' && 'item' in firstItem) 
-					? (firstItem as { item: unknown }).item 
-					: firstItem;
-				
+				const firstTrack =
+					firstItem && typeof firstItem === 'object' && 'item' in firstItem
+						? (firstItem as { item: unknown }).item
+						: firstItem;
+
 				if (firstTrack && typeof firstTrack === 'object' && 'album' in firstTrack) {
 					const albumData = (firstTrack as { album?: unknown }).album;
 					if (!albumData || typeof albumData !== 'object') {
 						throw new Error('Invalid album data in API response');
 					}
 					const album = albumData as Record<string, unknown>;
-					
-					const tracks = items.map((i: unknown) => {
-						if (!i || typeof i !== 'object') return null;
-						const item = ('item' in i) ? (i as { item: unknown }).item : i;
-						if (!item || typeof item !== 'object') return null;
-						const track = item as Record<string, unknown>;
-						// Validate track has required fields
-						if (!track.id || typeof track.id !== 'number') return null;
-						return track;
-					}).filter((t): t is Record<string, unknown> => t !== null);
-					
+
+					const tracks = items
+						.map((i: unknown) => {
+							if (!i || typeof i !== 'object') return null;
+							const item = 'item' in i ? (i as { item: unknown }).item : i;
+							if (!item || typeof item !== 'object') return null;
+							const track = item as Record<string, unknown>;
+							// Validate track has required fields
+							if (!track.id || typeof track.id !== 'number') return null;
+							return track;
+						})
+						.filter((t): t is Record<string, unknown> => t !== null);
+
 					if (tracks.length === 0) {
 						throw new Error('No valid tracks found in album');
 					}
-					
+
 					return { album, tracks };
 				}
 			}
 		}
 	}
-	
+
 	// Handle array format: [album, { items: [...] }]
 	const entries = Array.isArray(data) ? data : [data];
 	let album: Record<string, unknown> | undefined;
 	let trackCollection: { items?: unknown[] } | undefined;
-	
+
 	for (const entry of entries) {
 		if (!entry || typeof entry !== 'object') continue;
-		
+
 		// Check if this is an album object
 		if (!album && 'title' in entry && 'id' in entry) {
 			album = entry as Record<string, unknown>;
 			continue;
 		}
-		
+
 		// Check if this is a track collection
-		if (!trackCollection && 'items' in entry && Array.isArray((entry as { items?: unknown[] }).items)) {
+		if (
+			!trackCollection &&
+			'items' in entry &&
+			Array.isArray((entry as { items?: unknown[] }).items)
+		) {
 			trackCollection = entry as { items?: unknown[] };
 		}
 	}
-	
+
 	if (!album) {
 		throw new Error('Album not found in response');
 	}
-	
+
 	const tracks: Array<Record<string, unknown>> = [];
 	if (trackCollection?.items) {
 		for (const rawItem of trackCollection.items) {
 			if (!rawItem || typeof rawItem !== 'object') continue;
-			
-			const trackObj = ('item' in rawItem && rawItem.item && typeof rawItem.item === 'object')
-				? rawItem.item as Record<string, unknown>
-				: rawItem as Record<string, unknown>;
-			
+
+			const trackObj =
+				'item' in rawItem && rawItem.item && typeof rawItem.item === 'object'
+					? (rawItem.item as Record<string, unknown>)
+					: (rawItem as Record<string, unknown>);
+
 			// Validate track has required fields
 			if (trackObj.id && typeof trackObj.id === 'number') {
 				tracks.push(trackObj);
 			}
 		}
 	}
-	
+
 	if (tracks.length === 0) {
 		throw new Error('No valid tracks found in album response');
 	}
-	
+
 	return { album, tracks };
 }
 
@@ -939,6 +961,7 @@ async function downloadAlbumTrackWithPolicy(options: {
 	outputBaseDir?: string;
 	forceOverwrite?: boolean;
 	experimentalMusicBrainzTagging?: boolean;
+	strictMusicBrainzMatching?: boolean;
 }): Promise<{
 	success: boolean;
 	error?: string;
@@ -968,7 +991,8 @@ async function downloadAlbumTrackWithPolicy(options: {
 				downloadCover: false,
 				outputBaseDir: options.outputBaseDir,
 				forceOverwrite: options.forceOverwrite === true,
-				experimentalMusicBrainzTagging: options.experimentalMusicBrainzTagging === true
+				experimentalMusicBrainzTagging: options.experimentalMusicBrainzTagging === true,
+				strictMusicBrainzMatching: options.strictMusicBrainzMatching === true
 			}
 		);
 
@@ -1053,8 +1077,8 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 	const albumJob = job.job as AlbumJob;
 	let stagingRoot: string | undefined;
 
-	await updateJobStatus(job.id, { 
-		status: 'processing', 
+	await updateJobStatus(job.id, {
+		status: 'processing',
 		startedAt: Date.now(),
 		progress: 0,
 		error: undefined,
@@ -1066,17 +1090,29 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		try {
 			await refreshApiTargetsIfStale();
 		} catch (refreshError) {
-			console.warn('[Worker] API target refresh failed, continuing with cached targets:', refreshError);
+			console.warn(
+				'[Worker] API target refresh failed, continuing with cached targets:',
+				refreshError
+			);
 		}
 
 		// Fetch album with target rotation (server-safe direct fetch, not browser proxy)
-		const targets = API_CONFIG.targets.length > 0 
-			? API_CONFIG.targets 
-			: [{ name: 'default', baseUrl: API_CONFIG.baseUrl || 'https://triton.squid.wtf', weight: 1, requiresProxy: false, category: 'auto-only' as const }];
+		const targets =
+			API_CONFIG.targets.length > 0
+				? API_CONFIG.targets
+				: [
+						{
+							name: 'default',
+							baseUrl: API_CONFIG.baseUrl || 'https://triton.squid.wtf',
+							weight: 1,
+							requiresProxy: false,
+							category: 'auto-only' as const
+						}
+					];
 
-		const healthyTargets = targets.filter(t => !isTargetTemporarilyDown(t.name));
+		const healthyTargets = targets.filter((t) => !isTargetTemporarilyDown(t.name));
 		const selectedTargets = healthyTargets.length > 0 ? healthyTargets : targets;
-		const rateAllowedTargets = selectedTargets.filter(t => rateLimiter.isRequestAllowed(t.name));
+		const rateAllowedTargets = selectedTargets.filter((t) => rateLimiter.isRequestAllowed(t.name));
 		if (rateAllowedTargets.length === 0 && selectedTargets.length > 0) {
 			console.warn('[Worker] All API targets are rate-limited; falling back to full list.');
 		}
@@ -1084,14 +1120,17 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		if (selectedTargets.length === 0) {
 			throw new Error('No API targets available for album fetch');
 		}
-		
-		let albumData: { album: Record<string, unknown>; tracks: Array<Record<string, unknown>> } | null = null;
+
+		let albumData: {
+			album: Record<string, unknown>;
+			tracks: Array<Record<string, unknown>>;
+		} | null = null;
 		let lastError: Error | null = null;
 		const rotatedTargets = rotateTargets(
 			rateAllowedTargets.length > 0 ? rateAllowedTargets : selectedTargets,
 			albumTargetCursor++
 		);
-		
+
 		// Try up to 3 targets with 10s timeout per target (30s max total)
 		const maxAttempts = Math.min(3, rotatedTargets.length);
 		for (let i = 0; i < maxAttempts; i++) {
@@ -1114,24 +1153,28 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 			const target = rotatedTargets[i];
 			try {
 				const albumUrl = `${target.baseUrl}/album/?id=${albumJob.albumId}`;
-				console.log(`[Worker] Album ${albumJob.albumId}: Trying ${target.name} (${target.baseUrl})`);
-				
+				console.log(
+					`[Worker] Album ${albumJob.albumId}: Trying ${target.name} (${target.baseUrl})`
+				);
+
 				const controller = new AbortController();
 				const timeout = setTimeout(() => controller.abort(), 10_000); // 10s per target
-				
+
 				let albumResponse: Response;
 				try {
 					albumResponse = await globalThis.fetch(albumUrl, { signal: controller.signal });
 				} finally {
 					clearTimeout(timeout);
 				}
-				
+
 				if (!albumResponse.ok) {
 					const statusText = albumResponse.statusText || '';
 					const errorBody = await albumResponse.text().catch(() => '');
 					const bodySnippet = errorBody.trim().slice(0, 300);
 					const statusSummary = `HTTP ${albumResponse.status}${statusText ? ` ${statusText}` : ''} from ${target.name}`;
-					const logSummary = bodySnippet ? `${statusSummary}: ${bodySnippet}` : `${statusSummary} (no body)`;
+					const logSummary = bodySnippet
+						? `${statusSummary}: ${bodySnippet}`
+						: `${statusSummary} (no body)`;
 					console.warn(`[Worker] ${logSummary}`);
 					lastError = new Error(bodySnippet ? `${statusSummary} - ${bodySnippet}` : statusSummary);
 
@@ -1153,7 +1196,7 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 
 					continue;
 				}
-				
+
 				const responseData = await albumResponse.json();
 				albumData = parseAlbumResponse(responseData);
 				rateLimiter.recordSuccess(target.name);
@@ -1181,11 +1224,11 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 				// Continue to next target
 			}
 		}
-		
+
 		if (!albumData) {
 			throw lastError || new Error('All targets failed to fetch album');
 		}
-		
+
 		const { album, tracks } = albumData;
 		const totalTracks = tracks.length;
 
@@ -1195,9 +1238,7 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 
 		const artistName =
 			albumJob.artistName ||
-			(album.artist &&
-			typeof album.artist === 'object' &&
-			'name' in album.artist
+			(album.artist && typeof album.artist === 'object' && 'name' in album.artist
 				? String((album.artist as { name: unknown }).name)
 				: undefined) ||
 			'Unknown Artist';
@@ -1209,9 +1250,7 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		stagingRoot = buildAlbumStagingRoot(job.id);
 		const stagingAlbumDir = path.join(stagingRoot, artistDirName, albumDirName);
 		await ensureDir(stagingAlbumDir);
-		console.log(
-			`[Worker] Album ${albumJob.albumId}: staging download in ${stagingAlbumDir}`
-		);
+		console.log(`[Worker] Album ${albumJob.albumId}: staging download in ${stagingAlbumDir}`);
 
 		await updateJobStatus(job.id, {
 			job: { ...job.job, albumTitle, artistName },
@@ -1239,8 +1278,7 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		const startTime = Date.now();
 		const expectedTracks: ExpectedAlbumTrack[] = tracks.map((track, idx) => ({
 			trackId: typeof track.id === 'number' ? track.id : 0,
-			trackTitle:
-				(typeof track.title === 'string' ? track.title : undefined) || `Track ${idx + 1}`,
+			trackTitle: (typeof track.title === 'string' ? track.title : undefined) || `Track ${idx + 1}`,
 			trackNumber: typeof track.trackNumber === 'number' ? track.trackNumber : idx + 1
 		}));
 		const publishedFilenameByTrackId = new Map<number, string>();
@@ -1254,18 +1292,22 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 
 		await updateJobStatus(job.id, { trackProgress });
 
-		// ALBUM FAILURE POLICY: 
+		// ALBUM FAILURE POLICY:
 		// If ANY track fails to download, the entire album is marked as 'failed'.
 		// This prevents silent partial downloads where some tracks are missing.
 		// UI must handle failed albums with clear indication and retry/delete options.
 		// This is intentional to maintain data integrity.
-		
+
 		const requestedConcurrency = Number(
 			process.env.ALBUM_TRACK_CONCURRENCY || DEFAULT_ALBUM_TRACK_CONCURRENCY
 		);
 		const albumConcurrency = Math.max(
 			1,
-			Math.min(MAX_CONCURRENT, Number.isFinite(requestedConcurrency) ? requestedConcurrency : 6, tracks.length)
+			Math.min(
+				MAX_CONCURRENT,
+				Number.isFinite(requestedConcurrency) ? requestedConcurrency : 6,
+				tracks.length
+			)
 		);
 		console.log(
 			`[Worker] Album ${albumJob.albumId}: track concurrency ${albumConcurrency}/${MAX_CONCURRENT} (total ${totalTracks})`
@@ -1280,13 +1322,11 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		let inFlight = 0;
 		let requestedTerminalState: 'cancelled' | 'paused' | null = null;
 		const terminalAlbumFailureState: {
-			value:
-				| {
-						trackId: number;
-						error: string;
-						errorCategory?: ErrorCategory;
-				  }
-				| null;
+			value: {
+				trackId: number;
+				error: string;
+				errorCategory?: ErrorCategory;
+			} | null;
 		} = { value: null };
 		const processNextTrack = async (): Promise<void> => {
 			while (true) {
@@ -1303,10 +1343,8 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 				const track = tracks[i];
 				const trackId = typeof track.id === 'number' ? track.id : 0;
 				const trackTitle =
-					(typeof track.title === 'string' ? track.title : undefined) ||
-					'Unknown Track';
-				const trackNumber =
-					typeof track.trackNumber === 'number' ? track.trackNumber : i + 1;
+					(typeof track.title === 'string' ? track.title : undefined) || 'Unknown Track';
+				const trackNumber = typeof track.trackNumber === 'number' ? track.trackNumber : i + 1;
 
 				if (!trackId) {
 					const externalError = 'Invalid track ID in album payload';
@@ -1359,6 +1397,7 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 						coverUrl,
 						outputBaseDir: stagingRoot,
 						experimentalMusicBrainzTagging: albumJob.experimentalMusicBrainzTagging === true,
+						strictMusicBrainzMatching: albumJob.strictMusicBrainzMatching === true,
 						forceOverwrite: albumJob.forceOverwrite === true
 					});
 				} finally {
@@ -1399,9 +1438,8 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 			}
 		};
 
-		const workers = Array.from(
-			{ length: Math.min(albumConcurrency, tracks.length) },
-			() => processNextTrack()
+		const workers = Array.from({ length: Math.min(albumConcurrency, tracks.length) }, () =>
+			processNextTrack()
 		);
 		await Promise.all(workers);
 
@@ -1503,6 +1541,7 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 					coverUrl,
 					forceOverwrite: albumJob.forceOverwrite === true,
 					experimentalMusicBrainzTagging: albumJob.experimentalMusicBrainzTagging === true,
+					strictMusicBrainzMatching: albumJob.strictMusicBrainzMatching === true,
 					finalAlbumDir,
 					expectedTracks: validExpectedTracks,
 					expectedFileByTrackId: publishedFilenameByTrackId
@@ -1566,13 +1605,12 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 	}
 }
 
-
 /**
  * Process a single job with proper error handling
  */
 async function processJob(jobId: string, job: QueuedJob): Promise<void> {
 	const startTime = Date.now();
-	
+
 	try {
 		if (job.job.type === 'track') {
 			await processTrackJob(job);
@@ -1588,7 +1626,7 @@ async function processJob(jobId: string, job: QueuedJob): Promise<void> {
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
 		console.error(`[Worker] Job ${jobId} processing error:`, message);
-		
+
 		// Mark as failed if not already marked
 		const currentJob = await getJob(jobId);
 		if (currentJob && currentJob.status === 'processing') {
@@ -1615,11 +1653,11 @@ async function workerLoop(): Promise<void> {
 					console.log(`[Worker] Cleaned ${cleanedStuck} stuck jobs`);
 				}
 			}
-			
+
 			// Check if we can process more jobs
 			if (activeSemaphore.size < MAX_CONCURRENT) {
 				const job = await dequeueJob();
-				
+
 				if (job) {
 					// Check for cancellation request before starting
 					if (job.cancellationRequested) {
@@ -1638,22 +1676,23 @@ async function workerLoop(): Promise<void> {
 						console.log(`[Worker] Job ${job.id} paused before processing`);
 						continue;
 					}
-					
+
 					// Create a promise for this job and track it
-					const jobPromise = processJob(job.id, job)
-						.finally(() => {
-							activeSemaphore.delete(job.id);
-						});
-					
+					const jobPromise = processJob(job.id, job).finally(() => {
+						activeSemaphore.delete(job.id);
+					});
+
 					activeSemaphore.set(job.id, jobPromise);
-					console.log(`[Worker] Started job ${job.id}, active: ${activeSemaphore.size}/${MAX_CONCURRENT}`);
+					console.log(
+						`[Worker] Started job ${job.id}, active: ${activeSemaphore.size}/${MAX_CONCURRENT}`
+					);
 				} else {
 					// No jobs, wait before polling again
-					await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
+					await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
 				}
 			} else {
 				// Max concurrent reached, wait a bit
-				await new Promise(resolve => setTimeout(resolve, 500));
+				await new Promise((resolve) => setTimeout(resolve, 500));
 			}
 
 			// Periodic cleanup (every 100 iterations ≈ 200 seconds)
@@ -1665,7 +1704,7 @@ async function workerLoop(): Promise<void> {
 			}
 		} catch (error) {
 			console.error('[Worker] Loop error:', error);
-			await new Promise(resolve => setTimeout(resolve, 5000));
+			await new Promise((resolve) => setTimeout(resolve, 5000));
 		}
 	}
 
@@ -1673,12 +1712,12 @@ async function workerLoop(): Promise<void> {
 	let maxWaitCycles = 300; // Max 5 minutes wait
 	while (activeSemaphore.size > 0 && maxWaitCycles > 0) {
 		console.log(`[Worker] Waiting for ${activeSemaphore.size} active downloads to finish...`);
-		await Promise.all(activeSemaphore.values()).catch(err => {
+		await Promise.all(activeSemaphore.values()).catch((err) => {
 			console.error('[Worker] Wait error:', err);
 		});
 		maxWaitCycles--;
 		if (activeSemaphore.size > 0) {
-			await new Promise(resolve => setTimeout(resolve, 1000));
+			await new Promise((resolve) => setTimeout(resolve, 1000));
 		}
 	}
 
@@ -1699,7 +1738,7 @@ export async function startWorker(): Promise<void> {
 	}
 
 	console.log('[Worker] Starting...');
-	
+
 	// Initialize queue (recover from crashes)
 	const { initializeQueue } = await import('./downloadQueueManager');
 	await initializeQueue();
@@ -1720,9 +1759,11 @@ export async function startWorker(): Promise<void> {
 			await startupSweepLock.release();
 		}
 	} else {
-		console.log('[Worker] Skipping startup transient sweep: media-library maintenance lock is busy');
+		console.log(
+			'[Worker] Skipping startup transient sweep: media-library maintenance lock is busy'
+		);
 	}
-	
+
 	isRunning = true;
 	stopRequested = false;
 	workerLoop();
@@ -1741,7 +1782,7 @@ export async function stopWorker(): Promise<void> {
 
 	// Wait for worker to stop
 	while (isRunning) {
-		await new Promise(resolve => setTimeout(resolve, 100));
+		await new Promise((resolve) => setTimeout(resolve, 100));
 	}
 }
 

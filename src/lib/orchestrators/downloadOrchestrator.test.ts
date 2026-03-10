@@ -45,7 +45,8 @@ const {
 			subscribe: vi.fn(),
 			convertAacToMp3: true,
 			downloadCoversSeperately: false,
-			experimentalMusicBrainzTagging: false
+			experimentalMusicBrainzTagging: false,
+			strictMusicBrainzMatching: false
 		},
 		mockDownloadPreferencesStore: {
 			subscribe: vi.fn(),

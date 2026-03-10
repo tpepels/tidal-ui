@@ -88,13 +88,14 @@ export interface DownloadTrackOptions {
 	convertAacToMp3?: boolean;
 	downloadCoverSeperately?: boolean;
 	enableExperimentalMusicBrainz?: boolean;
+	strictMusicBrainzMatching?: boolean;
 	skipMetadataEmbedding?: boolean;
 }
 
 class LosslessAPI {
 	public baseUrl: string;
 	private metadataQueue: Promise<void> = Promise.resolve();
-	private musicBrainzTagCache = new Map<number, Record<string, string> | null>();
+	private musicBrainzTagCache = new Map<string, Record<string, string> | null>();
 
 	constructor(baseUrl: string = API_BASE) {
 		this.baseUrl = baseUrl;
@@ -1300,31 +1301,49 @@ class LosslessAPI {
 		if (this.musicBrainzTagCache.size <= maxEntries) return;
 		while (this.musicBrainzTagCache.size > maxEntries) {
 			const firstKey = this.musicBrainzTagCache.keys().next().value;
-			if (typeof firstKey !== 'number') break;
+			if (typeof firstKey !== 'string') break;
 			this.musicBrainzTagCache.delete(firstKey);
 		}
 	}
 
+	private buildMusicBrainzCacheKey(track: Track, strictMatch: boolean): string {
+		const mode = strictMatch ? 'strict' : 'flex';
+		const trackId = Number(track.id);
+		if (Number.isFinite(trackId)) {
+			return `${mode}:id:${trackId}`;
+		}
+		const title = String(track.title ?? '').trim().toLowerCase();
+		const artist = String(track.artist?.name ?? track.artists?.[0]?.name ?? '')
+			.trim()
+			.toLowerCase();
+		const album = String(track.album?.title ?? '').trim().toLowerCase();
+		const isrc = String(track.isrc ?? '').trim().toUpperCase();
+		return `${mode}:query:${isrc}|${title}|${artist}|${album}`;
+	}
+
 	private async lookupMusicBrainzTags(
 		track: Track,
-		signal?: AbortSignal
+		signal?: AbortSignal,
+		strictMusicBrainzMatching?: boolean
 	): Promise<Record<string, string> | undefined> {
-		const cacheKey = Number(track.id);
-		if (Number.isFinite(cacheKey)) {
-			const cached = this.musicBrainzTagCache.get(cacheKey);
-			if (cached) {
-				return { ...cached };
-			}
-			if (cached === null) {
-				return undefined;
-			}
+		const strictIsrcMatch = strictMusicBrainzMatching === true;
+		const cacheKey = this.buildMusicBrainzCacheKey(track, strictIsrcMatch);
+		const cached = this.musicBrainzTagCache.get(cacheKey);
+		if (cached) {
+			return { ...cached };
+		}
+		if (cached === null) {
+			return undefined;
 		}
 
 		try {
 			const response = await fetch('/api/metadata/musicbrainz', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ track }),
+				body: JSON.stringify({
+					track,
+					strictIsrcMatch
+				}),
 				signal
 			});
 			if (!response.ok) {
@@ -1336,10 +1355,8 @@ class LosslessAPI {
 			};
 			const tags = payload.success ? payload.tags ?? {} : {};
 			const hasTags = Object.keys(tags).length > 0;
-			if (Number.isFinite(cacheKey)) {
-				this.musicBrainzTagCache.set(cacheKey, hasTags ? tags : null);
-				this.trimMusicBrainzCache();
-			}
+			this.musicBrainzTagCache.set(cacheKey, hasTags ? tags : null);
+			this.trimMusicBrainzCache();
 			return hasTags ? tags : undefined;
 		} catch (error) {
 			if (error instanceof DOMException && error.name === 'AbortError') {
@@ -1917,7 +1934,11 @@ class LosslessAPI {
 			const shouldEmbedMetadata = options?.skipMetadataEmbedding !== true;
 			const experimentalTags =
 				shouldEmbedMetadata && options?.enableExperimentalMusicBrainz
-					? await this.lookupMusicBrainzTags(metadataLookup.track, options?.signal)
+					? await this.lookupMusicBrainzTags(
+							metadataLookup.track,
+							options?.signal,
+							options?.strictMusicBrainzMatching
+						)
 					: undefined;
 			const processedBlob = !shouldEmbedMetadata
 				? null

@@ -81,6 +81,7 @@ export interface MetadataOverrides {
 
 export interface MetadataEmbeddingOptions {
 	enableExperimentalMusicBrainzTagging?: boolean;
+	strictMusicBrainzMatching?: boolean;
 }
 
 export async function embedMetadataToFile(
@@ -192,7 +193,9 @@ async function buildMetadataObjectWithEnhancements(
 		return baseMetadata;
 	}
 
-	const musicBrainzTags = await lookupMusicBrainzTagsForTrack(lookup.track);
+	const musicBrainzTags = await lookupMusicBrainzTagsForTrack(lookup.track, {
+		strictIsrcMatch: options?.strictMusicBrainzMatching === true
+	});
 	if (Object.keys(musicBrainzTags).length === 0) {
 		return baseMetadata;
 	}

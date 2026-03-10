@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { serverQueue, queueStats, workerStatus } from '$lib/stores/serverQueue.svelte';
+	import { downloadLogStore } from '$lib/stores/downloadLog';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { regionStore } from '$lib/stores/region';
@@ -37,6 +38,12 @@
 		completedTracks?: number; // For albums
 	}
 
+	interface QueueJobObservation {
+		status: QueueJob['status'];
+		progressBucket: number;
+		completedTracks: number;
+	}
+
 	let { pageMode = false } = $props();
 
 	let isOpen = $state(false);
@@ -56,6 +63,12 @@
 	});
 	let localModeSectionInitDone = $state(false);
 	let recentLogEntries = $state<LogEntry[]>([]);
+	let queueObservations = $state<Record<string, QueueJobObservation>>({});
+	let queueObservationsReady = $state(false);
+	let lastPollingErrorLogged = $state<string | null>(null);
+	let lastBackendErrorLogged = $state<string | null>(null);
+	let lastBackendWarningLogged = $state<string | null>(null);
+	let lastQueueFetchErrorLogged = $state<string | null>(null);
 
 	const DEBUG_LOG_LIMIT = 250;
 
@@ -91,6 +104,26 @@
 	let pendingItems = $derived(stats.running + stats.queued);
 	let badgeCount = $derived(pendingItems > 0 ? pendingItems : resumableJobs.length);
 	let hasActivity = $derived(badgeCount > 0);
+	let activeAverageProgress = $derived.by(() => {
+		if (processingJobs.length === 0) return 0;
+		const sum = processingJobs.reduce(
+			(total, job) => total + Math.max(0, Math.min(1, job.progress)),
+			0
+		);
+		return Math.round((sum / processingJobs.length) * 100);
+	});
+	let statusHeadline = $derived.by(() => {
+		if (stats.running > 0) {
+			return `${stats.running} active download${stats.running === 1 ? '' : 's'}`;
+		}
+		if (stats.queued > 0) {
+			return `${stats.queued} queued download${stats.queued === 1 ? '' : 's'}`;
+		}
+		return 'Download queue is idle';
+	});
+	let statusSubline = $derived.by(
+		() => `${stats.queued} queued · ${pausedJobs.length} paused · ${resumableJobs.length} needs attention`
+	);
 	let filteredQueuedJobs = $derived(queuedJobs.filter(job => matchesTypeFilter(job, queueTypeFilter)));
 	let filteredCompletedJobs = $derived(
 		completedJobs.filter(job => matchesTypeFilter(job, completedTypeFilter))
@@ -178,10 +211,132 @@
 		actionNotice = { tone, message };
 	}
 
+	function logDownloadEvent(tone: 'success' | 'error' | 'warning' | 'info', message: string): void {
+		switch (tone) {
+			case 'success':
+				downloadLogStore.success(message);
+				return;
+			case 'error':
+				downloadLogStore.error(message);
+				return;
+			case 'warning':
+				downloadLogStore.warning(message);
+				return;
+			default:
+				downloadLogStore.log(message);
+		}
+	}
+
 	function summarizeJob(job: QueueJob): string {
 		const title = job.job.trackTitle || job.job.albumTitle || 'Unknown';
 		const artist = job.job.artistName ? ` by ${job.job.artistName}` : '';
 		return `${title}${artist}`;
+	}
+
+	function jobShortId(jobId: string): string {
+		return jobId.slice(0, 8);
+	}
+
+	function progressBucket(progress: number): number {
+		const clamped = Math.max(0, Math.min(1, progress));
+		return Math.min(100, Math.floor((clamped * 100) / 20) * 20);
+	}
+
+	function buildObservation(job: QueueJob): QueueJobObservation {
+		return {
+			status: job.status,
+			progressBucket: progressBucket(job.progress),
+			completedTracks: job.completedTracks ?? 0
+		};
+	}
+
+	function trackQueueLifecycleEvents(nextJobs: QueueJob[]): void {
+		const nextObservations: Record<string, QueueJobObservation> = {};
+
+		if (!queueObservationsReady) {
+			for (const job of nextJobs) {
+				nextObservations[job.id] = buildObservation(job);
+			}
+			queueObservations = nextObservations;
+			queueObservationsReady = true;
+			if (nextJobs.length > 0) {
+				logDownloadEvent('info', `[Queue] Monitoring ${nextJobs.length} existing job(s).`);
+			}
+			return;
+		}
+
+		for (const job of nextJobs) {
+			const prev = queueObservations[job.id];
+			const label = summarizeJob(job);
+			const shortId = jobShortId(job.id);
+			const next = buildObservation(job);
+
+			if (!prev) {
+				if (job.status === 'completed') {
+					logDownloadEvent('success', `[Queue] ${label} completed (job ${shortId}).`);
+				} else if (job.status === 'failed') {
+					logDownloadEvent(
+						'error',
+						`[Queue] ${label} failed (job ${shortId}): ${job.error ?? 'Unknown error'}`
+					);
+				} else if (job.status === 'cancelled' || job.status === 'paused') {
+					logDownloadEvent('warning', `[Queue] ${label} is ${job.status} (job ${shortId}).`);
+				} else {
+					logDownloadEvent(
+						'info',
+						`[Queue] New ${job.job.type} job ${shortId}: ${label} (${job.status}).`
+					);
+				}
+			} else {
+				if (prev.status !== job.status) {
+					if (job.status === 'processing') {
+						logDownloadEvent('info', `[Queue] Started ${label} (job ${shortId}).`);
+					} else if (job.status === 'completed') {
+						logDownloadEvent('success', `[Queue] Completed ${label} (job ${shortId}).`);
+					} else if (job.status === 'failed') {
+						logDownloadEvent(
+							'error',
+							`[Queue] Failed ${label} (job ${shortId}): ${job.error ?? 'Unknown error'}`
+						);
+					} else if (job.status === 'paused') {
+						logDownloadEvent('warning', `[Queue] Paused ${label} (job ${shortId}).`);
+					} else if (job.status === 'cancelled') {
+						logDownloadEvent('warning', `[Queue] Cancelled ${label} (job ${shortId}).`);
+					} else if (job.status === 'queued') {
+						logDownloadEvent('info', `[Queue] Re-queued ${label} (job ${shortId}).`);
+					}
+				}
+
+				if (job.status === 'processing' && next.progressBucket !== prev.progressBucket && next.progressBucket > 0) {
+					logDownloadEvent(
+						'info',
+						`[Queue] ${label} (job ${shortId}) progress ${next.progressBucket}%`
+					);
+				}
+
+				if (
+					job.job.type === 'album' &&
+					job.status === 'processing' &&
+					typeof job.trackCount === 'number' &&
+					job.trackCount > 0 &&
+					next.completedTracks !== prev.completedTracks
+				) {
+					logDownloadEvent(
+						'info',
+						`[Queue] ${label} (job ${shortId}) track ${next.completedTracks}/${job.trackCount}`
+					);
+				}
+			}
+
+			nextObservations[job.id] = next;
+		}
+
+		for (const previousJobId of Object.keys(queueObservations)) {
+			if (nextObservations[previousJobId]) continue;
+			logDownloadEvent('info', `[Queue] Job ${jobShortId(previousJobId)} removed from queue history.`);
+		}
+
+		queueObservations = nextObservations;
 	}
 
 	function isActionPending(key: string): boolean {
@@ -370,12 +525,6 @@
 		}
 	}
 
-	// Start polling when component mounts
-	$effect(() => {
-		serverQueue.startPolling(500);
-		return () => serverQueue.stopPolling();
-	});
-
 	$effect(() => {
 		if (typeof window === 'undefined') return;
 		const updateViewportMode = () => {
@@ -411,6 +560,39 @@
 			failed: true
 		};
 		localModeSectionInitDone = true;
+	});
+
+	$effect(() => {
+		const message = $serverQueue.pollingError?.trim() || null;
+		if (message && message !== lastPollingErrorLogged) {
+			logDownloadEvent('warning', `[Queue Poll] ${message}`);
+			lastPollingErrorLogged = message;
+		}
+		if (!message) {
+			lastPollingErrorLogged = null;
+		}
+	});
+
+	$effect(() => {
+		const message = $serverQueue.backendError?.trim() || null;
+		if (message && message !== lastBackendErrorLogged) {
+			logDownloadEvent('error', `[Queue Backend] ${message}`);
+			lastBackendErrorLogged = message;
+		}
+		if (!message) {
+			lastBackendErrorLogged = null;
+		}
+	});
+
+	$effect(() => {
+		const message = $serverQueue.backendWarning?.trim() || null;
+		if (message && message !== lastBackendWarningLogged) {
+			logDownloadEvent('warning', `[Queue Backend] ${message}`);
+			lastBackendWarningLogged = message;
+		}
+		if (!message) {
+			lastBackendWarningLogged = null;
+		}
 	});
 
 	$effect(() => {
@@ -478,9 +660,16 @@
 						}
 						return (b.lastUpdatedAt ?? b.completedAt ?? b.createdAt) - (a.lastUpdatedAt ?? a.completedAt ?? a.createdAt);
 					});
+				trackQueueLifecycleEvents(queueJobs);
+				lastQueueFetchErrorLogged = null;
 			}
 		} catch (err) {
 			console.error('Failed to fetch queue jobs:', err);
+			const message = err instanceof Error ? err.message : 'Unknown queue fetch error';
+			if (message !== lastQueueFetchErrorLogged) {
+				logDownloadEvent('warning', `[Queue] Failed to refresh jobs: ${message}`);
+				lastQueueFetchErrorLogged = message;
+			}
 		}
 	};
 
@@ -499,10 +688,12 @@
 			const result = await runJobAction(job.id, 'cancel');
 			if (result.success) {
 				setActionNotice('success', `Stopped ${summarizeJob(job)}`);
+				logDownloadEvent('success', `[Queue Action] Stopped ${summarizeJob(job)}.`);
 				await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
 				return;
 			}
 			setActionNotice('error', result.error ?? `Failed to stop ${summarizeJob(job)}`);
+			logDownloadEvent('error', `[Queue Action] Failed to stop ${summarizeJob(job)}: ${result.error ?? 'Unknown error'}`);
 		});
 	};
 
@@ -512,10 +703,12 @@
 			const result = await runJobAction(job.id, 'pause');
 			if (result.success) {
 				setActionNotice('success', `Paused ${summarizeJob(job)}`);
+				logDownloadEvent('success', `[Queue Action] Paused ${summarizeJob(job)}.`);
 				await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
 				return;
 			}
 			setActionNotice('error', result.error ?? `Failed to pause ${summarizeJob(job)}`);
+			logDownloadEvent('error', `[Queue Action] Failed to pause ${summarizeJob(job)}: ${result.error ?? 'Unknown error'}`);
 		});
 	};
 
@@ -525,10 +718,12 @@
 			const result = await runJobAction(job.id, 'resume');
 			if (result.success) {
 				setActionNotice('success', `Resumed ${summarizeJob(job)}`);
+				logDownloadEvent('success', `[Queue Action] Resumed ${summarizeJob(job)}.`);
 				await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
 				return;
 			}
 			setActionNotice('error', result.error ?? `Failed to resume ${summarizeJob(job)}`);
+			logDownloadEvent('error', `[Queue Action] Failed to resume ${summarizeJob(job)}: ${result.error ?? 'Unknown error'}`);
 		});
 	};
 
@@ -538,10 +733,12 @@
 			const result = await runJobAction(job.id, 'retry');
 			if (result.success) {
 				setActionNotice('success', `Resumed ${summarizeJob(job)}`);
+				logDownloadEvent('success', `[Queue Action] Retried ${summarizeJob(job)}.`);
 				await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
 				return;
 			}
 			setActionNotice('error', result.error ?? `Failed to resume ${summarizeJob(job)}`);
+			logDownloadEvent('error', `[Queue Action] Failed to retry ${summarizeJob(job)}: ${result.error ?? 'Unknown error'}`);
 		});
 	};
 
@@ -551,16 +748,19 @@
 			const result = await deleteQueueJob(job.id);
 			if (result.success) {
 				setActionNotice('success', `Removed ${summarizeJob(job)}`);
+				logDownloadEvent('success', `[Queue Action] Removed ${summarizeJob(job)} from history.`);
 				await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
 				return;
 			}
 			setActionNotice('error', result.error ?? `Failed to remove ${summarizeJob(job)}`);
+			logDownloadEvent('error', `[Queue Action] Failed to remove ${summarizeJob(job)}: ${result.error ?? 'Unknown error'}`);
 		});
 	};
 
 	const handleStopAllActive = async () => {
 		if (stoppableJobs.length === 0) {
 			setActionNotice('info', 'No active or queued downloads to stop.');
+			logDownloadEvent('info', '[Queue Action] Stop active requested with no active jobs.');
 			return;
 		}
 		await runWithPendingAction(actionKeys.bulkStop, async () => {
@@ -573,6 +773,12 @@
 					? `Stopped ${succeeded} job(s), ${failed} failed.`
 					: `Stopped ${succeeded} active/queued job(s).`
 			);
+			logDownloadEvent(
+				failed > 0 ? 'warning' : 'success',
+				failed > 0
+					? `[Queue Action] Stop active completed with partial success (${succeeded} succeeded, ${failed} failed).`
+					: `[Queue Action] Stopped ${succeeded} active/queued job(s).`
+			);
 			await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
 		});
 	};
@@ -580,6 +786,7 @@
 	const handlePauseAllActive = async () => {
 		if (pausableJobs.length === 0) {
 			setActionNotice('info', 'No active or queued downloads to pause.');
+			logDownloadEvent('info', '[Queue Action] Pause active requested with no active jobs.');
 			return;
 		}
 		await runWithPendingAction(actionKeys.bulkPause, async () => {
@@ -592,6 +799,12 @@
 					? `Paused ${succeeded} job(s), ${failed} failed.`
 					: `Paused ${succeeded} active/queued job(s).`
 			);
+			logDownloadEvent(
+				failed > 0 ? 'warning' : 'success',
+				failed > 0
+					? `[Queue Action] Pause active completed with partial success (${succeeded} succeeded, ${failed} failed).`
+					: `[Queue Action] Paused ${succeeded} active/queued job(s).`
+			);
 			await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
 		});
 	};
@@ -599,6 +812,7 @@
 	const handleResumeAll = async () => {
 		if (resumableJobs.length === 0) {
 			setActionNotice('info', 'No paused, failed, or cancelled downloads to resume.');
+			logDownloadEvent('info', '[Queue Action] Resume requested with no paused/failed jobs.');
 			return;
 		}
 		await runWithPendingAction(actionKeys.bulkResume, async () => {
@@ -618,6 +832,12 @@
 					? `Resumed ${succeeded} job(s), ${failed} failed.`
 					: `Resumed ${succeeded} paused/failed/cancelled job(s).`
 			);
+			logDownloadEvent(
+				failed > 0 ? 'warning' : 'success',
+				failed > 0
+					? `[Queue Action] Resume all completed with partial success (${succeeded} succeeded, ${failed} failed).`
+					: `[Queue Action] Resumed ${succeeded} paused/failed/cancelled job(s).`
+			);
 			await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
 		});
 	};
@@ -626,6 +846,7 @@
 		const reportJobs = job ? [job] : resumableJobs;
 		if (reportJobs.length === 0) {
 			setActionNotice('info', 'No failure details available to report.');
+			logDownloadEvent('info', '[Queue Action] Failure report requested with no failed jobs.');
 			return;
 		}
 		const report = buildFailureReportText(reportJobs);
@@ -633,35 +854,50 @@
 		await runWithPendingAction(key, async () => {
 			try {
 				await copyTextToClipboard(report);
-				setActionNotice(
-					'success',
-					job
-						? `Failure report copied for ${summarizeJob(job)}`
-						: `Failure report copied for ${reportJobs.length} job(s)`
-				);
-			} catch (error) {
-				setActionNotice(
-					'error',
-					error instanceof Error ? error.message : 'Failed to copy failure report'
-				);
-			}
-		});
-	};
+					setActionNotice(
+						'success',
+						job
+							? `Failure report copied for ${summarizeJob(job)}`
+							: `Failure report copied for ${reportJobs.length} job(s)`
+					);
+					logDownloadEvent(
+						'success',
+						job
+							? `[Queue Action] Copied failure report for ${summarizeJob(job)}.`
+							: `[Queue Action] Copied failure report for ${reportJobs.length} job(s).`
+					);
+				} catch (error) {
+					setActionNotice(
+						'error',
+						error instanceof Error ? error.message : 'Failed to copy failure report'
+					);
+					logDownloadEvent(
+						'error',
+						`[Queue Action] Failed to copy failure report: ${error instanceof Error ? error.message : 'Unknown error'}`
+					);
+				}
+			});
+		};
 
 	const handleCreateDebugBundle = async () => {
 		const bundle = buildDebugBundle();
 		await runWithPendingAction(actionKeys.createBundle, async () => {
-			try {
-				await copyTextToClipboard(bundle);
-				setActionNotice('success', 'Debug bundle copied to clipboard.');
-			} catch (error) {
-				setActionNotice(
-					'error',
-					error instanceof Error ? error.message : 'Failed to create debug bundle'
-				);
-			}
-		});
-	};
+				try {
+					await copyTextToClipboard(bundle);
+					setActionNotice('success', 'Debug bundle copied to clipboard.');
+					logDownloadEvent('success', '[Queue Action] Debug bundle copied to clipboard.');
+				} catch (error) {
+					setActionNotice(
+						'error',
+						error instanceof Error ? error.message : 'Failed to create debug bundle'
+					);
+					logDownloadEvent(
+						'error',
+						`[Queue Action] Failed to create debug bundle: ${error instanceof Error ? error.message : 'Unknown error'}`
+					);
+				}
+			});
+		};
 
 	const handleClearFailed = async () => {
 		if (!confirm('Clear all failed and cancelled downloads from history?')) {
@@ -670,6 +906,7 @@
 		const removable = queueJobs.filter((job) => job.status === 'failed' || job.status === 'cancelled');
 		if (removable.length === 0) {
 			setActionNotice('info', 'No failed jobs to clear.');
+			logDownloadEvent('info', '[Queue Action] Clear history requested with no failed jobs.');
 			return;
 		}
 		await runWithPendingAction(actionKeys.clearHistory, async () => {
@@ -682,6 +919,12 @@
 					? `Cleared ${succeeded} failed entries, ${failed} failed.`
 					: `Cleared ${succeeded} failed/cancelled entries.`
 			);
+			logDownloadEvent(
+				failed > 0 ? 'warning' : 'success',
+				failed > 0
+					? `[Queue Action] Clear history completed with partial success (${succeeded} cleared, ${failed} failed).`
+					: `[Queue Action] Cleared ${succeeded} failed/cancelled entries.`
+			);
 			await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
 		});
 	};
@@ -690,6 +933,7 @@
 		await runWithPendingAction(actionKeys.refresh, async () => {
 			await serverQueue.poll();
 			await fetchQueueJobs();
+			logDownloadEvent('info', '[Queue Action] Manual queue refresh completed.');
 		});
 	};
 </script>
@@ -720,10 +964,8 @@
 		>
 			<div class="download-manager-header">
 				<div>
-					<h3 class="download-manager-title">Queue Monitor</h3>
-					<p class="download-manager-subtitle-text">
-						Live server queue status for tracks and albums
-					</p>
+					<h3 class="download-manager-title">Download Status</h3>
+					<p class="download-manager-subtitle-text">Live queue activity for tracks and albums</p>
 					<div class="download-manager-meta-row">
 						<div class="download-manager-redis" data-state={redisStatus.state}>
 							<span class="download-manager-redis-dot"></span>
@@ -797,6 +1039,40 @@
 					{actionNotice.message}
 				</div>
 			{/if}
+
+			<div class="download-status-hero" data-active={stats.running > 0}>
+				<div class="download-status-hero__main">
+					<p class="download-status-hero__eyebrow">Live Session</p>
+					<h4>{statusHeadline}</h4>
+					<p>{statusSubline}</p>
+				</div>
+				<div class="download-status-hero__meter">
+					<div class="download-status-hero__meter-track">
+						<div
+							class="download-status-hero__meter-fill"
+							style={`width: ${activeAverageProgress}%`}
+						></div>
+					</div>
+					<div class="download-status-hero__meter-meta">
+						<span>Average active progress</span>
+						<strong>{activeAverageProgress}%</strong>
+					</div>
+				</div>
+				<div class="download-status-hero__chips">
+					<span class="download-status-chip" data-tone={$workerStatus.running ? 'ok' : 'warn'}>
+						Worker {$workerStatus.running ? 'online' : 'offline'}
+					</span>
+					<span
+						class="download-status-chip"
+						data-tone={$serverQueue.queueSource === 'redis' ? 'ok' : 'neutral'}
+					>
+						Queue {$serverQueue.queueSource ?? 'unknown'}
+					</span>
+					{#if isPollingStale}
+						<span class="download-status-chip" data-tone="warn">Data stale</span>
+					{/if}
+				</div>
+			</div>
 
 			<div class="download-manager-top-strip">
 				<div class="top-strip-item top-strip-item--running">
@@ -1517,9 +1793,9 @@
 		width: 680px;
 		max-height: 80vh;
 		max-height: 80dvh;
-		border-radius: 12px;
-		background: var(--color-bg-primary);
-		border: 1px solid var(--color-border);
+		border-radius: 14px;
+		background: linear-gradient(180deg, rgba(16, 24, 35, 0.96), rgba(8, 13, 22, 0.98));
+		border: 1px solid rgba(148, 163, 184, 0.22);
 		box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
 		animation: slideUp 0.3s ease;
 		display: flex;
@@ -1555,7 +1831,7 @@
 		align-items: center;
 		justify-content: space-between;
 		padding: 16px;
-		border-bottom: 1px solid var(--color-border);
+		border-bottom: 1px solid rgba(148, 163, 184, 0.18);
 		flex-shrink: 0;
 		gap: 12px;
 	}
@@ -1717,14 +1993,124 @@
 		border-color: rgba(245, 245, 245, 0.28);
 	}
 
+	.download-status-hero {
+		margin: 0 16px 12px;
+		padding: 12px;
+		border-radius: 12px;
+		border: 1px solid rgba(148, 163, 184, 0.22);
+		background: linear-gradient(135deg, rgba(34, 197, 94, 0.12), rgba(59, 130, 246, 0.16));
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	.download-status-hero[data-active='false'] {
+		background: linear-gradient(135deg, rgba(148, 163, 184, 0.12), rgba(99, 102, 241, 0.12));
+	}
+
+	.download-status-hero__main {
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+	}
+
+	.download-status-hero__eyebrow {
+		margin: 0;
+		font-size: 10px;
+		text-transform: uppercase;
+		letter-spacing: 0.22em;
+		color: rgba(226, 232, 240, 0.8);
+		font-weight: 700;
+	}
+
+	.download-status-hero__main h4 {
+		margin: 0;
+		font-size: 16px;
+		line-height: 1.25;
+		color: #f8fafc;
+	}
+
+	.download-status-hero__main p {
+		margin: 0;
+		font-size: 12px;
+		color: rgba(226, 232, 240, 0.8);
+	}
+
+	.download-status-hero__meter {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.download-status-hero__meter-track {
+		height: 8px;
+		border-radius: 999px;
+		background: rgba(15, 23, 42, 0.45);
+		overflow: hidden;
+		border: 1px solid rgba(226, 232, 240, 0.16);
+	}
+
+	.download-status-hero__meter-fill {
+		height: 100%;
+		background: linear-gradient(90deg, #34d399, #38bdf8);
+		transition: width 220ms ease;
+	}
+
+	.download-status-hero__meter-meta {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		font-size: 11px;
+		color: rgba(226, 232, 240, 0.86);
+	}
+
+	.download-status-hero__meter-meta strong {
+		font-size: 13px;
+		color: #f8fafc;
+	}
+
+	.download-status-hero__chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+
+	.download-status-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		padding: 5px 9px;
+		border-radius: 999px;
+		border: 1px solid rgba(148, 163, 184, 0.24);
+		background: rgba(15, 23, 42, 0.45);
+		color: rgba(226, 232, 240, 0.88);
+	}
+
+	.download-status-chip[data-tone='ok'] {
+		border-color: rgba(16, 185, 129, 0.44);
+		background: rgba(16, 185, 129, 0.2);
+		color: #d1fae5;
+	}
+
+	.download-status-chip[data-tone='warn'] {
+		border-color: rgba(245, 158, 11, 0.45);
+		background: rgba(245, 158, 11, 0.18);
+		color: #fde68a;
+	}
+
 	.download-manager-top-strip {
 		display: grid;
-		grid-template-columns: repeat(5, minmax(0, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
 		gap: 8px;
-		border-top: 1px solid var(--color-border);
-		border-bottom: 1px solid var(--color-border);
+		border-top: 1px solid rgba(148, 163, 184, 0.18);
+		border-bottom: 1px solid rgba(148, 163, 184, 0.18);
 		padding: 12px 16px;
-		background: rgba(255, 255, 255, 0.02);
+		background: rgba(15, 23, 42, 0.24);
 		position: sticky;
 		top: 0;
 		z-index: 2;
@@ -1736,8 +2122,8 @@
 		flex-wrap: wrap;
 		gap: 8px;
 		padding: 10px 16px;
-		border-bottom: 1px solid var(--color-border);
-		background: rgba(255, 255, 255, 0.02);
+		border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+		background: rgba(15, 23, 42, 0.2);
 	}
 
 	.top-strip-item {
@@ -1745,9 +2131,9 @@
 		flex-direction: column;
 		gap: 6px;
 		padding: 10px;
-		border-radius: 8px;
-		background: rgba(255, 255, 255, 0.04);
-		border: 1px solid rgba(255, 255, 255, 0.08);
+		border-radius: 10px;
+		background: rgba(15, 23, 42, 0.4);
+		border: 1px solid rgba(148, 163, 184, 0.18);
 		min-width: 0;
 	}
 
@@ -1760,7 +2146,7 @@
 	}
 
 	.top-strip-value {
-		font-size: 22px;
+		font-size: 24px;
 		font-weight: 700;
 		color: var(--color-text-primary);
 		line-height: 1;
@@ -1807,10 +2193,10 @@
 	}
 
 	.current-section {
-		border: 1px solid rgba(16, 185, 129, 0.2);
-		background: rgba(16, 185, 129, 0.05);
+		border: 1px solid rgba(16, 185, 129, 0.32);
+		background: linear-gradient(145deg, rgba(16, 185, 129, 0.14), rgba(8, 13, 22, 0.34));
 		padding: 12px;
-		border-radius: 8px;
+		border-radius: 10px;
 	}
 
 	.section-title {
@@ -1892,9 +2278,9 @@
 	}
 
 	.current-item {
-		background: rgba(255, 255, 255, 0.06);
-		border: 1px solid rgba(255, 255, 255, 0.2);
-		border-radius: 8px;
+		background: rgba(15, 23, 42, 0.45);
+		border: 1px solid rgba(148, 163, 184, 0.2);
+		border-radius: 10px;
 		padding: 12px;
 		display: flex;
 		flex-direction: column;
@@ -1953,16 +2339,16 @@
 
 	.progress-bar {
 		width: 100%;
-		height: 4px;
-		background: rgba(255, 255, 255, 0.1);
-		border-radius: 2px;
+		height: 6px;
+		background: rgba(148, 163, 184, 0.2);
+		border-radius: 999px;
 		overflow: hidden;
 		margin-top: 4px;
 	}
 
 	.progress-fill {
 		height: 100%;
-		background: linear-gradient(90deg, #f5f5f5, #a3a3a3);
+		background: linear-gradient(90deg, #34d399, #38bdf8);
 		transition: width 0.2s ease;
 	}
 

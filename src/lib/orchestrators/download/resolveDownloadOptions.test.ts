@@ -4,7 +4,8 @@ import { resolveDownloadOptions } from './resolveDownloadOptions';
 const userPrefs = {
 	convertAacToMp3: true,
 	downloadCoversSeperately: false,
-	experimentalMusicBrainzTagging: true
+	experimentalMusicBrainzTagging: true,
+	strictMusicBrainzMatching: true
 };
 
 const downloadPrefs = {
@@ -19,6 +20,7 @@ describe('resolveDownloadOptions', () => {
 		expect(resolved.convertAacToMp3).toBe(true);
 		expect(resolved.downloadCoversSeperately).toBe(false);
 		expect(resolved.experimentalMusicBrainzTagging).toBe(true);
+		expect(resolved.strictMusicBrainzMatching).toBe(true);
 		expect(resolved.autoConvertSonglink).toBe(true);
 		expect(resolved.notificationMode).toBe('alert');
 		expect(resolved.useCoordinator).toBe(false);
@@ -33,6 +35,7 @@ describe('resolveDownloadOptions', () => {
 				convertAacToMp3: false,
 				downloadCoversSeperately: true,
 				experimentalMusicBrainzTagging: false,
+				strictMusicBrainzMatching: false,
 				autoConvertSonglink: false,
 				notificationMode: 'toast',
 				subtitle: 'override',
@@ -50,6 +53,7 @@ describe('resolveDownloadOptions', () => {
 		expect(resolved.convertAacToMp3).toBe(false);
 		expect(resolved.downloadCoversSeperately).toBe(true);
 		expect(resolved.experimentalMusicBrainzTagging).toBe(false);
+		expect(resolved.strictMusicBrainzMatching).toBe(false);
 		expect(resolved.autoConvertSonglink).toBe(false);
 		expect(resolved.notificationMode).toBe('toast');
 		expect(resolved.subtitle).toBe('override');

@@ -64,6 +64,9 @@
 	const experimentalMusicBrainzTaggingPreference = $derived(
 		$userPreferencesStore.experimentalMusicBrainzTagging
 	);
+	const strictMusicBrainzMatchingPreference = $derived(
+		$userPreferencesStore.strictMusicBrainzMatching
+	);
 	const downloadStoragePreference = $derived($downloadPreferencesStore.storage);
 	type AlbumQueueStatus = AlbumDownloadStatus;
 	let queueStatus = $state<AlbumQueueStatus>('idle');
@@ -78,6 +81,8 @@
 	let repairMessage = $state<string | null>(null);
 	const FORCE_OVERWRITE_CONFIRMATION =
 		'This album is already in your local library. Redownload it and overwrite existing files?';
+	const CLIENT_REDOWNLOAD_CONFIRMATION =
+		'This album is already in your local library. Browser downloads cannot overwrite existing files and may append (2) to filenames. Continue anyway?';
 
 	const hasActiveQueueDownload = $derived(
 		queueStatus === 'submitting' || queueStatus === 'queued' || queueStatus === 'processing'
@@ -153,7 +158,8 @@
 			navigationHistoryStore.visitAlbum({
 				id: albumData.id,
 				title: albumData.title,
-				artistName: albumData.artist?.name
+				artistName: albumData.artist?.name,
+				cover: albumData.cover
 			});
 
 			if (albumData.cover) {
@@ -418,8 +424,12 @@
 		}
 		let forceOverwrite = false;
 		if (albumInLibrary && queueStatus !== 'failed' && queueStatus !== 'cancelled') {
-			forceOverwrite = window.confirm(FORCE_OVERWRITE_CONFIRMATION);
-			if (!forceOverwrite) {
+			if (downloadStoragePreference === 'server') {
+				forceOverwrite = window.confirm(FORCE_OVERWRITE_CONFIRMATION);
+				if (!forceOverwrite) {
+					return;
+				}
+			} else if (!window.confirm(CLIENT_REDOWNLOAD_CONFIRMATION)) {
 				return;
 			}
 		}
@@ -464,6 +474,7 @@
 					mode,
 					convertAacToMp3: convertAacToMp3Preference,
 					experimentalMusicBrainzTagging: experimentalMusicBrainzTaggingPreference,
+					strictMusicBrainzMatching: strictMusicBrainzMatchingPreference,
 					storage: downloadStoragePreference,
 					forceOverwrite
 				}
@@ -770,13 +781,17 @@
 						<p class="mt-2 text-sm text-emerald-300">Album download completed.</p>
 					{:else if queueStatus === 'cancelled'}
 						<p class="mt-2 text-sm text-amber-300">Album download stopped.</p>
-					{:else if queueStatus === 'paused'}
-						<p class="mt-2 text-sm text-amber-300">Album download paused.</p>
-						{:else if albumInLibrary}
-							<p class="mt-2 text-sm text-emerald-300">
-								Already in local library ({albumLibraryTrackCount} track{albumLibraryTrackCount === 1 ? '' : 's'} found). Click "Redownload Album" to overwrite.
-							</p>
-						{/if}
+						{:else if queueStatus === 'paused'}
+							<p class="mt-2 text-sm text-amber-300">Album download paused.</p>
+							{:else if albumInLibrary}
+								<p class="mt-2 text-sm text-emerald-300">
+									{#if downloadStoragePreference === 'server'}
+										Already in local library ({albumLibraryTrackCount} track{albumLibraryTrackCount === 1 ? '' : 's'} found). Click "Redownload Album" to overwrite.
+									{:else}
+										Already in local library ({albumLibraryTrackCount} track{albumLibraryTrackCount === 1 ? '' : 's'} found). Browser redownloads may append (2) to filenames.
+									{/if}
+								</p>
+							{/if}
 						{#if repairMessage}
 							<p class="mt-2 text-sm text-emerald-300">{repairMessage}</p>
 						{/if}

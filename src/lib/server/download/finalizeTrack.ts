@@ -45,6 +45,7 @@ export interface FinalizeTrackParams {
 	downloadCoverSeperately?: boolean;
 	coverUrl?: string;
 	experimentalMusicBrainzTagging?: boolean;
+	strictMusicBrainzMatching?: boolean;
 }
 
 export type FinalizeTrackResult =
@@ -157,7 +158,8 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 		detectedMimeType,
 		downloadCoverSeperately = false,
 		coverUrl,
-		experimentalMusicBrainzTagging = false
+		experimentalMusicBrainzTagging = false,
+		strictMusicBrainzMatching = false
 	} = params;
 
 	let workingBuffer: Buffer | undefined;
@@ -431,7 +433,8 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 				trackLookup,
 				hasMetadataOverrides ? metadataOverrides : undefined,
 				{
-					enableExperimentalMusicBrainzTagging: experimentalMusicBrainzTagging
+					enableExperimentalMusicBrainzTagging: experimentalMusicBrainzTagging,
+					strictMusicBrainzMatching
 				}
 			);
 			metadataEmbedded = true;
