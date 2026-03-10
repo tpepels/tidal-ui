@@ -39,6 +39,15 @@ const VARIOUS_ARTISTS_NAME = 'Various Artists';
 const VARIOUS_ARTISTS_DIR = sanitizeDirName(VARIOUS_ARTISTS_NAME);
 const VARIOUS_ARTISTS_KEY = normalizeKey(VARIOUS_ARTISTS_NAME);
 const TRANSIENT_ALBUM_ARTIFACT_DIR_RE = /^\..+\.(publishing|backup)-[a-z0-9]/i;
+const TRANSIENT_ALBUM_ARTIFACT_JOB_ID_RE = /job-\d+-[a-z0-9]+/i;
+const TRANSIENT_SWEEP_MIN_AGE_MS = Math.max(
+	0,
+	Number(process.env.MEDIA_LIBRARY_TRANSIENT_SWEEP_MIN_AGE_MS || 30 * 60 * 1000)
+);
+const DEDUPE_SAMPLE_LIMIT = Math.max(
+	1,
+	Number(process.env.MEDIA_LIBRARY_DEDUPE_SAMPLE_LIMIT || 25)
+);
 
 export interface LocalMediaFile {
 	path: string;
@@ -91,14 +100,23 @@ export interface AlbumIntegrityReport {
 export interface MediaLibraryDedupeSummary {
 	scannedAt: number;
 	dryRun: boolean;
+	runId?: string;
 	albumsScanned: number;
 	duplicateAlbumGroups: number;
 	duplicateAlbumDirs: number;
 	albumsMerged: number;
 	filesMovedBetweenAlbums: number;
+	filesMoveErrors: number;
 	albumsWithTrackDuplicates: number;
+	albumsSkipped: number;
 	duplicateTrackGroups: number;
+	manualReviewRequired: number;
 	duplicateFilesBackedUp: number;
+	backupErrors: number;
+	movedSamples: string[];
+	backedUpSamples: string[];
+	skippedSamples: string[];
+	failedSamples: string[];
 	backupRoot?: string;
 }
 
@@ -116,9 +134,12 @@ export interface MediaLibraryTransientSweepSummary {
 	scannedAt: number;
 	baseDir: string;
 	dryRun: boolean;
+	minAgeMs: number;
 	artistDirsScanned: number;
 	artifactDirsFound: number;
 	artifactDirsRemoved: number;
+	skippedTooFresh: number;
+	skippedActive: number;
 	samplePaths: string[];
 }
 
@@ -154,6 +175,14 @@ export function isTransientAlbumArtifactDirName(dirName: string | undefined): bo
 		return false;
 	}
 	return TRANSIENT_ALBUM_ARTIFACT_DIR_RE.test(dirName);
+}
+
+export function parseTransientAlbumArtifactJobId(dirName: string | undefined): string | null {
+	if (!dirName || typeof dirName !== 'string') {
+		return null;
+	}
+	const match = dirName.match(TRANSIENT_ALBUM_ARTIFACT_JOB_ID_RE);
+	return match?.[0] ?? null;
 }
 
 function normalizeDirComparable(value: string | undefined): string {
@@ -235,6 +264,23 @@ function parseTrackNumberFromFilename(filename: string): number | undefined {
 	return undefined;
 }
 
+async function parseTrackOrderKeyFromEmbeddedTags(filePath: string): Promise<string | null> {
+	try {
+		const metadata = await parseFile(filePath, { duration: false, skipCovers: true });
+		const discNo = toPositiveInt(metadata.common.disk?.no);
+		const trackNo = toPositiveInt(metadata.common.track?.no);
+		if (!trackNo) {
+			return null;
+		}
+		if (discNo) {
+			return `${String(discNo).padStart(2, '0')}${String(trackNo).padStart(2, '0')}`;
+		}
+		return String(trackNo).padStart(2, '0');
+	} catch {
+		return null;
+	}
+}
+
 function keysLooselyMatch(a: string, b: string): boolean {
 	if (!a || !b) return false;
 	return a === b || a.includes(b) || b.includes(a);
@@ -307,17 +353,30 @@ export async function sweepTransientAlbumArtifacts(options?: {
 	baseDir?: string;
 	dryRun?: boolean;
 	maxSamples?: number;
+	minAgeMs?: number;
+	activeJobIds?: Iterable<string>;
+	nowMs?: number;
 }): Promise<MediaLibraryTransientSweepSummary> {
 	const baseDir = options?.baseDir ?? getDownloadDir();
 	const dryRun = options?.dryRun === true;
 	const maxSamples = Math.max(0, Number(options?.maxSamples ?? 25));
+	const minAgeMs = Math.max(0, Number(options?.minAgeMs ?? TRANSIENT_SWEEP_MIN_AGE_MS));
+	const nowMs = Number.isFinite(options?.nowMs) ? Number(options?.nowMs) : Date.now();
+	const activeJobIds = new Set<string>(
+		Array.from(options?.activeJobIds ?? [])
+			.map((value) => String(value).trim())
+			.filter((value) => value.length > 0)
+	);
 	const summary: MediaLibraryTransientSweepSummary = {
 		scannedAt: Date.now(),
 		baseDir,
 		dryRun,
+		minAgeMs,
 		artistDirsScanned: 0,
 		artifactDirsFound: 0,
 		artifactDirsRemoved: 0,
+		skippedTooFresh: 0,
+		skippedActive: 0,
 		samplePaths: []
 	};
 
@@ -355,11 +414,25 @@ export async function sweepTransientAlbumArtifacts(options?: {
 				summary.samplePaths.push(relativePath);
 			}
 
+			const targetPath = path.join(artistPath, albumEntry.name);
+			const artifactJobId = parseTransientAlbumArtifactJobId(albumEntry.name);
+			if (artifactJobId && activeJobIds.has(artifactJobId)) {
+				summary.skippedActive += 1;
+				continue;
+			}
+			const artifactStat = await fs.stat(targetPath).catch(() => null);
+			if (artifactStat) {
+				const artifactAgeMs = Math.max(0, nowMs - artifactStat.mtimeMs);
+				if (artifactAgeMs < minAgeMs) {
+					summary.skippedTooFresh += 1;
+					continue;
+				}
+			}
+
 			if (dryRun) {
 				continue;
 			}
 
-			const targetPath = path.join(artistPath, albumEntry.name);
 			try {
 				await fs.rm(targetPath, { recursive: true, force: true });
 				summary.artifactDirsRemoved += 1;
@@ -395,6 +468,13 @@ async function ensureUniquePath(directory: string, name: string): Promise<string
 		candidate = path.join(directory, uniquePathSuffix(name, attempt));
 	}
 	return candidate;
+}
+
+function pushSample(list: string[], value: string, maxSamples = DEDUPE_SAMPLE_LIMIT): void {
+	if (list.length >= maxSamples) {
+		return;
+	}
+	list.push(value);
 }
 
 const AUDIO_EXTENSION_RANK: Record<string, number> = {
@@ -1086,9 +1166,21 @@ async function moveDirectoryContents(
 	sourceDir: string,
 	targetDir: string,
 	dryRun: boolean
-): Promise<{ movedFiles: number }> {
+): Promise<{
+	movedFiles: number;
+	moveErrors: Array<{
+		sourcePath: string;
+		targetPath: string;
+		error: string;
+	}>;
+}> {
 	const entries = await fs.readdir(sourceDir, { withFileTypes: true });
 	let movedFiles = 0;
+	const moveErrors: Array<{
+		sourcePath: string;
+		targetPath: string;
+		error: string;
+	}> = [];
 	if (!dryRun) {
 		await fs.mkdir(targetDir, { recursive: true });
 	}
@@ -1100,8 +1192,14 @@ async function moveDirectoryContents(
 		if (entry.isDirectory()) {
 			const nested = await moveDirectoryContents(sourcePath, targetPath, dryRun);
 			movedFiles += nested.movedFiles;
+			moveErrors.push(...nested.moveErrors);
 			if (!dryRun) {
-				await fs.rm(sourcePath, { recursive: true, force: true }).catch(() => {});
+				if (nested.moveErrors.length === 0) {
+					await fs.rm(sourcePath, { recursive: true, force: true }).catch(() => {});
+				} else {
+					// Preserve directories with failed moves for manual inspection/recovery.
+					await fs.rmdir(sourcePath).catch(() => {});
+				}
 			}
 			continue;
 		}
@@ -1118,11 +1216,19 @@ async function moveDirectoryContents(
 		const resolvedTargetPath = (await pathExists(targetPath))
 			? await ensureUniquePath(targetDir, entry.name)
 			: targetPath;
-		await fs.rename(sourcePath, resolvedTargetPath);
-		movedFiles += 1;
+		try {
+			await moveFile(sourcePath, resolvedTargetPath);
+			movedFiles += 1;
+		} catch (error) {
+			moveErrors.push({
+				sourcePath,
+				targetPath: resolvedTargetPath,
+				error: error instanceof Error ? error.message : String(error)
+			});
+		}
 	}
 
-	return { movedFiles };
+	return { movedFiles, moveErrors };
 }
 
 async function listAlbumAudioCandidates(albumPath: string): Promise<DedupeFileCandidate[]> {
@@ -1141,12 +1247,16 @@ async function listAlbumAudioCandidates(albumPath: string): Promise<DedupeFileCa
 		const filePath = path.join(albumPath, entry.name);
 		const stat = await fs.stat(filePath).catch(() => null);
 		if (!stat) continue;
+		let trackKey = parseTrackOrderKey(entry.name);
+		if (!trackKey) {
+			trackKey = await parseTrackOrderKeyFromEmbeddedTags(filePath);
+		}
 		candidates.push({
 			path: filePath,
 			filename: entry.name,
 			extension,
 			size: stat.size,
-			trackKey: parseTrackOrderKey(entry.name)
+			trackKey
 		});
 	}
 	return candidates;
@@ -1238,6 +1348,7 @@ export async function deduplicateMediaLibrary(options?: {
 	dryRun?: boolean;
 	forceRescan?: boolean;
 	maxAlbums?: number;
+	runId?: string;
 	onProgress?: (progress: MediaLibraryDedupeProgress) => void;
 }): Promise<MediaLibraryDedupeSummary> {
 	const dryRun = options?.dryRun !== false;
@@ -1260,14 +1371,23 @@ export async function deduplicateMediaLibrary(options?: {
 	const summary: MediaLibraryDedupeSummary = {
 		scannedAt: snapshot.scannedAt,
 		dryRun,
+		runId: options?.runId,
 		albumsScanned: albumGroups.length,
 		duplicateAlbumGroups: 0,
 		duplicateAlbumDirs: 0,
 		albumsMerged: 0,
 		filesMovedBetweenAlbums: 0,
+		filesMoveErrors: 0,
 		albumsWithTrackDuplicates: 0,
+		albumsSkipped: 0,
 		duplicateTrackGroups: 0,
-		duplicateFilesBackedUp: 0
+		manualReviewRequired: 0,
+		duplicateFilesBackedUp: 0,
+		backupErrors: 0,
+		movedSamples: [],
+		backedUpSamples: [],
+		skippedSamples: [],
+		failedSamples: []
 	};
 	const emitProgress = (
 		phase: MediaLibraryDedupeProgress['phase'],
@@ -1361,11 +1481,38 @@ export async function deduplicateMediaLibrary(options?: {
 			const targetDir = path.join(snapshot.baseDir, canonical.artistDir, canonical.albumDir);
 			if (dryRun) {
 				summary.filesMovedBetweenAlbums += group.files.length;
+				pushSample(summary.movedSamples, `${sourceDir} -> ${targetDir} (dry-run)`);
 				continue;
 			}
 
 			const moved = await moveDirectoryContents(sourceDir, targetDir, dryRun);
 			summary.filesMovedBetweenAlbums += moved.movedFiles;
+			summary.filesMoveErrors += moved.moveErrors.length;
+			if (moved.movedFiles > 0) {
+				pushSample(summary.movedSamples, `${sourceDir} -> ${targetDir} (${moved.movedFiles} file(s))`);
+			}
+			if (moved.moveErrors.length > 0) {
+				summary.albumsSkipped += 1;
+				pushSample(summary.skippedSamples, `${group.artistDir}/${group.albumDir} (merge errors)`);
+				console.warn(
+					'[Media Library Dedupe] Merge completed with file move errors',
+					JSON.stringify({
+						artistDir: group.artistDir,
+						albumDir: group.albumDir,
+						targetArtistDir: canonical.artistDir,
+						targetAlbumDir: canonical.albumDir,
+						errorCount: moved.moveErrors.length,
+						samples: moved.moveErrors.slice(0, 5)
+					})
+				);
+				for (const moveError of moved.moveErrors.slice(0, DEDUPE_SAMPLE_LIMIT)) {
+					pushSample(
+						summary.failedSamples,
+						`${moveError.sourcePath} -> ${moveError.targetPath}: ${moveError.error}`
+					);
+				}
+				continue;
+			}
 			await fs.rm(sourceDir, { recursive: true, force: true }).catch(() => {});
 		}
 	}
@@ -1437,13 +1584,66 @@ export async function deduplicateMediaLibrary(options?: {
 			summary.duplicateTrackGroups += 1;
 			const evaluated = await Promise.all(candidates.map((candidate) => evaluateDedupeCandidate(candidate)));
 			const sorted = [...evaluated].sort(compareDedupeCandidatePriority);
-			const [, ...losers] = sorted;
+			const [winner, ...losers] = sorted;
+			if (!winner) {
+				continue;
+			}
+			if (winner.integrityState !== 2) {
+				summary.manualReviewRequired += 1;
+				summary.albumsSkipped += 1;
+				pushSample(
+					summary.skippedSamples,
+					`${target.artistDir}/${target.albumDir} track ${winner.trackKey ?? 'unknown'} (winner not verified)`
+				);
+				console.warn(
+					'[Media Library Dedupe] Skipping duplicate group due to unverified winner',
+					JSON.stringify({
+						artistDir: target.artistDir,
+						albumDir: target.albumDir,
+						trackKey: winner.trackKey,
+						winner: {
+							path: winner.path,
+							integrityState: winner.integrityState,
+							durationSeconds: winner.durationSeconds
+						},
+						candidates: sorted.map((candidate) => ({
+							path: candidate.path,
+							integrityState: candidate.integrityState,
+							durationSeconds: candidate.durationSeconds
+						}))
+					})
+				);
+				continue;
+			}
 			summary.duplicateFilesBackedUp += losers.length;
+			for (const loser of losers) {
+				pushSample(
+					summary.backedUpSamples,
+					`${target.artistDir}/${target.albumDir}/${path.basename(loser.path)}${dryRun ? ' (dry-run)' : ''}`
+				);
+			}
 			if (dryRun || !backupRoot) {
 				continue;
 			}
 			for (const loser of losers) {
-				await moveToBackup(loser.path, backupRoot, target.artistDir, target.albumDir);
+				try {
+					await moveToBackup(loser.path, backupRoot, target.artistDir, target.albumDir);
+				} catch (error) {
+					summary.backupErrors += 1;
+					pushSample(
+						summary.failedSamples,
+						`${loser.path}: ${error instanceof Error ? error.message : String(error)}`
+					);
+					console.warn(
+						'[Media Library Dedupe] Failed to move duplicate file to backup',
+						JSON.stringify({
+							artistDir: target.artistDir,
+							albumDir: target.albumDir,
+							filePath: loser.path,
+							error: error instanceof Error ? error.message : String(error)
+						})
+					);
+				}
 			}
 		}
 	}

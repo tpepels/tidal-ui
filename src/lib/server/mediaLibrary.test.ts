@@ -170,14 +170,64 @@ describe('mediaLibrary', () => {
 		await fs.writeFile(path.join(backupDir, '11 - The Same Love That Made Me Laugh.flac'), Buffer.alloc(2048, 1));
 		await fs.writeFile(path.join(regularAlbumDir, '01 - Ain\'t No Sunshine.flac'), Buffer.alloc(2048, 1));
 
-		const summary = await sweepTransientAlbumArtifacts({ dryRun: false });
+		const summary = await sweepTransientAlbumArtifacts({ dryRun: false, minAgeMs: 0 });
 
 		expect(summary.artifactDirsFound).toBe(2);
 		expect(summary.artifactDirsRemoved).toBe(2);
+		expect(summary.skippedTooFresh).toBe(0);
+		expect(summary.skippedActive).toBe(0);
 
 		await expect(fs.stat(publishingDir)).rejects.toThrow();
 		await expect(fs.stat(backupDir)).rejects.toThrow();
 		await expect(fs.stat(regularAlbumDir)).resolves.toBeDefined();
+	});
+
+	it('skips transient artifacts that are too fresh', async () => {
+		const artistDir = sanitizeDirName('Arooj Aftab');
+		const artistPath = path.join(downloadDir, artistDir);
+		await fs.mkdir(artistPath, { recursive: true });
+
+		const publishingDir = path.join(
+			artistPath,
+			'.Night Reign.publishing-job-1772838939212-sjwnkubtc-xsipu9am'
+		);
+		await fs.mkdir(publishingDir, { recursive: true });
+		await fs.writeFile(path.join(publishingDir, '01 - Aey Nehin.flac'), Buffer.alloc(2048, 1));
+
+		const summary = await sweepTransientAlbumArtifacts({
+			dryRun: false,
+			minAgeMs: 60_000,
+			nowMs: Date.now()
+		});
+
+		expect(summary.artifactDirsFound).toBe(1);
+		expect(summary.artifactDirsRemoved).toBe(0);
+		expect(summary.skippedTooFresh).toBe(1);
+		await expect(fs.stat(publishingDir)).resolves.toBeDefined();
+	});
+
+	it('skips transient artifacts that belong to active queue jobs', async () => {
+		const artistDir = sanitizeDirName('José James');
+		const artistPath = path.join(downloadDir, artistDir);
+		await fs.mkdir(artistPath, { recursive: true });
+
+		const publishingDir = path.join(
+			artistPath,
+			'.Lean On Me.publishing-job-1772838939212-sjwnkubtc-xsipu9am'
+		);
+		await fs.mkdir(publishingDir, { recursive: true });
+		await fs.writeFile(path.join(publishingDir, '06 - Use Me.flac'), Buffer.alloc(2048, 1));
+
+		const summary = await sweepTransientAlbumArtifacts({
+			dryRun: false,
+			minAgeMs: 0,
+			activeJobIds: ['job-1772838939212-sjwnkubtc']
+		});
+
+		expect(summary.artifactDirsFound).toBe(1);
+		expect(summary.artifactDirsRemoved).toBe(0);
+		expect(summary.skippedActive).toBe(1);
+		await expect(fs.stat(publishingDir)).resolves.toBeDefined();
 	});
 
 	it('keeps the healthy complete duplicate and backs up the weaker one', async () => {

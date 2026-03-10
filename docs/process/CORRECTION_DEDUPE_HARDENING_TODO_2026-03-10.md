@@ -19,57 +19,57 @@
 ## TODO (High -> Low Priority)
 
 ## P0 - Safety / Data Integrity
-- [ ] Add a shared maintenance lock for media-library mutations.
+- [x] Add a shared maintenance lock for media-library mutations.
   - Scope: sweep, dedupe, correction+dedupe endpoint, and worker album publish.
   - Behavior: return `409` when another maintenance/publish run holds lock.
   - Implementation target: Redis lease key with heartbeat + timeout fallback.
 
-- [ ] Harden transient sweep to never delete active publish state.
+- [x] Harden transient sweep to never delete active publish state.
   - Add minimum age guard (`MEDIA_LIBRARY_TRANSIENT_SWEEP_MIN_AGE_MS`, default e.g. 30m).
   - Parse job id from folder names and skip if job is `queued|processing|retry_scheduled`.
   - Add `skippedActive`, `skippedTooFresh` counters to sweep summary/report.
 
-- [ ] Add server-orchestrated endpoint: `POST /api/media-library/correct-and-deduplicate`.
+- [x] Add server-orchestrated endpoint: `POST /api/media-library/correct-and-deduplicate`.
   - Step 1: sweep-temporary.
   - Step 2: deduplicate.
   - Run under one lock and one run id.
   - Return one structured report with both phase results + duration.
 
 ## P1 - Reliability / Failure Handling
-- [ ] Harden dedupe merge moves with fallback-safe file move semantics.
+- [x] Harden dedupe merge moves with fallback-safe file move semantics.
   - Replace raw `fs.rename` in merge path with helper supporting EXDEV copy+unlink.
   - Continue-on-error per file, record failures, and finish run with warnings.
 
-- [ ] Add persisted maintenance run reports.
+- [x] Add persisted maintenance run reports.
   - Write JSON reports to `data/media-maintenance/runs/<runId>.json`.
   - Include phase summaries, skipped paths, errors, and backup root.
   - Keep latest N reports via retention policy.
 
-- [ ] Expand dedupe/sweep reporting schema.
+- [x] Expand dedupe/sweep reporting schema.
   - Add: `filesMoveErrors`, `backupErrors`, `albumsSkipped`, `runId`.
   - Add sample lists per action: moved, backed-up, skipped, failed.
 
 ## P2 - Matching / Accuracy
-- [ ] Add optional metadata-based fallback for track key extraction in dedupe.
+- [x] Add optional metadata-based fallback for track key extraction in dedupe.
   - Use embedded tags `discNo/trackNo` when filename key is missing.
   - Keep strict safety gate (do not dedupe when confidence is low).
 
-- [ ] Add sanity gate before deleting duplicate candidate.
+- [x] Add sanity gate before deleting duplicate candidate.
   - Require winner to pass integrity; if all candidates are uncertain, do not remove.
   - Mark as `manual_review_required` in report.
 
 ## P3 - UX / Operability
-- [ ] Replace client-side chained correction flow with server status polling of new combined endpoint.
+- [x] Replace client-side chained correction flow with server status polling of new combined endpoint.
   - Show phase-level progress and current album/group.
   - Provide downloadable JSON report link when complete.
 
-- [ ] Add "dry-run then execute" workflow in UI.
+- [x] Add "dry-run then execute" workflow in UI.
   - First pass shows proposed actions count.
   - Second pass executes with explicit confirmation.
 
 ## Test Plan TODO
-- [ ] Sweep does not remove fresh publish/backup folders.
-- [ ] Sweep does not remove folders for active queue jobs.
+- [x] Sweep does not remove fresh publish/backup folders.
+- [x] Sweep does not remove folders for active queue jobs.
 - [ ] Lock conflict returns `409` across concurrent maintenance operations.
 - [ ] Combined endpoint reports both phases correctly on partial failure.
 - [ ] Dedupe merge handles EXDEV path without aborting full run.

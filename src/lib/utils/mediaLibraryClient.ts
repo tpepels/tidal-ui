@@ -104,16 +104,26 @@ export type MediaLibraryDeduplicateResult = {
 	success: boolean;
 	scannedAt?: number;
 	dryRun?: boolean;
+	runId?: string;
 	albumsScanned?: number;
 	duplicateAlbumGroups?: number;
 	duplicateAlbumDirs?: number;
 	albumsMerged?: number;
 	filesMovedBetweenAlbums?: number;
+	filesMoveErrors?: number;
 	albumsWithTrackDuplicates?: number;
+	albumsSkipped?: number;
 	duplicateTrackGroups?: number;
+	manualReviewRequired?: number;
 	duplicateFilesBackedUp?: number;
+	backupErrors?: number;
+	movedSamples?: string[];
+	backedUpSamples?: string[];
+	skippedSamples?: string[];
+	failedSamples?: string[];
 	backupRoot?: string;
 	report?: {
+		runId?: string;
 		startedAt: number;
 		finishedAt: number;
 		durationMs: number;
@@ -121,9 +131,14 @@ export type MediaLibraryDeduplicateResult = {
 		albumsScanned: number;
 		albumsMerged: number;
 		filesMovedBetweenAlbums: number;
+		filesMoveErrors: number;
+		albumsSkipped: number;
 		duplicateTrackGroups: number;
+		manualReviewRequired: number;
 		duplicateFilesBackedUp: number;
+		backupErrors: number;
 		backupRoot?: string;
+		reportPath?: string | null;
 	};
 	error?: string;
 };
@@ -143,31 +158,50 @@ export type MediaLibraryDeduplicateStatusResult = {
 		summary: {
 			scannedAt: number;
 			dryRun: boolean;
+			runId?: string;
 			albumsScanned: number;
 			duplicateAlbumGroups: number;
 			duplicateAlbumDirs: number;
 			albumsMerged: number;
 			filesMovedBetweenAlbums: number;
+			filesMoveErrors: number;
 			albumsWithTrackDuplicates: number;
+			albumsSkipped: number;
 			duplicateTrackGroups: number;
+			manualReviewRequired: number;
 			duplicateFilesBackedUp: number;
+			backupErrors: number;
+			movedSamples: string[];
+			backedUpSamples: string[];
+			skippedSamples: string[];
+			failedSamples: string[];
 			backupRoot?: string;
 		};
 	} | null;
 	result?: {
 		scannedAt: number;
 		dryRun: boolean;
+		runId?: string;
 		albumsScanned: number;
 		duplicateAlbumGroups: number;
 		duplicateAlbumDirs: number;
 		albumsMerged: number;
 		filesMovedBetweenAlbums: number;
+		filesMoveErrors: number;
 		albumsWithTrackDuplicates: number;
+		albumsSkipped: number;
 		duplicateTrackGroups: number;
+		manualReviewRequired: number;
 		duplicateFilesBackedUp: number;
+		backupErrors: number;
+		movedSamples: string[];
+		backedUpSamples: string[];
+		skippedSamples: string[];
+		failedSamples: string[];
 		backupRoot?: string;
 	} | null;
 	report?: {
+		runId?: string;
 		startedAt: number;
 		finishedAt: number;
 		durationMs: number;
@@ -175,23 +209,66 @@ export type MediaLibraryDeduplicateStatusResult = {
 		albumsScanned: number;
 		albumsMerged: number;
 		filesMovedBetweenAlbums: number;
+		filesMoveErrors: number;
+		albumsSkipped: number;
 		duplicateTrackGroups: number;
+		manualReviewRequired: number;
 		duplicateFilesBackedUp: number;
+		backupErrors: number;
 		backupRoot?: string;
+		reportPath?: string | null;
 	} | null;
 	error?: string | null;
 };
 
 export type MediaLibrarySweepTemporaryResult = {
 	success: boolean;
+	runId?: string;
+	reportPath?: string | null;
 	scannedAt?: number;
 	baseDir?: string;
 	dryRun?: boolean;
+	minAgeMs?: number;
 	artistDirsScanned?: number;
 	artifactDirsFound?: number;
 	artifactDirsRemoved?: number;
+	skippedTooFresh?: number;
+	skippedActive?: number;
 	samplePaths?: string[];
 	error?: string;
+};
+
+export type MediaLibraryCorrectAndDeduplicateResult = {
+	success: boolean;
+	runId?: string;
+	reportPath?: string | null;
+	startedAt?: number;
+	finishedAt?: number;
+	durationMs?: number;
+	dryRun?: boolean;
+	sweep?: MediaLibrarySweepTemporaryResult;
+	deduplicate?: MediaLibraryDeduplicateResult;
+	error?: string;
+};
+
+export type MediaLibraryCorrectAndDeduplicateStatusResult = {
+	success: boolean;
+	status?: 'idle' | 'running' | 'completed' | 'failed';
+	runId?: string | null;
+	phase?: 'idle' | 'sweep' | 'deduplicate' | 'completed' | 'failed';
+	startedAt?: number | null;
+	finishedAt?: number | null;
+	progress?: MediaLibraryDeduplicateStatusResult['progress'];
+	result?: {
+		runId: string;
+		startedAt: number;
+		finishedAt: number;
+		durationMs: number;
+		dryRun: boolean;
+		sweep: MediaLibrarySweepTemporaryResult;
+		deduplicate: MediaLibraryDeduplicateResult;
+	} | null;
+	error?: string | null;
 };
 
 export async function fetchAlbumLibraryStatus(
@@ -379,6 +456,54 @@ export async function sweepTemporaryLibraryArtifacts(input?: {
 		return {
 			success: false,
 			error: 'Failed to sweep temporary album artifacts'
+		};
+	}
+}
+
+export async function correctAndDeduplicateLibrary(input?: {
+	dryRun?: boolean;
+	forceRescan?: boolean;
+	maxAlbums?: number;
+}): Promise<MediaLibraryCorrectAndDeduplicateResult> {
+	try {
+		const response = await fetch('/api/media-library/correct-and-deduplicate', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify(input ?? {})
+		});
+		const payload = (await response.json()) as MediaLibraryCorrectAndDeduplicateResult;
+		if (!response.ok) {
+			return {
+				success: false,
+				error: payload?.error || 'Failed to run correction sweep and deduplicate'
+			};
+		}
+		return payload;
+	} catch {
+		return {
+			success: false,
+			error: 'Failed to run correction sweep and deduplicate'
+		};
+	}
+}
+
+export async function fetchCorrectAndDeduplicateStatus(): Promise<MediaLibraryCorrectAndDeduplicateStatusResult> {
+	try {
+		const response = await fetch('/api/media-library/correct-and-deduplicate');
+		const payload = (await response.json()) as MediaLibraryCorrectAndDeduplicateStatusResult;
+		if (!response.ok) {
+			return {
+				success: false,
+				error: payload?.error || 'Failed to fetch correction + deduplicate status'
+			};
+		}
+		return payload;
+	} catch {
+		return {
+			success: false,
+			error: 'Failed to fetch correction + deduplicate status'
 		};
 	}
 }

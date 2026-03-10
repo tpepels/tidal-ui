@@ -722,6 +722,26 @@ export async function getQueueStats(): Promise<{
 }
 
 /**
+ * List queue job IDs that should be treated as active for library maintenance safety checks.
+ * Includes queued/processing jobs and delayed retries.
+ */
+export async function getActiveJobIdsForMaintenance(now = Date.now()): Promise<string[]> {
+	const jobs = await getAllJobs();
+	const active = new Set<string>();
+	for (const job of jobs) {
+		if (!job?.id) continue;
+		if (job.status === 'queued' || job.status === 'processing') {
+			active.add(job.id);
+			continue;
+		}
+		if (typeof job.nextRetryAt === 'number' && job.nextRetryAt > now) {
+			active.add(job.id);
+		}
+	}
+	return Array.from(active);
+}
+
+/**
  * Clear completed/failed jobs older than specified time
  */
 export async function cleanupOldJobs(olderThanMs: number = 24 * 60 * 60 * 1000): Promise<number> {

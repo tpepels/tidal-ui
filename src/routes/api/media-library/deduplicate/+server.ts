@@ -5,6 +5,11 @@ import {
 	type MediaLibraryDedupeProgress,
 	type MediaLibraryDedupeSummary
 } from '$lib/server/mediaLibrary';
+import {
+	acquireMediaMaintenanceLock,
+	getMediaMaintenanceLockHolder
+} from '$lib/server/mediaMaintenanceLock';
+import { writeMediaMaintenanceRunReport } from '$lib/server/mediaMaintenanceReports';
 
 type DeduplicateRequestBody = {
 	dryRun?: boolean;
@@ -15,6 +20,7 @@ type DeduplicateRequestBody = {
 type DeduplicateRunStatus = 'idle' | 'running' | 'completed' | 'failed';
 
 type DeduplicateCompletionReport = {
+	runId?: string;
 	startedAt: number;
 	finishedAt: number;
 	durationMs: number;
@@ -22,9 +28,18 @@ type DeduplicateCompletionReport = {
 	albumsScanned: number;
 	albumsMerged: number;
 	filesMovedBetweenAlbums: number;
+	filesMoveErrors: number;
+	albumsSkipped: number;
 	duplicateTrackGroups: number;
+	manualReviewRequired: number;
 	duplicateFilesBackedUp: number;
+	backupErrors: number;
+	movedSamples: string[];
+	backedUpSamples: string[];
+	skippedSamples: string[];
+	failedSamples: string[];
 	backupRoot?: string;
+	reportPath?: string | null;
 };
 
 type DeduplicateStatusPayload = {
@@ -89,11 +104,29 @@ export const POST: RequestHandler = async ({ request }) => {
 		);
 	}
 
+	let lock: Awaited<ReturnType<typeof acquireMediaMaintenanceLock>> | null = null;
+	let currentRunId: string | null = null;
 	try {
 		const body = (await request.json().catch(() => ({}))) as DeduplicateRequestBody;
+		lock = await acquireMediaMaintenanceLock({
+			owner: `api:deduplicate:${Date.now()}`,
+			waitTimeoutMs: 0
+		});
+		if (!lock) {
+			const holder = await getMediaMaintenanceLockHolder();
+			return json(
+				{
+					success: false,
+					error: 'Media-library maintenance is already running',
+					holder
+				},
+				{ status: 409 }
+			);
+		}
 		const startedAt = Date.now();
 		setRunStarted(startedAt);
 		const dryRun = body.dryRun !== false;
+		currentRunId = `dedupe-${startedAt}-${Math.random().toString(36).slice(2, 10)}`;
 		const maxAlbums =
 			typeof body.maxAlbums === 'number' && Number.isFinite(body.maxAlbums) && body.maxAlbums > 0
 				? Math.trunc(body.maxAlbums)
@@ -101,6 +134,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		console.log(
 			'[Media Library API] deduplicate started',
 			JSON.stringify({
+				runId: currentRunId,
 				dryRun,
 				forceRescan: body.forceRescan === true,
 				maxAlbums: maxAlbums ?? null
@@ -111,6 +145,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			dryRun,
 			forceRescan: body.forceRescan === true,
 			maxAlbums,
+			runId: currentRunId,
 			onProgress: (progress) => {
 				setRunProgress(progress);
 			}
@@ -118,6 +153,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		const result = await activeRun;
 		const finishedAt = Date.now();
 		const report: DeduplicateCompletionReport = {
+			runId: result.runId,
 			startedAt,
 			finishedAt,
 			durationMs: Math.max(0, finishedAt - startedAt),
@@ -125,10 +161,26 @@ export const POST: RequestHandler = async ({ request }) => {
 			albumsScanned: result.albumsScanned,
 			albumsMerged: result.albumsMerged,
 			filesMovedBetweenAlbums: result.filesMovedBetweenAlbums,
+			filesMoveErrors: result.filesMoveErrors,
+			albumsSkipped: result.albumsSkipped,
 			duplicateTrackGroups: result.duplicateTrackGroups,
+			manualReviewRequired: result.manualReviewRequired,
 			duplicateFilesBackedUp: result.duplicateFilesBackedUp,
+			backupErrors: result.backupErrors,
+			movedSamples: result.movedSamples,
+			backedUpSamples: result.backedUpSamples,
+			skippedSamples: result.skippedSamples,
+			failedSamples: result.failedSamples,
 			backupRoot: result.backupRoot
 		};
+		report.reportPath = await writeMediaMaintenanceRunReport({
+			runId: currentRunId,
+			kind: 'deduplicate',
+			payload: {
+				result,
+				report
+			}
+		});
 		setRunCompleted(finishedAt, result, report);
 		console.log('[Media Library API] deduplicate completed', JSON.stringify(result));
 		console.log('[Media Library API] deduplicate report', JSON.stringify(report));
@@ -142,6 +194,18 @@ export const POST: RequestHandler = async ({ request }) => {
 		console.error('[Media Library API] deduplicate error:', error);
 		const message =
 			error instanceof Error ? error.message : 'Failed to deduplicate media library directories';
+		if (currentRunId) {
+			await writeMediaMaintenanceRunReport({
+				runId: currentRunId,
+				kind: 'deduplicate',
+				payload: {
+					error: message,
+					startedAt: runStartedAt,
+					finishedAt: Date.now(),
+					progress: runProgress
+				}
+			});
+		}
 		setRunFailed(Date.now(), message);
 		return json(
 			{
@@ -152,6 +216,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		);
 	} finally {
 		activeRun = null;
+		await lock?.release();
 	}
 };
 

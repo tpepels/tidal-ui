@@ -26,6 +26,7 @@ import { losslessAPI } from '$lib/api';
 import { downloadTrackServerSide } from './download/serverDownloadAdapter';
 import { finalizeTrack } from '$lib/server/download/finalizeTrack';
 import { sweepTransientAlbumArtifacts } from './mediaLibrary';
+import { acquireMediaMaintenanceLock } from './mediaMaintenanceLock';
 import {
 	downloadCoverToDir,
 	ensureDir,
@@ -93,6 +94,10 @@ const ALBUM_TRACK_MAX_ATTEMPTS =
 const DEFAULT_ALBUM_TRACK_CONCURRENCY = 2;
 const ALBUM_STAGING_ROOT = path.join(getTempDir(), 'album-staging');
 const AUDIO_EXTENSIONS = new Set(['.flac', '.m4a', '.mp4', '.mp3', '.aac', '.wav', '.ogg', '.opus']);
+const MEDIA_LIBRARY_PUBLISH_LOCK_WAIT_MS = Math.max(
+	0,
+	Number(process.env.MEDIA_LIBRARY_PUBLISH_LOCK_WAIT_MS || 120_000)
+);
 
 type ExpectedAlbumTrack = {
 	trackId: number;
@@ -1444,46 +1449,59 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 			if (!stagingRoot) {
 				throw new Error('Album staging root missing before publish');
 			}
-			const finalAlbumDir = path.join(getDownloadDir(), artistDirName, albumDirName);
-			await publishAlbumFromStaging({
-				jobId: job.id,
-				stagingRoot,
-				artistDirName,
-				albumDirName
+			const publishLock = await acquireMediaMaintenanceLock({
+				owner: `worker:publish:${job.id}`,
+				waitTimeoutMs: MEDIA_LIBRARY_PUBLISH_LOCK_WAIT_MS
 			});
-
-			const validExpectedTracks = expectedTracks.filter((track) => track.trackId > 0);
-			const reconciliation = await reconcilePublishedAlbum({
-				quality: albumJob.quality,
-				artistName,
-				albumTitle,
-				coverUrl,
-				forceOverwrite: albumJob.forceOverwrite === true,
-				finalAlbumDir,
-				expectedTracks: validExpectedTracks,
-				expectedFileByTrackId: publishedFilenameByTrackId
-			});
-			if (!reconciliation.ok) {
-				await failOrRequeueAlbumJob({
-					job,
-					errorMessage: reconciliation.reason,
-					errorCategory: 'api_error',
-					downloadTimeMs: duration,
-					completedTracks,
-					totalTracks,
-					trackProgress
-				});
-				return;
+			if (!publishLock) {
+				throw new Error(
+					'Media-library maintenance lock busy; cannot publish album while maintenance is active'
+				);
 			}
-			await updateJobStatus(job.id, {
-				status: 'completed',
-				completedAt: Date.now(),
-				downloadTimeMs: duration,
-				progress: 1,
-				error: undefined,
-				errorCategory: undefined,
-				failureCode: undefined
-			});
+			try {
+				const finalAlbumDir = path.join(getDownloadDir(), artistDirName, albumDirName);
+				await publishAlbumFromStaging({
+					jobId: job.id,
+					stagingRoot,
+					artistDirName,
+					albumDirName
+				});
+
+				const validExpectedTracks = expectedTracks.filter((track) => track.trackId > 0);
+				const reconciliation = await reconcilePublishedAlbum({
+					quality: albumJob.quality,
+					artistName,
+					albumTitle,
+					coverUrl,
+					forceOverwrite: albumJob.forceOverwrite === true,
+					finalAlbumDir,
+					expectedTracks: validExpectedTracks,
+					expectedFileByTrackId: publishedFilenameByTrackId
+				});
+				if (!reconciliation.ok) {
+					await failOrRequeueAlbumJob({
+						job,
+						errorMessage: reconciliation.reason,
+						errorCategory: 'api_error',
+						downloadTimeMs: duration,
+						completedTracks,
+						totalTracks,
+						trackProgress
+					});
+					return;
+				}
+				await updateJobStatus(job.id, {
+					status: 'completed',
+					completedAt: Date.now(),
+					downloadTimeMs: duration,
+					progress: 1,
+					error: undefined,
+					errorCategory: undefined,
+					failureCode: undefined
+				});
+			} finally {
+				await publishLock.release();
+			}
 		}
 
 		console.log(
@@ -1657,11 +1675,23 @@ export async function startWorker(): Promise<void> {
 	const { initializeQueue } = await import('./downloadQueueManager');
 	await initializeQueue();
 	await cleanupStaleAlbumStagingOnStartup();
-	const transientSweep = await sweepTransientAlbumArtifacts({ dryRun: false });
-	if (transientSweep.artifactDirsFound > 0) {
-		console.log(
-			`[Worker] Swept ${transientSweep.artifactDirsRemoved}/${transientSweep.artifactDirsFound} stale publish/backup folder(s) on startup`
-		);
+	const startupSweepLock = await acquireMediaMaintenanceLock({
+		owner: `worker:startup-sweep:${Date.now()}`,
+		waitTimeoutMs: 0
+	});
+	if (startupSweepLock) {
+		try {
+			const transientSweep = await sweepTransientAlbumArtifacts({ dryRun: false });
+			if (transientSweep.artifactDirsFound > 0) {
+				console.log(
+					`[Worker] Swept ${transientSweep.artifactDirsRemoved}/${transientSweep.artifactDirsFound} stale publish/backup folder(s) on startup (skipped active: ${transientSweep.skippedActive}, too fresh: ${transientSweep.skippedTooFresh})`
+				);
+			}
+		} finally {
+			await startupSweepLock.release();
+		}
+	} else {
+		console.log('[Worker] Skipping startup transient sweep: media-library maintenance lock is busy');
 	}
 	
 	isRunning = true;

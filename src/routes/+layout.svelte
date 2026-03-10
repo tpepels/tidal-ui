@@ -14,7 +14,9 @@
 	import { artistCacheStore } from '$lib/stores/artistCache';
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 	import {
+		correctAndDeduplicateLibrary,
 		deduplicateLibraryInLibrary,
+		fetchCorrectAndDeduplicateStatus,
 		fetchLibraryDeduplicateStatus,
 		fetchFullLibraryRepairStatus,
 		repairFullLibraryInLibrary,
@@ -89,6 +91,8 @@
 	let isCorrectionDedupRunning = $state(false);
 	let correctionDedupSummary = $state<string | null>(null);
 	let correctionDedupProgress = $state<string | null>(null);
+	let correctionDedupPollInterval = $state<ReturnType<typeof setInterval> | null>(null);
+	let correctionDedupPollToken = $state(0);
 	let isFullLibraryRepairing = $state(false);
 	let fullLibraryRepairSummary = $state<string | null>(null);
 	let fullLibraryRepairProgress = $state<string | null>(null);
@@ -425,9 +429,14 @@
 			}
 			const found = result.artifactDirsFound ?? 0;
 			const removed = result.artifactDirsRemoved ?? 0;
-			const summary = `Transient sweep complete: removed ${removed}/${found} temporary folder(s).`;
+			const summary =
+				`Transient sweep complete: removed ${removed}/${found} temporary folder(s). ` +
+				`Skipped active ${result.skippedActive ?? 0}, too fresh ${result.skippedTooFresh ?? 0}.`;
 			libraryTransientSweepSummary = summary;
 			toasts.success(summary);
+			if (result.reportPath) {
+				toasts.info(`Sweep report saved to ${result.reportPath}`);
+			}
 		} catch (error) {
 			const message =
 				error instanceof Error && error.message
@@ -450,38 +459,81 @@
 
 		isCorrectionDedupRunning = true;
 		correctionDedupSummary = null;
-		correctionDedupProgress = 'Step 1/2: Sweeping stale publish/backup folders...';
+		correctionDedupProgress = 'Running correction dry-run...';
+		let executionStarted = false;
 
 		try {
-			const sweepResult = await sweepTemporaryLibraryArtifacts({ dryRun: false });
-			if (!sweepResult.success) {
-				throw new Error(sweepResult.error || 'Correction sweep failed');
+			const preview = await correctAndDeduplicateLibrary({
+				dryRun: true,
+				forceRescan: true
+			});
+			if (!preview.success || !preview.sweep || !preview.deduplicate) {
+				throw new Error(preview.error || 'Correction + dedupe dry-run failed');
 			}
 
-			const found = sweepResult.artifactDirsFound ?? 0;
-			const removed = sweepResult.artifactDirsRemoved ?? 0;
-			correctionDedupProgress = 'Step 2/2: Deduplicating media library...';
+			const previewFound = preview.sweep.artifactDirsFound ?? 0;
+			const previewRemoved = preview.sweep.artifactDirsRemoved ?? 0;
+			const previewDedupe = preview.deduplicate;
+			const previewSummary =
+				`Dry-run plan: sweep ${previewRemoved}/${previewFound} temp folder(s), ` +
+				`merge ${previewDedupe.albumsMerged ?? 0} album folder(s), move ${previewDedupe.filesMovedBetweenAlbums ?? 0} file(s), ` +
+				`backup ${previewDedupe.duplicateFilesBackedUp ?? 0} duplicate track file(s), ` +
+				`manual review ${previewDedupe.manualReviewRequired ?? 0}.`;
+			const plannedChanges =
+				(previewDedupe.filesMovedBetweenAlbums ?? 0) + (previewDedupe.duplicateFilesBackedUp ?? 0);
 
-			const dedupeResult = await deduplicateLibraryInLibrary({
+			if (preview.reportPath) {
+				toasts.info(`Correction dry-run report saved to ${preview.reportPath}`);
+			}
+
+			if (plannedChanges <= 0) {
+				correctionDedupProgress = null;
+				correctionDedupSummary = `${previewSummary} No execute pass needed.`;
+				toasts.success('Correction dry-run found no actionable changes.');
+				return;
+			}
+
+			let executeNow = true;
+			if (typeof window !== 'undefined') {
+				executeNow = window.confirm(`${previewSummary}\n\nRun execute pass now?`);
+			}
+			if (!executeNow) {
+				correctionDedupProgress = null;
+				correctionDedupSummary = `${previewSummary} Execute pass cancelled.`;
+				toasts.info('Correction dry-run complete. Execute pass cancelled.');
+				return;
+			}
+
+			correctionDedupProgress = 'Running correction sweep + dedupe...';
+			startCorrectionDedupPolling();
+			executionStarted = true;
+
+			const result = await correctAndDeduplicateLibrary({
 				dryRun: false,
 				forceRescan: true
 			});
-			if (!dedupeResult.success) {
-				throw new Error(dedupeResult.error || 'Deduplication failed');
+			if (!result.success || !result.sweep || !result.deduplicate) {
+				throw new Error(result.error || 'Correction + dedupe failed');
 			}
-
-			const report = dedupeResult.report;
 			const durationLabel =
-				report && Number.isFinite(report.durationMs)
-					? ` in ${Math.max(1, Math.round(report.durationMs / 1000))}s`
+				typeof result.durationMs === 'number' && Number.isFinite(result.durationMs)
+					? ` in ${Math.max(1, Math.round(result.durationMs / 1000))}s`
 					: '';
+			const found = result.sweep.artifactDirsFound ?? 0;
+			const removed = result.sweep.artifactDirsRemoved ?? 0;
+			const dedupeResult = result.deduplicate;
 			const summary =
 				`Correction + dedupe complete${durationLabel}: swept ${removed}/${found} temp folder(s), ` +
 				`merged ${dedupeResult.albumsMerged ?? 0} album folder(s), moved ${dedupeResult.filesMovedBetweenAlbums ?? 0} file(s), ` +
-				`and backed up ${dedupeResult.duplicateFilesBackedUp ?? 0} duplicate track file(s).`;
+				`and backed up ${dedupeResult.duplicateFilesBackedUp ?? 0} duplicate track file(s). ` +
+				`Skipped active ${result.sweep.skippedActive ?? 0}, too fresh ${result.sweep.skippedTooFresh ?? 0}, ` +
+				`manual review ${dedupeResult.manualReviewRequired ?? 0}.`;
 			correctionDedupProgress = null;
 			correctionDedupSummary = summary;
 			toasts.success(summary);
+			if (result.reportPath) {
+				toasts.info(`Correction report saved to ${result.reportPath}`);
+			}
 			if (dedupeResult.backupRoot) {
 				toasts.info(`Duplicate backups saved to ${dedupeResult.backupRoot}`);
 			}
@@ -494,8 +546,68 @@
 			correctionDedupSummary = null;
 			toasts.error(message);
 		} finally {
+			if (executionStarted) {
+				stopCorrectionDedupPolling();
+			}
 			isCorrectionDedupRunning = false;
 		}
+	}
+
+	function stopCorrectionDedupPolling(): void {
+		correctionDedupPollToken += 1;
+		if (correctionDedupPollInterval) {
+			clearInterval(correctionDedupPollInterval);
+			correctionDedupPollInterval = null;
+		}
+	}
+
+	function formatCorrectionDedupProgress(status: {
+		phase?: 'idle' | 'sweep' | 'deduplicate' | 'completed' | 'failed';
+		progress?: {
+			message: string;
+			processed: number;
+			total: number;
+			currentArtistDir?: string;
+			currentAlbumDir?: string;
+		} | null;
+	}): string {
+		if (status.phase === 'sweep') {
+			return 'Step 1/2: Sweeping stale publish/backup folders...';
+		}
+		if (status.phase === 'deduplicate') {
+			const progress = status.progress;
+			if (!progress) {
+				return 'Step 2/2: Deduplicating media library...';
+			}
+			const current =
+				progress.currentArtistDir && progress.currentAlbumDir
+					? ` Current: ${progress.currentArtistDir} - ${progress.currentAlbumDir}.`
+					: '';
+			return `Step 2/2: ${progress.message} (${progress.processed}/${progress.total}).${current}`;
+		}
+		return 'Running correction sweep + dedupe...';
+	}
+
+	async function pollCorrectionDedupStatus(token: number): Promise<void> {
+		if (token !== correctionDedupPollToken) {
+			return;
+		}
+		const status = await fetchCorrectAndDeduplicateStatus();
+		if (token !== correctionDedupPollToken || !status.success) {
+			return;
+		}
+		if (status.status === 'running') {
+			correctionDedupProgress = formatCorrectionDedupProgress(status);
+		}
+	}
+
+	function startCorrectionDedupPolling(): void {
+		stopCorrectionDedupPolling();
+		const token = correctionDedupPollToken;
+		void pollCorrectionDedupStatus(token);
+		correctionDedupPollInterval = setInterval(() => {
+			void pollCorrectionDedupStatus(token);
+		}, 1000);
 	}
 
 	async function handleLibraryDeduplicate(): Promise<void> {
@@ -507,10 +619,46 @@
 
 		isLibraryDeduplicating = true;
 		libraryDeduplicateSummary = null;
-		libraryDeduplicateProgress = 'Starting library deduplication...';
-		startLibraryDeduplicatePolling();
+		libraryDeduplicateProgress = 'Running deduplication dry-run...';
+		let executionStarted = false;
 
 		try {
+			const preview = await deduplicateLibraryInLibrary({
+				dryRun: true,
+				forceRescan: true
+			});
+			if (!preview.success) {
+				throw new Error(preview.error || 'Failed to run dedupe dry-run');
+			}
+			const previewSummary =
+				`Dry-run plan: merge ${preview.albumsMerged ?? 0} album folder(s), move ${preview.filesMovedBetweenAlbums ?? 0} file(s), ` +
+				`backup ${preview.duplicateFilesBackedUp ?? 0} duplicate track file(s), manual review ${preview.manualReviewRequired ?? 0}.`;
+			const plannedChanges =
+				(preview.filesMovedBetweenAlbums ?? 0) + (preview.duplicateFilesBackedUp ?? 0);
+			if (preview.report?.reportPath) {
+				toasts.info(`Dedupe dry-run report saved to ${preview.report.reportPath}`);
+			}
+			if (plannedChanges <= 0) {
+				libraryDeduplicateProgress = null;
+				libraryDeduplicateSummary = `${previewSummary} No execute pass needed.`;
+				toasts.success('Dedupe dry-run found no actionable changes.');
+				return;
+			}
+			let executeNow = true;
+			if (typeof window !== 'undefined') {
+				executeNow = window.confirm(`${previewSummary}\n\nRun execute pass now?`);
+			}
+			if (!executeNow) {
+				libraryDeduplicateProgress = null;
+				libraryDeduplicateSummary = `${previewSummary} Execute pass cancelled.`;
+				toasts.info('Dedupe dry-run complete. Execute pass cancelled.');
+				return;
+			}
+
+			libraryDeduplicateProgress = 'Starting library deduplication...';
+			startLibraryDeduplicatePolling();
+			executionStarted = true;
+
 			const result = await deduplicateLibraryInLibrary({
 				dryRun: false,
 				forceRescan: true
@@ -527,10 +675,14 @@
 			const summary =
 				`Dedupe complete${durationLabel}: scanned ${result.albumsScanned ?? 0} album folder(s), ` +
 				`merged ${result.albumsMerged ?? 0}, moved ${result.filesMovedBetweenAlbums ?? 0}, ` +
-				`duplicate groups ${result.duplicateTrackGroups ?? 0}, backed up ${result.duplicateFilesBackedUp ?? 0}.`;
+				`duplicate groups ${result.duplicateTrackGroups ?? 0}, backed up ${result.duplicateFilesBackedUp ?? 0}, ` +
+				`move errors ${result.filesMoveErrors ?? 0}, backup errors ${result.backupErrors ?? 0}, manual review ${result.manualReviewRequired ?? 0}.`;
 			libraryDeduplicateProgress = null;
 			libraryDeduplicateSummary = summary;
 			toasts.success(summary);
+			if (report?.reportPath) {
+				toasts.info(`Dedupe report saved to ${report.reportPath}`);
+			}
 			if (result.backupRoot) {
 				toasts.info(`Duplicate backups saved to ${result.backupRoot}`);
 			}
@@ -543,7 +695,9 @@
 			libraryDeduplicateSummary = null;
 			toasts.error(message);
 		} finally {
-			stopLibraryDeduplicatePolling();
+			if (executionStarted) {
+				stopLibraryDeduplicatePolling();
+			}
 			isLibraryDeduplicating = false;
 		}
 	}
@@ -563,7 +717,11 @@
 			total: number;
 			currentArtistDir?: string;
 			currentAlbumDir?: string;
-			summary?: { albumsMerged?: number; duplicateFilesBackedUp?: number };
+			summary?: {
+				albumsMerged?: number;
+				duplicateFilesBackedUp?: number;
+				manualReviewRequired?: number;
+			};
 		} | null;
 	}): string {
 		const progress = status.progress;
@@ -576,7 +734,8 @@
 				: '';
 		const merged = progress.summary?.albumsMerged ?? 0;
 		const backedUp = progress.summary?.duplicateFilesBackedUp ?? 0;
-		return `${progress.message} (${processed}/${total}). Merged ${merged}, backed up ${backedUp}.${current}`;
+		const manualReview = progress.summary?.manualReviewRequired ?? 0;
+		return `${progress.message} (${processed}/${total}). Merged ${merged}, backed up ${backedUp}, manual review ${manualReview}.${current}`;
 	}
 
 	async function pollLibraryDeduplicateStatus(token: number): Promise<void> {
@@ -632,6 +791,7 @@
 	});
 
 	onDestroy(() => {
+		stopCorrectionDedupPolling();
 		stopFullLibraryRepairPolling();
 		stopLibraryDeduplicatePolling();
 	});
