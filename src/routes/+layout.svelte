@@ -4,7 +4,6 @@
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import LyricsPopup from '$lib/components/LyricsPopup.svelte';
-	import DownloadManager from '$lib/components/DownloadManager.svelte';
 
 
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
@@ -107,7 +106,7 @@
 	let libraryDeduplicatePollToken = $state(0);
 	let fullLibraryRepairPollInterval = $state<ReturnType<typeof setInterval> | null>(null);
 	let fullLibraryRepairPollToken = $state(0);
-	let statusPollInterval = $state<ReturnType<typeof setInterval> | null>(null);
+	let statusPollInterval: ReturnType<typeof setInterval> | null = null;
 	let apiTargetsStatusLoading = $state(false);
 	let statusTargets = $state<{
 		success?: boolean;
@@ -1527,6 +1526,15 @@
 								<span class="sidebar-action__label">Settings</span>
 							</a>
 							<a
+								class={`sidebar-action ${isRouteActive('/download-center') ? 'is-active' : ''}`}
+								href="/download-center"
+								aria-current={isRouteActive('/download-center') ? 'page' : undefined}
+								title="Download center"
+							>
+								<Download size={16} />
+								<span class="sidebar-action__label">Download Center</span>
+							</a>
+							<a
 								class={`sidebar-action ${isRouteActive('/download-log') ? 'is-active' : ''}`}
 								href="/download-log"
 								aria-current={isRouteActive('/download-log') ? 'page' : undefined}
@@ -2113,7 +2121,6 @@
 
 	<LyricsPopup />
 	<ToastContainer />
-	<DownloadManager />
 {/if}
 
 

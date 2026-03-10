@@ -37,6 +37,8 @@
 		completedTracks?: number; // For albums
 	}
 
+	let { pageMode = false } = $props();
+
 	let isOpen = $state(false);
 	let queueJobs = $state<QueueJob[]>([]);
 	let expandedJobId = $state<string | null>(null);
@@ -385,7 +387,7 @@
 	});
 
 	$effect(() => {
-		if (!isOpen) return;
+		if (!pageMode && !isOpen) return;
 		const interval = setInterval(() => {
 			nowTs = Date.now();
 		}, 500);
@@ -484,7 +486,7 @@
 
 	// Auto-refresh jobs while the panel is open
 	$effect(() => {
-		if (isOpen) {
+		if (pageMode || isOpen) {
 			fetchQueueJobs();
 			const interval = setInterval(fetchQueueJobs, 5000);
 			return () => clearInterval(interval);
@@ -692,24 +694,30 @@
 	};
 </script>
 
-<div class="download-manager-container">
-	<button
-		onclick={() => (isOpen = !isOpen)}
-		type="button"
-		class="download-manager-toggle"
-		class:has-activity={hasActivity}
-		title={isOpen ? 'Hide download center' : 'Show download center'}
-	>
-		{#if hasActivity}
-			<div class="download-manager-badge">
-				{badgeCount}
-			</div>
-		{/if}
-		<span class="download-manager-icon">⬇</span>
-	</button>
+<div class="download-manager-container" class:download-manager-container--page={pageMode}>
+	{#if !pageMode}
+		<button
+			onclick={() => (isOpen = !isOpen)}
+			type="button"
+			class="download-manager-toggle"
+			class:has-activity={hasActivity}
+			title={isOpen ? 'Hide download center' : 'Show download center'}
+		>
+			{#if hasActivity}
+				<div class="download-manager-badge">
+					{badgeCount}
+				</div>
+			{/if}
+			<span class="download-manager-icon">⬇</span>
+		</button>
+	{/if}
 
-	{#if isOpen}
-		<div class="download-manager-panel" class:compact-mode={isCompactViewport}>
+	{#if pageMode || isOpen}
+		<div
+			class="download-manager-panel"
+			class:download-manager-panel--page={pageMode}
+			class:compact-mode={isCompactViewport}
+		>
 			<div class="download-manager-header">
 				<div>
 					<h3 class="download-manager-title">Download Center</h3>
@@ -736,14 +744,16 @@
 						{/if}
 					</div>
 				</div>
-				<button
-					onclick={() => (isOpen = false)}
-					class="download-manager-close"
-					type="button"
-					aria-label="Close"
-				>
-					✕
-				</button>
+				{#if !pageMode}
+					<button
+						onclick={() => (isOpen = false)}
+						class="download-manager-close"
+						type="button"
+						aria-label="Close"
+					>
+						✕
+					</button>
+				{/if}
 			</div>
 
 			{#if $serverQueue.pollingError}
@@ -1451,6 +1461,10 @@
 		--color-text-secondary: #a1a5b5;
 	}
 
+	.download-manager-container--page {
+		width: 100%;
+	}
+
 	.download-manager-toggle {
 		all: unset;
 		position: fixed;
@@ -1511,6 +1525,18 @@
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
+	}
+
+	.download-manager-panel--page {
+		position: relative;
+		left: auto;
+		right: auto;
+		bottom: auto;
+		z-index: 1;
+		width: 100%;
+		max-height: min(78vh, 980px);
+		animation: none;
+		box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
 	}
 
 	@keyframes slideUp {
@@ -2597,8 +2623,14 @@
 			height: 40px;
 		}
 
-		.download-manager-footer {
-			padding: 10px 12px;
+			.download-manager-footer {
+				padding: 10px 12px;
+			}
 		}
+
+	.download-manager-panel--page {
+		left: auto;
+		right: auto;
+		width: 100%;
 	}
 </style>
