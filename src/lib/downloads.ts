@@ -107,6 +107,40 @@ export function buildTrackFilename(
 	return `${parts.join(' - ')}.${extension}`;
 }
 
+function warnIfAlbumTrackListIncomplete(album: Album, tracks: Track[]): void {
+	const rawExpectedCount = Number(album.numberOfTracks);
+	if (!Number.isFinite(rawExpectedCount) || rawExpectedCount <= 0) {
+		return;
+	}
+	const expectedCount = Math.trunc(rawExpectedCount);
+	const observedTrackNumbers = new Set<number>();
+	for (const track of tracks) {
+		const trackNumber = Number(track.trackNumber);
+		if (Number.isFinite(trackNumber) && trackNumber > 0) {
+			observedTrackNumbers.add(Math.trunc(trackNumber));
+		}
+	}
+
+	const missingTrackNumbers: number[] = [];
+	for (let expected = 1; expected <= expectedCount; expected += 1) {
+		if (!observedTrackNumbers.has(expected)) {
+			missingTrackNumbers.push(expected);
+		}
+	}
+
+	if (tracks.length >= expectedCount && missingTrackNumbers.length === 0) {
+		return;
+	}
+
+	const missingPart =
+		missingTrackNumbers.length > 0
+			? ` Missing track number(s): ${missingTrackNumbers.join(', ')}.`
+			: '';
+	console.warn(
+		`[Album Download] Metadata incomplete for album ${album.id}: received ${tracks.length}/${expectedCount} track item(s).${missingPart}`
+	);
+}
+
 export interface AlbumDownloadCallbacks {
 	onTotalResolved?(total: number): void;
 	onTrackDownloaded?(completed: number, total: number, track: Track): void;
@@ -434,6 +468,7 @@ export async function downloadAlbum(
 		// Fetch album info
 		const { album: fetchedAlbum, tracks } = await losslessAPI.getAlbum(album.id);
 		const canonicalAlbum = fetchedAlbum ?? album;
+		warnIfAlbumTrackListIncomplete(canonicalAlbum, tracks);
 
 		if (!tracks || tracks.length === 0) {
 			throw new Error('No tracks found for album');
@@ -487,6 +522,7 @@ export async function downloadAlbum(
 
 	const { album: fetchedAlbum, tracks } = await losslessAPI.getAlbum(album.id);
 	const canonicalAlbum = fetchedAlbum ?? album;
+	warnIfAlbumTrackListIncomplete(canonicalAlbum, tracks);
 	if (!tracks || tracks.length === 0) {
 		throw new Error('No tracks found for album');
 	}

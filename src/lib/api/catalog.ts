@@ -91,6 +91,55 @@ function createHttpStatusError(
 	return error;
 }
 
+function summarizeMissingAlbumTrackNumbers(album: Album, tracks: Track[]): {
+	expectedCount: number | null;
+	missingTrackNumbers: number[];
+} {
+	const rawExpectedCount = Number(album.numberOfTracks);
+	const expectedCount =
+		Number.isFinite(rawExpectedCount) && rawExpectedCount > 0
+			? Math.trunc(rawExpectedCount)
+			: null;
+	if (!expectedCount) {
+		return { expectedCount: null, missingTrackNumbers: [] };
+	}
+
+	const observedTrackNumbers = new Set<number>();
+	for (const track of tracks) {
+		const trackNumber = Number(track.trackNumber);
+		if (Number.isFinite(trackNumber) && trackNumber > 0) {
+			observedTrackNumbers.add(Math.trunc(trackNumber));
+		}
+	}
+
+	const missingTrackNumbers: number[] = [];
+	for (let expected = 1; expected <= expectedCount; expected += 1) {
+		if (!observedTrackNumbers.has(expected)) {
+			missingTrackNumbers.push(expected);
+		}
+	}
+
+	return { expectedCount, missingTrackNumbers };
+}
+
+function warnIfAlbumTrackListIncomplete(albumId: number, album: Album, tracks: Track[]): void {
+	const { expectedCount, missingTrackNumbers } = summarizeMissingAlbumTrackNumbers(album, tracks);
+	if (!expectedCount) {
+		return;
+	}
+	if (tracks.length >= expectedCount && missingTrackNumbers.length === 0) {
+		return;
+	}
+
+	const missingPart =
+		missingTrackNumbers.length > 0
+			? ` Missing track number(s): ${missingTrackNumbers.join(', ')}.`
+			: '';
+	console.warn(
+		`[Catalog] Album ${albumId} returned ${tracks.length}/${expectedCount} track item(s).${missingPart}`
+	);
+}
+
 function getCachedAlbumNotFoundError(
 	cacheKey: string,
 	now: number = Date.now()
@@ -179,6 +228,8 @@ export async function getAlbum(
 						throw new Error('Album response validation failed');
 					}
 
+					warnIfAlbumTrackListIncomplete(id, result.album, result.tracks);
+
 					return result;
 				}
 			}
@@ -240,6 +291,8 @@ export async function getAlbum(
 		if (!finalValidation.success) {
 			throw new Error('Album response validation failed');
 		}
+
+		warnIfAlbumTrackListIncomplete(id, result.album, result.tracks);
 
 		return result;
 	})();

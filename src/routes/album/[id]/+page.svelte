@@ -562,6 +562,40 @@
 	}
 
 	const totalDuration = $derived(tracks.reduce((sum, track) => sum + (track.duration ?? 0), 0));
+	const expectedTrackCount = $derived.by(() => {
+		const count = Number(album?.numberOfTracks);
+		if (!Number.isFinite(count) || count <= 0) {
+			return null;
+		}
+		return Math.trunc(count);
+	});
+	const missingTrackNumbers = $derived.by(() => {
+		if (!expectedTrackCount) {
+			return [] as number[];
+		}
+
+		const observedTrackNumbers = new Set<number>();
+		for (const track of tracks) {
+			const trackNumber = Number(track.trackNumber);
+			if (Number.isFinite(trackNumber) && trackNumber > 0) {
+				observedTrackNumbers.add(Math.trunc(trackNumber));
+			}
+		}
+
+		const missing: number[] = [];
+		for (let expected = 1; expected <= expectedTrackCount; expected += 1) {
+			if (!observedTrackNumbers.has(expected)) {
+				missing.push(expected);
+			}
+		}
+		return missing;
+	});
+	const hasIncompleteTrackList = $derived.by(
+		() =>
+			expectedTrackCount !== null &&
+			(tracks.length < expectedTrackCount || missingTrackNumbers.length > 0)
+	);
+	const missingTrackLabel = $derived.by(() => missingTrackNumbers.map((number) => `#${number}`).join(', '));
 </script>
 
 <svelte:head>
@@ -693,6 +727,12 @@
 						{/each}
 					{/if}
 				</div>
+				{#if hasIncompleteTrackList}
+					<p class="mb-4 rounded-md border border-amber-500/35 bg-amber-950/25 px-3 py-2 text-xs text-amber-200">
+						This album metadata appears incomplete from the upstream API: showing {tracks.length}/{expectedTrackCount}
+						tracks{#if missingTrackLabel} (missing {missingTrackLabel}){/if}.
+					</p>
+				{/if}
 
 				{#if tracks.length > 0}
 					<div class="flex flex-wrap items-center gap-3">

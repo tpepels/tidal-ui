@@ -950,6 +950,44 @@ function parseAlbumResponse(data: unknown): {
 	return { album, tracks };
 }
 
+function warnIfAlbumTrackListIncomplete(
+	albumId: number,
+	album: Record<string, unknown>,
+	tracks: Array<Record<string, unknown>>
+): void {
+	const rawExpectedCount = Number(album.numberOfTracks);
+	if (!Number.isFinite(rawExpectedCount) || rawExpectedCount <= 0) {
+		return;
+	}
+	const expectedCount = Math.trunc(rawExpectedCount);
+	const observedTrackNumbers = new Set<number>();
+	for (const track of tracks) {
+		const trackNumber = Number(track.trackNumber);
+		if (Number.isFinite(trackNumber) && trackNumber > 0) {
+			observedTrackNumbers.add(Math.trunc(trackNumber));
+		}
+	}
+
+	const missingTrackNumbers: number[] = [];
+	for (let expected = 1; expected <= expectedCount; expected += 1) {
+		if (!observedTrackNumbers.has(expected)) {
+			missingTrackNumbers.push(expected);
+		}
+	}
+
+	if (tracks.length >= expectedCount && missingTrackNumbers.length === 0) {
+		return;
+	}
+
+	const missingPart =
+		missingTrackNumbers.length > 0
+			? ` Missing track number(s): ${missingTrackNumbers.join(', ')}.`
+			: '';
+	console.warn(
+		`[Worker] Album ${albumId} metadata incomplete: received ${tracks.length}/${expectedCount} track item(s).${missingPart}`
+	);
+}
+
 async function downloadAlbumTrackWithPolicy(options: {
 	trackId: number;
 	quality: AudioQuality;
@@ -1230,6 +1268,7 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		}
 
 		const { album, tracks } = albumData;
+		warnIfAlbumTrackListIncomplete(albumJob.albumId, album, tracks);
 		const totalTracks = tracks.length;
 
 		if (totalTracks === 0) {
