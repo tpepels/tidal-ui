@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import * as path from 'node:path';
 import { enqueueJob } from '$lib/server/downloadQueueManager';
 import { inspectAlbumIntegrity } from '$lib/server/mediaLibrary';
 import type { AudioQuality } from '$lib/types';
@@ -88,7 +89,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			force: body.forceRescan === true
 		});
 
-		const repairTargets = report.tracks.filter((track) => track.status === 'missing' || track.status === 'corrupt');
+		const repairTargets = report.tracks.filter((track) => track.status === 'corrupt');
 		const shouldQueue = body.queue !== false;
 		const queuedJobIds: string[] = [];
 		const resolvedArtistDir = report.resolvedArtistDir;
@@ -122,6 +123,16 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		if (shouldQueue) {
 			for (const track of repairTargets) {
+				if (!track.relativePath) {
+					console.warn(
+						'[Media Library API] skipping corrupt track without relativePath',
+						JSON.stringify({
+							albumId,
+							trackId: track.trackId
+						})
+					);
+					continue;
+				}
 				const jobId = await enqueueJob(
 					{
 						type: 'track',
@@ -131,6 +142,7 @@ export const POST: RequestHandler = async ({ request }) => {
 						artistName: body.artistName,
 						targetArtistDir: resolvedArtistDir,
 						targetAlbumDir: resolvedAlbumDir,
+						targetFilenameHint: path.basename(track.relativePath),
 						trackTitle: track.trackTitle,
 						trackNumber: track.trackNumber,
 						coverUrl: body.coverUrl,

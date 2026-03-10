@@ -16,7 +16,8 @@ import {
 	checkAlbumInLibrary,
 	checkTrackInLibrary,
 	clearMediaLibraryScanCache,
-	deduplicateMediaLibrary
+	deduplicateMediaLibrary,
+	sweepTransientAlbumArtifacts
 } from './mediaLibrary';
 import { sanitizeDirName } from '../../routes/api/download-track/_shared';
 
@@ -129,6 +130,54 @@ describe('mediaLibrary', () => {
 
 		expect(status.exists).toBe(false);
 		expect(status.matches).toEqual([]);
+	});
+
+	it('ignores transient publishing/backup album directories during library scans', async () => {
+		const artistDir = sanitizeDirName('José James');
+		const transientAlbumDir = '.Lean On Me.publishing-job-1772838939212-sjwnkubtc-xsipu9am';
+		const transientPath = path.join(downloadDir, artistDir, transientAlbumDir);
+		await fs.mkdir(transientPath, { recursive: true });
+		await fs.writeFile(path.join(transientPath, '06 - Use Me.flac'), Buffer.alloc(4096, 1));
+
+		const status = await checkTrackInLibrary({
+			artistName: 'José James',
+			albumTitle: 'Lean On Me',
+			trackTitle: 'Use Me'
+		});
+
+		expect(status.exists).toBe(false);
+		expect(status.matches).toEqual([]);
+	});
+
+	it('sweeps transient publishing/backup album directories from the library root', async () => {
+		const artistDir = sanitizeDirName('José James');
+		const artistPath = path.join(downloadDir, artistDir);
+		await fs.mkdir(artistPath, { recursive: true });
+
+		const publishingDir = path.join(
+			artistPath,
+			'.Lean On Me.publishing-job-1772838939212-sjwnkubtc-xsipu9am'
+		);
+		const backupDir = path.join(
+			artistPath,
+			'.Lean On Me.backup-job-1772838939212-sjwnkubtc-xsipu9am'
+		);
+		const regularAlbumDir = path.join(artistPath, sanitizeDirName('Lean On Me'));
+		await fs.mkdir(publishingDir, { recursive: true });
+		await fs.mkdir(backupDir, { recursive: true });
+		await fs.mkdir(regularAlbumDir, { recursive: true });
+		await fs.writeFile(path.join(publishingDir, '06 - Use Me.flac'), Buffer.alloc(2048, 1));
+		await fs.writeFile(path.join(backupDir, '11 - The Same Love That Made Me Laugh.flac'), Buffer.alloc(2048, 1));
+		await fs.writeFile(path.join(regularAlbumDir, '01 - Ain\'t No Sunshine.flac'), Buffer.alloc(2048, 1));
+
+		const summary = await sweepTransientAlbumArtifacts({ dryRun: false });
+
+		expect(summary.artifactDirsFound).toBe(2);
+		expect(summary.artifactDirsRemoved).toBe(2);
+
+		await expect(fs.stat(publishingDir)).rejects.toThrow();
+		await expect(fs.stat(backupDir)).rejects.toThrow();
+		await expect(fs.stat(regularAlbumDir)).resolves.toBeDefined();
 	});
 
 	it('keeps the healthy complete duplicate and backs up the weaker one', async () => {

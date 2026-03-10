@@ -158,6 +158,18 @@ export type MediaLibraryDeduplicateStatusResult = {
 	error?: string | null;
 };
 
+export type MediaLibrarySweepTemporaryResult = {
+	success: boolean;
+	scannedAt?: number;
+	baseDir?: string;
+	dryRun?: boolean;
+	artistDirsScanned?: number;
+	artifactDirsFound?: number;
+	artifactDirsRemoved?: number;
+	samplePaths?: string[];
+	error?: string;
+};
+
 export async function fetchAlbumLibraryStatus(
 	albums: AlbumLibraryStatusInput[]
 ): Promise<AlbumLibraryStatusMap> {
@@ -316,6 +328,33 @@ export async function fetchLibraryDeduplicateStatus(): Promise<MediaLibraryDedup
 		return {
 			success: false,
 			error: 'Failed to fetch deduplicate status'
+		};
+	}
+}
+
+export async function sweepTemporaryLibraryArtifacts(input?: {
+	dryRun?: boolean;
+}): Promise<MediaLibrarySweepTemporaryResult> {
+	try {
+		const response = await fetch('/api/media-library/sweep-temporary', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify(input ?? {})
+		});
+		const payload = (await response.json()) as MediaLibrarySweepTemporaryResult;
+		if (!response.ok) {
+			return {
+				success: false,
+				error: payload?.error || 'Failed to sweep temporary album artifacts'
+			};
+		}
+		return payload;
+	} catch {
+		return {
+			success: false,
+			error: 'Failed to sweep temporary album artifacts'
 		};
 	}
 }

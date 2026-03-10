@@ -528,7 +528,7 @@
 			if (result.summary.queued > 0) {
 				repairMessage =
 					`Queued ${result.summary.queued} repair download(s): ` +
-					`${result.summary.missing} missing, ${result.summary.corrupt} corrupt.`;
+					`${result.summary.corrupt} corrupt file(s) targeted.`;
 			} else {
 				repairMessage = 'Album integrity verified: all tracks are complete and healthy.';
 			}
@@ -737,7 +737,7 @@
 										<LoaderCircle size={18} class="animate-spin" />
 										Checking Integrity…
 									{:else}
-										Repair Missing/Corrupt
+										Repair Corrupt Files
 									{/if}
 								</button>
 							{/if}

@@ -31,6 +31,7 @@ export interface FinalizeTrackParams {
 	artistName?: string;
 	targetArtistDir?: string;
 	targetAlbumDir?: string;
+	targetFilenameHint?: string;
 	requireExistingTargetDir?: boolean;
 	trackTitle?: string;
 	trackNumber?: number;
@@ -122,6 +123,18 @@ function sanitizeOverrideDirComponent(input: string | undefined): string | null 
 	return trimmed;
 }
 
+function sanitizeTargetFilenameHint(input: string | undefined): string | null {
+	if (typeof input !== 'string') return null;
+	const trimmed = input.trim();
+	if (!trimmed || trimmed === '.' || trimmed === '..') {
+		return null;
+	}
+	if (path.basename(trimmed) !== trimmed) {
+		return null;
+	}
+	return trimmed;
+}
+
 export async function finalizeTrack(params: FinalizeTrackParams): Promise<FinalizeTrackResult> {
 	const {
 		trackId,
@@ -130,6 +143,7 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 		artistName,
 		targetArtistDir,
 		targetAlbumDir,
+		targetFilenameHint,
 		requireExistingTargetDir = false,
 		trackTitle,
 		trackNumber,
@@ -179,6 +193,7 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 	const baseDir = outputBaseDir ?? getDownloadDir();
 	const overrideArtistDir = sanitizeOverrideDirComponent(targetArtistDir);
 	const overrideAlbumDir = sanitizeOverrideDirComponent(targetAlbumDir);
+	const overrideFilenameHint = sanitizeTargetFilenameHint(targetFilenameHint);
 	if (
 		(targetArtistDir && !overrideArtistDir) ||
 		(targetAlbumDir && !overrideAlbumDir)
@@ -186,6 +201,17 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 		console.warn(
 			`[Server Download] Invalid target directory override for track ${trackId}; falling back to sanitized metadata path.`
 		);
+	}
+	if (targetFilenameHint && !overrideFilenameHint) {
+		return {
+			success: false,
+			error: createDownloadError(
+				ERROR_CODES.INVALID_FILE,
+				`Invalid repair filename hint: ${targetFilenameHint}`,
+				false
+			),
+			status: 400
+		};
 	}
 	const artistDir = overrideArtistDir ?? sanitizeDirName(artistName || 'Unknown Artist');
 	const albumDir = overrideAlbumDir ?? sanitizeDirName(albumTitle || 'Unknown Album');
@@ -219,10 +245,45 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 				status: 409
 			};
 		}
+		if (!overrideFilenameHint) {
+			return {
+				success: false,
+				error: createDownloadError(
+					ERROR_CODES.INVALID_FILE,
+					'Repair target filename hint is missing or invalid',
+					false
+				),
+				status: 400
+			};
+		}
 	} else {
 		await ensureDir(targetDir);
 	}
-	const initialFilepath = path.join(targetDir, filename);
+	let initialFilepath = path.join(targetDir, filename);
+	if (requireExistingTargetDir && overrideFilenameHint) {
+		const hintedPath = path.join(targetDir, overrideFilenameHint);
+		let hintedStat;
+		try {
+			hintedStat = await fs.stat(hintedPath);
+		} catch {
+			hintedStat = null;
+		}
+		if (!hintedStat?.isFile()) {
+			return {
+				success: false,
+				error: createDownloadError(
+					ERROR_CODES.INVALID_FILE,
+					`Repair target file does not exist: ${hintedPath}`,
+					false
+				),
+				status: 409
+			};
+		}
+		initialFilepath = hintedPath;
+	}
+	const effectiveConflictResolution: ConflictResolution = requireExistingTargetDir
+		? 'overwrite'
+		: conflictResolution;
 
 	let newFileSize = 0;
 	if (workingBuffer) {
@@ -243,7 +304,7 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 	}
 
 	let resolvedChecksum = checksum;
-	if (!resolvedChecksum && conflictResolution === 'overwrite_if_different') {
+	if (!resolvedChecksum && effectiveConflictResolution === 'overwrite_if_different') {
 		try {
 			if (workingBuffer) {
 				resolvedChecksum = await generateChecksum(workingBuffer);
@@ -258,7 +319,7 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 
 	const resolvedConflict = await resolveFileConflict(
 		initialFilepath,
-		conflictResolution,
+		effectiveConflictResolution,
 		newFileSize,
 		resolvedChecksum,
 		baseDir

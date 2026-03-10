@@ -38,6 +38,7 @@ const EMBEDDED_TAG_CACHE_TTL_MS = Math.max(
 const VARIOUS_ARTISTS_NAME = 'Various Artists';
 const VARIOUS_ARTISTS_DIR = sanitizeDirName(VARIOUS_ARTISTS_NAME);
 const VARIOUS_ARTISTS_KEY = normalizeKey(VARIOUS_ARTISTS_NAME);
+const TRANSIENT_ALBUM_ARTIFACT_DIR_RE = /^\..+\.(publishing|backup)-[a-z0-9]/i;
 
 export interface LocalMediaFile {
 	path: string;
@@ -111,6 +112,16 @@ export interface MediaLibraryDedupeProgress {
 	summary: MediaLibraryDedupeSummary;
 }
 
+export interface MediaLibraryTransientSweepSummary {
+	scannedAt: number;
+	baseDir: string;
+	dryRun: boolean;
+	artistDirsScanned: number;
+	artifactDirsFound: number;
+	artifactDirsRemoved: number;
+	samplePaths: string[];
+}
+
 type EmbeddedTags = {
 	artistKey: string;
 	albumArtistKey: string;
@@ -136,6 +147,13 @@ function normalizeKey(value: string | undefined): string {
 		.toLowerCase()
 		.replace(/\s+/g, ' ')
 		.trim();
+}
+
+export function isTransientAlbumArtifactDirName(dirName: string | undefined): boolean {
+	if (!dirName || typeof dirName !== 'string') {
+		return false;
+	}
+	return TRANSIENT_ALBUM_ARTIFACT_DIR_RE.test(dirName);
 }
 
 function normalizeDirComparable(value: string | undefined): string {
@@ -285,6 +303,85 @@ async function pathExists(targetPath: string): Promise<boolean> {
 	}
 }
 
+export async function sweepTransientAlbumArtifacts(options?: {
+	baseDir?: string;
+	dryRun?: boolean;
+	maxSamples?: number;
+}): Promise<MediaLibraryTransientSweepSummary> {
+	const baseDir = options?.baseDir ?? getDownloadDir();
+	const dryRun = options?.dryRun === true;
+	const maxSamples = Math.max(0, Number(options?.maxSamples ?? 25));
+	const summary: MediaLibraryTransientSweepSummary = {
+		scannedAt: Date.now(),
+		baseDir,
+		dryRun,
+		artistDirsScanned: 0,
+		artifactDirsFound: 0,
+		artifactDirsRemoved: 0,
+		samplePaths: []
+	};
+
+	let artistEntries: Dirent[];
+	try {
+		artistEntries = await fs.readdir(baseDir, { withFileTypes: true });
+	} catch {
+		return summary;
+	}
+
+	for (const artistEntry of artistEntries) {
+		if (!artistEntry.isDirectory()) {
+			continue;
+		}
+		summary.artistDirsScanned += 1;
+		const artistPath = path.join(baseDir, artistEntry.name);
+		let albumEntries: Dirent[];
+		try {
+			albumEntries = await fs.readdir(artistPath, { withFileTypes: true });
+		} catch {
+			continue;
+		}
+
+		for (const albumEntry of albumEntries) {
+			if (!albumEntry.isDirectory()) {
+				continue;
+			}
+			if (!isTransientAlbumArtifactDirName(albumEntry.name)) {
+				continue;
+			}
+
+			summary.artifactDirsFound += 1;
+			const relativePath = `${artistEntry.name}/${albumEntry.name}`;
+			if (summary.samplePaths.length < maxSamples) {
+				summary.samplePaths.push(relativePath);
+			}
+
+			if (dryRun) {
+				continue;
+			}
+
+			const targetPath = path.join(artistPath, albumEntry.name);
+			try {
+				await fs.rm(targetPath, { recursive: true, force: true });
+				summary.artifactDirsRemoved += 1;
+			} catch (error) {
+				console.warn(
+					'[Media Library Sweep] Failed to remove transient album artifact directory',
+					JSON.stringify({
+						path: targetPath,
+						error: error instanceof Error ? error.message : String(error)
+					})
+				);
+			}
+		}
+	}
+
+	if (summary.artifactDirsRemoved > 0) {
+		clearMediaLibraryScanCache();
+	}
+
+	return summary;
+}
+
 function uniquePathSuffix(name: string, index: number): string {
 	const parsed = path.parse(name);
 	return `${parsed.name} (${index})${parsed.ext}`;
@@ -346,6 +443,9 @@ async function collectAudioFiles(baseDir: string): Promise<LocalMediaFile[]> {
 			const nextPath = path.join(currentDir, entry.name);
 			const nextSegments = [...relativeSegments, entry.name];
 			if (entry.isDirectory()) {
+				if (isTransientAlbumArtifactDirName(entry.name)) {
+					continue;
+				}
 				await walk(nextPath, nextSegments);
 				continue;
 			}

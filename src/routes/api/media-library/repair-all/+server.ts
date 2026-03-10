@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import * as path from 'node:path';
 import type { Album, AudioQuality } from '$lib/types';
 import { losslessAPI } from '$lib/api';
 import { inspectAlbumIntegrity, scanLocalMediaLibrary, type LocalMediaFile } from '$lib/server/mediaLibrary';
@@ -494,7 +495,7 @@ async function runRepairAll(input: {
 		summary.tracksCorrupt += report.summary.corrupt;
 		setRunSummary(summary);
 
-		const repairTargets = report.tracks.filter((track) => track.status === 'missing' || track.status === 'corrupt');
+		const repairTargets = report.tracks.filter((track) => track.status === 'corrupt');
 		if (repairTargets.length === 0) {
 			console.log(
 				`${logPrefix} Album healthy`,
@@ -514,6 +515,17 @@ async function runRepairAll(input: {
 		if (input.queue) {
 			const coverUrl = buildCoverUrl(albumDetails.album.cover);
 			for (const target of repairTargets) {
+				if (!target.relativePath) {
+					console.warn(
+						`${logPrefix} Skipping corrupt track without relative path`,
+						JSON.stringify({
+							artistDir: localAlbum.artistDir,
+							albumDir: localAlbum.albumDir,
+							trackId: target.trackId
+						})
+					);
+					continue;
+				}
 				await enqueueJob(
 					{
 						type: 'track',
@@ -523,6 +535,7 @@ async function runRepairAll(input: {
 						artistName: localAlbum.localArtistName,
 						targetArtistDir: localAlbum.artistDir,
 						targetAlbumDir: localAlbum.albumDir,
+						targetFilenameHint: path.basename(target.relativePath),
 						trackTitle: target.trackTitle,
 						trackNumber: target.trackNumber,
 						coverUrl,

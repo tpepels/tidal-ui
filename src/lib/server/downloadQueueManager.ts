@@ -168,6 +168,7 @@ export interface TrackJob {
 	coverUrl?: string;
 	targetArtistDir?: string;
 	targetAlbumDir?: string;
+	targetFilenameHint?: string;
 	forceOverwrite?: boolean;
 }
 

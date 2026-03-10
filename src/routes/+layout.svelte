@@ -17,7 +17,8 @@
 		deduplicateLibraryInLibrary,
 		fetchLibraryDeduplicateStatus,
 		fetchFullLibraryRepairStatus,
-		repairFullLibraryInLibrary
+		repairFullLibraryInLibrary,
+		sweepTemporaryLibraryArtifacts
 	} from '$lib/utils/mediaLibraryClient';
 
 	import { toasts } from '$lib/stores/toasts';
@@ -83,6 +84,8 @@
 	let isCsvExporting = $state(false);
 	let isLegacyQueueDownloading = $state(false);
 	let isCacheClearing = $state(false);
+	let isLibraryTransientSweeping = $state(false);
+	let libraryTransientSweepSummary = $state<string | null>(null);
 	let isFullLibraryRepairing = $state(false);
 	let fullLibraryRepairSummary = $state<string | null>(null);
 	let fullLibraryRepairProgress = $state<string | null>(null);
@@ -114,7 +117,9 @@
 	const diagnosticsEnabled = dev || import.meta.env.VITE_E2E === 'true';
 	const MAX_QUEUE_ZIP_TRACKS = 75;
 	const FULL_LIBRARY_REPAIR_CONFIRMATION =
-		'Scan your full local library and queue automatic repairs for missing/corrupt tracks? This can queue many downloads.';
+		'Scan your full local library and queue automatic repairs for corrupt tracks only? This can queue many downloads.';
+	const LIBRARY_TRANSIENT_SWEEP_CONFIRMATION =
+		'Remove stale temporary publish/backup album folders left from interrupted jobs?';
 	const LIBRARY_DEDUP_CONFIRMATION =
 		'Merge duplicate album folders and remove duplicate tracks by track number? Duplicates are moved to a backup folder first.';
 	let diagnosticsOpen = $state(false);
@@ -394,6 +399,39 @@
 		} finally {
 			stopFullLibraryRepairPolling();
 			isFullLibraryRepairing = false;
+		}
+	}
+
+	async function handleSweepTransientArtifacts(): Promise<void> {
+		if (isLibraryTransientSweeping) return;
+
+		if (typeof window !== 'undefined') {
+			const confirmed = window.confirm(LIBRARY_TRANSIENT_SWEEP_CONFIRMATION);
+			if (!confirmed) return;
+		}
+
+		isLibraryTransientSweeping = true;
+		libraryTransientSweepSummary = null;
+
+		try {
+			const result = await sweepTemporaryLibraryArtifacts({ dryRun: false });
+			if (!result.success) {
+				throw new Error(result.error || 'Failed to sweep temporary album artifacts');
+			}
+			const found = result.artifactDirsFound ?? 0;
+			const removed = result.artifactDirsRemoved ?? 0;
+			const summary = `Transient sweep complete: removed ${removed}/${found} temporary folder(s).`;
+			libraryTransientSweepSummary = summary;
+			toasts.success(summary);
+		} catch (error) {
+			const message =
+				error instanceof Error && error.message
+					? error.message
+					: 'Failed to sweep temporary album artifacts';
+			libraryTransientSweepSummary = null;
+			toasts.error(message);
+		} finally {
+			isLibraryTransientSweeping = false;
 		}
 	}
 
@@ -1298,7 +1336,7 @@
 															<span>{isFullLibraryRepairing ? 'Auto-repair running…' : 'Auto-repair full library'}</span>
 														</span>
 														<span class="glass-option__description">
-															Scans all local albums, validates integrity, and queues missing/corrupt tracks for repair.
+															Scans all local albums, validates integrity, and queues corrupt tracks for repair.
 														</span>
 													</span>
 													{#if isFullLibraryRepairing}
@@ -1310,6 +1348,29 @@
 												{/if}
 												{#if fullLibraryRepairProgress}
 													<p class="section-footnote">{fullLibraryRepairProgress}</p>
+												{/if}
+												<button
+													type="button"
+													onclick={handleSweepTransientArtifacts}
+													class="glass-option glass-option--wide"
+													disabled={isLibraryTransientSweeping}
+													aria-busy={isLibraryTransientSweeping}
+												>
+													<span class="glass-option__content">
+														<span class="glass-option__label">
+															<Trash2 size={16} />
+															<span>{isLibraryTransientSweeping ? 'Sweeping temporary folders…' : 'Sweep stale publish/backup folders'}</span>
+														</span>
+														<span class="glass-option__description">
+															Deletes leftover `*.publishing-*` and `*.backup-*` album folders from interrupted server downloads.
+														</span>
+													</span>
+													{#if isLibraryTransientSweeping}
+														<LoaderCircle size={16} class="glass-option__check animate-spin" />
+													{/if}
+												</button>
+												{#if libraryTransientSweepSummary}
+													<p class="section-footnote">{libraryTransientSweepSummary}</p>
 												{/if}
 												<button
 													type="button"

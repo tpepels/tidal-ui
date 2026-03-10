@@ -192,6 +192,64 @@ describe('finalizeTrack', () => {
 		expect(result.error.message).toContain('Repair target directory does not exist');
 	});
 
+	it('fails repair-mode finalization when target filename hint is missing', async () => {
+		const targetDir = path.join(downloadDir, 'Existing Artist', 'Existing Album');
+		await fs.mkdir(targetDir, { recursive: true });
+
+		const result = await finalizeTrack({
+			trackId: 352,
+			quality: 'LOSSLESS',
+			artistName: 'Existing Artist',
+			albumTitle: 'Existing Album',
+			targetArtistDir: 'Existing Artist',
+			targetAlbumDir: 'Existing Album',
+			requireExistingTargetDir: true,
+			trackTitle: 'Track',
+			trackNumber: 1,
+			buffer: Buffer.from('repair-target-missing-hint'),
+			downloadCoverSeperately: false
+		});
+
+		expect(result.success).toBe(false);
+		if (result.success) return;
+		expect(result.error.message).toContain('filename hint');
+	});
+
+	it('overwrites the hinted existing file in repair mode', async () => {
+		const targetDir = path.join(downloadDir, 'Repair Artist', 'Repair Album');
+		await fs.mkdir(targetDir, { recursive: true });
+		const hintedFilename = '01 - Legacy Name.flac';
+		const hintedPath = path.join(targetDir, hintedFilename);
+		await fs.writeFile(hintedPath, Buffer.from('old-corrupt-bytes'));
+
+		const payload = Buffer.from('new-healthy-bytes');
+		const result = await finalizeTrack({
+			trackId: 353,
+			quality: 'LOSSLESS',
+			artistName: 'Repair Artist',
+			albumTitle: 'Repair Album',
+			targetArtistDir: 'Repair Artist',
+			targetAlbumDir: 'Repair Album',
+			targetFilenameHint: hintedFilename,
+			requireExistingTargetDir: true,
+			trackTitle: 'Different Canonical Name',
+			trackNumber: 1,
+			buffer: payload,
+			downloadCoverSeperately: false
+		});
+
+		expect(result.success).toBe(true);
+		if (!result.success) return;
+		expect(result.filepath).toBe(hintedPath);
+		expect(result.filename).toBe(hintedFilename);
+
+		const updated = await fs.readFile(hintedPath);
+		expect(updated.equals(payload)).toBe(true);
+
+		const files = await fs.readdir(targetDir);
+		expect(files).toEqual([hintedFilename]);
+	});
+
 	it('allows finalized size changes when metadata is embedded in-place', async () => {
 		const payload = Buffer.from('raw-audio-data');
 		metadataEmbedderMocks.embedMetadataToFile.mockImplementation(async (filePath: string) => {

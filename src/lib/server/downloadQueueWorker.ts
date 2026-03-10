@@ -25,6 +25,7 @@ import type { AudioQuality } from '$lib/types';
 import { losslessAPI } from '$lib/api';
 import { downloadTrackServerSide } from './download/serverDownloadAdapter';
 import { finalizeTrack } from '$lib/server/download/finalizeTrack';
+import { sweepTransientAlbumArtifacts } from './mediaLibrary';
 import {
 	downloadCoverToDir,
 	ensureDir,
@@ -539,6 +540,7 @@ async function downloadTrack(
 		forceOverwrite?: boolean;
 		targetArtistDir?: string;
 		targetAlbumDir?: string;
+		targetFilenameHint?: string;
 	}
 ): Promise<{
 	success: boolean;
@@ -631,6 +633,7 @@ async function downloadTrack(
 			artistName: resolvedArtist,
 			targetArtistDir: options?.targetArtistDir,
 			targetAlbumDir: options?.targetAlbumDir,
+			targetFilenameHint: options?.targetFilenameHint,
 			requireExistingTargetDir: Boolean(options?.targetArtistDir && options?.targetAlbumDir),
 			trackTitle: resolvedTitle,
 			trackNumber: resolvedTrackNumber,
@@ -727,7 +730,8 @@ async function processTrackJob(job: QueuedJob): Promise<void> {
 			{
 				forceOverwrite: trackJob.forceOverwrite === true,
 				targetArtistDir: trackJob.targetArtistDir,
-				targetAlbumDir: trackJob.targetAlbumDir
+				targetAlbumDir: trackJob.targetAlbumDir,
+				targetFilenameHint: trackJob.targetFilenameHint
 			}
 		);
 
@@ -1653,6 +1657,12 @@ export async function startWorker(): Promise<void> {
 	const { initializeQueue } = await import('./downloadQueueManager');
 	await initializeQueue();
 	await cleanupStaleAlbumStagingOnStartup();
+	const transientSweep = await sweepTransientAlbumArtifacts({ dryRun: false });
+	if (transientSweep.artifactDirsFound > 0) {
+		console.log(
+			`[Worker] Swept ${transientSweep.artifactDirsRemoved}/${transientSweep.artifactDirsFound} stale publish/backup folder(s) on startup`
+		);
+	}
 	
 	isRunning = true;
 	stopRequested = false;
