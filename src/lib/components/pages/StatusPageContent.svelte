@@ -262,8 +262,9 @@
 		gap: 0.5rem;
 		padding: 0.72rem 0.78rem;
 		border-radius: var(--ui-radius-md, 14px);
-		border: 1px solid rgba(212, 212, 212, 0.2);
-		background: linear-gradient(160deg, rgba(12, 12, 12, 0.54), rgba(7, 7, 7, 0.38));
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+		box-shadow: var(--ui-shadow-soft, 0 10px 28px rgba(0, 0, 0, 0.22));
 	}
 
 	.settings-section--wide {
@@ -300,8 +301,8 @@
 		margin: 0;
 		padding: 0.62rem 0.72rem;
 		border-radius: 12px;
-		border: 1px solid rgba(212, 212, 212, 0.22);
-		background: linear-gradient(160deg, rgba(12, 12, 12, 0.58), rgba(7, 7, 7, 0.42));
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 		font-size: 0.68rem;
 		line-height: 1.45;
 		overflow-x: auto;

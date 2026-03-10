@@ -1435,8 +1435,9 @@
 		gap: 0.5rem;
 		padding: 0.72rem 0.78rem;
 		border-radius: var(--ui-radius-md, 14px);
-		border: 1px solid rgba(212, 212, 212, 0.2);
-		background: linear-gradient(160deg, rgba(12, 12, 12, 0.54), rgba(7, 7, 7, 0.38));
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+		box-shadow: var(--ui-shadow-soft, 0 10px 28px rgba(0, 0, 0, 0.22));
 	}
 
 	.settings-section--wide {
@@ -1470,17 +1471,16 @@
 		justify-content: space-between;
 		gap: 0.6rem;
 		border-radius: var(--ui-radius-md, 14px);
-		border: 1px solid rgba(212, 212, 212, 0.22);
-		background: linear-gradient(155deg, rgba(15, 15, 15, 0.6), rgba(8, 8, 8, 0.42));
-		backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
-		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 		padding: 0.56rem 0.7rem;
 		color: inherit;
 		text-decoration: none;
 		font-size: 0.8rem;
 		cursor: pointer;
 		text-align: left;
-		transition: border-color 140ms ease, transform 140ms ease, box-shadow 160ms ease;
+		transition: border-color 140ms ease, background 140ms ease, box-shadow 160ms ease;
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 	}
 
 	.glass-option--compact {
@@ -1499,15 +1499,15 @@
 	}
 
 	.glass-option:hover {
-		transform: translateY(-1px) scale(1.002);
-		box-shadow: 0 10px 30px rgba(7, 7, 7, 0.3);
-		border-color: rgba(255, 255, 255, 0.44);
+		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
 	}
 
 	.glass-option.is-active {
-		border-color: var(--bloom-accent, rgba(255, 255, 255, 0.72));
-		background: linear-gradient(155deg, rgba(52, 52, 52, 0.42), rgba(22, 22, 22, 0.36));
-		box-shadow: 0 14px 32px rgba(6, 6, 6, 0.35), inset 0 0 28px rgba(255, 255, 255, 0.12);
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+		background: var(--ui-surface-2, rgba(255, 255, 255, 0.09));
+		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 	}
 
 	.glass-option__content {
@@ -1526,7 +1526,7 @@
 
 	.glass-option__description {
 		font-size: 0.68rem;
-		opacity: 0.66;
+		opacity: 0.74;
 		line-height: 1.3;
 	}
 
@@ -1544,21 +1544,21 @@
 		text-transform: uppercase;
 		padding: 0.2rem 0.55rem;
 		border-radius: 999px;
-		background: rgba(11, 11, 11, 0.52);
-		border: 1px solid rgba(212, 212, 212, 0.45);
+		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 		color: rgba(236, 236, 236, 0.9);
 		flex-shrink: 0;
 	}
 
 	.glass-option__chip.is-active {
-		border-color: var(--bloom-accent, rgba(255, 255, 255, 0.75));
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
 		color: rgba(245, 245, 245, 0.98);
-		box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.2);
+		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 	}
 
 	.settings-section--bordered {
 		padding-top: 0.65rem;
-		border-top: 1px solid rgba(212, 212, 212, 0.12);
+		border-top: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 	}
 
 	.actions-column {
@@ -1573,16 +1573,15 @@
 		justify-content: space-between;
 		gap: 0.85rem;
 		border-radius: var(--ui-radius-md, 14px);
-		border: 1px solid rgba(212, 212, 212, 0.24);
-		background: linear-gradient(155deg, rgba(15, 15, 15, 0.62), rgba(8, 8, 8, 0.44));
-		backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
-		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 		padding: 0.74rem 0.95rem;
 		font-size: 0.8rem;
 		font-weight: 600;
 		color: inherit;
 		cursor: pointer;
-		transition: border-color 140ms ease, box-shadow 160ms ease, transform 160ms ease;
+		transition: border-color 140ms ease, background 140ms ease, box-shadow 160ms ease;
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 	}
 
 	.glass-action:disabled {
@@ -1591,9 +1590,9 @@
 	}
 
 	.glass-action:hover:not(:disabled) {
-		transform: translateY(-1px) scale(1.002);
-		border-color: rgba(255, 255, 255, 0.44);
-		box-shadow: 0 12px 30px rgba(7, 7, 7, 0.3);
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 	}
 
 	.glass-action__label {

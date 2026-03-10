@@ -254,11 +254,12 @@
 		gap: 0.58rem;
 		padding: 0.58rem 0.66rem;
 		border-radius: 10px;
-		border: 1px solid rgba(212, 212, 212, 0.2);
-		background: rgba(255, 255, 255, 0.03);
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 		color: inherit;
 		text-decoration: none;
-		transition: border-color 140ms ease, background 140ms ease;
+		transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 	}
 
 	.history-highlight-card__media {
@@ -269,8 +270,8 @@
 		justify-content: center;
 		border-radius: 10px;
 		overflow: hidden;
-		border: 1px solid rgba(212, 212, 212, 0.18);
-		background: rgba(0, 0, 0, 0.3);
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
 		color: rgba(212, 212, 212, 0.78);
 	}
 
@@ -312,8 +313,9 @@
 	}
 
 	.history-highlight-card__link:hover {
-		border-color: rgba(255, 255, 255, 0.45);
-		background: rgba(255, 255, 255, 0.08);
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 	}
 
 	.history-page__columns {
@@ -361,16 +363,18 @@
 		gap: 0.62rem;
 		padding: 0.56rem 0.66rem;
 		border-radius: 10px;
-		border: 1px solid rgba(212, 212, 212, 0.2);
-		background: rgba(255, 255, 255, 0.03);
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 		color: inherit;
 		text-decoration: none;
-		transition: border-color 140ms ease, background 140ms ease;
+		transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 	}
 
 	.history-entry-card:hover {
-		border-color: rgba(255, 255, 255, 0.45);
-		background: rgba(255, 255, 255, 0.08);
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 	}
 
 	.history-entry-card__index {
@@ -383,8 +387,8 @@
 		font-weight: 700;
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
-		border: 1px solid rgba(212, 212, 212, 0.28);
-		background: rgba(0, 0, 0, 0.35);
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
 		color: rgba(212, 212, 212, 0.85);
 	}
 
@@ -403,8 +407,8 @@
 		justify-content: center;
 		border-radius: 8px;
 		overflow: hidden;
-		border: 1px solid rgba(212, 212, 212, 0.2);
-		background: rgba(0, 0, 0, 0.35);
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
 		color: rgba(212, 212, 212, 0.7);
 	}
 

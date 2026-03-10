@@ -174,17 +174,17 @@
 		height: clamp(360px, 65vh, 780px);
 		border-radius: var(--ui-radius-md, 14px);
 		overflow: hidden;
-		border: 1px solid rgba(212, 212, 212, 0.22);
-		box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		box-shadow: var(--ui-shadow-soft, 0 10px 28px rgba(0, 0, 0, 0.22));
 	}
 
 	.download-log-panel {
 		display: flex;
 		flex-direction: column;
 		height: 100%;
-		background: linear-gradient(160deg, rgba(12, 12, 12, 0.74), rgba(6, 6, 6, 0.54));
-		backdrop-filter: blur(var(--perf-blur-medium, 18px));
-		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 18px));
+		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+		backdrop-filter: blur(var(--perf-blur-low, 10px)) saturate(var(--perf-saturate, 145%));
+		-webkit-backdrop-filter: blur(var(--perf-blur-low, 10px)) saturate(var(--perf-saturate, 145%));
 	}
 
 	.download-log-header {
@@ -192,7 +192,7 @@
 		align-items: center;
 		justify-content: space-between;
 		padding: 12px 16px;
-		border-bottom: 1px solid rgba(212, 212, 212, 0.18);
+		border-bottom: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 		flex-shrink: 0;
 	}
 
@@ -215,23 +215,25 @@
 		cursor: pointer;
 		padding: 0.34rem;
 		border-radius: 8px;
-		border: 1px solid rgba(212, 212, 212, 0.22);
-		background: rgba(255, 255, 255, 0.04);
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 		color: rgba(212, 212, 212, 0.82);
-		transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+		transition: border-color 140ms ease, background 140ms ease, color 140ms ease, box-shadow 140ms ease;
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 	}
 
 	.download-log-btn:hover {
-		border-color: rgba(255, 255, 255, 0.44);
-		background: rgba(255, 255, 255, 0.1);
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
 		color: rgba(255, 255, 255, 0.96);
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 	}
 
 	.download-log-btn:active {
-		background: rgba(255, 255, 255, 0.14);
+		background: var(--ui-surface-2, rgba(255, 255, 255, 0.09));
 	}
 
 	.download-log-content {
@@ -260,19 +262,19 @@
 	}
 
 	.download-log-content::-webkit-scrollbar-track {
-		background: rgba(255, 255, 255, 0.04);
+		background: rgba(255, 255, 255, 0.02);
 		border-radius: 6px;
 	}
 
 	.download-log-content::-webkit-scrollbar-thumb {
-		background: rgba(255, 255, 255, 0.3);
+		background: rgba(255, 255, 255, 0.22);
 		border-radius: 6px;
 		border: 2px solid transparent;
 		background-clip: padding-box;
 	}
 
 	.download-log-content::-webkit-scrollbar-thumb:hover {
-		background: rgba(255, 255, 255, 0.5);
+		background: rgba(255, 255, 255, 0.34);
 		background-clip: padding-box;
 	}
 
@@ -310,46 +312,46 @@
 	}
 
 	.download-log-entry--success {
-		color: #bbf7d0;
+		color: rgba(220, 252, 231, 0.92);
 	}
 
 	.download-log-entry--success .download-log-level {
-		color: #86efac;
+		color: rgba(187, 247, 208, 0.9);
 	}
 
 	.download-log-entry--success .download-log-time {
-		color: #4ade80;
+		color: rgba(134, 239, 172, 0.88);
 	}
 
 	.download-log-entry--warning {
-		color: #fde68a;
+		color: rgba(254, 240, 138, 0.9);
 	}
 
 	.download-log-entry--warning .download-log-level {
-		color: #fcd34d;
+		color: rgba(253, 224, 71, 0.88);
 	}
 
 	.download-log-entry--warning .download-log-time {
-		color: #f59e0b;
+		color: rgba(245, 158, 11, 0.84);
 	}
 
 	.download-log-entry--error {
-		color: #fecaca;
+		color: rgba(254, 226, 226, 0.92);
 	}
 
 	.download-log-entry--error .download-log-level {
-		color: #fca5a5;
+		color: rgba(252, 165, 165, 0.9);
 	}
 
 	.download-log-entry--error .download-log-time {
-		color: #f87171;
+		color: rgba(248, 113, 113, 0.88);
 	}
 
 /* Health Summary Styles */
 .download-health-summary {
 	padding: 16px;
-	border-bottom: 1px solid rgba(212, 212, 212, 0.14);
-	background: rgba(255, 255, 255, 0.02);
+	border-bottom: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+	background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 }
 
 .download-health-title {
@@ -405,8 +407,8 @@
 	cursor: pointer;
 	padding: 6px 12px;
 	border-radius: 8px;
-	border: 1px solid rgba(212, 212, 212, 0.22);
-	background: rgba(255, 255, 255, 0.05);
+	border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+	background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 	color: rgba(245, 245, 245, 0.92);
 	font-size: 12px;
 	font-weight: 500;
@@ -414,12 +416,12 @@
 }
 
 .download-health-btn:hover {
-	border-color: rgba(255, 255, 255, 0.4);
-	background: rgba(255, 255, 255, 0.12);
+	border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+	background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
 }
 
 .download-health-btn:active {
-	background: rgba(255, 255, 255, 0.15);
+	background: var(--ui-surface-2, rgba(255, 255, 255, 0.09));
 }
 
 /* Compact Progress Indicator Styles */
@@ -427,14 +429,14 @@
 	position: fixed;
 	bottom: calc(20px + var(--player-height, 0px) + env(safe-area-inset-bottom, 0px));
 	right: 20px;
-	background: rgba(10, 10, 10, 0.93);
-	border: 1px solid rgba(212, 212, 212, 0.2);
+	background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+	border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 	border-radius: 12px;
 	padding: 12px 16px;
 	min-width: 280px;
 	max-width: 400px;
-	backdrop-filter: blur(10px);
-	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+	backdrop-filter: blur(var(--perf-blur-low, 10px));
+	box-shadow: var(--ui-shadow-soft, 0 10px 28px rgba(0, 0, 0, 0.22));
 	z-index: 1000;
 }
 
