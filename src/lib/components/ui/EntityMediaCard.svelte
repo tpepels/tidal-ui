@@ -14,6 +14,7 @@
 		subtitle?: string | null;
 		meta?: string | null;
 		description?: string | null;
+		intent?: string | null;
 		imageSrc?: string | null;
 		imageAlt?: string;
 		links?: EntityCardLink[];
@@ -27,11 +28,21 @@
 		subtitle = null,
 		meta = null,
 		description = null,
+		intent = null,
 		imageSrc = null,
 		imageAlt = '',
 		links = [],
 		preload = true
 	}: Props = $props();
+
+	function normalizeLinkLabel(value: string): string {
+		const key = value.trim().toLowerCase();
+		if (key === 'album page') return 'Open Album';
+		if (key === 'artist page') return 'Open Artist';
+		if (key === 'playlist page') return 'Open Playlist';
+		if (key === 'search album' || key === 'search artist') return 'Search';
+		return value;
+	}
 </script>
 
 <article class="ui-media-card ui-entity-card">
@@ -64,6 +75,9 @@
 			{#if description}
 				<p class="ui-media-card__meta ui-entity-card__description">{description}</p>
 			{/if}
+			<p class="ui-media-card__intent">
+				{intent ?? (type === 'album' ? 'Open album details' : 'Open artist profile')}
+			</p>
 		</div>
 	</a>
 	{#if links.length > 0}
@@ -74,7 +88,7 @@
 					class="ui-media-card__link"
 					data-sveltekit-preload-data={link.preload === false ? undefined : ''}
 				>
-					{link.label}
+					{normalizeLinkLabel(link.label)}
 				</a>
 			{/each}
 		</div>

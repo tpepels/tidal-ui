@@ -857,8 +857,14 @@
 				{/if}
 
 				{#if tracks.length > 0}
-					<div class="ui-action-panel">
-						<div class="ui-action-row">
+					<div class="ui-action-panel ui-action-panel--intentful">
+						<div class="ui-action-panel__header">
+							<p class="ui-action-panel__intent">Album Actions</p>
+							<p class="ui-action-panel__summary">
+								Play, shuffle, download, and maintain this album from one action surface.
+							</p>
+						</div>
+						<div class="ui-action-row ui-action-row--progressive">
 							<button
 								onclick={handleAlbumPlaybackToggle}
 								class="ui-action-button ui-action-button--primary"
@@ -927,15 +933,15 @@
 							{/if}
 							<ShareButton type="album" id={album.id} variant="secondary" />
 						</div>
-						{#if experimentalMusicBrainzTaggingPreference}
-							<div class="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
-								<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-									<p class="text-sm font-semibold text-gray-100">MusicBrainz Release</p>
-									<button
-										type="button"
-										onclick={() => lookupMusicBrainzReleases({ manual: true })}
-										class="ui-chip-button ui-chip-button--compact"
-										disabled={isMusicBrainzReleaseLookupLoading}
+							{#if experimentalMusicBrainzTaggingPreference}
+								<div class="ui-action-subpanel">
+									<div class="ui-action-subpanel__header">
+										<p class="ui-action-panel__intent">MusicBrainz Release</p>
+										<button
+											type="button"
+											onclick={() => lookupMusicBrainzReleases({ manual: true })}
+											class="ui-chip-button ui-chip-button--compact"
+											disabled={isMusicBrainzReleaseLookupLoading}
 									>
 										{#if isMusicBrainzReleaseLookupLoading}
 											Refreshing…
@@ -947,14 +953,14 @@
 								{#if isMusicBrainzReleaseLookupLoading && musicBrainzReleaseOptions.length === 0}
 									<p class="text-xs text-gray-400">Searching MusicBrainz releases…</p>
 								{:else if musicBrainzReleaseOptions.length > 0}
-									<label class="mb-2 block text-xs font-medium uppercase tracking-[0.12em] text-gray-400" for="musicbrainz-release-select">
-										Selected Release
-									</label>
-									<select
-										id="musicbrainz-release-select"
-										class="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 outline-none transition focus:border-emerald-400"
-										bind:value={selectedMusicBrainzReleaseId}
-									>
+										<label class="ui-action-panel__intent" for="musicbrainz-release-select">
+											Selected Release
+										</label>
+										<select
+											id="musicbrainz-release-select"
+											class="ui-select w-full"
+											bind:value={selectedMusicBrainzReleaseId}
+										>
 										{#each musicBrainzReleaseOptions as release, index (release.id)}
 											<option value={release.id}>
 												{index === 0 ? 'Best Match - ' : ''}{formatMusicBrainzReleaseOption(release)}

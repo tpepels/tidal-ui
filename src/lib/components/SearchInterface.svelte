@@ -1407,12 +1407,12 @@
 										? ''
 										: 's'}
 								</p>
-								<p class="ui-media-card__meta">Open album details, track list, and artist page.</p>
+								<p class="ui-media-card__intent">Open album details and artist page</p>
 							</div>
 						</a>
 						<div class="ui-media-card__links" class:ui-media-card__links--paired={Boolean(album.artist)}>
 							<a href={`/album/${album.id}`} class="ui-media-card__link" data-sveltekit-preload-data>
-								Album Page
+								Open Album
 							</a>
 							{#if album.artist}
 								<a
@@ -1420,7 +1420,7 @@
 									class="ui-media-card__link"
 									data-sveltekit-preload-data
 								>
-									Artist Page
+									Open Artist
 								</a>
 							{/if}
 						</div>
@@ -1487,14 +1487,12 @@
 								<p class="ui-media-card__subtitle">
 									{artist.type && artist.type.trim().length > 0 ? artist.type : 'Artist'}
 								</p>
-								<p class="ui-media-card__meta">
-									Open artist profile, discography, and top tracks.
-								</p>
+								<p class="ui-media-card__intent">Open artist profile and discography</p>
 							</div>
 						</a>
 						<div class="ui-media-card__links">
 							<a href={`/artist/${artist.id}`} class="ui-media-card__link" data-sveltekit-preload-data>
-								Artist Page
+								Open Artist
 							</a>
 						</div>
 					</article>
@@ -1539,9 +1537,7 @@
 										• {losslessAPI.formatDuration(playlist.duration)}
 									{/if}
 								</p>
-								<p class="ui-media-card__meta">
-									Open playlist details, promoted artists, and full track list.
-								</p>
+								<p class="ui-media-card__intent">Open playlist details and featured artists</p>
 							</div>
 						</a>
 						<div class="ui-media-card__links">
@@ -1550,7 +1546,7 @@
 								class="ui-media-card__link"
 								data-sveltekit-preload-data
 							>
-								Playlist Page
+								Open Playlist
 							</a>
 							{#if playlist.promotedArtists?.[0]}
 								<a
@@ -1558,7 +1554,7 @@
 									class="ui-media-card__link"
 									data-sveltekit-preload-data
 								>
-									Featured Artist
+									View Featured Artist
 								</a>
 							{/if}
 						</div>

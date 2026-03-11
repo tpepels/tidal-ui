@@ -1548,8 +1548,14 @@
 				<p class="mb-2 text-sm text-gray-400">ARTIST</p>
 				<h1 class="mb-4 text-4xl font-bold md:text-6xl">{artist.name}</h1>
 
-				<div class="mb-6 ui-action-panel">
-					<div class="ui-action-row">
+				<div class="mb-6 ui-action-panel ui-action-panel--intentful">
+					<div class="ui-action-panel__header">
+						<p class="ui-action-panel__intent">Artist Actions</p>
+						<p class="ui-action-panel__summary">
+							Share this artist or open the official profile.
+						</p>
+					</div>
+					<div class="ui-action-row ui-action-row--progressive">
 						<ShareButton type="artist" id={artist.id} variant="secondary" />
 						{#if artist.url}
 							<a
@@ -1558,7 +1564,7 @@
 								rel="noopener noreferrer"
 								class="ui-action-button"
 							>
-								View Profile
+								Open Artist Profile
 							</a>
 						{/if}
 					</div>
@@ -1960,11 +1966,11 @@
 							<h2 class="text-2xl font-semibold text-white">Discography</h2>
 							<p class="text-sm text-gray-400">Albums, EPs, and more from {artist.name}.</p>
 						</div>
-						<div class="ui-action-row">
+						<div class="ui-action-row ui-action-row--progressive">
 							<button
 								onclick={handleDownloadDiscography}
 								type="button"
-								class="ui-action-button"
+								class="ui-action-button ui-action-button--primary"
 								disabled={isDownloadingDiscography || discography.length === 0}
 								aria-live="polite"
 							>
@@ -1986,11 +1992,14 @@
 							</button>
 						</div>
 					</div>
-					<div class="mt-4 ui-action-panel">
-						<div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-							<p class="text-xs font-semibold tracking-wide text-gray-300 uppercase">
-								Discography Selection
+					<div class="mt-4 ui-action-panel ui-action-panel--intentful">
+						<div class="ui-action-panel__header">
+							<p class="ui-action-panel__intent">Discography Selection</p>
+							<p class="ui-action-panel__summary">
+								Refine which releases are shown and which edition is preferred.
 							</p>
+						</div>
+						<div class="ui-action-row ui-action-row--progressive md:justify-between">
 							<label class="flex items-center gap-2 text-xs text-gray-400">
 								<span>Best edition</span>
 								<select
@@ -2005,7 +2014,7 @@
 								</select>
 							</label>
 						</div>
-						<div class="ui-action-row">
+						<div class="ui-action-row ui-action-row--progressive">
 							{#each [
 								{ key: 'album', label: 'Albums' },
 								{ key: 'ep', label: 'EPs' },
@@ -2021,7 +2030,7 @@
 								</button>
 							{/each}
 						</div>
-						<div class="ui-action-row">
+						<div class="ui-action-row ui-action-row--progressive">
 							{#each [
 								{ key: 'live', label: 'Live' },
 								{ key: 'remaster', label: 'Remaster/Deluxe' },

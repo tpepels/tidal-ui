@@ -68,6 +68,16 @@ a[aria-disabled='true'] {
 
 :root {
 	color-scheme: dark;
+	--ui-font-sans:
+		'Figtree',
+		-apple-system,
+		BlinkMacSystemFont,
+		'Segoe UI',
+		Roboto,
+		'Helvetica Neue',
+		Arial,
+		sans-serif;
+	--ui-font-size-base: 18px;
 	--ui-radius-lg: 0px;
 	--ui-radius-md: 0px;
 	--ui-radius-sm: 0px;
@@ -99,9 +109,18 @@ body {
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
 	text-rendering: optimizeLegibility;
-	font-size: 18px;
+	font-family: var(--ui-font-sans);
+	font-size: var(--ui-font-size-base);
 	line-height: 1.5;
 	background-color: #0a0a0a;
+}
+
+button,
+input,
+select,
+textarea {
+	font: inherit;
+	font-family: var(--ui-font-sans);
 }
 
 ::selection {
@@ -393,6 +412,39 @@ body {
 	box-shadow: var(--ui-shadow-soft, 0 10px 28px rgba(0, 0, 0, 0.22));
 	backdrop-filter: none;
 	-webkit-backdrop-filter: none;
+	transition:
+		border-color 150ms ease,
+		background 150ms ease,
+		transform 150ms ease;
+}
+
+.ui-action-panel:hover,
+.ui-action-panel:focus-within {
+	border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+	background: #161616;
+	transform: translateY(-1px);
+}
+
+.ui-action-panel__header {
+	display: flex;
+	flex-direction: column;
+	gap: 0.2rem;
+}
+
+.ui-action-panel__intent {
+	margin: 0;
+	font-size: 0.66rem;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: rgba(232, 232, 232, 0.82);
+}
+
+.ui-action-panel__summary {
+	margin: 0;
+	font-size: 0.82rem;
+	line-height: 1.34;
+	color: rgba(212, 212, 212, 0.78);
 }
 
 .ui-action-row {
@@ -400,6 +452,28 @@ body {
 	flex-wrap: wrap;
 	gap: 0.44rem;
 	align-items: center;
+}
+
+.ui-action-row--progressive {
+	padding-top: 0.4rem;
+	margin-top: 0.1rem;
+	border-top: 1px solid rgba(255, 255, 255, 0.08);
+	transition:
+		opacity 140ms ease,
+		transform 140ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+	.ui-action-panel .ui-action-row--progressive {
+		opacity: 0.7;
+		transform: translateY(1px);
+	}
+
+	.ui-action-panel:hover .ui-action-row--progressive,
+	.ui-action-panel:focus-within .ui-action-row--progressive {
+		opacity: 1;
+		transform: translateY(0);
+	}
 }
 
 .ui-action-button {
@@ -496,6 +570,23 @@ body {
 
 .ui-action-status[data-tone='error'] {
 	color: rgba(233, 233, 233, 0.9);
+}
+
+.ui-action-subpanel {
+	display: flex;
+	flex-direction: column;
+	gap: 0.6rem;
+	border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+	background: #0f0f0f;
+	padding: 0.8rem 0.9rem;
+}
+
+.ui-action-subpanel__header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
 }
 
 .ui-select {
@@ -635,6 +726,17 @@ body {
 	box-shadow: var(--ui-shadow-soft, 0 10px 28px rgba(0, 0, 0, 0.22));
 	backdrop-filter: none;
 	-webkit-backdrop-filter: none;
+	transition:
+		border-color 150ms ease,
+		background 150ms ease,
+		transform 150ms ease;
+}
+
+.ui-media-card:hover,
+.ui-media-card:focus-within {
+	border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+	background: #161616;
+	transform: translateY(-1px);
 }
 
 .ui-media-card__primary-link {
@@ -643,6 +745,11 @@ body {
 	gap: 0.5rem;
 	color: inherit;
 	text-decoration: none;
+	outline: none;
+}
+
+.ui-media-card__primary-link:focus-visible .ui-media-card__artwork {
+	border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
 }
 
 .ui-media-card__artwork {
@@ -701,10 +808,25 @@ body {
 	color: rgba(163, 163, 163, 0.84);
 }
 
+.ui-media-card__intent {
+	margin: 0;
+	font-size: 0.66rem;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: rgba(232, 232, 232, 0.82);
+}
+
 .ui-media-card__links {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 0.42rem;
+	margin-top: auto;
+	padding-top: 0.4rem;
+	border-top: 1px solid rgba(255, 255, 255, 0.08);
+	transition:
+		opacity 140ms ease,
+		transform 140ms ease;
 }
 
 .ui-media-card__links--paired {
@@ -722,6 +844,7 @@ body {
 	background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 	font-size: 0.76rem;
 	font-weight: 600;
+	letter-spacing: 0.02em;
 	color: inherit;
 	text-decoration: none;
 	transition:
@@ -741,6 +864,21 @@ body {
 .ui-media-card__link:hover {
 	border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
 	background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+}
+
+@media (hover: hover) and (pointer: fine) {
+	.ui-media-card__links {
+		opacity: 0;
+		transform: translateY(2px);
+		pointer-events: none;
+	}
+
+	.ui-media-card:hover .ui-media-card__links,
+	.ui-media-card:focus-within .ui-media-card__links {
+		opacity: 1;
+		transform: translateY(0);
+		pointer-events: auto;
+	}
 }
 
 /* Flatten Tailwind rounded utility classes app-wide (excluding intentional circles). */
