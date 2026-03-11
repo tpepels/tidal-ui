@@ -22,7 +22,7 @@ const DEFAULT_STATE: UserPreferencesState = {
 	playbackQuality: 'HI_RES_LOSSLESS',
 	convertAacToMp3: false,
 	downloadCoversSeperately: false,
-	experimentalMusicBrainzTagging: false,
+	experimentalMusicBrainzTagging: true,
 	strictMusicBrainzMatching: false,
 	performanceMode: 'low'
 };
@@ -49,7 +49,7 @@ function normalizePreferences(value: unknown): UserPreferencesState {
 		playbackQuality: normalizePlaybackQuality(raw?.playbackQuality),
 		convertAacToMp3: raw?.convertAacToMp3 === true,
 		downloadCoversSeperately: raw?.downloadCoversSeperately === true,
-		experimentalMusicBrainzTagging: raw?.experimentalMusicBrainzTagging === true,
+		experimentalMusicBrainzTagging: raw?.experimentalMusicBrainzTagging !== false,
 		strictMusicBrainzMatching: raw?.strictMusicBrainzMatching === true,
 		performanceMode: normalizePerformanceMode(raw?.performanceMode)
 	};

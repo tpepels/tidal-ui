@@ -103,6 +103,56 @@ describe('lookupMusicBrainzTagsForTrack', () => {
 		);
 	});
 
+	it('retries transient upstream failures before returning no tags', async () => {
+		const fetchSpy = vi
+			.fn()
+			.mockResolvedValueOnce(new Response('Temporary failure', { status: 503 }))
+			.mockResolvedValueOnce(
+				new Response(JSON.stringify({ recordings: [] }), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' }
+				})
+			);
+		vi.stubGlobal('fetch', fetchSpy as unknown as typeof fetch);
+
+		const { lookupMusicBrainzTagsForTrack } = await import('./musicBrainzLookup');
+		const tags = await lookupMusicBrainzTagsForTrack({
+			title: 'Track',
+			artist: { name: 'Artist' }
+		});
+
+		expect(tags).toEqual({});
+		expect(fetchSpy).toHaveBeenCalledTimes(2);
+	});
+
+	it('includes track and disc in cache keys to avoid cross-track collisions', async () => {
+		const fetchSpy = vi.fn().mockImplementation(async () =>
+			new Response(JSON.stringify({ recordings: [] }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		);
+		vi.stubGlobal('fetch', fetchSpy as unknown as typeof fetch);
+
+		const { lookupMusicBrainzTagsForTrack } = await import('./musicBrainzLookup');
+		await lookupMusicBrainzTagsForTrack({
+			title: 'Duplicate Title',
+			artist: { name: 'Same Artist' },
+			album: { title: 'Same Album' },
+			trackNumber: 1,
+			volumeNumber: 1
+		});
+		await lookupMusicBrainzTagsForTrack({
+			title: 'Duplicate Title',
+			artist: { name: 'Same Artist' },
+			album: { title: 'Same Album' },
+			trackNumber: 2,
+			volumeNumber: 1
+		});
+
+		expect(fetchSpy).toHaveBeenCalledTimes(2);
+	});
+
 	it('uses selected release directly and skips flex recording lookup', async () => {
 		const preferredReleaseId = '11111111-2222-4333-8444-555555555555';
 		const fetchSpy = vi

@@ -1084,10 +1084,10 @@
 					aria-pressed={experimentalMusicBrainzTagging}
 				>
 					<span class="settings-toggle__copy">
-						<span class="settings-toggle__title">Experimental MusicBrainz lookup & tagging</span>
+						<span class="settings-toggle__title">MusicBrainz lookup & tagging</span>
 						<span class="settings-toggle__description">
-							Look up release/track metadata in MusicBrainz and embed extra tags. Can add
-							latency and may produce occasional mismatches.
+							Default on. Looks up release/track metadata in MusicBrainz and embeds extended
+							tags into downloaded files.
 						</span>
 					</span>
 					<span class="settings-toggle__control">

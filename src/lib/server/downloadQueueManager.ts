@@ -575,8 +575,8 @@ export async function findDuplicateJob(job: DownloadJob): Promise<QueuedJob | nu
 		// Check if same type and ID
 		if (existingJob.job.type === job.type) {
 			if (job.type === 'track' && existingJob.job.type === 'track') {
-				const existingMusicBrainz = existingJob.job.experimentalMusicBrainzTagging === true;
-				const requestedMusicBrainz = job.experimentalMusicBrainzTagging === true;
+				const existingMusicBrainz = existingJob.job.experimentalMusicBrainzTagging !== false;
+				const requestedMusicBrainz = job.experimentalMusicBrainzTagging !== false;
 				const existingStrictMatch = existingJob.job.strictMusicBrainzMatching === true;
 				const requestedStrictMatch = job.strictMusicBrainzMatching === true;
 				const existingReleaseId =
@@ -609,8 +609,8 @@ export async function findDuplicateJob(job: DownloadJob): Promise<QueuedJob | nu
 					return existingJob;
 				}
 			} else if (job.type === 'album' && existingJob.job.type === 'album') {
-				const existingMusicBrainz = existingJob.job.experimentalMusicBrainzTagging === true;
-				const requestedMusicBrainz = job.experimentalMusicBrainzTagging === true;
+				const existingMusicBrainz = existingJob.job.experimentalMusicBrainzTagging !== false;
+				const requestedMusicBrainz = job.experimentalMusicBrainzTagging !== false;
 				const existingStrictMatch = existingJob.job.strictMusicBrainzMatching === true;
 				const requestedStrictMatch = job.strictMusicBrainzMatching === true;
 				const existingReleaseId =

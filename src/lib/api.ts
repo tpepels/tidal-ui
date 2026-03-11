@@ -1974,8 +1974,9 @@ class LosslessAPI {
 			const shouldConvertToMp3 =
 				options?.convertAacToMp3 === true && (quality === 'HIGH' || quality === 'LOW');
 			const shouldEmbedMetadata = options?.skipMetadataEmbedding !== true;
+			const enableExperimentalMusicBrainz = options?.enableExperimentalMusicBrainz ?? true;
 			const experimentalTags =
-				shouldEmbedMetadata && options?.enableExperimentalMusicBrainz
+				shouldEmbedMetadata && enableExperimentalMusicBrainz
 					? await this.lookupMusicBrainzTags(
 							metadataLookup.track,
 							options?.signal,

@@ -206,12 +206,13 @@ async function buildMetadataObjectWithEnhancements(
 ): Promise<MetadataEnhancementResult> {
 	const baseMetadata = buildMetadataObject(lookup, overrides);
 	const strictMatch = options?.strictMusicBrainzMatching === true;
+	const musicBrainzEnabled = options?.enableExperimentalMusicBrainzTagging !== false;
 	const preferredReleaseId =
 		typeof options?.musicBrainzReleaseId === 'string' &&
 		options.musicBrainzReleaseId.trim().length > 0
 			? options.musicBrainzReleaseId.trim()
 			: undefined;
-	if (!options?.enableExperimentalMusicBrainzTagging) {
+	if (!musicBrainzEnabled) {
 		return {
 			metadata: baseMetadata,
 			musicBrainz: {
@@ -256,7 +257,7 @@ async function buildMetadataObjectWithEnhancements(
 						...(musicBrainzTags as Partial<Record<StandardMetadataKey, string>>)
 					},
 		musicBrainz: {
-			enabled: true,
+			enabled: musicBrainzEnabled,
 			strictMatch,
 			lookupAttempted: true,
 			tagsApplied

@@ -341,14 +341,14 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 		buffer,
 		tempFilePath,
 		conflictResolution = 'overwrite_if_different',
-		checksum,
-		detectedMimeType,
-		downloadCoverSeperately = false,
-		coverUrl,
-		experimentalMusicBrainzTagging = false,
-		strictMusicBrainzMatching = false,
-		musicBrainzReleaseId
-	} = params;
+			checksum,
+			detectedMimeType,
+			downloadCoverSeperately = false,
+			coverUrl,
+			experimentalMusicBrainzTagging = true,
+			strictMusicBrainzMatching = false,
+			musicBrainzReleaseId
+		} = params;
 
 	let workingBuffer: Buffer | undefined;
 	if (buffer) {

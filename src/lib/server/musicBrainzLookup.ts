@@ -43,6 +43,8 @@ export interface MusicBrainzReleaseCandidate {
 const MUSICBRAINZ_API_BASE = 'https://musicbrainz.org/ws/2';
 const MUSICBRAINZ_TIMEOUT_MS = 7_500;
 const MUSICBRAINZ_MIN_INTERVAL_MS = 1_100;
+const MUSICBRAINZ_MAX_RETRIES = 2;
+const MUSICBRAINZ_RETRY_BASE_MS = 900;
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 800;
 const ISRC_PATTERN = /^[A-Z]{2}[A-Z0-9]{3}\d{7}$/;
@@ -130,12 +132,14 @@ interface ReleaseCacheEntry {
 class MusicBrainzHttpError extends Error {
 	status: number;
 	url: string;
+	retryAfterMs?: number;
 
-	constructor(status: number, url: string) {
+	constructor(status: number, url: string, retryAfterMs?: number) {
 		super(`MusicBrainz HTTP ${status}`);
 		this.name = 'MusicBrainzHttpError';
 		this.status = status;
 		this.url = url;
+		this.retryAfterMs = retryAfterMs;
 	}
 }
 
@@ -311,13 +315,52 @@ function buildCacheKey(track: MusicBrainzLookupTrack, options?: MusicBrainzLooku
 	const mode = options?.strictIsrcMatch === true ? 'strict' : 'flex';
 	const releaseKey = normalizeReleaseId(options?.preferredReleaseId) ?? 'auto';
 	const isrc = normalizeIsrc(track.isrc);
+	const trackNumber = coercePositiveInt(track.trackNumber) ?? 0;
+	const volumeNumber = coercePositiveInt(track.volumeNumber) ?? 0;
 	if (isrc) {
-		return `${mode}:release:${releaseKey}:isrc:${isrc}`;
+		return `${mode}:release:${releaseKey}:isrc:${isrc}:disc:${volumeNumber}:track:${trackNumber}`;
 	}
 	const trackTitle = normalizeToken(track.title);
 	const artistName = normalizeToken(track.artist?.name ?? track.artists?.[0]?.name);
 	const albumTitle = normalizeToken(track.album?.title);
-	return `${mode}:release:${releaseKey}:query:${trackTitle}|${artistName}|${albumTitle}`;
+	return `${mode}:release:${releaseKey}:query:${trackTitle}|${artistName}|${albumTitle}:disc:${volumeNumber}:track:${trackNumber}`;
+}
+
+function parseRetryAfterMs(value: string | null): number | undefined {
+	if (!value) return undefined;
+	const numericSeconds = Number.parseInt(value.trim(), 10);
+	if (Number.isFinite(numericSeconds) && numericSeconds > 0) {
+		return numericSeconds * 1000;
+	}
+	const targetDateMs = Date.parse(value);
+	if (Number.isFinite(targetDateMs)) {
+		const delta = targetDateMs - Date.now();
+		if (delta > 0) {
+			return delta;
+		}
+	}
+	return undefined;
+}
+
+function shouldRetryMusicBrainzError(error: unknown): boolean {
+	if (error instanceof MusicBrainzHttpError) {
+		return error.status === 429 || error.status === 408 || (error.status >= 500 && error.status < 600);
+	}
+	if (error instanceof DOMException && error.name === 'AbortError') {
+		return true;
+	}
+	if (error instanceof TypeError) {
+		return true;
+	}
+	return false;
+}
+
+function retryDelayMsForMusicBrainz(error: unknown, attempt: number): number {
+	if (error instanceof MusicBrainzHttpError && error.retryAfterMs) {
+		return Math.min(15_000, Math.max(MUSICBRAINZ_RETRY_BASE_MS, error.retryAfterMs));
+	}
+	const multiplier = Math.max(1, attempt + 1);
+	return Math.min(10_000, MUSICBRAINZ_RETRY_BASE_MS * multiplier);
 }
 
 async function scheduleRateLimited<T>(request: () => Promise<T>): Promise<T> {
@@ -347,26 +390,39 @@ function musicBrainzUserAgent(): string {
 }
 
 async function fetchMusicBrainzJson<T>(url: string): Promise<T> {
-	return scheduleRateLimited(async () => {
-		const controller = new AbortController();
-		const timeout = setTimeout(() => controller.abort(), MUSICBRAINZ_TIMEOUT_MS);
+	let lastError: unknown;
+	for (let attempt = 0; attempt <= MUSICBRAINZ_MAX_RETRIES; attempt += 1) {
 		try {
-			const response = await fetch(url, {
-				headers: {
-					Accept: 'application/json',
-					'User-Agent': musicBrainzUserAgent()
-				},
-				signal: controller.signal
+			return await scheduleRateLimited(async () => {
+				const controller = new AbortController();
+				const timeout = setTimeout(() => controller.abort(), MUSICBRAINZ_TIMEOUT_MS);
+				try {
+					const response = await fetch(url, {
+						headers: {
+							Accept: 'application/json',
+							'User-Agent': musicBrainzUserAgent()
+						},
+						signal: controller.signal
+					});
+					if (!response.ok) {
+						const retryAfterMs = parseRetryAfterMs(response.headers.get('Retry-After'));
+						throw new MusicBrainzHttpError(response.status, url, retryAfterMs);
+					}
+					const data = (await response.json()) as T;
+					return data;
+				} finally {
+					clearTimeout(timeout);
+				}
 			});
-			if (!response.ok) {
-				throw new MusicBrainzHttpError(response.status, url);
+		} catch (error) {
+			lastError = error;
+			if (attempt >= MUSICBRAINZ_MAX_RETRIES || !shouldRetryMusicBrainzError(error)) {
+				throw error;
 			}
-			const data = (await response.json()) as T;
-			return data;
-		} finally {
-			clearTimeout(timeout);
+			await delay(retryDelayMsForMusicBrainz(error, attempt));
 		}
-	});
+	}
+	throw lastError instanceof Error ? lastError : new Error('MusicBrainz request failed');
 }
 
 function scoreRelease(

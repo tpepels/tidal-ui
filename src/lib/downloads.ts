@@ -247,7 +247,7 @@ export async function downloadTrackWithRetry(
 			const { blob, mimeType } = await losslessAPI.fetchTrackBlob(trackId, quality, filename, {
 				ffmpegAutoTriggered: false,
 				convertAacToMp3: storage === 'client' ? options?.convertAacToMp3 : false,
-				enableExperimentalMusicBrainz: options?.experimentalMusicBrainzTagging ?? false,
+				enableExperimentalMusicBrainz: options?.experimentalMusicBrainzTagging ?? true,
 				strictMusicBrainzMatching: options?.strictMusicBrainzMatching ?? false,
 				musicBrainzReleaseId: options?.musicBrainzReleaseId,
 				skipMetadataEmbedding: storage === 'server',
@@ -334,7 +334,7 @@ export async function downloadTrackToServer(
 	const fetchResult = await downloadTrackWithRetry(track.id, quality, filename, track, undefined, {
 		convertAacToMp3,
 		downloadCoverSeperately: false,
-		experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? false,
+		experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? true,
 		strictMusicBrainzMatching: options?.strictMusicBrainzMatching ?? false,
 		musicBrainzReleaseId: options?.musicBrainzReleaseId,
 		storage: 'server',
@@ -384,7 +384,7 @@ export async function downloadTrackToServer(
 		{
 			conflictResolution: options?.conflictResolution,
 				downloadCoverSeperately: options?.downloadCoverSeperately ?? false,
-				experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? false,
+				experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? true,
 				strictMusicBrainzMatching: options?.strictMusicBrainzMatching ?? false,
 				musicBrainzReleaseId: options?.musicBrainzReleaseId,
 				coverUrl,
@@ -496,7 +496,7 @@ export async function downloadAlbum(
 					artistName,
 					albumTitle,
 						trackCount,
-						experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? false,
+						experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? true,
 						strictMusicBrainzMatching: options?.strictMusicBrainzMatching ?? false,
 						musicBrainzReleaseId: options?.musicBrainzReleaseId,
 						forceOverwrite: options?.forceOverwrite === true
@@ -540,7 +540,7 @@ export async function downloadAlbum(
 	const artistName = preferredArtistName ?? canonicalAlbum.artist?.name ?? 'Unknown Artist';
 	const convertAacToMp3 = options?.convertAacToMp3 ?? false;
 	const downloadCoverSeperately = options?.downloadCoverSeperately ?? false;
-	const experimentalMusicBrainzTagging = options?.experimentalMusicBrainzTagging ?? false;
+	const experimentalMusicBrainzTagging = options?.experimentalMusicBrainzTagging ?? true;
 	const strictMusicBrainzMatching = options?.strictMusicBrainzMatching ?? false;
 	const musicBrainzReleaseId = options?.musicBrainzReleaseId;
 

@@ -29,6 +29,7 @@
 			quality?: string;
 			experimentalMusicBrainzTagging?: boolean;
 			strictMusicBrainzMatching?: boolean;
+			musicBrainzReleaseId?: string;
 		};
 		progress: number; // 0-1
 		createdAt: number;
@@ -236,10 +237,11 @@
 	}
 
 	function describeMusicBrainzMode(job: QueueJob): string | null {
-		if (job.job.experimentalMusicBrainzTagging !== true) {
+		if (job.job.experimentalMusicBrainzTagging === false) {
 			return null;
 		}
-		return job.job.strictMusicBrainzMatching === true ? 'strict ISRC mode' : 'flex mode';
+		const baseMode = job.job.strictMusicBrainzMatching === true ? 'strict ISRC mode' : 'flex mode';
+		return job.job.musicBrainzReleaseId ? `${baseMode} (release selected)` : baseMode;
 	}
 
 	function jobShortId(jobId: string): string {

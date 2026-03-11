@@ -137,7 +137,7 @@ export async function downloadTrack(
 		await losslessAPI.downloadTrack(track.id, quality, filename, {
 			convertAacToMp3,
 			downloadCoverSeperately: downloadCoversSeperately,
-			enableExperimentalMusicBrainz: options?.experimentalMusicBrainzTagging ?? false,
+			enableExperimentalMusicBrainz: options?.experimentalMusicBrainzTagging ?? true,
 			strictMusicBrainzMatching: options?.strictMusicBrainzMatching ?? false,
 			signal: options?.signal,
 			onProgress: (progress: TrackDownloadProgress) => {

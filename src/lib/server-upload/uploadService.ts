@@ -232,7 +232,7 @@ export const downloadTrackServerSide = async (
 		const useChunks = options?.useChunks ?? blob.size > 1024 * 1024; // Use chunks for files > 1MB for better progress granularity
 		const chunkSize = options?.chunkSize ?? 2 * 1024 * 1024; // 2MB chunks (reduced CPU load)
 		const conflictResolution = options?.conflictResolution ?? 'overwrite_if_different';
-		const musicBrainzEnabled = options?.experimentalMusicBrainzTagging === true;
+		const musicBrainzEnabled = options?.experimentalMusicBrainzTagging !== false;
 		const strictMusicBrainzMatch = options?.strictMusicBrainzMatching === true;
 		const preferredMusicBrainzReleaseId =
 			typeof options?.musicBrainzReleaseId === 'string' && options.musicBrainzReleaseId.trim().length > 0
@@ -306,7 +306,7 @@ export const downloadTrackServerSide = async (
 						trackTitle,
 						trackNumber: track?.trackNumber,
 						trackMetadata,
-							experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? false,
+							experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? true,
 							strictMusicBrainzMatching: options?.strictMusicBrainzMatching ?? false,
 							musicBrainzReleaseId: preferredMusicBrainzReleaseId,
 							detectedMimeType: options?.detectedMimeType
@@ -351,7 +351,7 @@ export const downloadTrackServerSide = async (
 				checksum,
 				conflictResolution,
 				downloadCoverSeperately: options?.downloadCoverSeperately ?? false,
-					experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? false,
+					experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? true,
 					strictMusicBrainzMatching: options?.strictMusicBrainzMatching ?? false,
 					musicBrainzReleaseId: preferredMusicBrainzReleaseId,
 					coverUrl: options?.coverUrl,
@@ -398,7 +398,7 @@ export const downloadTrackServerSide = async (
 			// Prepare track metadata for server-side embedding
 			const downloadCoverSeperately = options?.downloadCoverSeperately ?? false;
 				const experimentalMusicBrainzTagging =
-					options?.experimentalMusicBrainzTagging ?? false;
+					options?.experimentalMusicBrainzTagging ?? true;
 				const strictMusicBrainzMatching = options?.strictMusicBrainzMatching ?? false;
 
 			const uploadResponse = await fetch('/api/download-track', {
