@@ -128,7 +128,7 @@
 	{/if}
 
 	<div class="status-page__grid">
-		<section class="settings-section">
+		<section class="ui-tool-panel status-page__panel">
 			<p class="section-heading">Health</p>
 			<p class="section-footnote">
 				Status: <strong>{diagnosticsHealth?.status ?? 'unknown'}</strong>
@@ -143,7 +143,7 @@
 			{/if}
 		</section>
 
-		<section class="settings-section">
+		<section class="ui-tool-panel status-page__panel">
 			<ApiTargetsStatusCard
 				title="API Targets"
 				status={statusTargets}
@@ -154,17 +154,17 @@
 			/>
 		</section>
 
-		<section class="settings-section">
+		<section class="ui-tool-panel status-page__panel">
 			<p class="section-heading">Queue</p>
 			<pre class="status-page__json">{JSON.stringify(statusQueueMetrics?.queue ?? {}, null, 2)}</pre>
 		</section>
 
-		<section class="settings-section">
+		<section class="ui-tool-panel status-page__panel">
 			<p class="section-heading">Queue Metrics</p>
 			<pre class="status-page__json">{JSON.stringify(statusQueueMetrics?.metrics ?? {}, null, 2)}</pre>
 		</section>
 
-		<section class="settings-section">
+		<section class="ui-tool-panel status-page__panel">
 			<p class="section-heading">Errors (Last Hour)</p>
 			<p class="section-footnote">
 				Total: {diagnosticsSummary?.totalErrors ?? 0} ·
@@ -182,7 +182,7 @@
 			{/if}
 		</section>
 
-		<section class="settings-section">
+		<section class="ui-tool-panel status-page__panel">
 			<p class="section-heading">Retry Health</p>
 			<p class="section-footnote">Total retries (last hour): {diagnosticsRetries?.total ?? 0}</p>
 			<p class="section-footnote">Recent retry events: {diagnosticsRetries?.recent?.length ?? 0}</p>
@@ -199,7 +199,7 @@
 			{/if}
 		</section>
 
-		<section class="settings-section settings-section--wide">
+		<section class="ui-tool-panel ui-tool-panel--wide status-page__panel">
 			<p class="section-heading">Recent Errors</p>
 			{#if diagnosticsErrors && diagnosticsErrors.length > 0}
 				<ul class="status-page__errors">
@@ -218,12 +218,12 @@
 			{/if}
 		</section>
 
-		<section class="settings-section">
+		<section class="ui-tool-panel status-page__panel">
 			<p class="section-heading">Persisted Summary</p>
 			<pre class="status-page__json">{JSON.stringify(diagnosticsPersisted ?? {}, null, 2)}</pre>
 		</section>
 
-		<section class="settings-section">
+		<section class="ui-tool-panel status-page__panel">
 			<p class="section-heading">Tracker Snapshot</p>
 			<div class="status-page__tracker-snapshot">
 				<Gauge size={14} />
@@ -244,19 +244,8 @@
 		grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 	}
 
-	.settings-section {
-		display: flex;
-		flex-direction: column;
+	.status-page__panel {
 		gap: 0.5rem;
-		padding: 0.72rem 0.78rem;
-		border-radius: var(--ui-radius-md, 14px);
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
-		box-shadow: var(--ui-shadow-soft, 0 10px 28px rgba(0, 0, 0, 0.22));
-	}
-
-	.settings-section--wide {
-		grid-column: span 1;
 	}
 
 	.section-heading {
@@ -324,9 +313,4 @@
 		gap: 0.4rem;
 	}
 
-	@media (min-width: 960px) {
-		.settings-section--wide {
-			grid-column: span 2;
-		}
-	}
 </style>

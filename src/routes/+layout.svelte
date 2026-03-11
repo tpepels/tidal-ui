@@ -1761,8 +1761,6 @@
 		padding: clamp(0.9rem, 1.8vw, 1.5rem);
 		align-items: start;
 		width: 100%;
-		max-width: min(1440px, 100%);
-		margin: 0 auto;
 	}
 
 	.app-workspace.is-sidebar-collapsed {
@@ -2211,8 +2209,7 @@
 	}
 
 	.app-main__inner {
-		max-width: min(1160px, 100%);
-		margin: 0 auto;
+		width: 100%;
 	}
 
 	.app-workspace.is-sidebar-collapsed .app-sidebar {

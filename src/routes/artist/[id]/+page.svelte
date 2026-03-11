@@ -53,7 +53,30 @@
 	let error = $state<string | null>(null);
 	const artistId = $derived($page.params.id);
 	const topTracks = $derived(artist?.tracks ?? []);
-	const rawDiscography = $derived(artist?.albums ?? []);
+	const rawDiscography = $derived.by(() => {
+		const albums = artist?.albums ?? [];
+		const currentArtistIdRaw = artist?.id;
+		const currentArtistName = normalizeToken(artist?.name);
+		if (
+			typeof currentArtistIdRaw !== 'number' ||
+			!Number.isFinite(currentArtistIdRaw) ||
+			currentArtistIdRaw <= 0
+		) {
+			return albums;
+		}
+		const currentArtistId = currentArtistIdRaw;
+		return albums.filter((album) => {
+			const primaryArtistIdCandidate = album.artist?.id ?? album.artists?.[0]?.id;
+			if (typeof primaryArtistIdCandidate === 'number' && Number.isFinite(primaryArtistIdCandidate)) {
+				return primaryArtistIdCandidate === currentArtistId;
+			}
+			const primaryArtistName = normalizeToken(album.artist?.name ?? album.artists?.[0]?.name);
+			if (!primaryArtistName || !currentArtistName) {
+				return false;
+			}
+			return primaryArtistName === currentArtistName;
+		});
+	});
 	const recommendedArtists = $derived(recommendations?.artists ?? []);
 	const recommendedAlbums = $derived(recommendations?.albums ?? []);
 	const FEATURED_DISCOGRAPHY_ALBUM_LIMIT = 12;
@@ -93,9 +116,10 @@
 	const hasGroupedDiscography = $derived(groupedDiscographyEntries.length > 0);
 	const filtersHideAllDiscography = $derived(hasGroupedDiscography && discographyEntries.length === 0);
 	const discographyEntriesWithLoadedCovers = $derived.by(() => {
-		coverResolutionTick;
+		const resolutionTick = coverResolutionTick;
 		const currentArtistId = artist?.id ?? 0;
 		return discographyEntries.filter((entry) => {
+			if (resolutionTick < 0) return false;
 			const album = entry.representative;
 			if (!album || !Number.isFinite(album.id) || album.id <= 0) return false;
 			if (albumCoverFailures[album.id]) return false;
@@ -343,6 +367,16 @@
 			unsubscribeCoverEvents();
 		};
 	});
+
+	function normalizeToken(value: string | null | undefined): string {
+		if (!value) return '';
+		return value
+			.normalize('NFKD')
+			.replace(/[\u0300-\u036f]/g, '')
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, ' ')
+			.trim();
+	}
 
 	function getReleaseYear(date?: string | null): string | null {
 		if (!date) return null;

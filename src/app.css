@@ -337,6 +337,63 @@ textarea {
 	gap: 0.45rem;
 }
 
+/* Shared operational tool panels */
+.ui-tool-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 0.88rem;
+	padding: 0.9rem;
+	border-radius: var(--ui-radius-md, 14px);
+	border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+	background: var(--mono-surface-card);
+	box-shadow: var(--ui-shadow-soft, 0 10px 28px rgba(0, 0, 0, 0.22));
+}
+
+.ui-tool-panel--flush {
+	gap: 0;
+	padding: 0;
+	overflow: hidden;
+}
+
+.ui-tool-panel--wide {
+	grid-column: span 1;
+}
+
+.ui-tool-panel__header {
+	display: flex;
+	flex-direction: column;
+	gap: 0.26rem;
+}
+
+.ui-tool-panel__eyebrow {
+	margin: 0;
+	font-size: 0.62rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.2em;
+	color: rgba(212, 212, 212, 0.7);
+}
+
+.ui-tool-panel__title {
+	margin: 0;
+	font-size: 1rem;
+	line-height: 1.3;
+	color: rgba(245, 245, 245, 0.96);
+}
+
+.ui-tool-panel__subtitle {
+	margin: 0;
+	font-size: 0.74rem;
+	line-height: 1.35;
+	color: rgba(212, 212, 212, 0.74);
+}
+
+@media (min-width: 960px) {
+	.ui-tool-panel--wide {
+		grid-column: span 2;
+	}
+}
+
 .ui-chip-link,
 .ui-chip-button {
 	display: inline-flex;

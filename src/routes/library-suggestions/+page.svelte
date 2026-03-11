@@ -9,11 +9,11 @@
 	import { Activity, Disc, Library, LoaderCircle, RefreshCw, User } from 'lucide-svelte';
 
 	const meta = getRouteMeta('/library-suggestions');
-	const LOCAL_ARTIST_LIMIT = 18;
-	const LOCAL_ALBUM_LIMIT = 18;
-	const SMART_SEED_LIMIT = 5;
-	const SMART_ARTIST_LIMIT = 12;
-	const SMART_ALBUM_LIMIT = 12;
+	const LOCAL_ARTIST_LIMIT = 25;
+	const LOCAL_ALBUM_LIMIT = 25;
+	const SMART_SEED_LIMIT = 8;
+	const SMART_ARTIST_LIMIT = 20;
+	const SMART_ALBUM_LIMIT = 20;
 
 	type SeedArtist = {
 		artist: Artist;
@@ -44,7 +44,6 @@
 	let smartArtists = $state<ScoredArtist[]>([]);
 	let smartAlbums = $state<ScoredAlbum[]>([]);
 
-	const hasLocalSuggestions = $derived(localArtists.length > 0 || localAlbums.length > 0);
 	const hasSmartSuggestions = $derived(smartArtists.length > 0 || smartAlbums.length > 0);
 	const scannedAtText = $derived.by(() =>
 		Number.isFinite(scannedAt) && scannedAt
@@ -71,13 +70,6 @@
 		if (!normalizedQuery) return '/';
 		const params = new URLSearchParams({ q: normalizedQuery, tab });
 		return `/?${params.toString()}`;
-	}
-
-	function formatTrackCount(trackCount: number): string {
-		if (!Number.isFinite(trackCount) || trackCount <= 0) {
-			return '0 tracks';
-		}
-		return `${trackCount} ${trackCount === 1 ? 'track' : 'tracks'}`;
 	}
 
 	function getAlbumCoverSrc(cover: string | null | undefined): string | null {
@@ -147,7 +139,7 @@
 				if (b.albumCount !== a.albumCount) return b.albumCount - a.albumCount;
 				return a.artistName.localeCompare(b.artistName);
 			})
-			.slice(0, SMART_SEED_LIMIT * 3);
+			.slice(0, SMART_SEED_LIMIT * 4);
 		const resolved: SeedArtist[] = [];
 		const seenArtistIds = new Set<number>();
 		for (const candidate of rankedCandidates) {
@@ -305,42 +297,12 @@
 				error instanceof Error && error.message
 					? error.message
 					: 'Failed to load media library suggestions.';
+			smartError = localError;
 		} finally {
 			if (token === refreshToken) {
 				refreshing = false;
 			}
 		}
-	}
-
-	function getLocalArtistLink(suggestion: MediaLibraryArtistSuggestion): string {
-		const resolvedSeed = seedArtists.find(
-			(seed) =>
-				normalizeToken(seed.source.artistName) === normalizeToken(suggestion.artistName)
-		);
-		if (resolvedSeed && Number.isFinite(resolvedSeed.artist.id)) {
-			return `/artist/${resolvedSeed.artist.id}`;
-		}
-		return buildSearchHref(suggestion.searchQuery || suggestion.artistName, 'artists');
-	}
-
-	function getLocalArtistLinks(suggestion: MediaLibraryArtistSuggestion): Array<{ href: string; label: string }> {
-		const searchHref = buildSearchHref(suggestion.searchQuery || suggestion.artistName, 'artists');
-		const primaryHref = getLocalArtistLink(suggestion);
-		if (primaryHref === searchHref) {
-			return [{ href: searchHref, label: 'Search Artist' }];
-		}
-		return [
-			{ href: primaryHref, label: 'Artist Page' },
-			{ href: searchHref, label: 'Search' }
-		];
-	}
-
-	function getLocalArtistImage(suggestion: MediaLibraryArtistSuggestion): string | null {
-		const resolvedSeed = seedArtists.find(
-			(seed) =>
-				normalizeToken(seed.source.artistName) === normalizeToken(suggestion.artistName)
-		);
-		return getArtistPortraitSrc(resolvedSeed?.artist.picture);
 	}
 </script>
 
@@ -354,7 +316,7 @@
 			<p class="ui-page__eyebrow">Navigation</p>
 			<h1 class="ui-page__title">{meta?.title ?? 'Library Suggestions'}</h1>
 			<p class="ui-page__subtitle">
-				{meta?.subtitle ?? 'Common library artists plus smart recommendation picks from the API.'}
+				{meta?.subtitle ?? 'API recommendation picks, seeded from your local library.'}
 			</p>
 		</div>
 		<div class="ui-page__actions">
@@ -376,116 +338,6 @@
 		</div>
 	</header>
 
-	<div class="ui-surface-grid library-suggestions-overview">
-		<article class="ui-surface-card library-suggestions-overview__card">
-			<div class="library-suggestions-overview__heading">
-				<Library size={16} />
-				<p>Local Index</p>
-			</div>
-			<p class="library-suggestions-overview__value">{localArtists.length + localAlbums.length}</p>
-			<p class="library-suggestions-overview__meta">
-				{localArtists.length} artists · {localAlbums.length} albums
-			</p>
-		</article>
-		<article class="ui-surface-card library-suggestions-overview__card">
-			<div class="library-suggestions-overview__heading">
-				<Activity size={16} />
-				<p>Smart API Picks</p>
-			</div>
-			<p class="library-suggestions-overview__value">{smartArtists.length + smartAlbums.length}</p>
-			<p class="library-suggestions-overview__meta">
-				{smartArtists.length} artists · {smartAlbums.length} albums
-			</p>
-		</article>
-		<article class="ui-surface-card library-suggestions-overview__card">
-			<div class="library-suggestions-overview__heading">
-				<RefreshCw size={16} />
-				<p>Index Timestamp</p>
-			</div>
-			<p class="library-suggestions-overview__value library-suggestions-overview__value--small">
-				{scannedAtText}
-			</p>
-		</article>
-	</div>
-
-	<section class="ui-surface-card library-suggestions-section">
-		<div class="library-suggestions-section__header">
-			<div>
-				<p class="library-suggestions-section__eyebrow">From Local Library</p>
-				<h2>Most Common Artists & Albums</h2>
-			</div>
-		</div>
-		{#if localError}
-			<PageState
-				kind="error"
-				title="Unable to load local suggestions"
-				message={localError}
-				actionLabel="Retry"
-				onAction={() => refreshSuggestions(true)}
-			/>
-		{:else if !hasLocalSuggestions}
-			<PageState
-				kind="empty"
-				title="No local suggestions yet"
-				message="Index your library first, then refresh this page."
-			/>
-		{:else}
-			<div class="library-suggestions-columns">
-				<div class="library-suggestions-column">
-					<div class="library-suggestions-column__header">
-						<User size={16} />
-						<h3>Artists</h3>
-					</div>
-					<ol class="ui-media-grid ui-media-grid--artists">
-						{#each localArtists as suggestion (suggestion.artistDir)}
-							<li>
-								<EntityMediaCard
-									type="artist"
-									href={getLocalArtistLink(suggestion)}
-									title={suggestion.artistName}
-									meta={`${suggestion.albumCount} album${suggestion.albumCount === 1 ? '' : 's'} · ${formatTrackCount(suggestion.trackCount)}`}
-									imageSrc={getLocalArtistImage(suggestion)}
-									imageAlt={`Portrait of ${suggestion.artistName}`}
-									links={getLocalArtistLinks(suggestion)}
-								/>
-							</li>
-						{/each}
-					</ol>
-				</div>
-
-				<div class="library-suggestions-column">
-					<div class="library-suggestions-column__header">
-						<Disc size={16} />
-						<h3>Albums</h3>
-					</div>
-					<ol class="ui-media-grid ui-media-grid--albums">
-						{#each localAlbums as suggestion (`${suggestion.artistDir}::${suggestion.albumDir}`)}
-							<li>
-								<EntityMediaCard
-									type="album"
-									href={buildSearchHref(suggestion.searchQuery || `${suggestion.artistName} ${suggestion.albumTitle}`, 'albums')}
-									title={suggestion.albumTitle}
-									subtitle={suggestion.artistName}
-									meta={formatTrackCount(suggestion.trackCount)}
-									links={[
-										{
-											href: buildSearchHref(
-												suggestion.searchQuery ||
-													`${suggestion.artistName} ${suggestion.albumTitle}`,
-												'albums'
-											),
-											label: 'Search Album'
-										}
-									]}
-								/>
-							</li>
-						{/each}
-					</ol>
-				</div>
-			</div>
-		{/if}
-	</section>
-
 	<section class="ui-surface-card library-suggestions-section">
 		<div class="library-suggestions-section__header">
 			<div>
@@ -506,7 +358,15 @@
 			</div>
 		{/if}
 
-		{#if smartError && !hasSmartSuggestions}
+		{#if localError}
+			<PageState
+				kind="error"
+				title="Unable to build API recommendations"
+				message={localError}
+				actionLabel="Retry"
+				onAction={() => refreshSuggestions(true)}
+			/>
+		{:else if smartError && !hasSmartSuggestions}
 			<PageState
 				kind="empty"
 				title="No smart recommendations yet"
@@ -553,45 +413,77 @@
 					<div class="library-suggestions-column__header">
 						<Disc size={16} />
 						<h3>Recommended Albums</h3>
-						</div>
-						<ol class="ui-media-grid ui-media-grid--albums">
-							{#each smartAlbums as recommendation (`album:${recommendation.album.id}`)}
-								{@const recommendedAlbumArtistId =
-									recommendation.album.artist &&
-									Number.isFinite(recommendation.album.artist.id)
-										? recommendation.album.artist.id
-										: null}
-								{@const recommendedAlbumArtistName =
-									recommendation.album.artist?.name || recommendation.album.artists?.[0]?.name || ''}
-								<li>
-									<EntityMediaCard
-										type="album"
-										href={`/album/${recommendation.album.id}`}
-										title={recommendation.album.title}
-										subtitle={recommendedAlbumArtistName}
-										meta={`Score ${recommendation.score.toFixed(1)} · ${recommendation.seedMatches} seed${recommendation.seedMatches === 1 ? '' : 's'}`}
-										imageSrc={getAlbumCoverSrc(recommendation.album.cover)}
-										imageAlt={`Cover for ${recommendation.album.title}`}
-										links={[
-											{ href: `/album/${recommendation.album.id}`, label: 'Album Page' },
-											{
-												href: recommendedAlbumArtistId
-													? `/artist/${recommendedAlbumArtistId}`
-													: buildSearchHref(
-															`${recommendedAlbumArtistName} ${recommendation.album.title}`,
-															'albums'
-														),
-												label: recommendedAlbumArtistId ? 'Artist Page' : 'Search'
-											}
-										]}
-									/>
-								</li>
+					</div>
+					<ol class="ui-media-grid ui-media-grid--albums">
+						{#each smartAlbums as recommendation (`album:${recommendation.album.id}`)}
+							{@const recommendedAlbumArtistId =
+								recommendation.album.artist &&
+								Number.isFinite(recommendation.album.artist.id)
+									? recommendation.album.artist.id
+									: null}
+							{@const recommendedAlbumArtistName =
+								recommendation.album.artist?.name || recommendation.album.artists?.[0]?.name || ''}
+							<li>
+								<EntityMediaCard
+									type="album"
+									href={`/album/${recommendation.album.id}`}
+									title={recommendation.album.title}
+									subtitle={recommendedAlbumArtistName}
+									meta={`Score ${recommendation.score.toFixed(1)} · ${recommendation.seedMatches} seed${recommendation.seedMatches === 1 ? '' : 's'}`}
+									imageSrc={getAlbumCoverSrc(recommendation.album.cover)}
+									imageAlt={`Cover for ${recommendation.album.title}`}
+									links={[
+										{ href: `/album/${recommendation.album.id}`, label: 'Album Page' },
+										{
+											href: recommendedAlbumArtistId
+												? `/artist/${recommendedAlbumArtistId}`
+												: buildSearchHref(
+														`${recommendedAlbumArtistName} ${recommendation.album.title}`,
+														'albums'
+													),
+											label: recommendedAlbumArtistId ? 'Artist Page' : 'Search'
+										}
+									]}
+								/>
+							</li>
 						{/each}
 					</ol>
 				</div>
 			</div>
 		{/if}
 	</section>
+
+	<div class="ui-surface-grid library-suggestions-overview">
+		<article class="ui-surface-card library-suggestions-overview__card">
+			<div class="library-suggestions-overview__heading">
+				<Library size={16} />
+				<p>Local Index</p>
+			</div>
+			<p class="library-suggestions-overview__value">{localArtists.length + localAlbums.length}</p>
+			<p class="library-suggestions-overview__meta">
+				{localArtists.length} artists · {localAlbums.length} albums
+			</p>
+		</article>
+		<article class="ui-surface-card library-suggestions-overview__card">
+			<div class="library-suggestions-overview__heading">
+				<Activity size={16} />
+				<p>Smart API Picks</p>
+			</div>
+			<p class="library-suggestions-overview__value">{smartArtists.length + smartAlbums.length}</p>
+			<p class="library-suggestions-overview__meta">
+				{smartArtists.length} artists · {smartAlbums.length} albums
+			</p>
+		</article>
+		<article class="ui-surface-card library-suggestions-overview__card">
+			<div class="library-suggestions-overview__heading">
+				<RefreshCw size={16} />
+				<p>Index Timestamp</p>
+			</div>
+			<p class="library-suggestions-overview__value library-suggestions-overview__value--small">
+				{scannedAtText}
+			</p>
+		</article>
+	</div>
 </section>
 
 <style>

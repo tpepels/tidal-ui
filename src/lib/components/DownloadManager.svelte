@@ -987,7 +987,7 @@
 
 	{#if pageMode || isOpen}
 		<div
-			class="download-manager-panel"
+			class="download-manager-panel ui-tool-panel ui-tool-panel--flush"
 			class:download-manager-panel--page={pageMode}
 			class:compact-mode={isCompactViewport}
 		>
@@ -1824,7 +1824,7 @@
 		width: 680px;
 		max-height: 80vh;
 		max-height: 80dvh;
-		border-radius: 16px;
+		border-radius: var(--ui-radius-md, 14px);
 		background: var(--color-bg-primary);
 		border: 1px solid var(--color-border);
 		box-shadow: var(--ui-shadow-soft, 0 10px 28px rgba(0, 0, 0, 0.22));

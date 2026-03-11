@@ -996,11 +996,11 @@
 </script>
 
 <div class="settings-layout">
-	<section class="settings-card settings-card--wide">
-		<header class="settings-card__header">
-			<p class="settings-card__eyebrow">Audio</p>
-			<h2 class="settings-card__title">Playback & Metadata</h2>
-			<p class="settings-card__subtitle">
+	<section class="ui-tool-panel ui-tool-panel--wide">
+		<header class="ui-tool-panel__header">
+			<p class="ui-tool-panel__eyebrow">Audio</p>
+			<h2 class="ui-tool-panel__title">Playback & Metadata</h2>
+			<p class="ui-tool-panel__subtitle">
 				Set quality, conversion, and tagging behavior for new downloads.
 			</p>
 		</header>
@@ -1123,11 +1123,11 @@
 		</div>
 	</section>
 
-	<section class="settings-card">
-		<header class="settings-card__header">
-			<p class="settings-card__eyebrow">Downloads</p>
-			<h2 class="settings-card__title">Download Behavior</h2>
-			<p class="settings-card__subtitle">
+	<section class="ui-tool-panel">
+		<header class="ui-tool-panel__header">
+			<p class="ui-tool-panel__eyebrow">Downloads</p>
+			<h2 class="ui-tool-panel__title">Download Behavior</h2>
+			<p class="ui-tool-panel__subtitle">
 				Choose where files are stored and how queue exports are packaged.
 			</p>
 		</header>
@@ -1242,11 +1242,11 @@
 		</div>
 	</section>
 
-	<section class="settings-card">
-		<header class="settings-card__header">
-			<p class="settings-card__eyebrow">Queue</p>
-			<h2 class="settings-card__title">Queue Actions</h2>
-			<p class="settings-card__subtitle">Run queue downloads or export queue links.</p>
+	<section class="ui-tool-panel">
+		<header class="ui-tool-panel__header">
+			<p class="ui-tool-panel__eyebrow">Queue</p>
+			<h2 class="ui-tool-panel__title">Queue Actions</h2>
+			<p class="ui-tool-panel__subtitle">Run queue downloads or export queue links.</p>
 		</header>
 
 		<div class="settings-action-stack">
@@ -1299,11 +1299,11 @@
 		</p>
 	</section>
 
-	<section class="settings-card settings-card--wide">
-		<header class="settings-card__header">
-			<p class="settings-card__eyebrow">System</p>
-			<h2 class="settings-card__title">System & Maintenance</h2>
-			<p class="settings-card__subtitle">Performance, cache hygiene, API health, and library repair tools.</p>
+	<section class="ui-tool-panel ui-tool-panel--wide">
+		<header class="ui-tool-panel__header">
+			<p class="ui-tool-panel__eyebrow">System</p>
+			<h2 class="ui-tool-panel__title">System & Maintenance</h2>
+			<p class="ui-tool-panel__subtitle">Performance, cache hygiene, API health, and library repair tools.</p>
 		</header>
 
 		<div class="settings-system-grid">
@@ -1462,50 +1462,6 @@
 		display: grid;
 		gap: 0.88rem;
 		padding-top: 0.25rem;
-	}
-
-	.settings-card {
-		display: flex;
-		flex-direction: column;
-		gap: 0.88rem;
-		padding: 0.9rem;
-		border-radius: var(--ui-radius-md, 14px);
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: var(--mono-surface-card);
-		box-shadow: var(--ui-shadow-soft, 0 10px 28px rgba(0, 0, 0, 0.22));
-	}
-
-	.settings-card--wide {
-		grid-column: span 1;
-	}
-
-	.settings-card__header {
-		display: flex;
-		flex-direction: column;
-		gap: 0.26rem;
-	}
-
-	.settings-card__eyebrow {
-		margin: 0;
-		font-size: 0.62rem;
-		font-weight: 700;
-		text-transform: uppercase;
-		letter-spacing: 0.2em;
-		color: rgba(212, 212, 212, 0.7);
-	}
-
-	.settings-card__title {
-		margin: 0;
-		font-size: 1rem;
-		line-height: 1.3;
-		color: rgba(245, 245, 245, 0.96);
-	}
-
-	.settings-card__subtitle {
-		margin: 0;
-		font-size: 0.74rem;
-		line-height: 1.35;
-		color: rgba(212, 212, 212, 0.74);
 	}
 
 	.settings-block {
@@ -1790,10 +1746,6 @@
 	@media (min-width: 1024px) {
 		.settings-layout {
 			grid-template-columns: repeat(2, minmax(280px, 1fr));
-		}
-
-		.settings-card--wide {
-			grid-column: span 2;
 		}
 
 		.settings-system-grid {
