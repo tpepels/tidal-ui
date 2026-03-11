@@ -995,392 +995,268 @@
 	}
 </script>
 
-<div class="settings-grid settings-grid--page">
-	<section class="settings-section settings-section--wide">
-		<p class="section-heading">Streaming & Downloads</p>
-		<div class="option-grid">
-			{#each QUALITY_OPTIONS as option (option.value)}
-				<button
-					type="button"
-					onclick={() => selectDownloadQuality(option.value)}
-					class={`glass-option ${option.value === $downloadPreferencesStore.downloadQuality ? 'is-active' : ''} ${option.disabled ? 'cursor-not-allowed opacity-50' : ''}`}
-					aria-pressed={option.value === $downloadPreferencesStore.downloadQuality}
-					disabled={option.disabled}
-				>
-					<div class="glass-option__content">
-						<span class="glass-option__label">{option.label}</span>
-						<span class="glass-option__description">{option.description}</span>
-					</div>
-					{#if option.value === $downloadPreferencesStore.downloadQuality}
-						<Check size={16} class="glass-option__check" />
-					{/if}
-				</button>
-			{/each}
-		</div>
-	</section>
-	<section class="settings-section">
-		<p class="section-heading">Conversions</p>
-		<button
-			type="button"
-			onclick={toggleAacConversion}
-			class={`glass-option ${convertAacToMp3 ? 'is-active' : ''} ${isServerStorage ? 'cursor-not-allowed opacity-50' : ''}`}
-			aria-pressed={convertAacToMp3}
-			disabled={isServerStorage}
-		>
-			<span class="glass-option__content">
-				<span class="glass-option__label">Convert AAC downloads to MP3</span>
-				<span class="glass-option__description">
-					{isServerStorage
-						? 'Client-only. Server downloads keep the original AAC codec.'
-						: 'Applies to 320kbps and 96kbps downloads.'}
-				</span>
-			</span>
-			<span class={`glass-option__chip ${convertAacToMp3 ? 'is-active' : ''}`}>
-				{convertAacToMp3 ? 'On' : 'Off'}
-			</span>
-		</button>
-		<button
-			type="button"
-			onclick={toggleDownloadCoversSeperately}
-			class={`glass-option ${downloadCoversSeperately ? 'is-active' : ''} ${isServerStorage ? 'cursor-not-allowed opacity-50' : ''}`}
-			aria-pressed={downloadCoversSeperately}
-			disabled={isServerStorage}
-		>
-			<span class="glass-option__content">
-				<span class="glass-option__label">Download covers separately</span>
-				<span class="glass-option__description">
-					{isServerStorage
-						? 'Server downloads store cover art next to audio files.'
-						: 'Save cover.jpg alongside audio files.'}
-				</span>
-			</span>
-			<span class={`glass-option__chip ${downloadCoversSeperately ? 'is-active' : ''}`}>
-				{downloadCoversSeperately ? 'On' : 'Off'}
-			</span>
-		</button>
-		<button
-			type="button"
-			onclick={toggleExperimentalMusicBrainzTagging}
-			class={`glass-option ${experimentalMusicBrainzTagging ? 'is-active' : ''}`}
-			aria-pressed={experimentalMusicBrainzTagging}
-		>
-			<span class="glass-option__content">
-				<span class="glass-option__label">Experimental: MusicBrainz tagging & lookup</span>
-				<span class="glass-option__description">
-					Attempt MusicBrainz lookups for album/track IDs and embed extra release metadata. May
-					add latency or occasional mismatches.
-				</span>
-			</span>
-			<span class={`glass-option__chip ${experimentalMusicBrainzTagging ? 'is-active' : ''}`}>
-				{experimentalMusicBrainzTagging ? 'On' : 'Off'}
-			</span>
-		</button>
-		<button
-			type="button"
-			onclick={toggleStrictMusicBrainzMatching}
-			class={`glass-option ${strictMusicBrainzMatching ? 'is-active' : ''} ${!experimentalMusicBrainzTagging ? 'cursor-not-allowed opacity-50' : ''}`}
-			aria-pressed={strictMusicBrainzMatching}
-			disabled={!experimentalMusicBrainzTagging}
-		>
-			<span class="glass-option__content">
-				<span class="glass-option__label">MusicBrainz strict matching (ISRC only)</span>
-				<span class="glass-option__description">
-					Only accept MusicBrainz matches with an exact ISRC. Reduces mismatches but may skip
-					tags when ISRC is missing.
-				</span>
-			</span>
-			<span class={`glass-option__chip ${strictMusicBrainzMatching ? 'is-active' : ''}`}>
-				{strictMusicBrainzMatching ? 'On' : 'Off'}
-			</span>
-		</button>
-	</section>
-	<section class="settings-section">
-		<p class="section-heading">Queue exports</p>
-		<div class="option-grid option-grid--compact">
-			<button
-				type="button"
-				onclick={() => setDownloadMode('individual')}
-				class={`glass-option glass-option--compact ${downloadMode === 'individual' ? 'is-active' : ''}`}
-				aria-pressed={downloadMode === 'individual'}
-			>
-				<span class="glass-option__content">
-					<span class="glass-option__label">
-						<Download size={16} />
-						<span>Individual files</span>
-					</span>
-				</span>
-				{#if downloadMode === 'individual'}
-					<Check size={14} class="glass-option__check" />
-				{/if}
-			</button>
-			<button
-				type="button"
-				onclick={() => setDownloadMode('zip')}
-				class={`glass-option glass-option--compact ${downloadMode === 'zip' ? 'is-active' : ''} ${isServerStorage ? 'cursor-not-allowed opacity-50' : ''}`}
-				aria-pressed={downloadMode === 'zip'}
-				disabled={isServerStorage}
-			>
-				<span class="glass-option__content">
-					<span class="glass-option__label">
-						<Archive size={16} />
-						<span>ZIP archive</span>
-					</span>
-				</span>
-				{#if downloadMode === 'zip'}
-					<Check size={14} class="glass-option__check" />
-				{/if}
-			</button>
-			<button
-				type="button"
-				onclick={() => setDownloadMode('csv')}
-				class={`glass-option glass-option--compact ${downloadMode === 'csv' ? 'is-active' : ''} ${isServerStorage ? 'cursor-not-allowed opacity-50' : ''}`}
-				aria-pressed={downloadMode === 'csv'}
-				disabled={isServerStorage}
-			>
-				<span class="glass-option__content">
-					<span class="glass-option__label">
-						<FileSpreadsheet size={16} />
-						<span>Export links</span>
-					</span>
-				</span>
-				{#if downloadMode === 'csv'}
-					<Check size={14} class="glass-option__check" />
-				{/if}
-			</button>
-		</div>
-		{#if isServerStorage}
-			<p class="section-footnote">
-				Server downloads are saved as individual files. ZIP and CSV exports are client-only.
+<div class="settings-layout">
+	<section class="settings-card settings-card--wide">
+		<header class="settings-card__header">
+			<p class="settings-card__eyebrow">Audio</p>
+			<h2 class="settings-card__title">Playback & Metadata</h2>
+			<p class="settings-card__subtitle">
+				Set quality, conversion, and tagging behavior for new downloads.
 			</p>
-		{/if}
-	</section>
-	<section class="settings-section">
-		<p class="section-heading">Download Storage</p>
-		<div class="option-grid option-grid--compact">
-			<button
-				type="button"
-				onclick={() => setDownloadStorage('client')}
-				class={`glass-option glass-option--compact ${$downloadPreferencesStore.storage === 'client' ? 'is-active' : ''}`}
-				aria-pressed={$downloadPreferencesStore.storage === 'client'}
-			>
-				<span class="glass-option__content">
-					<span class="glass-option__label">
-						<Download size={16} />
-						<span>Client-side</span>
-					</span>
-				</span>
-				{#if $downloadPreferencesStore.storage === 'client'}
-					<Check size={14} class="glass-option__check" />
-				{/if}
-			</button>
-			<button
-				type="button"
-				onclick={() => setDownloadStorage('server')}
-				class={`glass-option glass-option--compact ${$downloadPreferencesStore.storage === 'server' ? 'is-active' : ''}`}
-				aria-pressed={$downloadPreferencesStore.storage === 'server'}
-			>
-				<span class="glass-option__content">
-					<span class="glass-option__label">
-						<Download size={16} />
-						<span>Server-side</span>
-					</span>
-				</span>
-				{#if $downloadPreferencesStore.storage === 'server'}
-					<Check size={14} class="glass-option__check" />
-				{/if}
-			</button>
+		</header>
+
+		<div class="settings-block">
+			<p class="settings-block__label">Preferred download quality</p>
+			<div class="settings-choice-grid settings-choice-grid--quality">
+				{#each QUALITY_OPTIONS as option (option.value)}
+					<button
+						type="button"
+						onclick={() => selectDownloadQuality(option.value)}
+						class={`settings-choice ${option.value === $downloadPreferencesStore.downloadQuality ? 'is-active' : ''} ${option.disabled ? 'is-disabled' : ''}`}
+						aria-pressed={option.value === $downloadPreferencesStore.downloadQuality}
+						disabled={option.disabled}
+					>
+						<span class="settings-choice__copy">
+							<span class="settings-choice__title">{option.label}</span>
+							<span class="settings-choice__description">{option.description}</span>
+						</span>
+						{#if option.value === $downloadPreferencesStore.downloadQuality}
+							<Check size={16} class="settings-choice__check" />
+						{/if}
+					</button>
+				{/each}
+			</div>
 		</div>
-		<p class="section-footnote">
-			{isServerStorage
-				? 'Files are saved on the server disk. Use Download Log for path and status.'
-				: 'Downloads are saved to your browser.'}
-		</p>
-	</section>
-	<section class="settings-section">
-		<p class="section-heading">Operations</p>
-		<div class="option-grid">
-			<a href="/download-center" class="glass-option glass-option--wide glass-option--primary">
-				<span class="glass-option__content">
-					<span class="glass-option__label">Open Download Center</span>
-					<span class="glass-option__description">Live queue controls and retry workflows.</span>
-				</span>
-			</a>
-			<a href="/download-log" class="glass-option glass-option--wide glass-option--primary">
-				<span class="glass-option__content">
-					<span class="glass-option__label">Open Download Log</span>
-					<span class="glass-option__description">
-						{isServerStorage
-							? 'View server download status and file locations.'
-							: 'View real-time download progress and logs.'}
-					</span>
-				</span>
-			</a>
-			<a href="/status" class="glass-option glass-option--wide glass-option--primary">
-				<span class="glass-option__content">
-					<span class="glass-option__label">Open Status Page</span>
-					<span class="glass-option__description">Diagnostics, health checks, and queue metrics.</span>
-				</span>
-			</a>
-		</div>
-	</section>
-	<section class="settings-section">
-		<ApiTargetsStatusCard
-			title="API Status"
-			status={statusTargets}
-			loading={apiTargetsStatusLoading}
-			lastUpdatedAt={statusLastUpdatedAt}
-			onRefresh={() => void refreshTargetsStatus(true)}
-		/>
-	</section>
-	<section class="settings-section">
-		<p class="section-heading">Performance Mode</p>
-		<div class="option-grid option-grid--compact">
-			{#each PERFORMANCE_OPTIONS as option (option.value)}
+
+		<div class="settings-block">
+			<p class="settings-block__label">Conversion & tagging</p>
+			<div class="settings-toggle-list">
 				<button
 					type="button"
-					onclick={() => setPerformanceMode(option.value)}
-					class={`glass-option glass-option--compact ${option.value === $userPreferencesStore.performanceMode ? 'is-active' : ''}`}
-					aria-pressed={option.value === $userPreferencesStore.performanceMode}
+					onclick={toggleAacConversion}
+					class={`settings-toggle ${convertAacToMp3 ? 'is-active' : ''} ${isServerStorage ? 'is-disabled' : ''}`}
+					aria-pressed={convertAacToMp3}
+					disabled={isServerStorage}
 				>
-					<div class="glass-option__content">
-						<span class="glass-option__label">{option.label}</span>
-					</div>
-					{#if option.value === $userPreferencesStore.performanceMode}
-						<Check size={14} class="glass-option__check" />
-					{/if}
+					<span class="settings-toggle__copy">
+						<span class="settings-toggle__title">Convert AAC downloads to MP3</span>
+						<span class="settings-toggle__description">
+							{isServerStorage
+								? 'Client-only. Server downloads keep the original AAC codec.'
+								: 'Applies to 320kbps and 96kbps downloads.'}
+						</span>
+					</span>
+					<span class="settings-toggle__control">
+						<span class="settings-toggle__state">{convertAacToMp3 ? 'On' : 'Off'}</span>
+						<span class={`settings-toggle__switch ${convertAacToMp3 ? 'is-active' : ''}`}>
+							<span class="settings-toggle__thumb"></span>
+						</span>
+					</span>
 				</button>
-			{/each}
+
+				<button
+					type="button"
+					onclick={toggleDownloadCoversSeperately}
+					class={`settings-toggle ${downloadCoversSeperately ? 'is-active' : ''} ${isServerStorage ? 'is-disabled' : ''}`}
+					aria-pressed={downloadCoversSeperately}
+					disabled={isServerStorage}
+				>
+					<span class="settings-toggle__copy">
+						<span class="settings-toggle__title">Download covers separately</span>
+						<span class="settings-toggle__description">
+							{isServerStorage
+								? 'Server downloads store cover art next to audio files.'
+								: 'Save cover.jpg alongside audio files.'}
+						</span>
+					</span>
+					<span class="settings-toggle__control">
+						<span class="settings-toggle__state">{downloadCoversSeperately ? 'On' : 'Off'}</span>
+						<span class={`settings-toggle__switch ${downloadCoversSeperately ? 'is-active' : ''}`}>
+							<span class="settings-toggle__thumb"></span>
+						</span>
+					</span>
+				</button>
+
+				<button
+					type="button"
+					onclick={toggleExperimentalMusicBrainzTagging}
+					class={`settings-toggle ${experimentalMusicBrainzTagging ? 'is-active' : ''}`}
+					aria-pressed={experimentalMusicBrainzTagging}
+				>
+					<span class="settings-toggle__copy">
+						<span class="settings-toggle__title">Experimental MusicBrainz lookup & tagging</span>
+						<span class="settings-toggle__description">
+							Look up release/track metadata in MusicBrainz and embed extra tags. Can add
+							latency and may produce occasional mismatches.
+						</span>
+					</span>
+					<span class="settings-toggle__control">
+						<span class="settings-toggle__state">{experimentalMusicBrainzTagging ? 'On' : 'Off'}</span>
+						<span class={`settings-toggle__switch ${experimentalMusicBrainzTagging ? 'is-active' : ''}`}>
+							<span class="settings-toggle__thumb"></span>
+						</span>
+					</span>
+				</button>
+
+				<button
+					type="button"
+					onclick={toggleStrictMusicBrainzMatching}
+					class={`settings-toggle ${strictMusicBrainzMatching ? 'is-active' : ''} ${!experimentalMusicBrainzTagging ? 'is-disabled' : ''}`}
+					aria-pressed={strictMusicBrainzMatching}
+					disabled={!experimentalMusicBrainzTagging}
+				>
+					<span class="settings-toggle__copy">
+						<span class="settings-toggle__title">Strict MusicBrainz matching (ISRC-only)</span>
+						<span class="settings-toggle__description">
+							Only accept matches with exact ISRC values. Reduces false matches but may skip
+							tagging when ISRC is unavailable.
+						</span>
+					</span>
+					<span class="settings-toggle__control">
+						<span class="settings-toggle__state">{strictMusicBrainzMatching ? 'On' : 'Off'}</span>
+						<span class={`settings-toggle__switch ${strictMusicBrainzMatching ? 'is-active' : ''}`}>
+							<span class="settings-toggle__thumb"></span>
+						</span>
+					</span>
+				</button>
+			</div>
 		</div>
 	</section>
-	<section class="settings-section">
-		<p class="section-heading">Cache</p>
-		<button type="button" onclick={handleClearCaches} class="glass-option glass-option--wide" disabled={isCacheClearing}>
-			<span class="glass-option__content">
-				<span class="glass-option__label">
-					<Trash2 size={16} />
-					<span>{isCacheClearing ? 'Clearing cache...' : 'Clear app cache'}</span>
-				</span>
-				<span class="glass-option__description">
-					Clears artist discography cache, official TIDAL enrichment cache, and proxied cover cache.
-				</span>
-			</span>
-			{#if isCacheClearing}
-				<LoaderCircle size={16} class="glass-option__check animate-spin" />
+
+	<section class="settings-card">
+		<header class="settings-card__header">
+			<p class="settings-card__eyebrow">Downloads</p>
+			<h2 class="settings-card__title">Download Behavior</h2>
+			<p class="settings-card__subtitle">
+				Choose where files are stored and how queue exports are packaged.
+			</p>
+		</header>
+
+		<div class="settings-block">
+			<p class="settings-block__label">Download target</p>
+			<div class="settings-choice-grid settings-choice-grid--compact">
+				<button
+					type="button"
+					onclick={() => setDownloadStorage('client')}
+					class={`settings-choice settings-choice--compact ${$downloadPreferencesStore.storage === 'client' ? 'is-active' : ''}`}
+					aria-pressed={$downloadPreferencesStore.storage === 'client'}
+				>
+					<span class="settings-choice__copy">
+						<span class="settings-choice__title">
+							<Download size={16} />
+							<span>Client-side</span>
+						</span>
+						<span class="settings-choice__description">Download to this browser/device.</span>
+					</span>
+					{#if $downloadPreferencesStore.storage === 'client'}
+						<Check size={14} class="settings-choice__check" />
+					{/if}
+				</button>
+				<button
+					type="button"
+					onclick={() => setDownloadStorage('server')}
+					class={`settings-choice settings-choice--compact ${$downloadPreferencesStore.storage === 'server' ? 'is-active' : ''}`}
+					aria-pressed={$downloadPreferencesStore.storage === 'server'}
+				>
+					<span class="settings-choice__copy">
+						<span class="settings-choice__title">
+							<Download size={16} />
+							<span>Server-side</span>
+						</span>
+						<span class="settings-choice__description">Save files directly on server disk.</span>
+					</span>
+					{#if $downloadPreferencesStore.storage === 'server'}
+						<Check size={14} class="settings-choice__check" />
+					{/if}
+				</button>
+			</div>
+			<p class="settings-block__note">
+				{isServerStorage
+					? 'Files are saved on the server. Use Download Log for status and resolved paths.'
+					: 'Files are downloaded to your browser.'}
+			</p>
+		</div>
+
+		<div class="settings-block">
+			<p class="settings-block__label">Queue export format</p>
+			<div class="settings-choice-grid settings-choice-grid--compact">
+				<button
+					type="button"
+					onclick={() => setDownloadMode('individual')}
+					class={`settings-choice settings-choice--compact ${downloadMode === 'individual' ? 'is-active' : ''}`}
+					aria-pressed={downloadMode === 'individual'}
+				>
+					<span class="settings-choice__copy">
+						<span class="settings-choice__title">
+							<Download size={16} />
+							<span>Individual</span>
+						</span>
+						<span class="settings-choice__description">One file per track.</span>
+					</span>
+					{#if downloadMode === 'individual'}
+						<Check size={14} class="settings-choice__check" />
+					{/if}
+				</button>
+				<button
+					type="button"
+					onclick={() => setDownloadMode('zip')}
+					class={`settings-choice settings-choice--compact ${downloadMode === 'zip' ? 'is-active' : ''} ${isServerStorage ? 'is-disabled' : ''}`}
+					aria-pressed={downloadMode === 'zip'}
+					disabled={isServerStorage}
+				>
+					<span class="settings-choice__copy">
+						<span class="settings-choice__title">
+							<Archive size={16} />
+							<span>ZIP archive</span>
+						</span>
+						<span class="settings-choice__description">Bundle queue into one zip.</span>
+					</span>
+					{#if downloadMode === 'zip'}
+						<Check size={14} class="settings-choice__check" />
+					{/if}
+				</button>
+				<button
+					type="button"
+					onclick={() => setDownloadMode('csv')}
+					class={`settings-choice settings-choice--compact ${downloadMode === 'csv' ? 'is-active' : ''} ${isServerStorage ? 'is-disabled' : ''}`}
+					aria-pressed={downloadMode === 'csv'}
+					disabled={isServerStorage}
+				>
+					<span class="settings-choice__copy">
+						<span class="settings-choice__title">
+							<FileSpreadsheet size={16} />
+							<span>CSV links</span>
+						</span>
+						<span class="settings-choice__description">Export track links only.</span>
+					</span>
+					{#if downloadMode === 'csv'}
+						<Check size={14} class="settings-choice__check" />
+					{/if}
+				</button>
+			</div>
+			{#if isServerStorage}
+				<p class="settings-block__note">
+					Server downloads always run as individual files. ZIP and CSV exports are client-only.
+				</p>
 			{/if}
-		</button>
+		</div>
 	</section>
-	<section class="settings-section">
-		<p class="section-heading">Library Maintenance</p>
-		<button
-			type="button"
-			onclick={handleFullLibraryRepair}
-			class="glass-option glass-option--wide glass-option--primary"
-			disabled={isFullLibraryRepairing || isLibraryTransientSweeping || isLibraryDeduplicating || isCorrectionDedupRunning}
-			aria-busy={isFullLibraryRepairing}
-		>
-			<span class="glass-option__content">
-				<span class="glass-option__label">
-					<Download size={16} />
-					<span>{isFullLibraryRepairing ? 'Auto-repair running…' : 'Auto-repair full library'}</span>
-				</span>
-				<span class="glass-option__description">
-					Scans all local albums, validates integrity, and queues corrupt tracks for repair.
-				</span>
-			</span>
-			{#if isFullLibraryRepairing}
-				<LoaderCircle size={16} class="glass-option__check animate-spin" />
-			{/if}
-		</button>
-		{#if fullLibraryRepairSummary}
-			<p class="section-footnote">{fullLibraryRepairSummary}</p>
-		{/if}
-		{#if fullLibraryRepairProgress}
-			<p class="section-footnote">{fullLibraryRepairProgress}</p>
-		{/if}
 
-		<button
-			type="button"
-			onclick={handleSweepTransientArtifacts}
-			class="glass-option glass-option--wide"
-			disabled={isLibraryTransientSweeping || isFullLibraryRepairing || isLibraryDeduplicating || isCorrectionDedupRunning}
-			aria-busy={isLibraryTransientSweeping}
-		>
-			<span class="glass-option__content">
-				<span class="glass-option__label">
-					<Trash2 size={16} />
-					<span>{isLibraryTransientSweeping ? 'Sweeping temporary folders…' : 'Sweep stale publish/backup folders'}</span>
-				</span>
-				<span class="glass-option__description">
-					Deletes leftover `*.publishing-*` and `*.backup-*` album folders from interrupted server downloads.
-				</span>
-			</span>
-			{#if isLibraryTransientSweeping}
-				<LoaderCircle size={16} class="glass-option__check animate-spin" />
-			{/if}
-		</button>
-		{#if libraryTransientSweepSummary}
-			<p class="section-footnote">{libraryTransientSweepSummary}</p>
-		{/if}
+	<section class="settings-card">
+		<header class="settings-card__header">
+			<p class="settings-card__eyebrow">Queue</p>
+			<h2 class="settings-card__title">Queue Actions</h2>
+			<p class="settings-card__subtitle">Run queue downloads or export queue links.</p>
+		</header>
 
-		<button
-			type="button"
-			onclick={handleCorrectionSweepThenDedupe}
-			class="glass-option glass-option--wide"
-			disabled={isCorrectionDedupRunning || isFullLibraryRepairing || isLibraryTransientSweeping || isLibraryDeduplicating}
-			aria-busy={isCorrectionDedupRunning}
-		>
-			<span class="glass-option__content">
-				<span class="glass-option__label">
-					<Trash2 size={16} />
-					<span>{isCorrectionDedupRunning ? 'Running correction + dedupe…' : 'Correction sweep + dedupe'}</span>
-				</span>
-				<span class="glass-option__description">
-					First sweeps stale publish/backup folders, then runs full library deduplication with a final report.
-				</span>
-			</span>
-			{#if isCorrectionDedupRunning}
-				<LoaderCircle size={16} class="glass-option__check animate-spin" />
-			{/if}
-		</button>
-		{#if correctionDedupSummary}
-			<p class="section-footnote">{correctionDedupSummary}</p>
-		{/if}
-		{#if correctionDedupProgress}
-			<p class="section-footnote">{correctionDedupProgress}</p>
-		{/if}
-
-		<button
-			type="button"
-			onclick={handleLibraryDeduplicate}
-			class="glass-option glass-option--wide"
-			disabled={isLibraryDeduplicating || isFullLibraryRepairing || isLibraryTransientSweeping || isCorrectionDedupRunning}
-			aria-busy={isLibraryDeduplicating}
-		>
-			<span class="glass-option__content">
-				<span class="glass-option__label">
-					<Trash2 size={16} />
-					<span>{isLibraryDeduplicating ? 'Consolidating duplicates…' : 'Consolidate duplicate album files'}</span>
-				</span>
-				<span class="glass-option__description">
-					Merges duplicate album folders and keeps the healthiest/full-length duplicate track variant.
-				</span>
-			</span>
-			{#if isLibraryDeduplicating}
-				<LoaderCircle size={16} class="glass-option__check animate-spin" />
-			{/if}
-		</button>
-		{#if libraryDeduplicateSummary}
-			<p class="section-footnote">{libraryDeduplicateSummary}</p>
-		{/if}
-		{#if libraryDeduplicateProgress}
-			<p class="section-footnote">{libraryDeduplicateProgress}</p>
-		{/if}
-	</section>
-	<section class="settings-section settings-section--bordered settings-section--wide">
-		<p class="section-heading">Queue actions</p>
-		<div class="actions-column">
-			<button onclick={handleQueueDownload} type="button" class="glass-action" disabled={queueActionBusy}>
-				<span class="glass-action__label">
+		<div class="settings-action-stack">
+			<button
+				onclick={handleQueueDownload}
+				type="button"
+				class="settings-action settings-action--primary"
+				disabled={queueActionBusy}
+			>
+				<span class="settings-action__label">
 					{#if isServerStorage}
 						<Download size={16} />
 						<span>Save queue to server</span>
@@ -1396,245 +1272,547 @@
 					{/if}
 				</span>
 				{#if queueActionBusy}
-					<LoaderCircle size={16} class="glass-action__spinner" />
+					<LoaderCircle size={16} class="settings-action__spinner animate-spin" />
 				{/if}
 			</button>
 			{#if !isServerStorage}
-				<button onclick={handleExportQueueCsv} type="button" class="glass-action" disabled={isCsvExporting}>
-					<span class="glass-action__label">
+				<button
+					onclick={handleExportQueueCsv}
+					type="button"
+					class="settings-action"
+					disabled={isCsvExporting}
+				>
+					<span class="settings-action__label">
 						<FileSpreadsheet size={16} />
 						<span>Export links as CSV</span>
 					</span>
 					{#if isCsvExporting}
-						<LoaderCircle size={16} class="glass-action__spinner" />
+						<LoaderCircle size={16} class="settings-action__spinner animate-spin" />
 					{/if}
 				</button>
 			{/if}
 		</div>
-		<p class="section-footnote">
+		<p class="settings-block__note">
 			{isServerStorage
-				? 'Server saves use individual files and keep your browser clean. Use the Download Log to track progress and see the server path.'
-				: 'Queue actions follow your selection above. ZIP bundles require at least two tracks, while CSV exports capture the track links without downloading audio.'}
+				? 'Server saves run in the background and avoid browser download prompts.'
+				: 'Queue actions follow your selected format. ZIP bundles need at least two tracks.'}
 		</p>
+	</section>
+
+	<section class="settings-card settings-card--wide">
+		<header class="settings-card__header">
+			<p class="settings-card__eyebrow">System</p>
+			<h2 class="settings-card__title">System & Maintenance</h2>
+			<p class="settings-card__subtitle">Performance, cache hygiene, API health, and library repair tools.</p>
+		</header>
+
+		<div class="settings-system-grid">
+			<div class="settings-block">
+				<p class="settings-block__label">API target health</p>
+				<ApiTargetsStatusCard
+					title="API Status"
+					status={statusTargets}
+					loading={apiTargetsStatusLoading}
+					lastUpdatedAt={statusLastUpdatedAt}
+					onRefresh={() => void refreshTargetsStatus(true)}
+				/>
+			</div>
+
+			<div class="settings-block">
+				<p class="settings-block__label">Performance mode</p>
+				<div class="settings-choice-grid settings-choice-grid--compact">
+					{#each PERFORMANCE_OPTIONS as option (option.value)}
+						<button
+							type="button"
+							onclick={() => setPerformanceMode(option.value)}
+							class={`settings-choice settings-choice--compact ${option.value === $userPreferencesStore.performanceMode ? 'is-active' : ''}`}
+							aria-pressed={option.value === $userPreferencesStore.performanceMode}
+						>
+							<span class="settings-choice__copy">
+								<span class="settings-choice__title">{option.label}</span>
+								<span class="settings-choice__description">{option.description}</span>
+							</span>
+							{#if option.value === $userPreferencesStore.performanceMode}
+								<Check size={14} class="settings-choice__check" />
+							{/if}
+						</button>
+					{/each}
+				</div>
+			</div>
+
+			<div class="settings-block">
+				<p class="settings-block__label">Cache</p>
+				<button
+					type="button"
+					onclick={handleClearCaches}
+					class="settings-action"
+					disabled={isCacheClearing}
+				>
+					<span class="settings-action__label">
+						<Trash2 size={16} />
+						<span>{isCacheClearing ? 'Clearing cache…' : 'Clear app cache'}</span>
+					</span>
+					{#if isCacheClearing}
+						<LoaderCircle size={16} class="settings-action__spinner animate-spin" />
+					{/if}
+				</button>
+				<p class="settings-block__note">
+					Clears artist/discography cache, enrichment cache, and proxied cover cache.
+				</p>
+			</div>
+
+			<div class="settings-block settings-block--full">
+				<p class="settings-block__label">Library maintenance actions</p>
+				<div class="settings-action-stack">
+					<button
+						type="button"
+						onclick={handleFullLibraryRepair}
+						class="settings-action settings-action--primary"
+						disabled={isFullLibraryRepairing || isLibraryTransientSweeping || isLibraryDeduplicating || isCorrectionDedupRunning}
+						aria-busy={isFullLibraryRepairing}
+					>
+						<span class="settings-action__label">
+							<Download size={16} />
+							<span>{isFullLibraryRepairing ? 'Auto-repair running…' : 'Auto-repair full library'}</span>
+						</span>
+						{#if isFullLibraryRepairing}
+							<LoaderCircle size={16} class="settings-action__spinner animate-spin" />
+						{/if}
+					</button>
+
+					<button
+						type="button"
+						onclick={handleSweepTransientArtifacts}
+						class="settings-action"
+						disabled={isLibraryTransientSweeping || isFullLibraryRepairing || isLibraryDeduplicating || isCorrectionDedupRunning}
+						aria-busy={isLibraryTransientSweeping}
+					>
+						<span class="settings-action__label">
+							<Trash2 size={16} />
+							<span>{isLibraryTransientSweeping ? 'Sweeping temporary folders…' : 'Sweep stale publish/backup folders'}</span>
+						</span>
+						{#if isLibraryTransientSweeping}
+							<LoaderCircle size={16} class="settings-action__spinner animate-spin" />
+						{/if}
+					</button>
+
+					<button
+						type="button"
+						onclick={handleCorrectionSweepThenDedupe}
+						class="settings-action"
+						disabled={isCorrectionDedupRunning || isFullLibraryRepairing || isLibraryTransientSweeping || isLibraryDeduplicating}
+						aria-busy={isCorrectionDedupRunning}
+					>
+						<span class="settings-action__label">
+							<Activity size={16} />
+							<span>{isCorrectionDedupRunning ? 'Running correction + dedupe…' : 'Correction sweep + dedupe'}</span>
+						</span>
+						{#if isCorrectionDedupRunning}
+							<LoaderCircle size={16} class="settings-action__spinner animate-spin" />
+						{/if}
+					</button>
+
+					<button
+						type="button"
+						onclick={handleLibraryDeduplicate}
+						class="settings-action"
+						disabled={isLibraryDeduplicating || isFullLibraryRepairing || isLibraryTransientSweeping || isCorrectionDedupRunning}
+						aria-busy={isLibraryDeduplicating}
+					>
+						<span class="settings-action__label">
+							<Trash2 size={16} />
+							<span>{isLibraryDeduplicating ? 'Consolidating duplicates…' : 'Consolidate duplicate album files'}</span>
+						</span>
+						{#if isLibraryDeduplicating}
+							<LoaderCircle size={16} class="settings-action__spinner animate-spin" />
+						{/if}
+					</button>
+				</div>
+
+				<div class="settings-feedback">
+					{#if fullLibraryRepairSummary}
+						<p>{fullLibraryRepairSummary}</p>
+					{/if}
+					{#if fullLibraryRepairProgress}
+						<p>{fullLibraryRepairProgress}</p>
+					{/if}
+					{#if libraryTransientSweepSummary}
+						<p>{libraryTransientSweepSummary}</p>
+					{/if}
+					{#if correctionDedupSummary}
+						<p>{correctionDedupSummary}</p>
+					{/if}
+					{#if correctionDedupProgress}
+						<p>{correctionDedupProgress}</p>
+					{/if}
+					{#if libraryDeduplicateSummary}
+						<p>{libraryDeduplicateSummary}</p>
+					{/if}
+					{#if libraryDeduplicateProgress}
+						<p>{libraryDeduplicateProgress}</p>
+					{/if}
+				</div>
+			</div>
+		</div>
 	</section>
 </div>
 
 <style>
-	.settings-grid {
+	.settings-layout {
 		display: grid;
-		gap: 0.85rem;
-	}
-
-	.settings-grid--page {
+		gap: 0.88rem;
 		padding-top: 0.25rem;
 	}
 
-	.settings-section {
+	.settings-card {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
-		padding: 0.72rem 0.78rem;
+		gap: 0.88rem;
+		padding: 0.9rem;
 		border-radius: var(--ui-radius-md, 14px);
 		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+		background: var(--mono-surface-card);
 		box-shadow: var(--ui-shadow-soft, 0 10px 28px rgba(0, 0, 0, 0.22));
 	}
 
-	.settings-section--wide {
+	.settings-card--wide {
 		grid-column: span 1;
 	}
 
-	.section-heading {
+	.settings-card__header {
+		display: flex;
+		flex-direction: column;
+		gap: 0.26rem;
+	}
+
+	.settings-card__eyebrow {
+		margin: 0;
 		font-size: 0.62rem;
+		font-weight: 700;
 		text-transform: uppercase;
 		letter-spacing: 0.2em;
-		font-weight: 700;
-		margin: 0;
 		color: rgba(212, 212, 212, 0.7);
 	}
 
-	.option-grid {
-		display: grid;
-		gap: 0.45rem;
+	.settings-card__title {
+		margin: 0;
+		font-size: 1rem;
+		line-height: 1.3;
+		color: rgba(245, 245, 245, 0.96);
 	}
 
-	.option-grid--compact {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-		gap: 0.4rem;
+	.settings-card__subtitle {
+		margin: 0;
+		font-size: 0.74rem;
+		line-height: 1.35;
+		color: rgba(212, 212, 212, 0.74);
 	}
 
-	.glass-option {
-		position: relative;
+	.settings-block {
 		display: flex;
-		align-items: center;
+		flex-direction: column;
+		gap: 0.54rem;
+	}
+
+	.settings-block--full {
+		grid-column: 1 / -1;
+	}
+
+	.settings-block__label {
+		margin: 0;
+		font-size: 0.66rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.13em;
+		color: rgba(212, 212, 212, 0.78);
+	}
+
+	.settings-block__note {
+		margin: 0;
+		font-size: 0.68rem;
+		line-height: 1.4;
+		color: rgba(212, 212, 212, 0.72);
+	}
+
+	.settings-choice-grid {
+		display: grid;
+		gap: 0.48rem;
+	}
+
+	.settings-choice-grid--quality {
+		grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+	}
+
+	.settings-choice-grid--compact {
+		grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+	}
+
+	.settings-choice {
+		display: flex;
+		align-items: flex-start;
 		justify-content: space-between;
-		gap: 0.6rem;
-		border-radius: var(--ui-radius-md, 14px);
+		gap: 0.62rem;
+		width: 100%;
+		min-height: 4.25rem;
+		padding: 0.7rem 0.82rem;
+		border-radius: 12px;
 		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
-		padding: 0.56rem 0.7rem;
 		color: inherit;
-		text-decoration: none;
-		font-size: 0.8rem;
-		cursor: pointer;
 		text-align: left;
-		transition: border-color 140ms ease, background 140ms ease, box-shadow 160ms ease;
+		cursor: pointer;
+		transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
 		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 	}
 
-	.glass-option--compact {
-		padding: 0.45rem 0.6rem;
-		gap: 0.5rem;
-		border-radius: 10px;
+	.settings-choice--compact {
+		min-height: 3.2rem;
 	}
 
-	.glass-option--compact .glass-option__label {
-		font-size: 0.75rem;
-		font-weight: 600;
-	}
-
-	.glass-option--compact .glass-option__description {
-		display: none;
-	}
-
-	.glass-option:hover {
-		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
-		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+	.settings-choice:hover:not(:disabled) {
 		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
 	}
 
-	.glass-option.is-active {
+	.settings-choice.is-active {
 		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
 		background: var(--ui-surface-2, rgba(255, 255, 255, 0.09));
-		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 	}
 
-	.glass-option__content {
-		display: flex;
-		flex-direction: column;
-		gap: 0.2rem;
-	}
-
-	.glass-option__label {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.45rem;
-		font-weight: 600;
-		font-size: 0.8rem;
-	}
-
-	.glass-option__description {
-		font-size: 0.68rem;
-		opacity: 0.74;
-		line-height: 1.3;
-	}
-
-	.glass-option__check {
-		color: rgba(245, 245, 245, 0.95);
-		flex-shrink: 0;
-	}
-
-	.glass-option__chip {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 0.66rem;
-		letter-spacing: 0.16em;
-		text-transform: uppercase;
-		padding: 0.2rem 0.55rem;
-		border-radius: 999px;
-		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		color: rgba(236, 236, 236, 0.9);
-		flex-shrink: 0;
-	}
-
-	.glass-option__chip.is-active {
-		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		color: rgba(245, 245, 245, 0.98);
-		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
-	}
-
-	.settings-section--bordered {
-		padding-top: 0.65rem;
-		border-top: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-	}
-
-	.actions-column {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-
-	.glass-action {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.85rem;
-		border-radius: var(--ui-radius-md, 14px);
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
-		padding: 0.74rem 0.95rem;
-		font-size: 0.8rem;
-		font-weight: 600;
-		color: inherit;
-		cursor: pointer;
-		transition: border-color 140ms ease, background 140ms ease, box-shadow 160ms ease;
-		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-	}
-
-	.glass-action:disabled {
-		opacity: 0.6;
+	.settings-choice.is-disabled {
+		opacity: 0.54;
 		cursor: not-allowed;
 	}
 
-	.glass-action:hover:not(:disabled) {
-		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
-		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+	.settings-choice__copy {
+		display: flex;
+		flex-direction: column;
+		gap: 0.22rem;
+		min-width: 0;
 	}
 
-	.glass-action__label {
+	.settings-choice__title {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.55rem;
+		gap: 0.44rem;
+		font-size: 0.82rem;
+		font-weight: 650;
+		line-height: 1.3;
+		color: rgba(245, 245, 245, 0.95);
 	}
 
-	.glass-action__spinner {
-		animation: spin 1s linear infinite;
-		color: rgba(212, 212, 212, 0.85);
+	.settings-choice__description {
+		font-size: 0.68rem;
+		line-height: 1.35;
+		color: rgba(212, 212, 212, 0.78);
 	}
 
-	.section-footnote {
+	.settings-choice__check {
+		flex-shrink: 0;
+		margin-top: 0.08rem;
+		color: rgba(245, 245, 245, 0.98);
+	}
+
+	.settings-toggle-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.52rem;
+	}
+
+	.settings-toggle {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.8rem;
+		width: 100%;
+		min-height: 4.55rem;
+		padding: 0.74rem 0.84rem;
+		border-radius: 12px;
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		color: inherit;
+		text-align: left;
+		cursor: pointer;
+		transition: border-color 140ms ease, background 140ms ease;
+	}
+
+	.settings-toggle:hover:not(:disabled) {
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+	}
+
+	.settings-toggle.is-active {
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+		background: var(--ui-surface-2, rgba(255, 255, 255, 0.09));
+	}
+
+	.settings-toggle.is-disabled {
+		opacity: 0.54;
+		cursor: not-allowed;
+	}
+
+	.settings-toggle__copy {
+		display: flex;
+		flex-direction: column;
+		gap: 0.24rem;
+		min-width: 0;
+	}
+
+	.settings-toggle__title {
+		font-size: 0.84rem;
+		font-weight: 650;
+		line-height: 1.3;
+		color: rgba(245, 245, 245, 0.95);
+	}
+
+	.settings-toggle__description {
+		font-size: 0.69rem;
+		line-height: 1.35;
+		color: rgba(212, 212, 212, 0.78);
+	}
+
+	.settings-toggle__control {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex-shrink: 0;
+	}
+
+	.settings-toggle__state {
+		min-width: 1.9rem;
+		text-align: right;
+		font-size: 0.67rem;
+		font-weight: 700;
+		letter-spacing: 0.13em;
+		text-transform: uppercase;
+		color: rgba(212, 212, 212, 0.8);
+	}
+
+	.settings-toggle__switch {
+		display: inline-flex;
+		align-items: center;
+		width: 3rem;
+		height: 1.72rem;
+		padding: 0.17rem;
+		border-radius: 999px;
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: rgba(22, 22, 22, 0.75);
+		transition: border-color 140ms ease, background 140ms ease;
+	}
+
+	.settings-toggle__switch.is-active {
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+		background: rgba(255, 255, 255, 0.16);
+	}
+
+	.settings-toggle__thumb {
+		display: block;
+		width: 1.3rem;
+		height: 1.3rem;
+		border-radius: 999px;
+		background: rgba(245, 245, 245, 0.95);
+		transition: transform 160ms ease;
+		transform: translateX(0);
+	}
+
+	.settings-toggle__switch.is-active .settings-toggle__thumb {
+		transform: translateX(1.24rem);
+	}
+
+	.settings-action-stack {
+		display: flex;
+		flex-direction: column;
+		gap: 0.52rem;
+	}
+
+	.settings-action {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.74rem;
+		width: 100%;
+		padding: 0.78rem 0.9rem;
+		border-radius: 12px;
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		color: inherit;
+		text-align: left;
+		font-size: 0.8rem;
+		font-weight: 620;
+		cursor: pointer;
+		transition: border-color 140ms ease, background 140ms ease;
+	}
+
+	.settings-action--primary {
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+	}
+
+	.settings-action:hover:not(:disabled) {
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+	}
+
+	.settings-action:disabled {
+		opacity: 0.58;
+		cursor: not-allowed;
+	}
+
+	.settings-action__label {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.settings-action__spinner {
+		flex-shrink: 0;
+		color: rgba(232, 232, 232, 0.9);
+	}
+
+	.settings-system-grid {
+		display: grid;
+		gap: 0.74rem;
+	}
+
+	.settings-feedback {
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+	}
+
+	.settings-feedback p {
 		margin: 0;
 		font-size: 0.68rem;
-		color: rgba(212, 212, 212, 0.7);
 		line-height: 1.4;
+		color: rgba(212, 212, 212, 0.74);
 	}
 
-	@keyframes spin {
-		0% {
-			transform: rotate(0deg);
-		}
-		100% {
-			transform: rotate(360deg);
-		}
-	}
-
-	@media (min-width: 960px) {
-		.settings-grid {
-			grid-template-columns: repeat(2, minmax(260px, 1fr));
+	@media (min-width: 1024px) {
+		.settings-layout {
+			grid-template-columns: repeat(2, minmax(280px, 1fr));
 		}
 
-		.settings-section--bordered {
+		.settings-card--wide {
+			grid-column: span 2;
+		}
+
+		.settings-system-grid {
+			grid-template-columns: repeat(2, minmax(240px, 1fr));
+		}
+
+		.settings-block--full {
 			grid-column: span 2;
 		}
 	}
 
-	@media (max-width: 768px) {
-		.option-grid--compact {
-			grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+	@media (max-width: 560px) {
+		.settings-toggle {
+			min-height: 4.9rem;
+			align-items: flex-start;
+		}
+
+		.settings-toggle__control {
+			align-self: center;
 		}
 	}
 </style>
