@@ -13,6 +13,28 @@ export interface MusicBrainzLookupTrack {
 
 export interface MusicBrainzLookupOptions {
 	strictIsrcMatch?: boolean;
+	preferredReleaseId?: string;
+}
+
+export interface MusicBrainzReleaseSearchParams {
+	albumTitle?: string;
+	artistName?: string;
+	releaseDate?: string;
+	upc?: string;
+	limit?: number;
+}
+
+export interface MusicBrainzReleaseCandidate {
+	id: string;
+	title?: string;
+	artistCredit?: string;
+	status?: string;
+	country?: string;
+	date?: string;
+	barcode?: string;
+	releaseGroupId?: string;
+	primaryType?: string;
+	secondaryTypes?: string[];
 }
 
 const MUSICBRAINZ_API_BASE = 'https://musicbrainz.org/ws/2';
@@ -21,6 +43,8 @@ const MUSICBRAINZ_MIN_INTERVAL_MS = 1_100;
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 800;
 const ISRC_PATTERN = /^[A-Z]{2}[A-Z0-9]{3}\d{7}$/;
+const MBID_PATTERN =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 interface MusicBrainzArtist {
 	id?: string;
@@ -64,6 +88,10 @@ interface MusicBrainzRecordingSearchResponse {
 
 interface MusicBrainzIsrcLookupResponse {
 	recordings?: MusicBrainzRecording[];
+}
+
+interface MusicBrainzReleaseSearchResponse {
+	releases?: MusicBrainzRelease[];
 }
 
 interface CacheEntry {
@@ -110,6 +138,14 @@ function normalizeIsrc(value: string | undefined | null): string | null {
 	const normalized = normalizeLookupText(value).toUpperCase().replace(/[^A-Z0-9]/g, '');
 	if (!normalized || !ISRC_PATTERN.test(normalized)) {
 		return null;
+	}
+	return normalized;
+}
+
+function normalizeReleaseId(value: string | undefined | null): string | undefined {
+	const normalized = normalizeLookupText(value).toLowerCase();
+	if (!normalized || !MBID_PATTERN.test(normalized)) {
+		return undefined;
 	}
 	return normalized;
 }
@@ -187,14 +223,15 @@ function writeCache(cacheKey: string, tags: Record<string, string>): void {
 
 function buildCacheKey(track: MusicBrainzLookupTrack, options?: MusicBrainzLookupOptions): string {
 	const mode = options?.strictIsrcMatch === true ? 'strict' : 'flex';
+	const releaseKey = normalizeReleaseId(options?.preferredReleaseId) ?? 'auto';
 	const isrc = normalizeIsrc(track.isrc);
 	if (isrc) {
-		return `${mode}:isrc:${isrc}`;
+		return `${mode}:release:${releaseKey}:isrc:${isrc}`;
 	}
 	const trackTitle = normalizeToken(track.title);
 	const artistName = normalizeToken(track.artist?.name ?? track.artists?.[0]?.name);
 	const albumTitle = normalizeToken(track.album?.title);
-	return `${mode}:query:${trackTitle}|${artistName}|${albumTitle}`;
+	return `${mode}:release:${releaseKey}:query:${trackTitle}|${artistName}|${albumTitle}`;
 }
 
 async function scheduleRateLimited<T>(request: () => Promise<T>): Promise<T> {
@@ -246,12 +283,20 @@ async function fetchMusicBrainzJson<T>(url: string): Promise<T> {
 	});
 }
 
-function scoreRelease(track: MusicBrainzLookupTrack, release: MusicBrainzRelease): number {
+function scoreRelease(
+	track: MusicBrainzLookupTrack,
+	release: MusicBrainzRelease,
+	options?: MusicBrainzLookupOptions
+): number {
 	let score = 0;
 	const expectedAlbum = normalizeToken(track.album?.title);
 	const expectedYear = yearFromDate(track.album?.releaseDate);
 	const releaseTitle = normalizeToken(release.title);
 	const releaseYear = yearFromDate(release.date);
+	const preferredReleaseId = normalizeReleaseId(options?.preferredReleaseId);
+	if (preferredReleaseId && normalizeReleaseId(release.id) === preferredReleaseId) {
+		score += 1000;
+	}
 
 	if (expectedAlbum && releaseTitle) {
 		if (releaseTitle === expectedAlbum) {
@@ -269,7 +314,11 @@ function scoreRelease(track: MusicBrainzLookupTrack, release: MusicBrainzRelease
 	return score;
 }
 
-function scoreRecording(track: MusicBrainzLookupTrack, recording: MusicBrainzRecording): number {
+function scoreRecording(
+	track: MusicBrainzLookupTrack,
+	recording: MusicBrainzRecording,
+	options?: MusicBrainzLookupOptions
+): number {
 	let score = Number(recording.score ?? 0) || 0;
 	const expectedTitle = normalizeToken(track.title);
 	const recordingTitle = normalizeToken(recording.title);
@@ -279,6 +328,12 @@ function scoreRecording(track: MusicBrainzLookupTrack, recording: MusicBrainzRec
 		(recording.isrcs ?? [])
 			.map((value) => normalizeIsrc(value))
 			.filter((value): value is string => value !== null)
+	);
+	const preferredReleaseId = normalizeReleaseId(options?.preferredReleaseId);
+	const recordingReleaseIds = new Set(
+		(recording.releases ?? [])
+			.map((release) => normalizeReleaseId(release.id))
+			.filter((value): value is string => Boolean(value))
 	);
 
 	if (expectedTitle && recordingTitle) {
@@ -305,10 +360,13 @@ function scoreRecording(track: MusicBrainzLookupTrack, recording: MusicBrainzRec
 	if (expectedIsrc && recordingIsrcs.has(expectedIsrc)) {
 		score += 220;
 	}
+	if (preferredReleaseId && recordingReleaseIds.has(preferredReleaseId)) {
+		score += 500;
+	}
 
 	let bestReleaseScore = 0;
 	for (const release of recording.releases ?? []) {
-		bestReleaseScore = Math.max(bestReleaseScore, scoreRelease(track, release));
+		bestReleaseScore = Math.max(bestReleaseScore, scoreRelease(track, release, options));
 	}
 	score += bestReleaseScore;
 
@@ -317,13 +375,14 @@ function scoreRecording(track: MusicBrainzLookupTrack, recording: MusicBrainzRec
 
 function chooseBestRecording(
 	track: MusicBrainzLookupTrack,
-	recordings: MusicBrainzRecording[]
+	recordings: MusicBrainzRecording[],
+	options?: MusicBrainzLookupOptions
 ): MusicBrainzRecording | null {
 	let best: MusicBrainzRecording | null = null;
 	let bestScore = Number.NEGATIVE_INFINITY;
 
 	for (const recording of recordings) {
-		const score = scoreRecording(track, recording);
+		const score = scoreRecording(track, recording, options);
 		if (score > bestScore) {
 			best = recording;
 			bestScore = score;
@@ -335,15 +394,25 @@ function chooseBestRecording(
 
 function chooseBestRelease(
 	track: MusicBrainzLookupTrack,
-	releases: MusicBrainzRelease[]
+	releases: MusicBrainzRelease[],
+	options?: MusicBrainzLookupOptions
 ): MusicBrainzRelease | null {
 	if (!Array.isArray(releases) || releases.length === 0) {
 		return null;
 	}
+	const preferredReleaseId = normalizeReleaseId(options?.preferredReleaseId);
+	if (preferredReleaseId) {
+		const preferredRelease = releases.find(
+			(release) => normalizeReleaseId(release.id) === preferredReleaseId
+		);
+		if (preferredRelease) {
+			return preferredRelease;
+		}
+	}
 	let best: MusicBrainzRelease | null = null;
 	let bestScore = Number.NEGATIVE_INFINITY;
 	for (const release of releases) {
-		const score = scoreRelease(track, release);
+		const score = scoreRelease(track, release, options);
 		if (score > bestScore) {
 			best = release;
 			bestScore = score;
@@ -354,10 +423,11 @@ function chooseBestRelease(
 
 function buildMusicBrainzTags(
 	track: MusicBrainzLookupTrack,
-	recording: MusicBrainzRecording
+	recording: MusicBrainzRecording,
+	options?: MusicBrainzLookupOptions
 ): Record<string, string> {
 	const tags: Record<string, string> = {};
-	const release = chooseBestRelease(track, recording.releases ?? []);
+	const release = chooseBestRelease(track, recording.releases ?? [], options);
 
 	addTag(tags, 'MUSICBRAINZ_TRACKID', recording.id);
 
@@ -411,8 +481,15 @@ async function fetchByIsrc(isrc: string): Promise<MusicBrainzRecording[]> {
 	return payload.recordings ?? [];
 }
 
-async function fetchBySearchQuery(track: MusicBrainzLookupTrack): Promise<MusicBrainzRecording[]> {
+async function fetchBySearchQuery(
+	track: MusicBrainzLookupTrack,
+	options?: MusicBrainzLookupOptions
+): Promise<MusicBrainzRecording[]> {
 	const parts: string[] = [];
+	const preferredReleaseId = normalizeReleaseId(options?.preferredReleaseId);
+	if (preferredReleaseId) {
+		parts.push(`rid:${preferredReleaseId}`);
+	}
 	const normalizedTitle = normalizeLookupText(track.title);
 	if (normalizedTitle) {
 		parts.push(`recording:"${escapeQueryValue(normalizedTitle)}"`);
@@ -438,6 +515,121 @@ async function fetchBySearchQuery(track: MusicBrainzLookupTrack): Promise<MusicB
 	return payload.recordings ?? [];
 }
 
+async function fetchBySearchQuerySafe(
+	track: MusicBrainzLookupTrack,
+	options?: MusicBrainzLookupOptions
+): Promise<MusicBrainzRecording[]> {
+	try {
+		return await fetchBySearchQuery(track, options);
+	} catch (error) {
+		if (error instanceof MusicBrainzHttpError && error.status === 400) {
+			return [];
+		}
+		throw error;
+	}
+}
+
+function artistCreditToText(credits: MusicBrainzArtistCredit[] | undefined): string | undefined {
+	const parts = (credits ?? [])
+		.map((credit) => sanitizeTagValue(credit.name ?? credit.artist?.name))
+		.filter((value): value is string => Boolean(value));
+	if (parts.length === 0) {
+		return undefined;
+	}
+	return parts.join('');
+}
+
+function clampReleaseSearchLimit(value: number | undefined): number {
+	const parsed = Number(value);
+	if (!Number.isFinite(parsed)) return 12;
+	return Math.max(1, Math.min(25, Math.trunc(parsed)));
+}
+
+function scoreReleaseCandidate(
+	release: MusicBrainzRelease,
+	params: MusicBrainzReleaseSearchParams
+): number {
+	const trackLike: MusicBrainzLookupTrack = {
+		artist: { name: params.artistName },
+		album: {
+			title: params.albumTitle,
+			releaseDate: params.releaseDate,
+			upc: params.upc
+		}
+	};
+	let score = scoreRelease(trackLike, release);
+	const expectedArtist = normalizeToken(params.artistName);
+	if (expectedArtist) {
+		const artistMatch = (release['artist-credit'] ?? []).some((credit) => {
+			const creditName = normalizeToken(credit.artist?.name ?? credit.name);
+			return creditName === expectedArtist;
+		});
+		if (artistMatch) {
+			score += 90;
+		}
+	}
+	const expectedUpc = normalizeLookupText(params.upc);
+	if (expectedUpc && normalizeLookupText(release.barcode) === expectedUpc) {
+		score += 160;
+	}
+	return score;
+}
+
+export async function searchMusicBrainzReleases(
+	params: MusicBrainzReleaseSearchParams
+): Promise<MusicBrainzReleaseCandidate[]> {
+	const albumTitle = normalizeLookupText(params.albumTitle);
+	const artistName = normalizeLookupText(params.artistName);
+	const releaseYear = yearFromDate(params.releaseDate);
+	const upc = normalizeLookupText(params.upc);
+	const queryParts: string[] = [];
+	if (upc) {
+		queryParts.push(`barcode:${escapeQueryValue(upc)}`);
+	}
+	if (albumTitle) {
+		queryParts.push(`release:"${escapeQueryValue(albumTitle)}"`);
+	}
+	if (artistName) {
+		queryParts.push(`artist:"${escapeQueryValue(artistName)}"`);
+	}
+	if (releaseYear) {
+		queryParts.push(`date:${releaseYear}`);
+	}
+	const query = queryParts.join(' AND ').trim();
+	if (!query) {
+		return [];
+	}
+	const limit = clampReleaseSearchLimit(params.limit);
+	const url = `${MUSICBRAINZ_API_BASE}/release?query=${encodeURIComponent(
+		query
+	)}&fmt=json&limit=${limit}&inc=artist-credits+release-groups`;
+	const payload = await fetchMusicBrainzJson<MusicBrainzReleaseSearchResponse>(url);
+	const seen = new Set<string>();
+	const releases = (payload.releases ?? [])
+		.filter((release) => {
+			const id = normalizeReleaseId(release.id);
+			if (!id) return false;
+			if (seen.has(id)) return false;
+			seen.add(id);
+			return true;
+		})
+		.sort((a, b) => scoreReleaseCandidate(b, params) - scoreReleaseCandidate(a, params));
+	return releases.map((release) => ({
+		id: normalizeReleaseId(release.id) as string,
+		title: sanitizeTagValue(release.title),
+		artistCredit: artistCreditToText(release['artist-credit']),
+		status: sanitizeTagValue(release.status),
+		country: sanitizeTagValue(release.country),
+		date: sanitizeTagValue(release.date),
+		barcode: sanitizeTagValue(release.barcode),
+		releaseGroupId: sanitizeTagValue(release['release-group']?.id),
+		primaryType: sanitizeTagValue(release['release-group']?.['primary-type']),
+		secondaryTypes: (release['release-group']?.['secondary-types'] ?? [])
+			.map((value) => sanitizeTagValue(value))
+			.filter((value): value is string => Boolean(value))
+	}));
+}
+
 function hasRecordingIsrc(recording: MusicBrainzRecording, expectedIsrc: string): boolean {
 	if (!expectedIsrc) return false;
 	return (recording.isrcs ?? []).some((value) => normalizeIsrc(value) === expectedIsrc);
@@ -454,6 +646,7 @@ export async function lookupMusicBrainzTagsForTrack(
 	}
 
 	const strictIsrcMatch = options?.strictIsrcMatch === true;
+	const preferredReleaseId = normalizeReleaseId(options?.preferredReleaseId);
 	const trackIsrc = normalizeIsrc(track.isrc);
 	const normalizedTitle = normalizeLookupText(track.title);
 	const normalizedArtistName = normalizeLookupText(track.artist?.name ?? track.artists?.[0]?.name);
@@ -481,9 +674,12 @@ export async function lookupMusicBrainzTagsForTrack(
 			}
 		}
 
-		if (!strictIsrcMatch) {
+		if (!strictIsrcMatch || (strictIsrcMatch && trackIsrc && preferredReleaseId)) {
 			// Run a title/artist query as a fallback and score booster.
-			for (const recording of await fetchBySearchQuery(track)) {
+			for (const recording of await fetchBySearchQuerySafe(track, {
+				...options,
+				preferredReleaseId
+			})) {
 				if (!recording.id) continue;
 				if (!recordingsById.has(recording.id)) {
 					recordingsById.set(recording.id, recording);
@@ -501,13 +697,19 @@ export async function lookupMusicBrainzTagsForTrack(
 			return {};
 		}
 
-		const bestRecording = chooseBestRecording(track, candidates);
+		const bestRecording = chooseBestRecording(track, candidates, {
+			...options,
+			preferredReleaseId
+		});
 		if (!bestRecording) {
 			writeCache(cacheKey, {});
 			return {};
 		}
 
-		const tags = buildMusicBrainzTags(track, bestRecording);
+		const tags = buildMusicBrainzTags(track, bestRecording, {
+			...options,
+			preferredReleaseId
+		});
 		writeCache(cacheKey, tags);
 		return tags;
 	} catch (error) {

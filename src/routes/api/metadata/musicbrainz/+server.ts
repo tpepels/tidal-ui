@@ -6,7 +6,8 @@ import { lookupMusicBrainzTagsForTrack } from '$lib/server/musicBrainzLookup';
 
 const MusicBrainzRequestSchema = z.object({
 	track: TrackSchema,
-	strictIsrcMatch: z.boolean().optional()
+	strictIsrcMatch: z.boolean().optional(),
+	preferredReleaseId: z.string().optional()
 });
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -22,7 +23,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 
 		const tags = await lookupMusicBrainzTagsForTrack(validation.data.track, {
-			strictIsrcMatch: validation.data.strictIsrcMatch === true
+			strictIsrcMatch: validation.data.strictIsrcMatch === true,
+			preferredReleaseId: validation.data.preferredReleaseId
 		});
 		return json({
 			success: true,

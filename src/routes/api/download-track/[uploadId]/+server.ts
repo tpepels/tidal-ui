@@ -43,7 +43,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			downloadCoverSeperately,
 			coverUrl,
 			experimentalMusicBrainzTagging,
-			strictMusicBrainzMatching
+			strictMusicBrainzMatching,
+			musicBrainzReleaseId
 		} = uploadData;
 
 		const buffer = Buffer.from(arrayBuffer);
@@ -75,7 +76,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			downloadCoverSeperately,
 			coverUrl,
 			experimentalMusicBrainzTagging,
-			strictMusicBrainzMatching
+			strictMusicBrainzMatching,
+			musicBrainzReleaseId
 		});
 
 		if (!finalizeResult.success) {

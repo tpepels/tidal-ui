@@ -165,7 +165,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				downloadCoverSeperately,
 				coverUrl,
 				experimentalMusicBrainzTagging,
-				strictMusicBrainzMatching
+				strictMusicBrainzMatching,
+				musicBrainzReleaseId
 			} = uploadData;
 			if (MAX_FILE_SIZE > 0 && totalSize && totalSize > MAX_FILE_SIZE) {
 				const trackDesc = `track ID ${trackId} (${trackTitle || 'Unknown'})`;
@@ -191,7 +192,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				downloadCoverSeperately,
 				coverUrl,
 				experimentalMusicBrainzTagging,
-				strictMusicBrainzMatching
+				strictMusicBrainzMatching,
+				musicBrainzReleaseId
 			});
 
 			if (!finalizeResult.success) {

@@ -207,6 +207,7 @@ export async function downloadTrackWithRetry(
 		downloadCoverSeperately?: boolean;
 		experimentalMusicBrainzTagging?: boolean;
 		strictMusicBrainzMatching?: boolean;
+		musicBrainzReleaseId?: string;
 		storage?: DownloadStorage;
 		signal?: AbortSignal;
 		onProgress?: (
@@ -248,6 +249,7 @@ export async function downloadTrackWithRetry(
 				convertAacToMp3: storage === 'client' ? options?.convertAacToMp3 : false,
 				enableExperimentalMusicBrainz: options?.experimentalMusicBrainzTagging ?? false,
 				strictMusicBrainzMatching: options?.strictMusicBrainzMatching ?? false,
+				musicBrainzReleaseId: options?.musicBrainzReleaseId,
 				skipMetadataEmbedding: storage === 'server',
 				signal: options?.signal,
 				onProgress: options?.onProgress
@@ -307,6 +309,7 @@ export async function downloadTrackToServer(
 		downloadCoverSeperately?: boolean;
 		experimentalMusicBrainzTagging?: boolean;
 		strictMusicBrainzMatching?: boolean;
+		musicBrainzReleaseId?: string;
 		conflictResolution?: 'overwrite' | 'skip' | 'rename' | 'overwrite_if_different';
 		signal?: AbortSignal;
 		onProgress?: (progress: ServerDownloadProgress) => void;
@@ -333,6 +336,7 @@ export async function downloadTrackToServer(
 		downloadCoverSeperately: false,
 		experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? false,
 		strictMusicBrainzMatching: options?.strictMusicBrainzMatching ?? false,
+		musicBrainzReleaseId: options?.musicBrainzReleaseId,
 		storage: 'server',
 		signal: options?.signal,
 		onProgress: (progress) => {
@@ -379,11 +383,12 @@ export async function downloadTrackToServer(
 		track,
 		{
 			conflictResolution: options?.conflictResolution,
-			downloadCoverSeperately: options?.downloadCoverSeperately ?? false,
-			experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? false,
-			strictMusicBrainzMatching: options?.strictMusicBrainzMatching ?? false,
-			coverUrl,
-			detectedMimeType: fetchResult.mimeType,
+				downloadCoverSeperately: options?.downloadCoverSeperately ?? false,
+				experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? false,
+				strictMusicBrainzMatching: options?.strictMusicBrainzMatching ?? false,
+				musicBrainzReleaseId: options?.musicBrainzReleaseId,
+				coverUrl,
+				detectedMimeType: fetchResult.mimeType,
 			signal: options?.signal,
 			onProgress: (progress) => {
 				options?.onProgress?.({
@@ -457,6 +462,7 @@ export async function downloadAlbum(
 		downloadCoverSeperately?: boolean;
 		experimentalMusicBrainzTagging?: boolean;
 		strictMusicBrainzMatching?: boolean;
+		musicBrainzReleaseId?: string;
 		storage?: DownloadStorage;
 		forceOverwrite?: boolean;
 	}
@@ -489,11 +495,12 @@ export async function downloadAlbum(
 					quality,
 					artistName,
 					albumTitle,
-					trackCount,
-					experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? false,
-					strictMusicBrainzMatching: options?.strictMusicBrainzMatching ?? false,
-					forceOverwrite: options?.forceOverwrite === true
-				},
+						trackCount,
+						experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? false,
+						strictMusicBrainzMatching: options?.strictMusicBrainzMatching ?? false,
+						musicBrainzReleaseId: options?.musicBrainzReleaseId,
+						forceOverwrite: options?.forceOverwrite === true
+					},
 				forceOverwrite: options?.forceOverwrite === true
 			})
 		});
@@ -535,6 +542,7 @@ export async function downloadAlbum(
 	const downloadCoverSeperately = options?.downloadCoverSeperately ?? false;
 	const experimentalMusicBrainzTagging = options?.experimentalMusicBrainzTagging ?? false;
 	const strictMusicBrainzMatching = options?.strictMusicBrainzMatching ?? false;
+	const musicBrainzReleaseId = options?.musicBrainzReleaseId;
 
 	let completedTracks = 0;
 	let failedTracks = 0;
@@ -550,11 +558,12 @@ export async function downloadAlbum(
 
 		const result = await downloadTrackWithRetry(track.id, quality, filename, track, callbacks, {
 			convertAacToMp3,
-			downloadCoverSeperately,
-			experimentalMusicBrainzTagging,
-			strictMusicBrainzMatching,
-			storage: 'client'
-		});
+				downloadCoverSeperately,
+				experimentalMusicBrainzTagging,
+				strictMusicBrainzMatching,
+				musicBrainzReleaseId,
+				storage: 'client'
+			});
 
 		if (result.success && result.blob) {
 			triggerFileDownload(result.blob, filename);

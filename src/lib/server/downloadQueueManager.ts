@@ -182,6 +182,7 @@ export interface TrackJob {
 	coverUrl?: string;
 	experimentalMusicBrainzTagging?: boolean;
 	strictMusicBrainzMatching?: boolean;
+	musicBrainzReleaseId?: string;
 	targetArtistDir?: string;
 	targetAlbumDir?: string;
 	targetFilenameHint?: string;
@@ -197,6 +198,7 @@ export interface AlbumJob {
 	trackCount?: number;
 	experimentalMusicBrainzTagging?: boolean;
 	strictMusicBrainzMatching?: boolean;
+	musicBrainzReleaseId?: string;
 	forceOverwrite?: boolean;
 }
 
@@ -577,15 +579,32 @@ export async function findDuplicateJob(job: DownloadJob): Promise<QueuedJob | nu
 				const requestedMusicBrainz = job.experimentalMusicBrainzTagging === true;
 				const existingStrictMatch = existingJob.job.strictMusicBrainzMatching === true;
 				const requestedStrictMatch = job.strictMusicBrainzMatching === true;
+				const existingReleaseId =
+					existingMusicBrainz &&
+					typeof existingJob.job.musicBrainzReleaseId === 'string' &&
+					existingJob.job.musicBrainzReleaseId.trim().length > 0
+						? existingJob.job.musicBrainzReleaseId.trim().toLowerCase()
+						: 'auto';
+				const requestedReleaseId =
+					requestedMusicBrainz &&
+					typeof job.musicBrainzReleaseId === 'string' &&
+					job.musicBrainzReleaseId.trim().length > 0
+						? job.musicBrainzReleaseId.trim().toLowerCase()
+						: 'auto';
 				const strictMatches =
 					existingMusicBrainz && requestedMusicBrainz
 						? existingStrictMatch === requestedStrictMatch
+						: true;
+				const releaseMatches =
+					existingMusicBrainz && requestedMusicBrainz
+						? existingReleaseId === requestedReleaseId
 						: true;
 				if (
 					existingJob.job.trackId === job.trackId &&
 					existingJob.job.quality === job.quality &&
 					existingMusicBrainz === requestedMusicBrainz &&
-					strictMatches
+					strictMatches &&
+					releaseMatches
 				) {
 					return existingJob;
 				}
@@ -594,15 +613,32 @@ export async function findDuplicateJob(job: DownloadJob): Promise<QueuedJob | nu
 				const requestedMusicBrainz = job.experimentalMusicBrainzTagging === true;
 				const existingStrictMatch = existingJob.job.strictMusicBrainzMatching === true;
 				const requestedStrictMatch = job.strictMusicBrainzMatching === true;
+				const existingReleaseId =
+					existingMusicBrainz &&
+					typeof existingJob.job.musicBrainzReleaseId === 'string' &&
+					existingJob.job.musicBrainzReleaseId.trim().length > 0
+						? existingJob.job.musicBrainzReleaseId.trim().toLowerCase()
+						: 'auto';
+				const requestedReleaseId =
+					requestedMusicBrainz &&
+					typeof job.musicBrainzReleaseId === 'string' &&
+					job.musicBrainzReleaseId.trim().length > 0
+						? job.musicBrainzReleaseId.trim().toLowerCase()
+						: 'auto';
 				const strictMatches =
 					existingMusicBrainz && requestedMusicBrainz
 						? existingStrictMatch === requestedStrictMatch
+						: true;
+				const releaseMatches =
+					existingMusicBrainz && requestedMusicBrainz
+						? existingReleaseId === requestedReleaseId
 						: true;
 				if (
 					existingJob.job.albumId === job.albumId &&
 					existingJob.job.quality === job.quality &&
 					existingMusicBrainz === requestedMusicBrainz &&
-					strictMatches
+					strictMatches &&
+					releaseMatches
 				) {
 					return existingJob;
 				}

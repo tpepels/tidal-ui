@@ -100,6 +100,18 @@ Retrieves basic artist information (fallback endpoint).
 
 **Response:** `Artist` object
 
+#### GET `/mix/?id={mixId}`
+
+**Status: ✅ WORKING**
+
+Retrieves mix/radio tracks (used for artist recommendations via `artist.mixes.ARTIST_MIX`).
+
+**Parameters:**
+
+- `id` (string): Mix ID
+
+**Response:** Mix container with `mix` metadata and `items` (track list)
+
 ### Playlist Endpoints
 
 #### GET `/playlist/?id={playlistId}`
@@ -279,6 +291,10 @@ All methods below are confirmed to be working and should be used instead of dire
 #### `losslessAPI.getArtist(artistId: number): Promise<ArtistDetails>`
 
 ✅ **WORKING** - Gets artist overview with discography.
+
+#### `losslessAPI.getArtistRecommendations(artistId: number): Promise<ArtistRecommendations>`
+
+✅ **WORKING** - Gets recommended artists/albums derived from the artist mix.
 
 #### `losslessAPI.getPlaylist(playlistId: string): Promise<{playlist: Playlist, items: Array<{item: Track}>}>`
 

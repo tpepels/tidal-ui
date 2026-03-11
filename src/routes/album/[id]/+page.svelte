@@ -42,6 +42,16 @@
 
 	import { downloadAlbum } from '$lib/downloads';
 
+	type MusicBrainzReleaseOption = {
+		id: string;
+		title?: string;
+		artistCredit?: string;
+		status?: string;
+		country?: string;
+		date?: string;
+		barcode?: string;
+	};
+
 	let album = $state<Album | null>(null);
 	let tracks = $state<Track[]>([]);
 	let isLoading = $state(true);
@@ -79,6 +89,12 @@
 	let albumLibraryTrackCount = $state(0);
 	let isRepairingAlbum = $state(false);
 	let repairMessage = $state<string | null>(null);
+	let musicBrainzReleaseOptions = $state<MusicBrainzReleaseOption[]>([]);
+	let selectedMusicBrainzReleaseId = $state<string>('');
+	let isMusicBrainzReleaseLookupLoading = $state(false);
+	let musicBrainzReleaseLookupError = $state<string | null>(null);
+	let hasMusicBrainzReleaseLookupAttempted = $state(false);
+	let musicBrainzReleaseLookupToken = 0;
 	const FORCE_OVERWRITE_CONFIRMATION =
 		'This album is already in your local library. Redownload it and overwrite existing files?';
 	const CLIENT_REDOWNLOAD_CONFIRMATION =
@@ -119,6 +135,11 @@
 			albumLibraryTrackCount = 0;
 			isRepairingAlbum = false;
 			repairMessage = null;
+			musicBrainzReleaseOptions = [];
+			selectedMusicBrainzReleaseId = '';
+			isMusicBrainzReleaseLookupLoading = false;
+			musicBrainzReleaseLookupError = null;
+			hasMusicBrainzReleaseLookupAttempted = false;
 		}
 		const requestToken = ++activeRequestToken;
 		albumLoadAbortController?.abort();
@@ -201,6 +222,97 @@
 			}
 		}
 	}
+
+	function formatMusicBrainzReleaseOption(release: MusicBrainzReleaseOption): string {
+		const parts = [
+			release.title?.trim() || 'Untitled release',
+			release.artistCredit?.trim(),
+			release.date?.trim(),
+			release.country?.trim(),
+			release.status?.trim()
+		].filter((value): value is string => typeof value === 'string' && value.length > 0);
+		return parts.join(' - ');
+	}
+
+	const selectedMusicBrainzRelease = $derived.by(() =>
+		musicBrainzReleaseOptions.find((release) => release.id === selectedMusicBrainzReleaseId) ?? null
+	);
+
+	async function lookupMusicBrainzReleases(options?: { manual?: boolean }): Promise<void> {
+		if (!album || !experimentalMusicBrainzTaggingPreference) {
+			return;
+		}
+		const lookupToken = ++musicBrainzReleaseLookupToken;
+		const activeAlbum = album;
+		isMusicBrainzReleaseLookupLoading = true;
+		musicBrainzReleaseLookupError = null;
+		hasMusicBrainzReleaseLookupAttempted = true;
+		try {
+			const response = await fetch('/api/metadata/musicbrainz-release-search', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					albumTitle: activeAlbum.title,
+					artistName: activeAlbum.artist?.name,
+					releaseDate: activeAlbum.releaseDate,
+					upc: activeAlbum.upc,
+					limit: 12
+				})
+			});
+			const payload = (await response.json().catch(() => null)) as {
+				success?: boolean;
+				error?: string;
+				releases?: MusicBrainzReleaseOption[];
+			} | null;
+			if (lookupToken !== musicBrainzReleaseLookupToken || album?.id !== activeAlbum.id) {
+				return;
+			}
+			if (!response.ok || !payload?.success) {
+				throw new Error(payload?.error || 'Failed to search MusicBrainz releases');
+			}
+
+			const releases = Array.isArray(payload.releases)
+				? payload.releases.filter((release) => typeof release?.id === 'string' && release.id.length > 0)
+				: [];
+			musicBrainzReleaseOptions = releases;
+			if (releases.length === 0) {
+				selectedMusicBrainzReleaseId = '';
+				return;
+			}
+			const existingSelection = selectedMusicBrainzReleaseId;
+			const hasExistingSelection = releases.some((release) => release.id === existingSelection);
+			if (hasExistingSelection) {
+				return;
+			}
+			// API results are already sorted by score; first entry is the best candidate.
+			selectedMusicBrainzReleaseId = releases[0]?.id ?? '';
+		} catch (lookupError) {
+			const message =
+				lookupError instanceof Error ? lookupError.message : 'Failed to search MusicBrainz releases';
+			musicBrainzReleaseLookupError = message;
+			if (!options?.manual) {
+				console.warn('[MusicBrainz] Release lookup failed on album page:', message);
+			}
+		} finally {
+			if (lookupToken === musicBrainzReleaseLookupToken) {
+				isMusicBrainzReleaseLookupLoading = false;
+			}
+		}
+	}
+
+	$effect(() => {
+		if (!album || !experimentalMusicBrainzTaggingPreference) {
+			if (!experimentalMusicBrainzTaggingPreference) {
+				musicBrainzReleaseOptions = [];
+				selectedMusicBrainzReleaseId = '';
+				isMusicBrainzReleaseLookupLoading = false;
+				musicBrainzReleaseLookupError = null;
+				hasMusicBrainzReleaseLookupAttempted = false;
+			}
+			return;
+		}
+		void lookupMusicBrainzReleases();
+	});
 
 	function handlePlayAll() {
 		// Validate tracks array
@@ -475,6 +587,10 @@
 					convertAacToMp3: convertAacToMp3Preference,
 					experimentalMusicBrainzTagging: experimentalMusicBrainzTaggingPreference,
 					strictMusicBrainzMatching: strictMusicBrainzMatchingPreference,
+					musicBrainzReleaseId:
+						experimentalMusicBrainzTaggingPreference && selectedMusicBrainzReleaseId
+							? selectedMusicBrainzReleaseId
+							: undefined,
 					storage: downloadStoragePreference,
 					forceOverwrite
 				}
@@ -805,6 +921,71 @@
 							{/if}
 							<ShareButton type="album" id={album.id} variant="secondary" />
 						</div>
+						{#if experimentalMusicBrainzTaggingPreference}
+							<div class="rounded-xl border border-gray-800 bg-gray-950/40 p-4">
+								<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+									<p class="text-sm font-semibold text-gray-100">MusicBrainz Release</p>
+									<button
+										type="button"
+										onclick={() => lookupMusicBrainzReleases({ manual: true })}
+										class="ui-chip-button ui-chip-button--compact"
+										disabled={isMusicBrainzReleaseLookupLoading}
+									>
+										{#if isMusicBrainzReleaseLookupLoading}
+											Refreshing…
+										{:else}
+											Refresh Matches
+										{/if}
+									</button>
+								</div>
+								{#if isMusicBrainzReleaseLookupLoading && musicBrainzReleaseOptions.length === 0}
+									<p class="text-xs text-gray-400">Searching MusicBrainz releases…</p>
+								{:else if musicBrainzReleaseOptions.length > 0}
+									<label class="mb-2 block text-xs font-medium uppercase tracking-[0.12em] text-gray-400" for="musicbrainz-release-select">
+										Selected Release
+									</label>
+									<select
+										id="musicbrainz-release-select"
+										class="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 outline-none transition focus:border-emerald-400"
+										bind:value={selectedMusicBrainzReleaseId}
+									>
+										{#each musicBrainzReleaseOptions as release, index (release.id)}
+											<option value={release.id}>
+												{index === 0 ? 'Best Match - ' : ''}{formatMusicBrainzReleaseOption(release)}
+											</option>
+										{/each}
+									</select>
+										{#if selectedMusicBrainzRelease}
+											<p class="mt-2 text-xs text-gray-400">
+												{#if selectedMusicBrainzRelease.barcode}
+													Barcode: {selectedMusicBrainzRelease.barcode} -
+												{/if}
+												Release ID: {selectedMusicBrainzRelease.id}
+											</p>
+										<p class="mt-1 text-xs text-gray-400">
+											<a
+												href={`https://musicbrainz.org/release/${selectedMusicBrainzRelease.id}`}
+												target="_blank"
+												rel="noreferrer"
+												class="text-emerald-300 hover:text-emerald-200"
+											>
+												Open Release in MusicBrainz
+											</a>
+										</p>
+									{/if}
+								{:else if hasMusicBrainzReleaseLookupAttempted}
+									<p class="text-xs text-gray-400">
+										No release matches found for this album.
+									</p>
+								{/if}
+								{#if musicBrainzReleaseLookupError}
+									<p class="mt-2 text-xs text-red-300">{musicBrainzReleaseLookupError}</p>
+								{/if}
+								<p class="mt-2 text-xs text-gray-500">
+									The selected release is used for MusicBrainz tagging when downloading this album.
+								</p>
+							</div>
+						{/if}
 						{#if queueStatus === 'queued'}
 							<p class="ui-action-status" data-tone="info">
 								Queued on server. Open Download Manager for live progress.

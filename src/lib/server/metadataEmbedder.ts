@@ -82,6 +82,7 @@ export interface MetadataOverrides {
 export interface MetadataEmbeddingOptions {
 	enableExperimentalMusicBrainzTagging?: boolean;
 	strictMusicBrainzMatching?: boolean;
+	musicBrainzReleaseId?: string;
 	onMusicBrainzLookupResult?: (summary: MusicBrainzLookupSummary) => void;
 }
 
@@ -205,6 +206,11 @@ async function buildMetadataObjectWithEnhancements(
 ): Promise<MetadataEnhancementResult> {
 	const baseMetadata = buildMetadataObject(lookup, overrides);
 	const strictMatch = options?.strictMusicBrainzMatching === true;
+	const preferredReleaseId =
+		typeof options?.musicBrainzReleaseId === 'string' &&
+		options.musicBrainzReleaseId.trim().length > 0
+			? options.musicBrainzReleaseId.trim()
+			: undefined;
 	if (!options?.enableExperimentalMusicBrainzTagging) {
 		return {
 			metadata: baseMetadata,
@@ -219,10 +225,13 @@ async function buildMetadataObjectWithEnhancements(
 
 	const trackLabel = `${lookup.track?.id ?? 'unknown'}:${lookup.track?.title ?? 'Unknown Track'}`;
 	console.log(
-		`[MusicBrainz] Lookup ${strictMatch ? 'strict' : 'flex'} for ${trackLabel}`
+		`[MusicBrainz] Lookup ${strictMatch ? 'strict' : 'flex'} for ${trackLabel}${
+			preferredReleaseId ? ` (preferred release ${preferredReleaseId})` : ''
+		}`
 	);
 	const musicBrainzTags = await lookupMusicBrainzTagsForTrack(lookup.track, {
-		strictIsrcMatch: strictMatch
+		strictIsrcMatch: strictMatch,
+		preferredReleaseId
 	});
 	const tagsApplied = Object.keys(musicBrainzTags).length;
 	if (tagsApplied > 0) {

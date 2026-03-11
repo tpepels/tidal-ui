@@ -70,6 +70,18 @@ export const POST: RequestHandler = async ({ request }) => {
 					{ status: 400 }
 				);
 			}
+			if (
+				job.musicBrainzReleaseId !== undefined &&
+				typeof job.musicBrainzReleaseId !== 'string'
+			) {
+				return json(
+					{
+						success: false,
+						error: 'Track job musicBrainzReleaseId must be a string'
+					},
+					{ status: 400 }
+				);
+			}
 		}
 
 		// Validate album job
@@ -100,6 +112,18 @@ export const POST: RequestHandler = async ({ request }) => {
 					{
 						success: false,
 						error: 'Album job strictMusicBrainzMatching must be a boolean'
+					},
+					{ status: 400 }
+				);
+			}
+			if (
+				job.musicBrainzReleaseId !== undefined &&
+				typeof job.musicBrainzReleaseId !== 'string'
+			) {
+				return json(
+					{
+						success: false,
+						error: 'Album job musicBrainzReleaseId must be a string'
 					},
 					{ status: 400 }
 				);

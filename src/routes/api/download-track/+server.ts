@@ -149,7 +149,17 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					return json(
 						{
 							error:
-								'Invalid strictMusicBrainzMatching: must be a boolean or undefined'
+							'Invalid strictMusicBrainzMatching: must be a boolean or undefined'
+					},
+					{ status: 400 }
+				);
+				if (
+					body.musicBrainzReleaseId !== undefined &&
+					typeof body.musicBrainzReleaseId !== 'string'
+				)
+					return json(
+						{
+							error: 'Invalid musicBrainzReleaseId: must be a string or undefined'
 						},
 						{ status: 400 }
 					);
@@ -170,7 +180,9 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					experimentalMusicBrainzTagging:
 						body.experimentalMusicBrainzTagging ?? pendingUpload?.experimentalMusicBrainzTagging,
 					strictMusicBrainzMatching:
-						body.strictMusicBrainzMatching ?? pendingUpload?.strictMusicBrainzMatching
+						body.strictMusicBrainzMatching ?? pendingUpload?.strictMusicBrainzMatching,
+					musicBrainzReleaseId:
+						body.musicBrainzReleaseId ?? pendingUpload?.musicBrainzReleaseId
 				});
 
 				if (bodyUploadId) {
@@ -220,6 +232,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					coverUrl,
 					experimentalMusicBrainzTagging,
 					strictMusicBrainzMatching,
+					musicBrainzReleaseId,
 					trackMetadata,
 					detectedMimeType
 				} = body;
@@ -317,7 +330,14 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					return json(
 						{
 							error:
-								'Invalid strictMusicBrainzMatching: must be a boolean or undefined'
+							'Invalid strictMusicBrainzMatching: must be a boolean or undefined'
+					},
+					{ status: 400 }
+				);
+				if (musicBrainzReleaseId !== undefined && typeof musicBrainzReleaseId !== 'string')
+					return json(
+						{
+							error: 'Invalid musicBrainzReleaseId: must be a string or undefined'
 						},
 						{ status: 400 }
 					);
@@ -388,12 +408,13 @@ export const POST: RequestHandler = async ({ request, url }) => {
 					trackMetadata: validatedTrackMetadata.data,
 					detectedMimeType: typeof detectedMimeType === 'string' ? detectedMimeType : undefined,
 					downloadCoverSeperately,
-					coverUrl,
-					experimentalMusicBrainzTagging,
-					strictMusicBrainzMatching,
-					timestamp: Date.now(),
-					totalSize: blobSize,
-					checksum,
+						coverUrl,
+						experimentalMusicBrainzTagging,
+						strictMusicBrainzMatching,
+						musicBrainzReleaseId,
+						timestamp: Date.now(),
+						totalSize: blobSize,
+						checksum,
 					conflictResolution
 				});
 				const response: {
@@ -468,10 +489,11 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				checksum: uploadData.checksum,
 				detectedMimeType: uploadData.detectedMimeType,
 				downloadCoverSeperately: uploadData.downloadCoverSeperately,
-				coverUrl: uploadData.coverUrl,
-				experimentalMusicBrainzTagging: uploadData.experimentalMusicBrainzTagging,
-				strictMusicBrainzMatching: uploadData.strictMusicBrainzMatching
-			});
+					coverUrl: uploadData.coverUrl,
+					experimentalMusicBrainzTagging: uploadData.experimentalMusicBrainzTagging,
+					strictMusicBrainzMatching: uploadData.strictMusicBrainzMatching,
+					musicBrainzReleaseId: uploadData.musicBrainzReleaseId
+				});
 
 			if (!finalizeResult.success) {
 				if (!finalizeResult.error.recoverable) {

@@ -51,6 +51,7 @@ export interface FinalizeTrackParams {
 	coverUrl?: string;
 	experimentalMusicBrainzTagging?: boolean;
 	strictMusicBrainzMatching?: boolean;
+	musicBrainzReleaseId?: string;
 }
 
 export type FinalizeTrackResult =
@@ -72,27 +73,34 @@ export type FinalizeTrackResult =
 function logMusicBrainzFinalizeSummary(
 	trackId: number,
 	summary: MusicBrainzLookupSummary | undefined,
-	context: 'skip' | 'finalize'
+	context: 'skip' | 'finalize',
+	musicBrainzReleaseId?: string
 ): void {
 	if (!summary?.enabled) {
 		return;
 	}
 
 	const mode = summary.strictMatch ? 'strict ISRC' : 'flex';
+	const releaseSuffix =
+		typeof musicBrainzReleaseId === 'string' && musicBrainzReleaseId.trim().length > 0
+			? `, release ${musicBrainzReleaseId.trim()}`
+			: '';
 	const phase = context === 'skip' ? 'skip' : 'finalize';
 	if (!summary.lookupAttempted) {
 		console.warn(
-			`[MusicBrainz] Track ${trackId} (${phase}, ${mode}): lookup enabled but not attempted.`
+			`[MusicBrainz] Track ${trackId} (${phase}, ${mode}${releaseSuffix}): lookup enabled but not attempted.`
 		);
 		return;
 	}
 	if (summary.tagsApplied > 0) {
 		console.log(
-			`[MusicBrainz] Track ${trackId} (${phase}, ${mode}): applied ${summary.tagsApplied} tag(s).`
+			`[MusicBrainz] Track ${trackId} (${phase}, ${mode}${releaseSuffix}): applied ${summary.tagsApplied} tag(s).`
 		);
 		return;
 	}
-	console.log(`[MusicBrainz] Track ${trackId} (${phase}, ${mode}): lookup completed with no tags.`);
+	console.log(
+		`[MusicBrainz] Track ${trackId} (${phase}, ${mode}${releaseSuffix}): lookup completed with no tags.`
+	);
 }
 
 const toDownloadError = (
@@ -333,7 +341,8 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 		downloadCoverSeperately = false,
 		coverUrl,
 		experimentalMusicBrainzTagging = false,
-		strictMusicBrainzMatching = false
+		strictMusicBrainzMatching = false,
+		musicBrainzReleaseId
 	} = params;
 
 	let workingBuffer: Buffer | undefined;
@@ -547,7 +556,7 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 		if (tempFilePath) {
 			await fs.unlink(tempFilePath).catch(() => {});
 		}
-		logMusicBrainzFinalizeSummary(trackId, musicBrainzSummary, 'skip');
+		logMusicBrainzFinalizeSummary(trackId, musicBrainzSummary, 'skip', musicBrainzReleaseId);
 		return {
 			success: true,
 			filepath: finalPath,
@@ -635,6 +644,7 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 				{
 					enableExperimentalMusicBrainzTagging: experimentalMusicBrainzTagging,
 					strictMusicBrainzMatching,
+					musicBrainzReleaseId,
 					onMusicBrainzLookupResult: (summary) => {
 						musicBrainzSummary = summary;
 					}
@@ -729,7 +739,7 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 		};
 	}
 
-	logMusicBrainzFinalizeSummary(trackId, musicBrainzSummary, 'finalize');
+	logMusicBrainzFinalizeSummary(trackId, musicBrainzSummary, 'finalize', musicBrainzReleaseId);
 	return {
 		success: true,
 		filepath: finalOutputPath,

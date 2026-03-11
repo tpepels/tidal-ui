@@ -200,6 +200,7 @@ export const downloadTrackServerSide = async (
 		downloadCoverSeperately?: boolean;
 		experimentalMusicBrainzTagging?: boolean;
 		strictMusicBrainzMatching?: boolean;
+		musicBrainzReleaseId?: string;
 		coverUrl?: string;
 		detectedMimeType?: string;
 		signal?: AbortSignal;
@@ -233,6 +234,10 @@ export const downloadTrackServerSide = async (
 		const conflictResolution = options?.conflictResolution ?? 'overwrite_if_different';
 		const musicBrainzEnabled = options?.experimentalMusicBrainzTagging === true;
 		const strictMusicBrainzMatch = options?.strictMusicBrainzMatching === true;
+		const preferredMusicBrainzReleaseId =
+			typeof options?.musicBrainzReleaseId === 'string' && options.musicBrainzReleaseId.trim().length > 0
+				? options.musicBrainzReleaseId.trim()
+				: undefined;
 
 		const sizeMsg = `[Server Download] Phase 1: Sending metadata for "${trackTitle}" (${(blob.size / 1024 / 1024).toFixed(2)} MB)${useChunks ? ' (chunked)' : ''}`;
 		downloadLogStore.log(sizeMsg);
@@ -240,6 +245,11 @@ export const downloadTrackServerSide = async (
 			downloadLogStore.log(
 				`[MusicBrainz] ${buildTrackLabel(trackId, trackTitle)}: tagging enabled (${strictMusicBrainzMatch ? 'strict ISRC' : 'flex'} mode).`
 			);
+			if (preferredMusicBrainzReleaseId) {
+				downloadLogStore.log(
+					`[MusicBrainz] ${buildTrackLabel(trackId, trackTitle)}: preferred release ${preferredMusicBrainzReleaseId}.`
+				);
+			}
 		}
 
 		// Generate checksum for integrity check
@@ -289,10 +299,11 @@ export const downloadTrackServerSide = async (
 						trackTitle,
 						trackNumber: track?.trackNumber,
 						trackMetadata,
-						experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? false,
-						strictMusicBrainzMatching: options?.strictMusicBrainzMatching ?? false,
-						detectedMimeType: options?.detectedMimeType
-					}),
+							experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? false,
+							strictMusicBrainzMatching: options?.strictMusicBrainzMatching ?? false,
+							musicBrainzReleaseId: preferredMusicBrainzReleaseId,
+							detectedMimeType: options?.detectedMimeType
+						}),
 					timeout: 5000,
 					signal: options?.signal,
 					maxRetries: 1
@@ -333,10 +344,11 @@ export const downloadTrackServerSide = async (
 				checksum,
 				conflictResolution,
 				downloadCoverSeperately: options?.downloadCoverSeperately ?? false,
-				experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? false,
-				strictMusicBrainzMatching: options?.strictMusicBrainzMatching ?? false,
-				coverUrl: options?.coverUrl,
-				trackMetadata,
+					experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? false,
+					strictMusicBrainzMatching: options?.strictMusicBrainzMatching ?? false,
+					musicBrainzReleaseId: preferredMusicBrainzReleaseId,
+					coverUrl: options?.coverUrl,
+					trackMetadata,
 				detectedMimeType: options?.detectedMimeType
 			}),
 			timeout: 10000,
@@ -378,9 +390,9 @@ export const downloadTrackServerSide = async (
 			const base64 = await blobToBase64(blob);
 			// Prepare track metadata for server-side embedding
 			const downloadCoverSeperately = options?.downloadCoverSeperately ?? false;
-			const experimentalMusicBrainzTagging =
-				options?.experimentalMusicBrainzTagging ?? false;
-			const strictMusicBrainzMatching = options?.strictMusicBrainzMatching ?? false;
+				const experimentalMusicBrainzTagging =
+					options?.experimentalMusicBrainzTagging ?? false;
+				const strictMusicBrainzMatching = options?.strictMusicBrainzMatching ?? false;
 
 			const uploadResponse = await fetch('/api/download-track', {
 				method: 'POST',
@@ -394,11 +406,12 @@ export const downloadTrackServerSide = async (
 					trackTitle,
 					blob: base64,
 					conflictResolution: options?.conflictResolution || 'overwrite_if_different',
-					downloadCoverSeperately,
-					experimentalMusicBrainzTagging,
-					strictMusicBrainzMatching,
-					coverUrl: options?.coverUrl,
-					trackMetadata,
+						downloadCoverSeperately,
+						experimentalMusicBrainzTagging,
+						strictMusicBrainzMatching,
+						musicBrainzReleaseId: preferredMusicBrainzReleaseId,
+						coverUrl: options?.coverUrl,
+						trackMetadata,
 					detectedMimeType: options?.detectedMimeType
 				}),
 				signal: options?.signal

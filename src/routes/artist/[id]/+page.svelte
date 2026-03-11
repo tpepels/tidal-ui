@@ -5,7 +5,7 @@
 	import { losslessAPI } from '$lib/api';
 	import { downloadAlbum } from '$lib/downloads';
 	import { isAlbumDownloadQueueActive, type AlbumDownloadStatus } from '$lib/controllers/albumDownloadUi';
-	import type { Album, ArtistDetails, AudioQuality } from '$lib/types';
+	import type { Album, ArtistDetails, ArtistRecommendations, AudioQuality } from '$lib/types';
 	import TopTracksGrid from '$lib/components/TopTracksGrid.svelte';
 	import ShareButton from '$lib/components/ShareButton.svelte';
 	import {
@@ -35,11 +35,16 @@
 
 	let artist = $state<ArtistDetails | null>(null);
 	let artistImage = $state<string | null>(null);
+	let recommendations = $state<ArtistRecommendations | null>(null);
+	let recommendationsLoading = $state(false);
+	let recommendationsError = $state<string | null>(null);
 	let isLoading = $state(true);
 	let error = $state<string | null>(null);
 	const artistId = $derived($page.params.id);
 	const topTracks = $derived(artist?.tracks ?? []);
 	const rawDiscography = $derived(artist?.albums ?? []);
+	const recommendedArtists = $derived(recommendations?.artists ?? []);
+	const recommendedAlbums = $derived(recommendations?.albums ?? []);
 	const discographyInfo = $derived(artist?.discographyInfo ?? null);
 	const enrichmentDiagnostics = $derived(discographyInfo?.enrichmentDiagnostics ?? null);
 	const downloadQuality = $derived($downloadPreferencesStore.downloadQuality as AudioQuality);
@@ -181,6 +186,9 @@
 			albumDownloadStates = {};
 			artist = null;
 			artistImage = null;
+			recommendations = null;
+			recommendationsLoading = false;
+			recommendationsError = null;
 			error = 'Invalid artist id';
 			isLoading = false;
 			return;
@@ -1167,6 +1175,44 @@
 		isDownloadingDiscography = false;
 	}
 
+	async function loadArtistRecommendations(
+		id: number,
+		requestToken: number,
+		controller: AbortController
+	): Promise<void> {
+		recommendationsLoading = true;
+		recommendationsError = null;
+		try {
+			const recommendationPayload = await losslessAPI.getArtistRecommendations(id, {
+				signal: controller.signal
+			});
+			if (requestToken !== activeRequestToken) {
+				return;
+			}
+			recommendations = recommendationPayload;
+		} catch (recommendationError) {
+			if (requestToken !== activeRequestToken) {
+				return;
+			}
+			if (
+				recommendationError instanceof Error &&
+				recommendationError.name === 'AbortError'
+			) {
+				return;
+			}
+			recommendations = null;
+			recommendationsError =
+				recommendationError instanceof Error && recommendationError.message
+					? recommendationError.message
+					: 'Failed to load recommendations.';
+			console.warn(`[Artist] Failed to load recommendations for ${id}:`, recommendationError);
+		} finally {
+			if (requestToken === activeRequestToken) {
+				recommendationsLoading = false;
+			}
+		}
+	}
+
 	async function loadArtist(id: number, controller: AbortController) {
 		const requestToken = ++activeRequestToken;
 		beginCoverHydrationGeneration();
@@ -1183,6 +1229,9 @@
 		albumCoverOverrides = {};
 		albumCoverFailures = {};
 		albumCoverHydrationAttempted = {};
+		recommendations = null;
+		recommendationsLoading = false;
+		recommendationsError = null;
 
 		if (cachedArtist) {
 			const normalizedCached = normalizeArtistDetails(cachedArtist);
@@ -1227,6 +1276,7 @@
 			if (artist.picture) {
 				artistImage = losslessAPI.getArtistPictureUrl(artist.picture);
 			}
+			void loadArtistRecommendations(normalizedData.id, requestToken, controller);
 		} catch (err) {
 			if (requestToken === activeRequestToken) {
 				if (err instanceof Error && err.name === 'AbortError') {
@@ -1379,6 +1429,171 @@
 						class="mt-6 rounded-lg border border-gray-800 bg-gray-900/40 p-6 text-sm text-gray-400"
 					>
 						<p>No top tracks available for this artist yet.</p>
+					</div>
+				{/if}
+			</section>
+
+			<section>
+				<div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+					<div>
+						<h2 class="text-2xl font-semibold text-white">Recommendations</h2>
+						<p class="text-sm text-gray-400">
+							Related artists and albums based on {artist.name}'s mix.
+						</p>
+					</div>
+					{#if recommendations?.source === 'artist-mix' && recommendations.mixTitle}
+						<div class="ui-meta-pill">
+							Source: {recommendations.mixTitle}
+							{#if recommendations.mixSubtitle}
+								• {recommendations.mixSubtitle}
+							{/if}
+						</div>
+					{/if}
+				</div>
+				{#if recommendationsLoading}
+					<div
+						class="mt-6 rounded-lg border border-gray-800 bg-gray-900/40 p-6 text-sm text-gray-300"
+					>
+						<div class="flex items-center gap-3" role="status">
+							<LoaderCircle size={18} class="animate-spin text-blue-400" />
+							<span>Loading recommendation mix…</span>
+						</div>
+					</div>
+				{:else if recommendationsError}
+					<div
+						class="mt-6 rounded-lg border border-amber-700/40 bg-amber-900/20 p-4 text-sm text-amber-200"
+					>
+						<p>
+							Recommendations are temporarily unavailable: {recommendationsError}
+						</p>
+					</div>
+				{:else if recommendedArtists.length > 0 || recommendedAlbums.length > 0}
+					<div class="mt-6 space-y-8">
+						{#if recommendedArtists.length > 0}
+							<div class="space-y-3">
+								<div class="flex items-center justify-between">
+									<h3 class="text-lg font-semibold text-white">Recommended Artists</h3>
+									<span
+										class="rounded-full border border-gray-700 bg-gray-900/70 px-2.5 py-1 text-xs text-gray-300"
+									>
+										{recommendedArtists.length}
+									</span>
+								</div>
+								<div class="ui-media-grid ui-media-grid--artists">
+									{#each recommendedArtists as recommendationArtist (recommendationArtist.id)}
+										<article class="ui-media-card">
+											<a
+												href={`/artist/${recommendationArtist.id}`}
+												class="ui-media-card__primary-link"
+											>
+												<div class="ui-media-card__artwork ui-media-card__artwork--circle">
+													{#if recommendationArtist.picture}
+														<img
+															src={losslessAPI.getArtistPictureUrl(recommendationArtist.picture)}
+															alt={recommendationArtist.name}
+															loading="lazy"
+														/>
+													{:else}
+														<div class="flex h-full w-full items-center justify-center text-gray-500">
+															<User size={34} />
+														</div>
+													{/if}
+												</div>
+												<div class="ui-media-card__body">
+													<h3 class="ui-media-card__title ui-media-card__title--truncate">
+														{recommendationArtist.name}
+													</h3>
+													<p class="ui-media-card__subtitle">
+														{recommendationArtist.type || 'Artist'}
+													</p>
+												</div>
+											</a>
+											<div class="ui-media-card__links">
+												<a
+													href={`/artist/${recommendationArtist.id}`}
+													class="ui-media-card__link"
+												>
+													Artist Page
+												</a>
+											</div>
+										</article>
+									{/each}
+								</div>
+							</div>
+						{/if}
+						{#if recommendedAlbums.length > 0}
+							<div class="space-y-3">
+								<div class="flex items-center justify-between">
+									<h3 class="text-lg font-semibold text-white">Recommended Albums</h3>
+									<span
+										class="rounded-full border border-gray-700 bg-gray-900/70 px-2.5 py-1 text-xs text-gray-300"
+									>
+										{recommendedAlbums.length}
+									</span>
+								</div>
+								<div class="ui-media-grid ui-media-grid--albums">
+									{#each recommendedAlbums as recommendationAlbum (recommendationAlbum.id)}
+										<article class="ui-media-card">
+											<a
+												href={`/album/${recommendationAlbum.id}`}
+												class="ui-media-card__primary-link"
+											>
+												<div class="ui-media-card__artwork">
+													{#if recommendationAlbum.cover}
+														<img
+															src={losslessAPI.getCoverUrl(recommendationAlbum.cover, '640')}
+															alt={recommendationAlbum.title}
+															loading="lazy"
+														/>
+													{:else}
+														<div class="flex h-full w-full items-center justify-center text-gray-500">
+															No artwork
+														</div>
+													{/if}
+												</div>
+												<div class="ui-media-card__body">
+													<h3 class="ui-media-card__title ui-media-card__title--truncate">
+														{recommendationAlbum.title}
+													</h3>
+													{#if recommendationAlbum.artist}
+														<p class="ui-media-card__subtitle ui-media-card__title--truncate">
+															{recommendationAlbum.artist.name}
+														</p>
+													{/if}
+													{#if formatAlbumMeta(recommendationAlbum)}
+														<p class="ui-media-card__meta">
+															{formatAlbumMeta(recommendationAlbum)}
+														</p>
+													{/if}
+												</div>
+											</a>
+											<div class="ui-media-card__links">
+												<a
+													href={`/album/${recommendationAlbum.id}`}
+													class="ui-media-card__link"
+												>
+													Album Page
+												</a>
+												{#if recommendationAlbum.artist}
+													<a
+														href={`/artist/${recommendationAlbum.artist.id}`}
+														class="ui-media-card__link"
+													>
+														Artist Page
+													</a>
+												{/if}
+											</div>
+										</article>
+									{/each}
+								</div>
+							</div>
+						{/if}
+					</div>
+				{:else}
+					<div
+						class="mt-6 rounded-lg border border-gray-800 bg-gray-900/40 p-6 text-sm text-gray-400"
+					>
+						<p>No recommendations available for this artist yet.</p>
 					</div>
 				{/if}
 			</section>

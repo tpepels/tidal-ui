@@ -3,19 +3,18 @@ import { detectAudioFormat, detectAudioFormatFromBlob } from './utils/audioForma
 import { API_CONFIG, fetchWithCORS, selectApiTargetForRegion } from '$lib/config';
 import type { RegionOption } from '$lib/stores/region';
 import { parseTidalUrl } from './utils/urlParser';
-import {
-	buildStandardMetadataEntries,
-	type StandardMetadataKey
-} from './utils/metadataStandard';
+import { buildStandardMetadataEntries, type StandardMetadataKey } from './utils/metadataStandard';
 import { z } from 'zod';
 import { prepareAlbum, prepareArtist, prepareTrack } from './api/normalizers';
-import { getAlbum, getArtist, getCover, getLyrics, getPlaylist } from './api/catalog';
 import {
-	searchAlbums,
-	searchArtists,
-	searchPlaylists,
-	searchTracks
-} from './api/search';
+	getAlbum,
+	getArtist,
+	getArtistRecommendations,
+	getCover,
+	getLyrics,
+	getPlaylist
+} from './api/catalog';
+import { searchAlbums, searchArtists, searchPlaylists, searchTracks } from './api/search';
 import {
 	extractUrlsFromDashJsonPayload,
 	isDashManifestPayload,
@@ -24,11 +23,7 @@ import {
 	isXmlContentType,
 	parseJsonSafely
 } from './api/manifest';
-import {
-	TrackInfoSchema,
-	StreamDataSchema,
-	safeValidateApiResponse
-} from './utils/schemas';
+import { TrackInfoSchema, StreamDataSchema, safeValidateApiResponse } from './utils/schemas';
 import type {
 	Track,
 	Artist,
@@ -41,7 +36,8 @@ import type {
 	Lyrics,
 	TrackInfo,
 	TrackLookup,
-	ArtistDetails
+	ArtistDetails,
+	ArtistRecommendations
 } from './types';
 
 const API_BASE = API_CONFIG.baseUrl;
@@ -89,6 +85,7 @@ export interface DownloadTrackOptions {
 	downloadCoverSeperately?: boolean;
 	enableExperimentalMusicBrainz?: boolean;
 	strictMusicBrainzMatching?: boolean;
+	musicBrainzReleaseId?: string;
 	skipMetadataEmbedding?: boolean;
 }
 
@@ -186,7 +183,9 @@ class LosslessAPI {
 			if (!trimmed.startsWith('{') && !trimmed.startsWith('[') && this.isValidMediaUrl(decoded)) {
 				return decoded;
 			}
-			const parsed = parseJsonSafely<{ urls?: unknown; url?: unknown; manifest?: unknown }>(decoded);
+			const parsed = parseJsonSafely<{ urls?: unknown; url?: unknown; manifest?: unknown }>(
+				decoded
+			);
 			if (parsed) {
 				if (Array.isArray(parsed.urls) && parsed.urls.length > 0) {
 					const candidate = parsed.urls.find((value) => typeof value === 'string');
@@ -198,7 +197,11 @@ class LosslessAPI {
 				if (typeof parsed.manifest === 'string') {
 					decoded = this.decodeBase64Manifest(parsed.manifest);
 					const nestedTrimmed = decoded.trim();
-					if (!nestedTrimmed.startsWith('{') && !nestedTrimmed.startsWith('[') && this.isValidMediaUrl(decoded)) {
+					if (
+						!nestedTrimmed.startsWith('{') &&
+						!nestedTrimmed.startsWith('[') &&
+						this.isValidMediaUrl(decoded)
+					) {
 						return decoded;
 					}
 				}
@@ -720,7 +723,11 @@ class LosslessAPI {
 	 */
 	private async fetch(
 		url: string,
-		options?: RequestInit & { apiVersion?: 'v1' | 'v2'; preferredQuality?: string; skipTarget?: string }
+		options?: RequestInit & {
+			apiVersion?: 'v1' | 'v2';
+			preferredQuality?: string;
+			skipTarget?: string;
+		}
 	): Promise<Response> {
 		return fetchWithCORS(url, options);
 	}
@@ -829,7 +836,11 @@ class LosslessAPI {
 	/**
 	 * Get track info and stream URL (with retries for quality fallback)
 	 */
-	async getTrack(id: number, quality: AudioQuality = 'LOSSLESS', options?: { skipTarget?: string }): Promise<TrackLookup> {
+	async getTrack(
+		id: number,
+		quality: AudioQuality = 'LOSSLESS',
+		options?: { skipTarget?: string }
+	): Promise<TrackLookup> {
 		const url = `${this.baseUrl}/track/?id=${id}&quality=${quality}`;
 		let lastError: Error | null = null;
 
@@ -966,7 +977,11 @@ class LosslessAPI {
 	async getArtist(
 		id: number,
 		options?: {
-			onProgress?: (progress: { receivedBytes: number; totalBytes?: number; percent?: number }) => void;
+			onProgress?: (progress: {
+				receivedBytes: number;
+				totalBytes?: number;
+				percent?: number;
+			}) => void;
 			signal?: AbortSignal;
 		}
 	): Promise<ArtistDetails> {
@@ -977,6 +992,18 @@ class LosslessAPI {
 			officialEnrichment: Boolean(officialOrigin),
 			officialOrigin
 		});
+	}
+
+	/**
+	 * Get artist/album recommendations derived from the artist mix.
+	 */
+	async getArtistRecommendations(
+		id: number,
+		options?: {
+			signal?: AbortSignal;
+		}
+	): Promise<ArtistRecommendations> {
+		return getArtistRecommendations(this.getCatalogContext(), id, options);
 	}
 
 	/**
@@ -1081,9 +1108,8 @@ class LosslessAPI {
 						quality,
 						manifestType: typeof manifestPayload,
 						manifestLength: typeof manifestPayload === 'string' ? manifestPayload.length : null,
-						manifestStartsWith: typeof manifestPayload === 'string'
-							? manifestPayload.trim().slice(0, 40)
-							: null,
+						manifestStartsWith:
+							typeof manifestPayload === 'string' ? manifestPayload.trim().slice(0, 40) : null,
 						manifestMimeType: lookup.info.manifestMimeType ?? null
 					});
 				}
@@ -1306,28 +1332,43 @@ class LosslessAPI {
 		}
 	}
 
-	private buildMusicBrainzCacheKey(track: Track, strictMatch: boolean): string {
+	private buildMusicBrainzCacheKey(
+		track: Track,
+		strictMatch: boolean,
+		musicBrainzReleaseId?: string
+	): string {
 		const mode = strictMatch ? 'strict' : 'flex';
+		const releaseSegment =
+			typeof musicBrainzReleaseId === 'string' && musicBrainzReleaseId.trim().length > 0
+				? musicBrainzReleaseId.trim().toLowerCase()
+				: 'auto';
 		const trackId = Number(track.id);
 		if (Number.isFinite(trackId)) {
-			return `${mode}:id:${trackId}`;
+			return `${mode}:release:${releaseSegment}:id:${trackId}`;
 		}
-		const title = String(track.title ?? '').trim().toLowerCase();
+		const title = String(track.title ?? '')
+			.trim()
+			.toLowerCase();
 		const artist = String(track.artist?.name ?? track.artists?.[0]?.name ?? '')
 			.trim()
 			.toLowerCase();
-		const album = String(track.album?.title ?? '').trim().toLowerCase();
-		const isrc = String(track.isrc ?? '').trim().toUpperCase();
-		return `${mode}:query:${isrc}|${title}|${artist}|${album}`;
+		const album = String(track.album?.title ?? '')
+			.trim()
+			.toLowerCase();
+		const isrc = String(track.isrc ?? '')
+			.trim()
+			.toUpperCase();
+		return `${mode}:release:${releaseSegment}:query:${isrc}|${title}|${artist}|${album}`;
 	}
 
 	private async lookupMusicBrainzTags(
 		track: Track,
 		signal?: AbortSignal,
-		strictMusicBrainzMatching?: boolean
+		strictMusicBrainzMatching?: boolean,
+		musicBrainzReleaseId?: string
 	): Promise<Record<string, string> | undefined> {
 		const strictIsrcMatch = strictMusicBrainzMatching === true;
-		const cacheKey = this.buildMusicBrainzCacheKey(track, strictIsrcMatch);
+		const cacheKey = this.buildMusicBrainzCacheKey(track, strictIsrcMatch, musicBrainzReleaseId);
 		const cached = this.musicBrainzTagCache.get(cacheKey);
 		if (cached) {
 			return { ...cached };
@@ -1342,7 +1383,8 @@ class LosslessAPI {
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					track,
-					strictIsrcMatch
+					strictIsrcMatch,
+					preferredReleaseId: musicBrainzReleaseId
 				}),
 				signal
 			});
@@ -1353,7 +1395,7 @@ class LosslessAPI {
 				success?: boolean;
 				tags?: Record<string, string>;
 			};
-			const tags = payload.success ? payload.tags ?? {} : {};
+			const tags = payload.success ? (payload.tags ?? {}) : {};
 			const hasTags = Object.keys(tags).length > 0;
 			this.musicBrainzTagCache.set(cacheKey, hasTags ? tags : null);
 			this.trimMusicBrainzCache();
@@ -1937,7 +1979,8 @@ class LosslessAPI {
 					? await this.lookupMusicBrainzTags(
 							metadataLookup.track,
 							options?.signal,
-							options?.strictMusicBrainzMatching
+							options?.strictMusicBrainzMatching,
+							options?.musicBrainzReleaseId
 						)
 					: undefined;
 			const processedBlob = !shouldEmbedMetadata
@@ -2254,7 +2297,9 @@ class LosslessAPI {
 		return relevantSegments.join('/');
 	}
 
-	private static getFallbackCoverSizes(size: '1280' | '640' | '320' | '160' | '80'): Array<'1280' | '640' | '320' | '160' | '80'> {
+	private static getFallbackCoverSizes(
+		size: '1280' | '640' | '320' | '160' | '80'
+	): Array<'1280' | '640' | '320' | '160' | '80'> {
 		switch (size) {
 			case '1280':
 				return ['1280', '640', '320', '160', '80'];
@@ -2291,9 +2336,7 @@ class LosslessAPI {
 		size: '1280' | '640' | '320' | '160' | '80' = '640',
 		options?: { proxy?: boolean; includeLowerSizes?: boolean }
 	): string[] {
-		const sizes = options?.includeLowerSizes
-			? LosslessAPI.getFallbackCoverSizes(size)
-			: [size];
+		const sizes = options?.includeLowerSizes ? LosslessAPI.getFallbackCoverSizes(size) : [size];
 		const candidates: string[] = [];
 		for (const candidateSize of sizes) {
 			const directUrl = this.getCoverUrl(coverId, candidateSize, { proxy: false });

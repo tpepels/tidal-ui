@@ -83,6 +83,16 @@ export interface ArtistDetails extends Artist {
 	};
 }
 
+export interface ArtistRecommendations {
+	source: 'artist-mix' | 'none';
+	reason?: string;
+	mixId?: string;
+	mixTitle?: string;
+	mixSubtitle?: string;
+	artists: Artist[];
+	albums: Album[];
+}
+
 // ============================================================================
 // ALBUM TYPES
 // ============================================================================
