@@ -26,7 +26,17 @@
 	import { scoreAlbumForSelection } from '$lib/utils/albumSelection';
 	import { sortTopTracks } from '$lib/utils/topTracks';
 	import { fetchAlbumLibraryStatus } from '$lib/utils/mediaLibraryClient';
-	import { ArrowLeft, User, Download, LoaderCircle, RotateCcw, X } from 'lucide-svelte';
+	import {
+		ArrowLeft,
+		ChevronLeft,
+		ChevronRight,
+		Download,
+		LoaderCircle,
+		RotateCcw,
+		Sparkles,
+		User,
+		X
+	} from 'lucide-svelte';
 
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
@@ -209,6 +219,8 @@
 		'This album is already in your local library. Redownload it and overwrite existing files?';
 	const CLIENT_REDOWNLOAD_CONFIRMATION =
 		'This album is already in your local library. Browser downloads cannot overwrite existing files and may append (2) to filenames. Continue anyway?';
+	let recommendedArtistsRail = $state<HTMLDivElement | null>(null);
+	let recommendedAlbumsRail = $state<HTMLDivElement | null>(null);
 
 	$effect(() => {
 		const id = Number(artistId);
@@ -1357,6 +1369,23 @@
 		const target = breadcrumbStore.goBack($page.url.pathname, '/');
 		void goto(target);
 	}
+
+	function scrollRecommendationRail(
+		rail: HTMLDivElement | null,
+		direction: 'left' | 'right'
+	): void {
+		if (!rail) {
+			return;
+		}
+		const sampleCard = rail.querySelector<HTMLElement>('[data-recommendation-card="true"]');
+		const step = sampleCard
+			? sampleCard.getBoundingClientRect().width + 14
+			: Math.max(rail.clientWidth * 0.85, 260);
+		rail.scrollBy({
+			left: direction === 'left' ? -step : step,
+			behavior: 'smooth'
+		});
+	}
 </script>
 
 <svelte:head>
@@ -1496,7 +1525,8 @@
 					<div>
 						<h2 class="text-2xl font-semibold text-white">Recommendations</h2>
 						<p class="text-sm text-gray-400">
-							Related artists and albums based on {artist.name}'s mix.
+							Related artists and albums based on {artist.name}&apos;s mix, not part of this
+							artist&apos;s official discography.
 						</p>
 					</div>
 					{#if recommendations?.source === 'artist-mix' && recommendations.mixTitle}
@@ -1526,20 +1556,51 @@
 						</p>
 					</div>
 				{:else if recommendedArtists.length > 0 || recommendedAlbums.length > 0}
-					<div class="mt-6 space-y-8">
+					<div class="recommendation-spotlight mt-6 space-y-6">
+						<div class="recommendation-spotlight__intro">
+							<span class="recommendation-spotlight__badge">
+								<Sparkles size={13} />
+								<span>Recommendation Mix</span>
+							</span>
+							<p>
+								These picks are suggestions from the API mix and are separated from official
+								discography releases below.
+							</p>
+						</div>
 						{#if recommendedArtists.length > 0}
 							<div class="space-y-3">
-								<div class="flex items-center justify-between">
+								<div class="flex items-center justify-between gap-3">
 									<h3 class="text-lg font-semibold text-white">Recommended Artists</h3>
-									<span
-										class="rounded-full border border-gray-700 bg-gray-900/70 px-2.5 py-1 text-xs text-gray-300"
-									>
+									<span class="recommendation-count-pill">
 										{recommendedArtists.length}
 									</span>
 								</div>
-								<div class="ui-media-grid ui-media-grid--artists">
+								<div class="recommendation-slider__controls">
+									<button
+										type="button"
+										class="recommendation-slider__control"
+										onclick={() => scrollRecommendationRail(recommendedArtistsRail, 'left')}
+										aria-label="Scroll recommended artists left"
+									>
+										<ChevronLeft size={16} />
+									</button>
+									<button
+										type="button"
+										class="recommendation-slider__control"
+										onclick={() => scrollRecommendationRail(recommendedArtistsRail, 'right')}
+										aria-label="Scroll recommended artists right"
+									>
+										<ChevronRight size={16} />
+									</button>
+								</div>
+								<div
+									class="recommendation-slider"
+									role="region"
+									aria-label="Recommended artists"
+									bind:this={recommendedArtistsRail}
+								>
 									{#each recommendedArtists as recommendationArtist (recommendationArtist.id)}
-										<article class="ui-media-card">
+										<article class="ui-media-card recommendation-slider__item" data-recommendation-card="true">
 											<a
 												href={`/artist/${recommendationArtist.id}`}
 												class="ui-media-card__primary-link"
@@ -1581,17 +1642,38 @@
 						{/if}
 						{#if recommendedAlbums.length > 0}
 							<div class="space-y-3">
-								<div class="flex items-center justify-between">
+								<div class="flex items-center justify-between gap-3">
 									<h3 class="text-lg font-semibold text-white">Recommended Albums</h3>
-									<span
-										class="rounded-full border border-gray-700 bg-gray-900/70 px-2.5 py-1 text-xs text-gray-300"
-									>
+									<span class="recommendation-count-pill">
 										{recommendedAlbums.length}
 									</span>
 								</div>
-								<div class="ui-media-grid ui-media-grid--albums">
+								<div class="recommendation-slider__controls">
+									<button
+										type="button"
+										class="recommendation-slider__control"
+										onclick={() => scrollRecommendationRail(recommendedAlbumsRail, 'left')}
+										aria-label="Scroll recommended albums left"
+									>
+										<ChevronLeft size={16} />
+									</button>
+									<button
+										type="button"
+										class="recommendation-slider__control"
+										onclick={() => scrollRecommendationRail(recommendedAlbumsRail, 'right')}
+										aria-label="Scroll recommended albums right"
+									>
+										<ChevronRight size={16} />
+									</button>
+								</div>
+								<div
+									class="recommendation-slider"
+									role="region"
+									aria-label="Recommended albums"
+									bind:this={recommendedAlbumsRail}
+								>
 									{#each recommendedAlbums as recommendationAlbum (recommendationAlbum.id)}
-										<article class="ui-media-card">
+										<article class="ui-media-card recommendation-slider__item" data-recommendation-card="true">
 											<a
 												href={`/album/${recommendationAlbum.id}`}
 												class="ui-media-card__primary-link"
@@ -2050,3 +2132,111 @@
 
 	</div>
 {/if}
+
+<style>
+	.recommendation-spotlight {
+		border: 1px solid rgba(96, 165, 250, 0.35);
+		background:
+			linear-gradient(
+				180deg,
+				rgba(30, 58, 138, 0.22) 0%,
+				rgba(15, 23, 42, 0.42) 55%,
+				rgba(2, 6, 23, 0.22) 100%
+			);
+		padding: 1rem;
+	}
+
+	.recommendation-spotlight__intro {
+		display: flex;
+		flex-direction: column;
+		gap: 0.45rem;
+	}
+
+	.recommendation-spotlight__intro p {
+		margin: 0;
+		font-size: 0.82rem;
+		color: rgb(191 219 254 / 0.9);
+	}
+
+	.recommendation-spotlight__badge {
+		display: inline-flex;
+		width: fit-content;
+		align-items: center;
+		gap: 0.35rem;
+		border: 1px solid rgba(125, 211, 252, 0.5);
+		background: rgba(12, 74, 110, 0.35);
+		padding: 0.25rem 0.55rem;
+		font-size: 0.72rem;
+		font-weight: 700;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: rgb(224 242 254 / 0.95);
+	}
+
+	.recommendation-count-pill {
+		display: inline-flex;
+		align-items: center;
+		border: 1px solid rgba(59, 130, 246, 0.55);
+		background: rgba(30, 58, 138, 0.42);
+		padding: 0.2rem 0.65rem;
+		font-size: 0.74rem;
+		color: rgb(219 234 254 / 0.95);
+	}
+
+	.recommendation-slider__controls {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+	}
+
+	.recommendation-slider__control {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		border: 1px solid rgba(147, 197, 253, 0.45);
+		background: rgba(15, 23, 42, 0.52);
+		padding: 0.38rem 0.44rem;
+		color: rgb(219 234 254 / 0.95);
+		transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+	}
+
+	.recommendation-slider__control:hover {
+		border-color: rgba(147, 197, 253, 0.85);
+		background: rgba(30, 64, 175, 0.52);
+		color: rgb(239 246 255);
+	}
+
+	.recommendation-slider {
+		display: grid;
+		grid-auto-flow: column;
+		grid-auto-columns: minmax(220px, 300px);
+		gap: 0.85rem;
+		overflow-x: auto;
+		padding: 0.1rem 0.1rem 0.5rem;
+		scroll-snap-type: x mandatory;
+		scrollbar-color: rgba(147, 197, 253, 0.45) rgba(15, 23, 42, 0.35);
+		scrollbar-width: thin;
+	}
+
+	.recommendation-slider::-webkit-scrollbar {
+		height: 8px;
+	}
+
+	.recommendation-slider::-webkit-scrollbar-track {
+		background: rgba(15, 23, 42, 0.35);
+	}
+
+	.recommendation-slider::-webkit-scrollbar-thumb {
+		background: rgba(147, 197, 253, 0.4);
+	}
+
+	.recommendation-slider__item {
+		scroll-snap-align: start;
+	}
+
+	@media (max-width: 900px) {
+		.recommendation-slider {
+			grid-auto-columns: minmax(230px, 76vw);
+		}
+	}
+</style>
