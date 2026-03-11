@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Disc, User } from 'lucide-svelte';
+	import CoverArt from '$lib/components/CoverArt.svelte';
 
 	export type EntityCardLink = {
 		href: string;
@@ -17,6 +18,8 @@
 		intent?: string | null;
 		imageSrc?: string | null;
 		imageAlt?: string;
+		coverCacheKey?: string | null;
+		coverCandidates?: string[];
 		links?: EntityCardLink[];
 		preload?: boolean;
 	}
@@ -31,6 +34,8 @@
 		intent = null,
 		imageSrc = null,
 		imageAlt = '',
+		coverCacheKey = null,
+		coverCandidates = [],
 		links = [],
 		preload = true
 	}: Props = $props();
@@ -52,7 +57,14 @@
 		data-sveltekit-preload-data={preload ? '' : undefined}
 	>
 		<div class="ui-media-card__artwork" class:ui-media-card__artwork--circle={type === 'artist'}>
-			{#if imageSrc}
+			{#if type === 'album' && coverCacheKey && coverCandidates.length > 0}
+				<CoverArt
+					cacheKey={coverCacheKey}
+					candidates={coverCandidates}
+					alt={imageAlt || title}
+					class="h-full w-full object-cover"
+				/>
+			{:else if imageSrc}
 				<img src={imageSrc} alt={imageAlt || title} loading="lazy" decoding="async" />
 			{:else}
 				<div class="ui-entity-card__placeholder">

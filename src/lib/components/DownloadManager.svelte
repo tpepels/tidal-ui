@@ -1186,7 +1186,7 @@
 			<div class="download-manager-content">
 				<!-- Current/Active Downloads -->
 				{#if stats.running > 0}
-					<div class="section current-section">
+					<div class="section section--active current-section">
 						<button
 							type="button"
 							class="section-toggle"
@@ -1273,7 +1273,7 @@
 
 				<!-- Queued items -->
 				{#if stats.queued > 0}
-					<div class="section">
+					<div class="section section--queue">
 						<button
 							type="button"
 							class="section-toggle"
@@ -1451,7 +1451,7 @@
 
 				<!-- Completed -->
 				{#if stats.completed > 0}
-					<div class="section">
+					<div class="section section--completed">
 						<h4 class="section-title">
 							<span>Completed</span>
 							<span class="section-count">{stats.completed}</span>
@@ -1542,7 +1542,7 @@
 
 				<!-- Failed / Cancelled -->
 				{#if resumableJobs.length > 0}
-					<div class="section">
+					<div class="section section--attention">
 						<button
 							type="button"
 							class="section-toggle"
@@ -1601,7 +1601,7 @@
 												<div class="failed-item-details">
 													<div class="detail-row">
 														<span class="detail-label">Job ID:</span>
-														<span class="detail-value" style="font-family: monospace; font-size: 11px;">{job.id}</span>
+														<span class="detail-value detail-value--mono">{job.id}</span>
 													</div>
 													<div class="detail-row">
 														<span class="detail-label">Status:</span>
@@ -1757,13 +1757,24 @@
 	.download-manager-container {
 		--color-primary: #f5f5f5;
 		--color-success: #e5e7eb;
-		--color-warning: #f59e0b;
-		--color-error: #ef4444;
+		--color-warning: #d8d8d8;
+		--color-error: #c9c9c9;
 		--color-bg-primary: var(--mono-surface-card);
-		--color-bg-secondary: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		--color-bg-secondary: #101010;
 		--color-border: var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 		--color-text-primary: rgba(245, 245, 245, 0.96);
 		--color-text-secondary: rgba(163, 163, 163, 0.86);
+		--dm-surface-0: #121212;
+		--dm-surface-1: #171717;
+		--dm-surface-2: #1d1d1d;
+		--dm-border-strong: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+		--dm-ok: rgba(212, 212, 212, 0.94);
+		--dm-warn: rgba(225, 225, 225, 0.92);
+		--dm-danger: rgba(205, 205, 205, 0.95);
+		--dm-section-radius: var(--ui-radius-md, 12px);
+		font-family: var(--ui-font-sans, 'Figtree', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif);
+		font-size: 1rem;
+		line-height: 1.45;
 	}
 
 	.download-manager-container--page {
@@ -1806,8 +1817,8 @@
 		height: 26px;
 		padding: 0 6px;
 		border-radius: 13px;
-		background: rgba(239, 68, 68, 0.88);
-		color: white;
+		background: rgba(238, 238, 238, 0.9);
+		color: #111111;
 		font-size: 11px;
 		font-weight: 700;
 		display: flex;
@@ -1841,9 +1852,308 @@
 		bottom: auto;
 		z-index: 1;
 		width: 100%;
-		max-height: min(78vh, 980px);
+		max-height: none;
 		animation: none;
-		box-shadow: var(--ui-shadow-soft, 0 10px 28px rgba(0, 0, 0, 0.22));
+		box-shadow: none;
+		font-family: var(--ui-font-sans, 'Figtree', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif);
+		font-size: 1.04rem;
+		line-height: 1.46;
+		letter-spacing: 0.01em;
+	}
+
+	.download-manager-panel--page .download-manager-header {
+		padding: 1.08rem 1.1rem 1.02rem;
+		border-bottom: 1px solid var(--color-border);
+		background: #101010;
+	}
+
+	.download-manager-panel--page .download-manager-title {
+		font-size: 1.16rem;
+		letter-spacing: 0.012em;
+	}
+
+	.download-manager-panel--page .download-manager-subtitle-text {
+		font-size: 0.9rem;
+	}
+
+	.download-manager-panel--page .download-manager-meta-row {
+		margin-top: 0.52rem;
+		gap: 0.52rem;
+	}
+
+	.download-manager-panel--page .download-manager-redis,
+	.download-manager-panel--page .download-manager-last-updated,
+	.download-manager-panel--page .download-manager-poll-status,
+	.download-manager-panel--page .download-manager-meta-separator {
+		font-size: 0.76rem;
+	}
+
+	.download-manager-panel--page .download-manager-error,
+	.download-manager-panel--page .download-manager-warning,
+	.download-manager-panel--page .download-manager-notice {
+		margin: 0.88rem 1.05rem 0;
+		border-radius: 10px;
+		font-size: 0.82rem;
+	}
+
+	.download-manager-panel--page .download-status-hero {
+		margin: 0.88rem 1.05rem 0;
+		padding: 0.98rem 1rem;
+		border-radius: var(--dm-section-radius);
+		border: 1px solid var(--color-border);
+		background: var(--dm-surface-0);
+	}
+
+	.download-manager-panel--page .download-status-hero[data-active='false'] {
+		background: var(--dm-surface-0);
+	}
+
+	.download-manager-panel--page .download-status-hero__eyebrow {
+		font-size: 0.64rem;
+		letter-spacing: 0.18em;
+	}
+
+	.download-manager-panel--page .download-status-hero__main h4 {
+		font-size: 1.15rem;
+	}
+
+	.download-manager-panel--page .download-status-hero__main p {
+		font-size: 0.86rem;
+	}
+
+	.download-manager-panel--page .download-status-hero__meter-meta {
+		font-size: 0.78rem;
+	}
+
+	.download-manager-panel--page .download-status-hero__meter-meta strong {
+		font-size: 0.94rem;
+	}
+
+	.download-manager-panel--page .download-status-chip {
+		border-color: var(--color-border);
+		background: var(--dm-surface-1);
+		color: rgba(235, 235, 235, 0.9);
+		font-size: 0.62rem;
+	}
+
+	.download-manager-panel--page .download-status-chip[data-tone='ok'] {
+		border-color: rgba(255, 255, 255, 0.32);
+		background: var(--dm-surface-2);
+		color: var(--dm-ok);
+	}
+
+	.download-manager-panel--page .download-status-chip[data-tone='warn'] {
+		border-color: rgba(255, 255, 255, 0.28);
+		background: rgba(255, 255, 255, 0.1);
+		color: var(--dm-warn);
+	}
+
+	.download-manager-panel--page .poll-stale-chip {
+		font-size: 0.54rem;
+	}
+
+	.download-manager-panel--page .download-manager-top-strip {
+		margin: 0.88rem 1.05rem 0;
+		padding: 0;
+		border: 0;
+		background: transparent;
+		position: static;
+		gap: 0.68rem;
+		grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+	}
+
+	.download-manager-panel--page .top-strip-item {
+		border-radius: var(--dm-section-radius);
+		background: var(--dm-surface-0);
+		border: 1px solid var(--color-border);
+		padding: 0.74rem 0.76rem;
+		gap: 0.4rem;
+	}
+
+	.download-manager-panel--page .top-strip-label {
+		letter-spacing: 0.16em;
+		font-size: 0.62rem;
+	}
+
+	.download-manager-panel--page .top-strip-value {
+		font-size: 1.52rem;
+	}
+
+	.download-manager-panel--page .top-strip-value--text {
+		font-size: 0.82rem;
+	}
+
+	.download-manager-panel--page .top-strip-item--running .top-strip-value,
+	.download-manager-panel--page .top-strip-item--queued .top-strip-value,
+	.download-manager-panel--page .top-strip-item--paused .top-strip-value {
+		color: var(--dm-ok);
+	}
+
+	.download-manager-panel--page .top-strip-item--failed .top-strip-value {
+		color: var(--dm-danger);
+	}
+
+	.download-manager-panel--page .download-manager-quick-actions {
+		padding: 0;
+		margin: 0.84rem 1.05rem 0;
+		border: 0;
+		background: transparent;
+		gap: 0.5rem;
+	}
+
+	.download-manager-panel--page .control-btn {
+		border-radius: var(--ui-radius-sm, 9px);
+		padding: 0.58rem 0.84rem;
+		font-size: 0.84rem;
+		letter-spacing: 0.014em;
+	}
+
+	.download-manager-panel--page .control-btn--secondary {
+		background: var(--dm-surface-0);
+		border: 1px solid var(--color-border);
+	}
+
+	.download-manager-panel--page .download-manager-content {
+		padding: 0.92rem 1.1rem 1.08rem;
+		gap: 0.85rem;
+		overflow-y: visible;
+	}
+
+	.download-manager-panel--page .section {
+		position: relative;
+		padding: 0.86rem 0.9rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--dm-section-radius);
+		background: var(--dm-surface-0);
+		gap: 0.78rem;
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+	}
+
+	.download-manager-panel--page .current-section {
+		border-color: var(--dm-border-strong);
+		background: var(--dm-surface-0);
+	}
+
+	.download-manager-panel--page .section--queue {
+		border-color: rgba(255, 255, 255, 0.22);
+	}
+
+	.download-manager-panel--page .section--completed {
+		border-color: rgba(255, 255, 255, 0.2);
+	}
+
+	.download-manager-panel--page .section--attention {
+		border-color: rgba(255, 255, 255, 0.24);
+	}
+
+	.download-manager-panel--page .section-title {
+		font-size: 0.74rem;
+		letter-spacing: 0.16em;
+	}
+
+	.download-manager-panel--page .section-toggle {
+		padding: 0;
+		min-height: 0;
+	}
+
+	.download-manager-panel--page .section-toggle:hover {
+		background: transparent;
+	}
+
+	.download-manager-panel--page .section-count {
+		background: var(--dm-surface-1);
+		border: 1px solid var(--color-border);
+		padding: 0.2rem 0.5rem;
+		font-size: 0.74rem;
+	}
+
+	.download-manager-panel--page .current-item,
+	.download-manager-panel--page .queue-item-card,
+	.download-manager-panel--page .completed-item,
+	.download-manager-panel--page .failed-item-card,
+	.download-manager-panel--page .completion-summary,
+	.download-manager-panel--page .queue-more-hint {
+		border-radius: var(--ui-radius-sm, 9px);
+		border: 1px solid var(--color-border);
+		background: var(--dm-surface-0);
+	}
+
+	.download-manager-panel--page .section-filter-row {
+		padding: 0.56rem 0.62rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--ui-radius-sm, 9px);
+		background: var(--dm-surface-1);
+	}
+
+	.download-manager-panel--page .section-filter-label {
+		font-size: 0.66rem;
+	}
+
+	.download-manager-panel--page .filter-pill {
+		font-size: 0.78rem;
+		padding: 0.34rem 0.7rem;
+	}
+
+	.download-manager-panel--page .queue-list,
+	.download-manager-panel--page .failed-list {
+		max-height: none;
+	}
+
+	.download-manager-panel--page .completed-list {
+		gap: 0.56rem;
+	}
+
+	.download-manager-panel--page .queue-item-click,
+	.download-manager-panel--page .failed-item-click {
+		padding: 0.72rem 0.76rem;
+	}
+
+	.download-manager-panel--page .queue-item-click:hover,
+	.download-manager-panel--page .failed-item-click:hover {
+		background: var(--dm-surface-1);
+	}
+
+	.download-manager-panel--page .queue-item-title,
+	.download-manager-panel--page .failed-item-title,
+	.download-manager-panel--page .completed-item-title,
+	.download-manager-panel--page .current-item-title {
+		font-size: 0.9rem;
+	}
+
+	.download-manager-panel--page .queue-item-artist,
+	.download-manager-panel--page .failed-item-artist,
+	.download-manager-panel--page .completed-item-meta,
+	.download-manager-panel--page .current-item-meta {
+		font-size: 0.8rem;
+	}
+
+	.download-manager-panel--page .detail-row {
+		font-size: 0.78rem;
+	}
+
+	.download-manager-panel--page .detail-value--mono {
+		font-size: 0.78rem;
+	}
+
+	.download-manager-panel--page .item-action-btn {
+		border-radius: var(--ui-radius-sm, 9px);
+		padding: 0.3rem 0.52rem;
+		font-size: 0.76rem;
+	}
+
+	.download-manager-panel--page .download-manager-empty {
+		padding: 2rem 1rem;
+		min-height: 0;
+		border-radius: var(--dm-section-radius);
+		border: 1px dashed var(--color-border);
+		background: var(--dm-surface-0);
+	}
+
+	.download-manager-panel--page .download-manager-footer {
+		padding: 0.76rem 1.05rem 1rem;
+		border-top: 1px solid var(--color-border);
+		position: static;
+		background: transparent;
 	}
 
 	@keyframes slideUp {
@@ -1861,23 +2171,23 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 16px;
+		padding: 1rem;
 		border-bottom: 1px solid var(--color-border);
 		flex-shrink: 0;
-		gap: 12px;
+		gap: 0.75rem;
 	}
 
 	.download-manager-title {
 		margin: 0;
-		font-size: 16px;
+		font-size: 1.08rem;
 		font-weight: 700;
 		color: var(--color-text-primary);
-		letter-spacing: 0.5px;
+		letter-spacing: 0.02em;
 	}
 
 	.download-manager-subtitle-text {
-		margin: 4px 0 0 0;
-		font-size: 12px;
+		margin: 0.26rem 0 0 0;
+		font-size: 0.82rem;
 		color: var(--color-text-secondary);
 	}
 
@@ -1890,26 +2200,26 @@
 	}
 
 	.download-manager-meta-separator {
-		font-size: 11px;
+		font-size: 0.72rem;
 		color: var(--color-text-secondary);
 		opacity: 0.7;
 	}
 
 	.download-manager-last-updated {
-		font-size: 11px;
+		font-size: 0.72rem;
 		color: var(--color-text-secondary);
 	}
 
 	.download-manager-poll-status {
-		font-size: 11px;
+		font-size: 0.72rem;
 		color: var(--color-text-secondary);
 		display: inline-flex;
 		align-items: center;
-		gap: 6px;
+		gap: 0.35rem;
 	}
 
 	.download-manager-poll-status[data-stale='true'] {
-		color: #fbbf24;
+		color: rgba(224, 224, 224, 0.92);
 	}
 
 	.poll-stale-chip {
@@ -1919,21 +2229,21 @@
 		border-radius: 999px;
 		letter-spacing: 0.3px;
 		font-weight: 700;
-		color: #fef3c7;
-		background: rgba(245, 158, 11, 0.28);
-		border: 1px solid rgba(245, 158, 11, 0.5);
+		color: rgba(245, 245, 245, 0.94);
+		background: rgba(255, 255, 255, 0.2);
+		border: 1px solid rgba(255, 255, 255, 0.36);
 	}
 
 	.download-manager-compact-indicator {
-		font-size: 11px;
+		font-size: 0.72rem;
 		color: #d4d4d4;
 	}
 
 	.download-manager-redis {
 		display: inline-flex;
 		align-items: center;
-		gap: 6px;
-		font-size: 11px;
+		gap: 0.35rem;
+		font-size: 0.72rem;
 		color: var(--color-text-secondary);
 	}
 
@@ -1941,20 +2251,20 @@
 		width: 8px;
 		height: 8px;
 		border-radius: 999px;
-		background: #94a3b8;
+		background: #a8a8a8;
 		display: inline-block;
 	}
 
 	.download-manager-redis[data-state='ok'] .download-manager-redis-dot {
-		background: #10b981;
+		background: #f1f1f1;
 	}
 
 	.download-manager-redis[data-state='warn'] .download-manager-redis-dot {
-		background: #f59e0b;
+		background: #d8d8d8;
 	}
 
 	.download-manager-redis[data-state='unknown'] .download-manager-redis-dot {
-		background: #64748b;
+		background: #7a7a7a;
 	}
 
 	.download-manager-close {
@@ -1966,7 +2276,7 @@
 		align-items: center;
 		justify-content: center;
 		font-size: 20px;
-		border-radius: 6px;
+		border-radius: var(--ui-radius-sm, 9px);
 		color: var(--color-text-secondary);
 		transition: all 0.2s;
 		flex-shrink: 0;
@@ -1980,9 +2290,10 @@
 	.download-manager-error {
 		margin: 0 16px 12px;
 		padding: 10px 12px;
-		border-radius: 10px;
-		background: rgba(239, 68, 68, 0.16);
-		color: #fecaca;
+		border-radius: var(--ui-radius-sm, 9px);
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		background: rgba(255, 255, 255, 0.08);
+		color: rgba(220, 220, 220, 0.92);
 		font-size: 12px;
 		line-height: 1.4;
 	}
@@ -1990,9 +2301,10 @@
 	.download-manager-warning {
 		margin: 0 16px 12px;
 		padding: 10px 12px;
-		border-radius: 10px;
-		background: rgba(245, 158, 11, 0.16);
-		color: #fde68a;
+		border-radius: var(--ui-radius-sm, 9px);
+		border: 1px solid rgba(255, 255, 255, 0.18);
+		background: rgba(255, 255, 255, 0.06);
+		color: rgba(214, 214, 214, 0.9);
 		font-size: 12px;
 		line-height: 1.4;
 	}
@@ -2000,22 +2312,22 @@
 	.download-manager-notice {
 		margin: 0 16px 12px;
 		padding: 10px 12px;
-		border-radius: 10px;
+		border-radius: var(--ui-radius-sm, 9px);
 		font-size: 12px;
 		line-height: 1.4;
 		border: 1px solid var(--color-border);
 	}
 
 	.download-manager-notice[data-tone='success'] {
-		background: rgba(16, 185, 129, 0.16);
-		color: #d1fae5;
-		border-color: rgba(16, 185, 129, 0.4);
+		background: rgba(255, 255, 255, 0.12);
+		color: rgba(236, 236, 236, 0.94);
+		border-color: rgba(255, 255, 255, 0.3);
 	}
 
 	.download-manager-notice[data-tone='error'] {
-		background: rgba(239, 68, 68, 0.16);
-		color: #fecaca;
-		border-color: rgba(239, 68, 68, 0.4);
+		background: rgba(255, 255, 255, 0.1);
+		color: rgba(214, 214, 214, 0.9);
+		border-color: rgba(255, 255, 255, 0.24);
 	}
 
 	.download-manager-notice[data-tone='info'] {
@@ -2027,9 +2339,9 @@
 	.download-status-hero {
 		margin: 0 16px 12px;
 		padding: 12px;
-		border-radius: 12px;
-		border: 1px solid rgba(148, 163, 184, 0.22);
-		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		border-radius: var(--dm-section-radius);
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		background: var(--dm-surface-0);
 		display: flex;
 		flex-direction: column;
 		gap: 10px;
@@ -2050,7 +2362,7 @@
 		font-size: 10px;
 		text-transform: uppercase;
 		letter-spacing: 0.22em;
-		color: rgba(226, 232, 240, 0.8);
+		color: rgba(220, 220, 220, 0.8);
 		font-weight: 700;
 	}
 
@@ -2064,7 +2376,7 @@
 	.download-status-hero__main p {
 		margin: 0;
 		font-size: 12px;
-		color: rgba(226, 232, 240, 0.8);
+		color: rgba(220, 220, 220, 0.8);
 	}
 
 	.download-status-hero__meter {
@@ -2078,7 +2390,7 @@
 		border-radius: 999px;
 		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
 		overflow: hidden;
-		border: 1px solid rgba(226, 232, 240, 0.16);
+		border: 1px solid rgba(255, 255, 255, 0.16);
 	}
 
 	.download-status-hero__meter-fill {
@@ -2097,7 +2409,7 @@
 		justify-content: space-between;
 		gap: 8px;
 		font-size: 11px;
-		color: rgba(226, 232, 240, 0.86);
+		color: rgba(220, 220, 220, 0.86);
 	}
 
 	.download-status-hero__meter-meta strong {
@@ -2121,21 +2433,21 @@
 		text-transform: uppercase;
 		padding: 5px 9px;
 		border-radius: 999px;
-		border: 1px solid rgba(148, 163, 184, 0.24);
-		background: rgba(15, 23, 42, 0.45);
-		color: rgba(226, 232, 240, 0.88);
+		border: 1px solid rgba(255, 255, 255, 0.22);
+		background: rgba(20, 20, 20, 0.45);
+		color: rgba(220, 220, 220, 0.88);
 	}
 
 	.download-status-chip[data-tone='ok'] {
-		border-color: rgba(16, 185, 129, 0.44);
-		background: rgba(16, 185, 129, 0.2);
-		color: #d1fae5;
+		border-color: rgba(255, 255, 255, 0.34);
+		background: rgba(255, 255, 255, 0.16);
+		color: rgba(242, 242, 242, 0.95);
 	}
 
 	.download-status-chip[data-tone='warn'] {
-		border-color: rgba(245, 158, 11, 0.45);
-		background: rgba(245, 158, 11, 0.18);
-		color: #fde68a;
+		border-color: rgba(255, 255, 255, 0.28);
+		background: rgba(255, 255, 255, 0.12);
+		color: rgba(224, 224, 224, 0.9);
 	}
 
 	.download-manager-top-strip {
@@ -2145,7 +2457,7 @@
 		border-top: 1px solid var(--color-border);
 		border-bottom: 1px solid var(--color-border);
 		padding: 12px 16px;
-		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		background: #101010;
 		position: sticky;
 		top: 0;
 		z-index: 2;
@@ -2158,7 +2470,7 @@
 		gap: 8px;
 		padding: 10px 16px;
 		border-bottom: 1px solid var(--color-border);
-		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		background: #101010;
 	}
 
 	.top-strip-item {
@@ -2166,8 +2478,8 @@
 		flex-direction: column;
 		gap: 6px;
 		padding: 10px;
-		border-radius: 10px;
-		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		border-radius: var(--ui-radius-sm, 9px);
+		background: var(--dm-surface-0);
 		border: 1px solid var(--color-border);
 		min-width: 0;
 	}
@@ -2200,15 +2512,15 @@
 	}
 
 	.top-strip-item--queued .top-strip-value {
-		color: #f59e0b;
+		color: rgba(228, 228, 228, 0.94);
 	}
 
 	.top-strip-item--paused .top-strip-value {
-		color: #facc15;
+		color: rgba(216, 216, 216, 0.9);
 	}
 
 	.top-strip-item--failed .top-strip-value {
-		color: #ef4444;
+		color: rgba(206, 206, 206, 0.9);
 	}
 
 	/* Main content */
@@ -2228,10 +2540,10 @@
 	}
 
 	.current-section {
-		border: 1px solid rgba(16, 185, 129, 0.32);
-		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		border: 1px solid rgba(255, 255, 255, 0.24);
+		background: var(--dm-surface-0);
 		padding: 12px;
-		border-radius: 10px;
+		border-radius: var(--dm-section-radius);
 	}
 
 	.section-title {
@@ -2255,7 +2567,7 @@
 		gap: 8px;
 		width: 100%;
 		cursor: pointer;
-		border-radius: 8px;
+		border-radius: var(--ui-radius-sm, 9px);
 		padding: 4px 6px;
 		box-sizing: border-box;
 		min-height: 40px;
@@ -2297,12 +2609,13 @@
 	}
 
 	.section-count {
-		background: var(--color-bg-secondary);
+		background: var(--dm-surface-1);
 		padding: 3px 8px;
-		border-radius: 10px;
+		border-radius: var(--ui-radius-sm, 9px);
 		font-size: 12px;
 		font-weight: 600;
 		color: var(--color-text-primary);
+		border: 1px solid var(--color-border);
 	}
 
 	/* Current items */
@@ -2313,9 +2626,9 @@
 	}
 
 	.current-item {
-		background: rgba(15, 23, 42, 0.45);
-		border: 1px solid rgba(148, 163, 184, 0.2);
-		border-radius: 10px;
+		background: var(--dm-surface-0);
+		border: 1px solid rgba(255, 255, 255, 0.18);
+		border-radius: var(--ui-radius-sm, 9px);
 		padding: 12px;
 		display: flex;
 		flex-direction: column;
@@ -2348,7 +2661,7 @@
 
 	.badge {
 		padding: 3px 8px;
-		border-radius: 4px;
+		border-radius: 999px;
 		font-size: 10px;
 		font-weight: 700;
 		white-space: nowrap;
@@ -2356,8 +2669,8 @@
 	}
 
 	.badge-processing {
-		background: rgba(16, 185, 129, 0.2);
-		color: #10b981;
+		background: rgba(255, 255, 255, 0.16);
+		color: rgba(242, 242, 242, 0.95);
 	}
 
 	.current-item-meta {
@@ -2375,7 +2688,7 @@
 	.progress-bar {
 		width: 100%;
 		height: 6px;
-		background: rgba(148, 163, 184, 0.2);
+		background: rgba(255, 255, 255, 0.18);
 		border-radius: 999px;
 		overflow: hidden;
 		margin-top: 4px;
@@ -2422,7 +2735,7 @@
 		all: unset;
 		cursor: pointer;
 		padding: 4px 10px;
-		border-radius: 999px;
+		border-radius: var(--ui-radius-sm, 9px);
 		font-size: 11px;
 		color: var(--color-text-secondary);
 		border: 1px solid var(--color-border);
@@ -2445,7 +2758,7 @@
 
 	.filter-empty-state {
 		border: 1px dashed var(--color-border);
-		border-radius: 8px;
+		border-radius: var(--ui-radius-sm, 9px);
 		padding: 12px;
 		font-size: 12px;
 		color: var(--color-text-secondary);
@@ -2463,9 +2776,9 @@
 	}
 
 	.queue-item-card {
-		background: var(--color-bg-secondary);
+		background: var(--dm-surface-0);
 		border: 1px solid var(--color-border);
-		border-radius: 6px;
+		border-radius: var(--ui-radius-sm, 9px);
 		overflow: hidden;
 	}
 
@@ -2530,7 +2843,7 @@
 
 	.meta-album-progress {
 		font-weight: 600;
-		color: #10b981;
+		color: rgba(234, 234, 234, 0.94);
 	}
 
 	.expand-icon {
@@ -2572,6 +2885,11 @@
 		text-overflow: ellipsis;
 	}
 
+	.detail-value--mono {
+		font-family: ui-monospace, 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+		font-size: 0.72rem;
+	}
+
 	.detail-actions {
 		display: flex;
 		flex-wrap: wrap;
@@ -2592,9 +2910,9 @@
 
 	/* Completion summary */
 	.completion-summary {
-		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		background: var(--dm-surface-0);
 		border: 1px solid var(--color-border);
-		border-radius: 6px;
+		border-radius: var(--ui-radius-sm, 9px);
 		padding: 10px;
 		font-size: 12px;
 		color: var(--color-text-primary);
@@ -2612,9 +2930,9 @@
 
 	.completed-item {
 		padding: 10px;
-		border-radius: 8px;
+		border-radius: var(--ui-radius-sm, 9px);
 		border: 1px solid var(--color-border);
-		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		background: var(--dm-surface-0);
 	}
 
 	.completed-item-header {
@@ -2653,9 +2971,9 @@
 	}
 
 	.failed-item-card {
-		background: rgba(239, 68, 68, 0.08);
-		border: 1px solid rgba(239, 68, 68, 0.25);
-		border-radius: 6px;
+		background: var(--dm-surface-0);
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		border-radius: var(--ui-radius-sm, 9px);
 		overflow: hidden;
 	}
 
@@ -2666,7 +2984,7 @@
 	}
 
 	.failed-item-click:hover {
-		background: rgba(239, 68, 68, 0.12);
+		background: rgba(255, 255, 255, 0.12);
 	}
 
 	.failed-item-main {
@@ -2702,7 +3020,7 @@
 
 	.failed-item-error-text {
 		font-size: 10px;
-		color: var(--color-error);
+		color: rgba(208, 208, 208, 0.9);
 		white-space: normal;
 		word-break: break-word;
 		line-height: 1.3;
@@ -2710,7 +3028,7 @@
 
 	.failed-item-details {
 		padding-top: 8px;
-		border-top: 1px solid rgba(239, 68, 68, 0.2);
+		border-top: 1px solid rgba(255, 255, 255, 0.16);
 		margin-top: 8px;
 		display: flex;
 		flex-direction: column;
@@ -2729,7 +3047,7 @@
 		all: unset;
 		cursor: pointer;
 		padding: 8px 14px;
-		border-radius: 6px;
+		border-radius: var(--ui-radius-sm, 9px);
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -2747,7 +3065,7 @@
 		all: unset;
 		cursor: pointer;
 		padding: 4px 8px;
-		border-radius: 999px;
+		border-radius: var(--ui-radius-sm, 9px);
 		font-size: 11px;
 		font-weight: 600;
 		display: inline-flex;
@@ -2782,15 +3100,15 @@
 	}
 
 	.item-action-btn--warning {
-		border-color: rgba(245, 158, 11, 0.5);
-		color: #fde68a;
-		background: rgba(245, 158, 11, 0.14);
+		border-color: rgba(255, 255, 255, 0.3);
+		color: rgba(224, 224, 224, 0.9);
+		background: rgba(255, 255, 255, 0.1);
 	}
 
 	.item-action-btn--danger {
-		border-color: rgba(239, 68, 68, 0.5);
-		color: #fecaca;
-		background: rgba(239, 68, 68, 0.14);
+		border-color: rgba(255, 255, 255, 0.24);
+		color: rgba(210, 210, 210, 0.9);
+		background: rgba(255, 255, 255, 0.08);
 	}
 
 	.control-btn--secondary {
@@ -2810,13 +3128,13 @@
 	}
 
 	.control-btn--warning {
-		background: rgba(245, 158, 11, 0.18);
-		color: #fde68a;
-		border-color: rgba(245, 158, 11, 0.4);
+		background: rgba(255, 255, 255, 0.14);
+		color: rgba(224, 224, 224, 0.9);
+		border-color: rgba(255, 255, 255, 0.26);
 	}
 
 	.control-btn--warning:hover {
-		background: rgba(245, 158, 11, 0.26);
+		background: rgba(255, 255, 255, 0.2);
 	}
 
 	.control-btn--secondary:hover {
@@ -2824,13 +3142,13 @@
 	}
 
 	.control-btn--danger {
-		background: rgba(239, 68, 68, 0.1);
-		color: var(--color-error);
-		border: 1px solid rgba(239, 68, 68, 0.3);
+		background: rgba(255, 255, 255, 0.08);
+		color: rgba(210, 210, 210, 0.9);
+		border: 1px solid rgba(255, 255, 255, 0.2);
 	}
 
 	.control-btn--danger:hover {
-		background: rgba(239, 68, 68, 0.2);
+		background: rgba(255, 255, 255, 0.14);
 	}
 
 	.control-btn:disabled {
@@ -2878,7 +3196,7 @@
 		align-items: center;
 		justify-content: center;
 		padding: 8px 12px;
-		border-radius: 8px;
+		border-radius: var(--ui-radius-sm, 9px);
 		border: 1px solid rgba(245, 245, 245, 0.45);
 		background: rgba(245, 245, 245, 0.14);
 		color: #f5f5f5;
@@ -2911,11 +3229,11 @@
 		display: flex;
 		gap: 8px;
 		flex-shrink: 0;
-		background: var(--color-bg-secondary);
+		background: #101010;
 		position: sticky;
 		bottom: 0;
 		z-index: 2;
-		backdrop-filter: blur(4px);
+		backdrop-filter: none;
 	}
 
 	.download-manager-panel.compact-mode .download-manager-content {
@@ -3051,14 +3369,15 @@
 			height: 40px;
 		}
 
-			.download-manager-footer {
-				padding: 10px 12px;
-			}
+		.download-manager-footer {
+			padding: 10px 12px;
 		}
+	}
 
 	.download-manager-panel--page {
 		left: auto;
 		right: auto;
 		width: 100%;
+		max-height: none;
 	}
 </style>

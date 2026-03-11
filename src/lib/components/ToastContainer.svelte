@@ -60,33 +60,36 @@
 		align-items: flex-start;
 		gap: 12px;
 		padding: 12px 16px;
-		border-radius: 8px;
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+		border-radius: var(--ui-radius-sm, 8px);
+		border: 1px solid rgba(255, 255, 255, 0.22);
+		box-shadow: none;
 		min-width: 300px;
 		max-width: 500px;
 		pointer-events: auto;
 		font-size: 14px;
 		line-height: 1.4;
+		background: #141414;
+		color: rgba(245, 245, 245, 0.95);
 	}
 
 	.toast--success {
-		background: #10b981;
-		color: white;
+		border-color: rgba(255, 255, 255, 0.34);
+		background: #181818;
 	}
 
 	.toast--error {
-		background: #ef4444;
-		color: white;
+		border-color: rgba(255, 255, 255, 0.3);
+		background: #121212;
 	}
 
 	.toast--warning {
-		background: #f59e0b;
-		color: white;
+		border-color: rgba(255, 255, 255, 0.28);
+		background: #161616;
 	}
 
 	.toast--info {
-		background: #3b82f6;
-		color: white;
+		border-color: rgba(255, 255, 255, 0.26);
+		background: #151515;
 	}
 
 	.toast-icon {
@@ -108,8 +111,8 @@
 		cursor: pointer;
 		margin-top: 8px;
 		padding: 4px 8px;
-		border-radius: 4px;
-		background: rgba(255, 255, 255, 0.2);
+		border-radius: 0;
+		background: rgba(255, 255, 255, 0.12);
 		color: inherit;
 		font-size: 12px;
 		font-weight: 600;
@@ -117,7 +120,7 @@
 	}
 
 	.toast-action:hover {
-		background: rgba(255, 255, 255, 0.3);
+		background: rgba(255, 255, 255, 0.22);
 	}
 
 	.toast-close {
@@ -130,6 +133,6 @@
 	}
 
 	.toast-close:hover {
-		background: rgba(255, 255, 255, 0.1);
+		background: rgba(255, 255, 255, 0.16);
 	}
 </style>

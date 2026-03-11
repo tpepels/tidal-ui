@@ -201,7 +201,7 @@
 
     .progress-bar {
         height: 100%;
-        background: #3b82f6; /* Blue-500 */
+        background: #f2f2f2;
         transition: width 0.1s linear;
     }
 
@@ -283,8 +283,8 @@
     .quality-badge {
         display: inline-block;
         font-size: 0.75rem;
-        color: #fbbf24; /* Amber-400 */
-        background: rgba(251, 191, 36, 0.1);
+        color: #d8d8d8;
+        background: rgba(255, 255, 255, 0.1);
         padding: 0.125rem 0.375rem;
         border-radius: 0.25rem;
         margin-bottom: 0.5rem;

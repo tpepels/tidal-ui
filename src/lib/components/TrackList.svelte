@@ -273,14 +273,14 @@
 
 <style>
 	.track-glass {
-		background: var(--surface-color, rgba(15, 23, 42, 0.55));
-		border: 1px solid var(--surface-border, rgba(148, 163, 184, 0.12));
+		background: var(--surface-color, rgba(16, 16, 16, 0.55));
+		border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.12));
 		backdrop-filter: blur(24px) saturate(150%);
 		-webkit-backdrop-filter: blur(24px) saturate(150%);
-		box-shadow: 
-			0 4px 12px rgba(2, 6, 23, 0.25),
+		box-shadow:
+			0 4px 12px rgba(0, 0, 0, 0.25),
 			inset 0 1px 0 rgba(255, 255, 255, 0.03);
-		transition: 
+		transition:
 			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease,

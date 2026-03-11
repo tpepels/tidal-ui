@@ -1476,16 +1476,16 @@
 
 	.settings-block__label {
 		margin: 0;
-		font-size: 0.66rem;
+		font-size: 0.72rem;
 		font-weight: 700;
 		text-transform: uppercase;
-		letter-spacing: 0.13em;
+		letter-spacing: 0.12em;
 		color: rgba(212, 212, 212, 0.78);
 	}
 
 	.settings-block__note {
 		margin: 0;
-		font-size: 0.68rem;
+		font-size: 0.8rem;
 		line-height: 1.4;
 		color: rgba(212, 212, 212, 0.72);
 	}
@@ -1551,14 +1551,14 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.44rem;
-		font-size: 0.82rem;
+		font-size: 0.92rem;
 		font-weight: 650;
 		line-height: 1.3;
 		color: rgba(245, 245, 245, 0.95);
 	}
 
 	.settings-choice__description {
-		font-size: 0.68rem;
+		font-size: 0.78rem;
 		line-height: 1.35;
 		color: rgba(212, 212, 212, 0.78);
 	}
@@ -1615,14 +1615,14 @@
 	}
 
 	.settings-toggle__title {
-		font-size: 0.84rem;
+		font-size: 0.92rem;
 		font-weight: 650;
 		line-height: 1.3;
 		color: rgba(245, 245, 245, 0.95);
 	}
 
 	.settings-toggle__description {
-		font-size: 0.69rem;
+		font-size: 0.78rem;
 		line-height: 1.35;
 		color: rgba(212, 212, 212, 0.78);
 	}
@@ -1637,9 +1637,9 @@
 	.settings-toggle__state {
 		min-width: 1.9rem;
 		text-align: right;
-		font-size: 0.67rem;
+		font-size: 0.72rem;
 		font-weight: 700;
-		letter-spacing: 0.13em;
+		letter-spacing: 0.11em;
 		text-transform: uppercase;
 		color: rgba(212, 212, 212, 0.8);
 	}
@@ -1693,7 +1693,7 @@
 		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 		color: inherit;
 		text-align: left;
-		font-size: 0.8rem;
+		font-size: 0.88rem;
 		font-weight: 620;
 		cursor: pointer;
 		transition: border-color 140ms ease, background 140ms ease;
@@ -1738,7 +1738,7 @@
 
 	.settings-feedback p {
 		margin: 0;
-		font-size: 0.68rem;
+		font-size: 0.78rem;
 		line-height: 1.4;
 		color: rgba(212, 212, 212, 0.74);
 	}

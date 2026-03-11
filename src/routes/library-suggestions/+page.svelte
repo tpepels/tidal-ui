@@ -3,6 +3,7 @@
 	import { getRouteMeta } from '$lib/config/routeMeta';
 	import { fetchMediaLibrarySuggestions, type MediaLibraryAlbumSuggestion, type MediaLibraryArtistSuggestion } from '$lib/utils/mediaLibraryClient';
 	import { losslessAPI } from '$lib/api';
+	import { getCoverCacheKey, getUnifiedCoverCandidates, prefetchCoverCandidates } from '$lib/utils/coverPipeline';
 	import PageState from '$lib/components/ui/PageState.svelte';
 	import EntityMediaCard from '$lib/components/ui/EntityMediaCard.svelte';
 	import type { Album, Artist } from '$lib/types';
@@ -79,12 +80,62 @@
 		return losslessAPI.getCoverUrl(cover, '640') || null;
 	}
 
+	function getAlbumCoverCacheKey(album: Album): string | null {
+		const coverId = typeof album.cover === 'string' ? album.cover.trim() : '';
+		if (!coverId) {
+			return null;
+		}
+		return getCoverCacheKey({
+			coverId,
+			size: '640',
+			proxy: true,
+			overrideKey: `library-suggestions:album:${album.id}`
+		});
+	}
+
+	function getAlbumCoverCandidates(cover: string | null | undefined): string[] {
+		const coverId = typeof cover === 'string' ? cover.trim() : '';
+		if (!coverId) {
+			return [];
+		}
+		return getUnifiedCoverCandidates({
+			coverId,
+			size: '640',
+			proxy: true,
+			includeLowerSizes: true
+		});
+	}
+
 	function getArtistPortraitSrc(picture: string | null | undefined): string | null {
 		if (typeof picture !== 'string' || picture.trim().length === 0) {
 			return null;
 		}
 		return losslessAPI.getArtistPictureUrl(picture) || null;
 	}
+
+	$effect(() => {
+		if (smartAlbums.length === 0) {
+			return;
+		}
+		const batch = smartAlbums
+			.slice(0, 24)
+			.map((recommendation) => {
+				const album = recommendation.album;
+				const cacheKey = getAlbumCoverCacheKey(album);
+				const candidates = getAlbumCoverCandidates(album.cover);
+				if (!cacheKey || candidates.length === 0) {
+					return null;
+				}
+				return { cacheKey, candidates };
+			})
+			.filter((entry): entry is { cacheKey: string; candidates: string[] } => entry !== null);
+		if (batch.length === 0) {
+			return;
+		}
+		void prefetchCoverCandidates(batch).catch(() => {
+			// failures are tracked in cover pipeline caches
+		});
+	});
 
 	function scoreArtistMatch(candidate: Artist, expectedArtistName: string): number {
 		const expected = normalizeToken(expectedArtistName);
@@ -423,6 +474,8 @@
 									: null}
 							{@const recommendedAlbumArtistName =
 								recommendation.album.artist?.name || recommendation.album.artists?.[0]?.name || ''}
+							{@const recommendedAlbumCoverCacheKey = getAlbumCoverCacheKey(recommendation.album)}
+							{@const recommendedAlbumCoverCandidates = getAlbumCoverCandidates(recommendation.album.cover)}
 							<li>
 								<EntityMediaCard
 									type="album"
@@ -432,6 +485,8 @@
 									meta={`Score ${recommendation.score.toFixed(1)} · ${recommendation.seedMatches} seed${recommendation.seedMatches === 1 ? '' : 's'}`}
 									imageSrc={getAlbumCoverSrc(recommendation.album.cover)}
 									imageAlt={`Cover for ${recommendation.album.title}`}
+									coverCacheKey={recommendedAlbumCoverCacheKey}
+									coverCandidates={recommendedAlbumCoverCandidates}
 									links={[
 										{ href: `/album/${recommendation.album.id}`, label: 'Album Page' },
 										{
@@ -603,7 +658,7 @@
 		align-items: center;
 		justify-content: center;
 		padding: 0.32rem 0.62rem;
-		border-radius: 0;
+		border-radius: var(--ui-radius-sm, 9px);
 		border: 1px solid rgba(212, 212, 212, 0.38);
 		background: rgba(18, 18, 18, 0.55);
 		font-size: 0.78rem;

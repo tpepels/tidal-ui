@@ -554,8 +554,8 @@
 								song-duration={metadata.durationMs}
 								query={metadata.query}
 								isrc={metadata.isrc || undefined}
-								highlight-color="#93c5fd"
-								hover-background-color="rgba(59, 130, 246, 0.14)"
+								highlight-color="#e6e6e6"
+								hover-background-color="rgba(255, 255, 255, 0.12)"
 								font-family="'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif"
 								autoscroll
 								interpolate
@@ -592,12 +592,12 @@
 		flex-direction: column;
 		border-radius: 1.25rem;
 		background: transparent;
-		border: 1px solid rgba(148, 163, 184, 0.25);
+		border: 1px solid rgba(255, 255, 255, 0.18);
 		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
 		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
-		box-shadow: 
-			0 30px 80px rgba(2, 6, 23, 0.6),
-			0 4px 18px rgba(15, 23, 42, 0.45),
+		box-shadow:
+			0 30px 80px rgba(0, 0, 0, 0.6),
+			0 4px 18px rgba(0, 0, 0, 0.45),
 			inset 0 1px 0 rgba(255, 255, 255, 0.06);
 		overflow: hidden;
 		pointer-events: auto;
@@ -612,7 +612,7 @@
 		justify-content: space-between;
 		gap: 1rem;
 		padding: 1.25rem 1.5rem 1rem;
-		border-bottom: 1px solid rgba(71, 85, 105, 0.45);
+		border-bottom: 1px solid rgba(255, 255, 255, 0.16);
 	}
 
 	.lyrics-heading {
@@ -623,19 +623,19 @@
 		margin: 0;
 		font-size: 1.25rem;
 		font-weight: 600;
-		color: #f8fafc;
+		color: rgba(242, 242, 242, 0.95);
 	}
 
 	.lyrics-subtitle {
 		margin: 0.35rem 0 0;
 		font-size: 0.95rem;
-		color: #cbd5f5;
+		color: rgba(214, 214, 214, 0.88);
 	}
 
 	.lyrics-album {
 		margin: 0.2rem 0 0;
 		font-size: 0.8rem;
-		color: #94a3b8;
+		color: rgba(180, 180, 180, 0.8);
 	}
 
 	.lyrics-header-actions {
@@ -650,11 +650,11 @@
 		justify-content: center;
 		padding: 0.4rem;
 		border-radius: 9999px;
-		border: 1px solid rgba(148, 163, 184, 0.3);
+		border: 1px solid rgba(255, 255, 255, 0.22);
 		background: transparent;
 		backdrop-filter: blur(16px) saturate(140%);
 		-webkit-backdrop-filter: blur(16px) saturate(140%);
-		color: #e2e8f0;
+		color: rgba(224, 224, 224, 0.9);
 		transition:
 			background 160ms ease,
 			border-color 160ms ease,
@@ -668,8 +668,8 @@
 	}
 
 	.lyrics-icon-button:not([disabled]):hover {
-		border-color: var(--bloom-accent, rgba(96, 165, 250, 0.7));
-		box-shadow: inset 0 0 20px rgba(96, 165, 250, 0.12);
+		border-color: var(--bloom-accent, rgba(255, 255, 255, 0.6));
+		box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.1);
 		transform: translateY(-1px);
 	}
 
@@ -699,8 +699,8 @@
 		align-items: stretch;
 		justify-content: stretch;
 		border-radius: 1rem;
-		background: rgba(15, 23, 42, 0.65);
-		border: 1px solid rgba(59, 73, 99, 0.5);
+		background: rgba(18, 18, 18, 0.68);
+		border: 1px solid rgba(255, 255, 255, 0.14);
 		overflow: hidden;
 	}
 
@@ -746,7 +746,7 @@
 		justify-content: center;
 		gap: 1rem;
 		text-align: center;
-		color: #cbd5f5;
+		color: rgba(214, 214, 214, 0.88);
 		padding: 1.5rem;
 	}
 
@@ -756,32 +756,32 @@
 	}
 
 	.lyrics-retry {
-		border: 1px solid var(--bloom-accent, rgba(96, 165, 250, 0.7));
+		border: 1px solid var(--bloom-accent, rgba(255, 255, 255, 0.55));
 		background: transparent;
 		backdrop-filter: blur(16px) saturate(140%);
 		-webkit-backdrop-filter: blur(16px) saturate(140%);
-		color: #f0f9ff;
+		color: rgba(240, 240, 240, 0.94);
 		border-radius: 9999px;
 		padding: 0.45rem 1.25rem;
 		font-size: 0.85rem;
 		font-weight: 500;
-		box-shadow: inset 0 0 20px rgba(96, 165, 250, 0.1);
+		box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.08);
 		transition:
 			border-color 160ms ease,
 			box-shadow 160ms ease;
 	}
 
 	.lyrics-retry:hover {
-		border-color: var(--bloom-accent, rgba(191, 219, 254, 0.9));
-		box-shadow: inset 0 0 30px rgba(96, 165, 250, 0.18);
+		border-color: var(--bloom-accent, rgba(255, 255, 255, 0.72));
+		box-shadow: inset 0 0 30px rgba(255, 255, 255, 0.14);
 	}
 
 	.spinner {
 		width: 1.25rem;
 		height: 1.25rem;
 		border-radius: 9999px;
-		border: 2px solid rgba(148, 163, 184, 0.35);
-		border-top-color: rgba(148, 163, 184, 0.95);
+		border: 2px solid rgba(255, 255, 255, 0.32);
+		border-top-color: rgba(255, 255, 255, 0.92);
 		animation: spin 0.85s linear infinite;
 	}
 

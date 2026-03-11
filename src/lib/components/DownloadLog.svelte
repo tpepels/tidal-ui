@@ -353,39 +353,39 @@
 	}
 
 	.download-log-entry--success {
-		color: rgba(220, 252, 231, 0.92);
+		color: rgba(232, 232, 232, 0.92);
 	}
 
 	.download-log-entry--success .download-log-level {
-		color: rgba(187, 247, 208, 0.9);
+		color: rgba(220, 220, 220, 0.9);
 	}
 
 	.download-log-entry--success .download-log-time {
-		color: rgba(134, 239, 172, 0.88);
+		color: rgba(206, 206, 206, 0.88);
 	}
 
 	.download-log-entry--warning {
-		color: rgba(254, 240, 138, 0.9);
+		color: rgba(224, 224, 224, 0.9);
 	}
 
 	.download-log-entry--warning .download-log-level {
-		color: rgba(253, 224, 71, 0.88);
+		color: rgba(212, 212, 212, 0.88);
 	}
 
 	.download-log-entry--warning .download-log-time {
-		color: rgba(245, 158, 11, 0.84);
+		color: rgba(194, 194, 194, 0.84);
 	}
 
 	.download-log-entry--error {
-		color: rgba(254, 226, 226, 0.92);
+		color: rgba(214, 214, 214, 0.92);
 	}
 
 	.download-log-entry--error .download-log-level {
-		color: rgba(252, 165, 165, 0.9);
+		color: rgba(200, 200, 200, 0.9);
 	}
 
 	.download-log-entry--error .download-log-time {
-		color: rgba(248, 113, 113, 0.88);
+		color: rgba(186, 186, 186, 0.88);
 	}
 
 /* Health Summary Styles */
@@ -443,7 +443,7 @@
 }
 
 .download-health-value.connected {
-	color: #bbf7d0;
+	color: rgba(236, 236, 236, 0.94);
 }
 
 .download-health-btn {

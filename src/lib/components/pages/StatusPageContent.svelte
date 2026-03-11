@@ -235,23 +235,23 @@
 
 <style>
 	.status-page {
-		gap: 0.92rem;
+		gap: 1rem;
 	}
 
 	.status-page__grid {
 		display: grid;
-		gap: 0.85rem;
+		gap: 0.92rem;
 		grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 	}
 
 	.status-page__panel {
-		gap: 0.5rem;
+		gap: 0.58rem;
 	}
 
 	.section-heading {
-		font-size: 0.62rem;
+		font-size: 0.7rem;
 		text-transform: uppercase;
-		letter-spacing: 0.2em;
+		letter-spacing: 0.18em;
 		font-weight: 700;
 		margin: 0;
 		color: rgba(212, 212, 212, 0.7);
@@ -259,7 +259,7 @@
 
 	.section-footnote {
 		margin: 0;
-		font-size: 0.68rem;
+		font-size: 0.8rem;
 		color: rgba(212, 212, 212, 0.7);
 		line-height: 1.4;
 	}
@@ -276,11 +276,11 @@
 
 	.status-page__json {
 		margin: 0;
-		padding: 0.62rem 0.72rem;
-		border-radius: 12px;
+		padding: 0.74rem 0.8rem;
+		border-radius: var(--ui-radius-sm, 9px);
 		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
-		font-size: 0.68rem;
+		font-size: 0.76rem;
 		line-height: 1.45;
 		overflow-x: auto;
 		white-space: pre-wrap;
@@ -290,16 +290,29 @@
 	.status-page__issues,
 	.status-page__errors {
 		margin: 0;
-		padding-left: 1.1rem;
 		display: flex;
 		flex-direction: column;
-		gap: 0.3rem;
+		gap: 0.42rem;
+		font-size: 0.84rem;
+	}
+
+	.status-page__issues {
+		padding-left: 1.1rem;
+	}
+
+	.status-page__errors {
+		padding-left: 0;
+		list-style: none;
 	}
 
 	.status-page__errors li {
 		display: flex;
 		flex-direction: column;
-		gap: 0.2rem;
+		gap: 0.24rem;
+		padding: 0.46rem 0.52rem;
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		border-radius: var(--ui-radius-sm, 9px);
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 	}
 
 	.status-page__errors p {

@@ -163,7 +163,7 @@
         {#if artist.picture}
             <div class="background" style="background-image: url({losslessAPI.getArtistPictureUrl(artist.picture, '750')})"></div>
         {:else}
-            <div class="background" style="background-color: #1e293b"></div>
+            <div class="background" style="background-color: #161616"></div>
         {/if}
         
         <!-- Progress Bar -->
@@ -241,7 +241,7 @@
 
     .progress-bar {
         height: 100%;
-        background: #3b82f6;
+        background: #f2f2f2;
         transition: width 0.1s linear;
     }
 
@@ -275,7 +275,7 @@
     .placeholder-art {
         width: 100%;
         height: 100%;
-        background: #334155;
+        background: #1b1b1b;
     }
 
     .cover-art img {
@@ -370,8 +370,8 @@
     }
 
     .track-item.active {
-        color: #3b82f6;
-        background: rgba(59, 130, 246, 0.1);
+        color: #f2f2f2;
+        background: rgba(255, 255, 255, 0.14);
     }
 
     .track-number {
@@ -407,7 +407,7 @@
         bottom: 0;
         left: 0;
         right: 0;
-        background: #1e293b;
+        background: #161616;
         border-top: 1px solid rgba(255,255,255,0.1);
         padding: 0.75rem;
         display: flex;
@@ -450,8 +450,8 @@
     .np-quality {
         font-size: 0.65rem;
         font-weight: 700;
-        color: #fbbf24;
-        background: rgba(251, 191, 36, 0.1);
+        color: #d8d8d8;
+        background: rgba(255, 255, 255, 0.1);
         padding: 0.1rem 0.3rem;
         border-radius: 0.2rem;
     }

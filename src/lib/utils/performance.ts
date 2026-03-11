@@ -486,7 +486,7 @@ function runGraphicsBenchmark(): Promise<PerformanceLevel | null> {
 			}
 
 			let seed = 7;
-			const palette = ['#0f172a', '#1e293b', '#1d4ed8', '#2563eb', '#38bdf8'];
+			const palette = ['#0f0f0f', '#1a1a1a', '#262626', '#323232', '#3e3e3e'];
 
 			const random = () => {
 				seed = (seed * 1664525 + 1013904223) % 4294967296;

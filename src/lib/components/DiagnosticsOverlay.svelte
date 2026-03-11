@@ -221,7 +221,7 @@
 	.diagnostics-overlay {
 		position: fixed;
 		inset: 0;
-		background: rgba(10, 12, 24, 0.72);
+		background: rgba(10, 10, 10, 0.76);
 		display: flex;
 		align-items: flex-start;
 		justify-content: center;
@@ -231,12 +231,12 @@
 
 	.diagnostics-card {
 		width: min(680px, 92vw);
-		background: rgba(10, 12, 24, 0.95);
-		border: 1px solid rgba(148, 163, 184, 0.2);
+		background: rgba(12, 12, 12, 0.95);
+		border: 1px solid rgba(255, 255, 255, 0.2);
 		border-radius: 18px;
 		padding: 1.5rem;
-		box-shadow: 0 24px 60px rgba(2, 6, 23, 0.45);
-		color: #e2e8f0;
+		box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+		color: rgba(226, 226, 226, 0.94);
 	}
 
 	.diagnostics-header {
@@ -255,12 +255,12 @@
 	.diagnostics-subtitle {
 		margin: 0;
 		font-size: 0.85rem;
-		color: rgba(226, 232, 240, 0.7);
+		color: rgba(212, 212, 212, 0.7);
 	}
 
 	.diagnostics-close {
-		background: rgba(148, 163, 184, 0.15);
-		border: 1px solid rgba(148, 163, 184, 0.3);
+		background: rgba(255, 255, 255, 0.12);
+		border: 1px solid rgba(255, 255, 255, 0.24);
 		border-radius: 999px;
 		padding: 0.35rem 0.9rem;
 		color: inherit;
@@ -274,7 +274,7 @@
 	.diagnostics-section h3 {
 		margin: 0 0 0.5rem 0;
 		font-size: 0.95rem;
-		color: rgba(226, 232, 240, 0.85);
+		color: rgba(222, 222, 222, 0.85);
 	}
 
 	.diagnostics-grid {
@@ -284,7 +284,7 @@
 	}
 
 	.diagnostics-grid div {
-		background: rgba(15, 23, 42, 0.7);
+		background: rgba(18, 18, 18, 0.7);
 		border-radius: 12px;
 		padding: 0.6rem 0.75rem;
 		display: flex;
@@ -294,7 +294,7 @@
 
 	.diagnostics-grid span {
 		font-size: 0.75rem;
-		color: rgba(226, 232, 240, 0.6);
+		color: rgba(204, 204, 204, 0.62);
 	}
 
 	.diagnostics-grid strong {
@@ -308,14 +308,14 @@
 	.diagnostics-muted {
 		margin: 0;
 		font-size: 0.85rem;
-		color: rgba(226, 232, 240, 0.6);
+		color: rgba(200, 200, 200, 0.62);
 	}
 
 	.diagnostics-issues {
 		margin: 0.5rem 0 0 1rem;
 		padding: 0;
 		font-size: 0.85rem;
-		color: rgba(248, 113, 113, 0.9);
+		color: rgba(196, 196, 196, 0.88);
 	}
 
 	.diagnostics-filters {
@@ -330,12 +330,12 @@
 		flex-direction: column;
 		gap: 0.35rem;
 		font-size: 0.8rem;
-		color: rgba(226, 232, 240, 0.75);
+		color: rgba(210, 210, 210, 0.75);
 	}
 
 	.diagnostics-filter select {
-		background: rgba(15, 23, 42, 0.7);
-		border: 1px solid rgba(148, 163, 184, 0.25);
+		background: rgba(18, 18, 18, 0.7);
+		border: 1px solid rgba(255, 255, 255, 0.22);
 		color: inherit;
 		border-radius: 8px;
 		padding: 0.35rem 0.6rem;
@@ -354,10 +354,10 @@
 	}
 
 	.diagnostics-error-list li {
-		background: rgba(15, 23, 42, 0.7);
+		background: rgba(18, 18, 18, 0.7);
 		border-radius: 12px;
 		padding: 0.6rem 0.75rem;
-		border: 1px solid rgba(148, 163, 184, 0.18);
+		border: 1px solid rgba(255, 255, 255, 0.16);
 	}
 
 	.diagnostics-error-header {
@@ -367,24 +367,24 @@
 		font-size: 0.75rem;
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
-		color: rgba(148, 163, 184, 0.85);
+		color: rgba(188, 188, 188, 0.82);
 	}
 
 	.diagnostics-error-domain {
 		font-weight: 600;
-		color: #38bdf8;
+		color: rgba(232, 232, 232, 0.92);
 	}
 
 	.diagnostics-error-severity {
 		margin-left: auto;
 		font-weight: 600;
-		color: rgba(248, 113, 113, 0.9);
+		color: rgba(194, 194, 194, 0.9);
 	}
 
 	.diagnostics-error-message {
 		margin: 0.35rem 0 0.25rem;
 		font-size: 0.9rem;
-		color: #f8fafc;
+		color: rgba(242, 242, 242, 0.94);
 	}
 
 	.diagnostics-error-meta {
@@ -392,6 +392,6 @@
 		flex-wrap: wrap;
 		gap: 0.75rem;
 		font-size: 0.75rem;
-		color: rgba(148, 163, 184, 0.8);
+		color: rgba(186, 186, 186, 0.8);
 	}
 </style>

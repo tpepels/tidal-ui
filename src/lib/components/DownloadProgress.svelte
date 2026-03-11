@@ -76,14 +76,14 @@
 		bottom: calc(20px + var(--player-height, 0px) + env(safe-area-inset-bottom, 0px));
 		left: 50%;
 		transform: translateX(-50%);
-		background: rgba(11, 16, 26, 0.95);
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 12px;
+		background: rgba(12, 12, 12, 0.96);
+		border: 1px solid rgba(255, 255, 255, 0.18);
+		border-radius: var(--ui-radius-md, 10px);
 		padding: 16px;
 		min-width: 320px;
 		max-width: 600px;
 		backdrop-filter: blur(10px);
-		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+		box-shadow: none;
 		z-index: 1000;
 		animation: slideUp 0.3s ease-out;
 	}
@@ -134,8 +134,8 @@
 		gap: 12px;
 		padding: 8px 12px;
 		background: rgba(255, 255, 255, 0.05);
-		border-radius: 8px;
-		border: 1px solid rgba(255, 255, 255, 0.05);
+		border-radius: var(--ui-radius-sm, 8px);
+		border: 1px solid rgba(255, 255, 255, 0.14);
 	}
 
 	@media (max-width: 520px) {
@@ -163,7 +163,7 @@
 
 	.download-progress-item-subtitle {
 		font-size: 11px;
-		color: #aaa;
+		color: rgba(212, 212, 212, 0.78);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -171,7 +171,7 @@
 
 	.download-progress-item-phase {
 		font-size: 10px;
-		color: rgba(148, 163, 184, 0.8);
+		color: rgba(212, 212, 212, 0.68);
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
 	}
@@ -186,14 +186,14 @@
 	.download-progress-bar {
 		width: 80px;
 		height: 4px;
-		background: rgba(255, 255, 255, 0.2);
+		background: rgba(255, 255, 255, 0.18);
 		border-radius: 2px;
 		overflow: hidden;
 	}
 
 	.download-progress-bar-fill {
 		height: 100%;
-		background: linear-gradient(90deg, #3b82f6, #06b6d4);
+		background: linear-gradient(90deg, rgba(245, 245, 245, 0.95), rgba(210, 210, 210, 0.72));
 		border-radius: 2px;
 		transition: width 0.3s ease;
 	}
@@ -201,14 +201,14 @@
 	.download-progress-percent {
 		font-size: 11px;
 		font-weight: 500;
-		color: #ccc;
+		color: rgba(224, 224, 224, 0.9);
 		min-width: 32px;
 		text-align: right;
 	}
 
 	.download-progress-more {
 		font-size: 11px;
-		color: #666;
+		color: rgba(170, 170, 170, 0.8);
 		text-align: center;
 		padding: 4px 0;
 		font-style: italic;

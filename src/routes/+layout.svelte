@@ -1501,7 +1501,7 @@
 	<link rel="icon" href={favicon} />
 	<link rel="manifest" href="/site.webmanifest" />
 
-	<meta name="theme-color" content="#0f172a" />
+	<meta name="theme-color" content="#0a0a0a" />
 	<meta name="mobile-web-app-capable" content="yes" />
 	<meta name="apple-mobile-web-app-capable" content="yes" />
 	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -1679,9 +1679,9 @@
 	:global(:root) {
 		--bloom-primary: #0a0a0a;
 		--bloom-secondary: #121212;
-		--bloom-accent: #1db954;
-		--bloom-glow: rgba(30, 215, 96, 0.24);
-		--bloom-tertiary: rgba(30, 215, 96, 0.14);
+		--bloom-accent: #f2f2f2;
+		--bloom-glow: rgba(255, 255, 255, 0.2);
+		--bloom-tertiary: rgba(255, 255, 255, 0.12);
 		--bloom-quaternary: rgba(255, 255, 255, 0.12);
 		--surface-color: #121212;
 		--surface-border: rgba(255, 255, 255, 0.15);
@@ -1692,19 +1692,11 @@
 	:global(body) {
 		margin: 0;
 		min-height: 100vh;
-		font-family:
-			'Figtree',
-			-apple-system,
-			BlinkMacSystemFont,
-			'Segoe UI',
-			Roboto,
-			'Helvetica Neue',
-			Arial,
-			sans-serif;
+		font-family: var(--ui-font-sans, 'Figtree', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif);
 		background:
-			radial-gradient(960px 560px at -16% -10%, rgba(30, 215, 96, 0.14), transparent 58%),
-			radial-gradient(900px 540px at 112% -12%, rgba(30, 215, 96, 0.08), transparent 60%),
-			linear-gradient(180deg, #080808 0%, #111111 46%, #060606 100%);
+			radial-gradient(920px 520px at -10% -8%, rgba(255, 255, 255, 0.06), transparent 60%),
+			radial-gradient(860px 500px at 110% -10%, rgba(255, 255, 255, 0.05), transparent 62%),
+			linear-gradient(180deg, #080808 0%, #101010 48%, #060606 100%);
 		background-attachment: fixed;
 		color: #f8fbff;
 	}
@@ -1721,8 +1713,8 @@
 		content: '';
 		position: fixed;
 		pointer-events: none;
-		filter: blur(56px);
-		opacity: 0.35;
+		filter: blur(64px);
+		opacity: 0.24;
 		z-index: 0;
 		animation: ambient-float 22s ease-in-out infinite alternate;
 	}
@@ -1732,7 +1724,7 @@
 		height: 480px;
 		left: -160px;
 		top: -140px;
-		background: radial-gradient(circle, rgba(30, 215, 96, 0.2) 0%, transparent 72%);
+		background: radial-gradient(circle, rgba(255, 255, 255, 0.12) 0%, transparent 72%);
 	}
 
 	.app-root::after {
@@ -1740,7 +1732,7 @@
 		height: 440px;
 		right: -180px;
 		bottom: -180px;
-		background: radial-gradient(circle, rgba(30, 215, 96, 0.16) 0%, transparent 70%);
+		background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
 		animation-delay: 4s;
 	}
 
@@ -1757,8 +1749,8 @@
 		flex: 1;
 		display: grid;
 		grid-template-columns: clamp(230px, 20vw, 270px) minmax(0, 1fr);
-		gap: clamp(0.95rem, 1.8vw, 1.45rem);
-		padding: clamp(0.9rem, 1.8vw, 1.5rem);
+		gap: clamp(0.82rem, 1.5vw, 1.2rem);
+		padding: clamp(0.7rem, 1.4vw, 1.1rem);
 		align-items: start;
 		width: 100%;
 	}
@@ -1774,10 +1766,10 @@
 		flex-direction: column;
 		gap: 1rem;
 		padding: 1rem;
-		border-radius: 0;
+		border-radius: var(--ui-radius-lg, 16px);
 		max-height: calc(100vh - clamp(1.6rem, 3.2vw, 2.8rem) - var(--player-height, 0px));
 		overflow-y: auto;
-		background: #111111;
+		background: #101010;
 		border: 1px solid rgba(212, 212, 212, 0.24);
 		box-shadow: none;
 		animation: surface-rise 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -1832,7 +1824,7 @@
 		justify-content: center;
 		width: 2rem;
 		height: 2rem;
-		border-radius: 0;
+		border-radius: var(--ui-radius-sm, 9px);
 		border: 1px solid rgba(212, 212, 212, 0.32);
 		background: rgba(17, 17, 17, 0.5);
 		color: rgba(236, 236, 236, 0.95);
@@ -1854,9 +1846,9 @@
 		align-items: center;
 		gap: 0.55rem;
 		padding: 0.78rem 0.86rem;
-		border-radius: 0;
+		border-radius: var(--ui-radius-sm, 9px);
 		border: 1px solid rgba(212, 212, 212, 0.22);
-		background: #141414;
+		background: var(--ui-surface-0, #141414);
 		color: rgba(236, 236, 236, 0.9);
 		text-decoration: none;
 		font-size: 0.92rem;
@@ -1893,8 +1885,8 @@
 	}
 
 	.sidebar-action.is-active {
-		border-color: rgba(30, 215, 96, 0.7);
-		background: rgba(30, 215, 96, 0.16);
+		border-color: rgba(255, 255, 255, 0.6);
+		background: rgba(255, 255, 255, 0.12);
 		box-shadow: none;
 	}
 
@@ -1920,10 +1912,10 @@
 		justify-content: center;
 		min-width: 2.45rem;
 		padding: 0.22rem 0.45rem;
-		border-radius: 0;
-		border: 1px solid rgba(30, 215, 96, 0.7);
-		background: rgba(30, 215, 96, 0.22);
-		color: rgba(232, 255, 242, 0.96);
+		border-radius: var(--ui-radius-sm, 9px);
+		border: 1px solid rgba(255, 255, 255, 0.56);
+		background: rgba(255, 255, 255, 0.14);
+		color: rgba(245, 245, 245, 0.96);
 		font-size: 0.76rem;
 		font-weight: 700;
 		letter-spacing: 0.02em;
@@ -1945,7 +1937,7 @@
 		align-items: center;
 		justify-content: center;
 		padding: 0.25rem 0.55rem;
-		border-radius: 0;
+		border-radius: var(--ui-radius-sm, 9px);
 		border: 1px solid rgba(212, 212, 212, 0.4);
 		background: rgba(12, 12, 12, 0.52);
 		font-size: 0.74rem;
@@ -1959,11 +1951,11 @@
 		left: 1.5rem;
 		bottom: calc(1.5rem + var(--player-height, 0px));
 		z-index: 110;
-		border-radius: 0;
+		border-radius: var(--ui-radius-sm, 9px);
 		padding: 0.45rem 1rem;
 		background: rgba(255, 255, 255, 0.14);
 		border: 1px solid rgba(255, 255, 255, 0.35);
-		color: #e2e8f0;
+		color: rgba(226, 226, 226, 0.94);
 		font-size: 0.94rem;
 		cursor: pointer;
 		backdrop-filter: blur(10px);
@@ -2050,7 +2042,7 @@
 	.glass-option--compact {
 		padding: 0.45rem 0.6rem;
 		gap: 0.5rem;
-		border-radius: 0;
+		border-radius: var(--ui-radius-sm, 9px);
 	}
 
 	.glass-option--compact .glass-option__label {
@@ -2069,8 +2061,8 @@
 	}
 
 	.glass-option.is-active {
-		border-color: var(--bloom-accent, #1db954);
-		background: rgba(30, 215, 96, 0.14);
+		border-color: var(--bloom-accent, #f2f2f2);
+		background: rgba(255, 255, 255, 0.12);
 		box-shadow: none;
 	}
 
@@ -2107,7 +2099,7 @@
 		letter-spacing: 0.16em;
 		text-transform: uppercase;
 		padding: 0.2rem 0.55rem;
-		border-radius: 0;
+		border-radius: var(--ui-radius-sm, 9px);
 		background: rgba(11, 11, 11, 0.52);
 		backdrop-filter: blur(16px) saturate(140%);
 		-webkit-backdrop-filter: blur(16px) saturate(140%);
@@ -2195,9 +2187,9 @@
 
 	.app-main {
 		flex: 1;
-		padding: clamp(1.5rem, 2.5vw, 2.8rem);
-		margin: clamp(1rem, 1.5vw, 1.75rem) clamp(0.75rem, 2vw, 1.5rem);
-		border-radius: 0;
+		padding: clamp(1.15rem, 1.85vw, 1.8rem);
+		margin: 0;
+		border-radius: var(--ui-radius-lg, 16px);
 		position: relative;
 		z-index: 1;
 		animation: surface-rise 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -2368,7 +2360,7 @@
 	@media (max-width: 1023px) {
 		.app-workspace {
 			display: block;
-			padding: 0;
+			padding: 0.65rem;
 		}
 
 		.app-sidebar {
@@ -2376,14 +2368,14 @@
 		}
 
 		.app-main--workspace {
-			margin: clamp(1rem, 1.5vw, 1.75rem) clamp(0.75rem, 2vw, 1.5rem);
+			margin: 0;
 		}
 	}
 
 	@media (max-width: 640px) {
 		.app-main {
-			padding: 1.4rem;
-			margin: 1rem 0.75rem;
+			padding: 1rem;
+			margin: 0;
 		}
 	}
 </style>

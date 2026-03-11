@@ -1692,15 +1692,15 @@
 	}
 
 	.search-media-status--success {
-		color: rgba(187, 247, 208, 0.9);
+		color: rgba(230, 230, 230, 0.9);
 	}
 
 	.search-media-status--warning {
-		color: rgba(253, 224, 71, 0.88);
+		color: rgba(218, 218, 218, 0.88);
 	}
 
 	.search-media-status--error {
-		color: rgba(252, 165, 165, 0.9);
+		color: rgba(206, 206, 206, 0.9);
 	}
 
 	.search-media-card--artist .ui-media-card__body,
@@ -1711,12 +1711,12 @@
 
 	.search-glass {
 		background: transparent;
-		border-color: rgba(148, 163, 184, 0.2);
+		border-color: rgba(255, 255, 255, 0.2);
 		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
 		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
 		box-shadow:
-			0 10px 30px rgba(2, 6, 23, 0.4),
-			0 2px 8px rgba(15, 23, 42, 0.35),
+			0 10px 30px rgba(0, 0, 0, 0.4),
+			0 2px 8px rgba(0, 0, 0, 0.35),
 			inset 0 1px 0 rgba(255, 255, 255, 0.06);
 		transition:
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
@@ -1725,12 +1725,12 @@
 
 	.track-glass {
 		background: transparent;
-		border: 1px solid rgba(148, 163, 184, 0.15);
+		border: 1px solid rgba(255, 255, 255, 0.15);
 		backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
 		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 28px))
 			saturate(var(--perf-saturate, 160%));
 		box-shadow:
-			0 4px 12px rgba(2, 6, 23, 0.3),
+			0 4px 12px rgba(0, 0, 0, 0.3),
 			inset 0 1px 0 rgba(255, 255, 255, 0.04);
 		transition:
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
@@ -1740,8 +1740,8 @@
 
 	/* Tab buttons dynamic styling */
 	button.border-blue-500 {
-		border-color: rgb(96, 165, 250) !important;
-		color: rgb(96, 165, 250);
+		border-color: rgba(235, 235, 235, 0.72) !important;
+		color: rgba(235, 235, 235, 0.94);
 		transition:
 			border-color 0.2s ease,
 			color 0.2s ease;
@@ -1750,12 +1750,12 @@
 	/* News container acrylic styling */
 	.news-container {
 		background: transparent;
-		border-color: rgba(148, 163, 184, 0.2);
+		border-color: rgba(255, 255, 255, 0.2);
 		backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
 		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 28px))
 			saturate(var(--perf-saturate, 160%));
 		box-shadow:
-			0 8px 24px rgba(2, 6, 23, 0.35),
+			0 8px 24px rgba(0, 0, 0, 0.35),
 			inset 0 1px 0 rgba(255, 255, 255, 0.05);
 		transition:
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
@@ -1765,11 +1765,11 @@
 	/* News card acrylic styling */
 	.news-card {
 		background: transparent;
-		border-color: rgba(148, 163, 184, 0.18);
+		border-color: rgba(255, 255, 255, 0.18);
 		backdrop-filter: blur(var(--perf-blur-low, 24px)) saturate(var(--perf-saturate, 160%));
 		-webkit-backdrop-filter: blur(var(--perf-blur-low, 24px)) saturate(var(--perf-saturate, 160%));
 		box-shadow:
-			0 4px 12px rgba(2, 6, 23, 0.3),
+			0 4px 12px rgba(0, 0, 0, 0.3),
 			inset 0 1px 0 rgba(255, 255, 255, 0.04);
 		transition:
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
@@ -1778,9 +1778,9 @@
 	}
 
 	.news-card:hover {
-		border-color: rgba(148, 163, 184, 0.3);
+		border-color: rgba(255, 255, 255, 0.3);
 		box-shadow:
-			0 6px 18px rgba(2, 6, 23, 0.4),
+			0 6px 18px rgba(0, 0, 0, 0.4),
 			inset 0 1px 0 rgba(255, 255, 255, 0.06);
 	}
 

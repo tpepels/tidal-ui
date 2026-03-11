@@ -24,26 +24,26 @@
 		gap: 0.5rem;
 		margin-bottom: 1.5rem;
 		font-size: 0.875rem;
-		color: #9ca3af;
+		color: rgba(166, 166, 166, 0.9);
 	}
 
 	.breadcrumb-separator {
-		color: #6b7280;
+		color: rgba(132, 132, 132, 0.9);
 		font-weight: 500;
 	}
 
 	.breadcrumb-link {
-		color: #9ca3af;
+		color: rgba(176, 176, 176, 0.9);
 		text-decoration: none;
 		transition: color 0.2s ease;
 	}
 
 	.breadcrumb-link:hover {
-		color: #60a5fa;
+		color: rgba(236, 236, 236, 0.96);
 	}
 
 	.breadcrumb-current {
-		color: #d1d5db;
+		color: rgba(220, 220, 220, 0.92);
 		font-weight: 500;
 	}
 </style>

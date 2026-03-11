@@ -101,7 +101,7 @@
 	}
 
 	.section-footnote--error {
-		color: #fecaca;
+		color: rgba(212, 212, 212, 0.86);
 	}
 
 	.glass-action {

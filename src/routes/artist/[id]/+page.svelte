@@ -7,6 +7,7 @@
 	import { isAlbumDownloadQueueActive, type AlbumDownloadStatus } from '$lib/controllers/albumDownloadUi';
 	import type { Album, ArtistDetails, ArtistRecommendations, AudioQuality } from '$lib/types';
 	import TopTracksGrid from '$lib/components/TopTracksGrid.svelte';
+	import CoverArt from '$lib/components/CoverArt.svelte';
 	import ShareButton from '$lib/components/ShareButton.svelte';
 	import {
 		groupDiscography,
@@ -891,6 +892,38 @@
 			.catch(() => {
 				// failures are tracked in cover pipeline caches
 			});
+	});
+
+	$effect(() => {
+		if (!artist || recommendedAlbums.length === 0) {
+			return;
+		}
+		const artistIdForKey = artist.id;
+		const batch = recommendedAlbums
+			.slice(0, 24)
+			.map((album) => {
+				const coverId = typeof album.cover === 'string' ? album.cover.trim() : '';
+				if (!coverId) return null;
+				const cacheKey = getCoverCacheKey({
+					coverId,
+					size: '640',
+					proxy: true,
+					overrideKey: `artist:${artistIdForKey}:recommendation:${album.id}`
+				});
+				const candidates = getUnifiedCoverCandidates({
+					coverId,
+					size: '640',
+					proxy: true,
+					includeLowerSizes: true
+				});
+				if (candidates.length === 0) return null;
+				return { cacheKey, candidates };
+			})
+			.filter((entry): entry is { cacheKey: string; candidates: string[] } => entry !== null);
+		if (batch.length === 0) return;
+		void prefetchCoverCandidates(batch).catch(() => {
+			// failures are tracked in cover pipeline caches
+		});
 	});
 
 	$effect(() => {
@@ -1808,59 +1841,72 @@
 									aria-label="Recommended albums"
 									bind:this={recommendedAlbumsRail}
 								>
-									{#each recommendedAlbums as recommendationAlbum (recommendationAlbum.id)}
-										<article class="ui-media-card recommendation-slider__item" data-recommendation-card="true">
-											<a
-												href={`/album/${recommendationAlbum.id}`}
-												class="ui-media-card__primary-link"
-											>
-												<div class="ui-media-card__artwork">
-													{#if recommendationAlbum.cover}
-														<img
-															src={losslessAPI.getCoverUrl(recommendationAlbum.cover, '640')}
-															alt={recommendationAlbum.title}
-															loading="lazy"
-														/>
-													{:else}
-														<div class="flex h-full w-full items-center justify-center text-gray-500">
-															No artwork
-														</div>
-													{/if}
-												</div>
-												<div class="ui-media-card__body">
-													<h3 class="ui-media-card__title ui-media-card__title--truncate">
-														{recommendationAlbum.title}
-													</h3>
-													{#if recommendationAlbum.artist}
-														<p class="ui-media-card__subtitle ui-media-card__title--truncate">
-															{recommendationAlbum.artist.name}
-														</p>
-													{/if}
-													{#if formatAlbumMeta(recommendationAlbum)}
-														<p class="ui-media-card__meta">
-															{formatAlbumMeta(recommendationAlbum)}
-														</p>
-													{/if}
-												</div>
-											</a>
-											<div class="ui-media-card__links" class:ui-media-card__links--paired={Boolean(recommendationAlbum.artist)}>
+										{#each recommendedAlbums as recommendationAlbum (recommendationAlbum.id)}
+											<article class="ui-media-card recommendation-slider__item" data-recommendation-card="true">
 												<a
 													href={`/album/${recommendationAlbum.id}`}
-													class="ui-media-card__link"
+													class="ui-media-card__primary-link"
 												>
-													Album Page
+													<div class="ui-media-card__artwork">
+														{#if recommendationAlbum.cover}
+															{@const recommendationCoverCacheKey = getCoverCacheKey({
+																coverId: recommendationAlbum.cover,
+																size: '640',
+																proxy: true,
+																overrideKey: `artist:${artist.id}:recommendation:${recommendationAlbum.id}`
+															})}
+															{@const recommendationCoverCandidates = getUnifiedCoverCandidates({
+																coverId: recommendationAlbum.cover,
+																size: '640',
+																proxy: true,
+																includeLowerSizes: true
+															})}
+															<CoverArt
+																cacheKey={recommendationCoverCacheKey}
+																candidates={recommendationCoverCandidates}
+																alt={recommendationAlbum.title}
+																class="h-full w-full object-cover"
+															/>
+														{:else}
+															<div class="flex h-full w-full items-center justify-center text-gray-500">
+																No artwork
+															</div>
+														{/if}
+													</div>
+													<div class="ui-media-card__body">
+														<h3 class="ui-media-card__title ui-media-card__title--truncate">
+															{recommendationAlbum.title}
+														</h3>
+														{#if recommendationAlbum.artist}
+															<p class="ui-media-card__subtitle ui-media-card__title--truncate">
+																{recommendationAlbum.artist.name}
+															</p>
+														{/if}
+														{#if formatAlbumMeta(recommendationAlbum)}
+															<p class="ui-media-card__meta">
+																{formatAlbumMeta(recommendationAlbum)}
+															</p>
+														{/if}
+													</div>
 												</a>
-												{#if recommendationAlbum.artist}
+												<div class="ui-media-card__links" class:ui-media-card__links--paired={Boolean(recommendationAlbum.artist)}>
 													<a
-														href={`/artist/${recommendationAlbum.artist.id}`}
+														href={`/album/${recommendationAlbum.id}`}
 														class="ui-media-card__link"
 													>
-														Artist Page
+														Album Page
 													</a>
-												{/if}
-											</div>
-										</article>
-									{/each}
+													{#if recommendationAlbum.artist}
+														<a
+															href={`/artist/${recommendationAlbum.artist.id}`}
+															class="ui-media-card__link"
+														>
+															Artist Page
+														</a>
+													{/if}
+												</div>
+											</article>
+										{/each}
 								</div>
 							</div>
 						{/if}
@@ -2394,13 +2440,13 @@
 
 <style>
 	.recommendation-spotlight {
-		border: 1px solid rgba(96, 165, 250, 0.35);
+		border: 1px solid rgba(255, 255, 255, 0.24);
 		background:
 			linear-gradient(
 				180deg,
-				rgba(30, 58, 138, 0.22) 0%,
-				rgba(15, 23, 42, 0.42) 55%,
-				rgba(2, 6, 23, 0.22) 100%
+				rgba(255, 255, 255, 0.1) 0%,
+				rgba(22, 22, 22, 0.44) 55%,
+				rgba(8, 8, 8, 0.22) 100%
 			);
 		padding: 1rem;
 	}
@@ -2414,7 +2460,7 @@
 	.recommendation-spotlight__intro p {
 		margin: 0;
 		font-size: 0.82rem;
-		color: rgb(191 219 254 / 0.9);
+		color: rgba(212, 212, 212, 0.9);
 	}
 
 	.recommendation-spotlight__badge {
@@ -2422,24 +2468,24 @@
 		width: fit-content;
 		align-items: center;
 		gap: 0.35rem;
-		border: 1px solid rgba(125, 211, 252, 0.5);
-		background: rgba(12, 74, 110, 0.35);
+		border: 1px solid rgba(255, 255, 255, 0.28);
+		background: rgba(255, 255, 255, 0.12);
 		padding: 0.25rem 0.55rem;
 		font-size: 0.72rem;
 		font-weight: 700;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
-		color: rgb(224 242 254 / 0.95);
+		color: rgba(236, 236, 236, 0.95);
 	}
 
 	.recommendation-count-pill {
 		display: inline-flex;
 		align-items: center;
-		border: 1px solid rgba(59, 130, 246, 0.55);
-		background: rgba(30, 58, 138, 0.42);
+		border: 1px solid rgba(255, 255, 255, 0.28);
+		background: rgba(255, 255, 255, 0.12);
 		padding: 0.2rem 0.65rem;
 		font-size: 0.74rem;
-		color: rgb(219 234 254 / 0.95);
+		color: rgba(234, 234, 234, 0.95);
 	}
 
 	.recommendation-slider__controls {
@@ -2452,17 +2498,17 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		border: 1px solid rgba(147, 197, 253, 0.45);
-		background: rgba(15, 23, 42, 0.52);
+		border: 1px solid rgba(255, 255, 255, 0.24);
+		background: rgba(22, 22, 22, 0.52);
 		padding: 0.38rem 0.44rem;
-		color: rgb(219 234 254 / 0.95);
+		color: rgba(234, 234, 234, 0.95);
 		transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
 	}
 
 	.recommendation-slider__control:hover {
-		border-color: rgba(147, 197, 253, 0.85);
-		background: rgba(30, 64, 175, 0.52);
-		color: rgb(239 246 255);
+		border-color: rgba(255, 255, 255, 0.45);
+		background: rgba(34, 34, 34, 0.64);
+		color: rgba(246, 246, 246, 0.98);
 	}
 
 	.recommendation-slider {
@@ -2473,7 +2519,7 @@
 		overflow-x: auto;
 		padding: 0.1rem 0.1rem 0.5rem;
 		scroll-snap-type: x mandatory;
-		scrollbar-color: rgba(147, 197, 253, 0.45) rgba(15, 23, 42, 0.35);
+		scrollbar-color: rgba(255, 255, 255, 0.28) rgba(22, 22, 22, 0.4);
 		scrollbar-width: thin;
 	}
 
@@ -2482,11 +2528,11 @@
 	}
 
 	.recommendation-slider::-webkit-scrollbar-track {
-		background: rgba(15, 23, 42, 0.35);
+		background: rgba(22, 22, 22, 0.4);
 	}
 
 	.recommendation-slider::-webkit-scrollbar-thumb {
-		background: rgba(147, 197, 253, 0.4);
+		background: rgba(255, 255, 255, 0.28);
 	}
 
 	.recommendation-slider__item {
@@ -2497,13 +2543,13 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.85rem;
-		border: 1px solid rgba(34, 197, 94, 0.34);
+		border: 1px solid rgba(255, 255, 255, 0.24);
 		background:
 			linear-gradient(
 				180deg,
-				rgba(21, 128, 61, 0.18) 0%,
-				rgba(15, 23, 42, 0.42) 60%,
-				rgba(2, 6, 23, 0.18) 100%
+				rgba(255, 255, 255, 0.1) 0%,
+				rgba(22, 22, 22, 0.42) 60%,
+				rgba(8, 8, 8, 0.18) 100%
 			);
 		padding: 1rem;
 	}
@@ -2521,8 +2567,8 @@
 	}
 
 	.discography-featured__item {
-		border-color: rgba(74, 222, 128, 0.35);
-		background: rgba(5, 46, 22, 0.44);
+		border-color: rgba(255, 255, 255, 0.22);
+		background: rgba(20, 20, 20, 0.44);
 	}
 
 	.discography-featured__badge {
@@ -2532,14 +2578,14 @@
 		z-index: 20;
 		display: inline-flex;
 		align-items: center;
-		border: 1px solid rgba(134, 239, 172, 0.65);
-		background: rgba(20, 83, 45, 0.74);
+		border: 1px solid rgba(255, 255, 255, 0.32);
+		background: rgba(255, 255, 255, 0.14);
 		padding: 0.18rem 0.5rem;
 		font-size: 0.68rem;
 		font-weight: 700;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
-		color: rgb(220 252 231 / 0.94);
+		color: rgba(238, 238, 238, 0.94);
 	}
 
 	@media (max-width: 900px) {
