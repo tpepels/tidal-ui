@@ -56,6 +56,7 @@
 	const rawDiscography = $derived(artist?.albums ?? []);
 	const recommendedArtists = $derived(recommendations?.artists ?? []);
 	const recommendedAlbums = $derived(recommendations?.albums ?? []);
+	const FEATURED_DISCOGRAPHY_ALBUM_LIMIT = 12;
 	const discographyInfo = $derived(artist?.discographyInfo ?? null);
 	const enrichmentDiagnostics = $derived(discographyInfo?.enrichmentDiagnostics ?? null);
 	const downloadQuality = $derived($downloadPreferencesStore.downloadQuality as AudioQuality);
@@ -129,6 +130,74 @@
 	const discographySingles = $derived(
 		discographyEntriesWithLoadedCovers.filter((entry) => entry.section === 'single')
 	);
+	type AlbumTopTrackSignal = {
+		hits: number;
+		popularitySum: number;
+		rankWeight: number;
+	};
+	type FeaturedDiscographyAlbum = {
+		entry: (typeof discographyEntries)[number];
+		score: number;
+		topTrackHits: number;
+		topTrackPopularity: number;
+	};
+	const topTrackAlbumSignals = $derived.by(() => {
+		const signals = new Map<number, AlbumTopTrackSignal>();
+		const rankedTracks = topTracks.slice(0, 80);
+		const rankedTrackCount = rankedTracks.length;
+		for (const [index, track] of rankedTracks.entries()) {
+			const albumId = track.album?.id;
+			if (!Number.isFinite(albumId)) {
+				continue;
+			}
+			const existing = signals.get(albumId) ?? { hits: 0, popularitySum: 0, rankWeight: 0 };
+			existing.hits += 1;
+			existing.popularitySum += Math.max(0, track.popularity ?? 0);
+			existing.rankWeight += Math.max(0, rankedTrackCount - index);
+			signals.set(albumId, existing);
+		}
+		return signals;
+	});
+	const featuredDiscographyAlbums = $derived.by(() => {
+		return discographyEntries
+			.filter((entry) => entry.section === 'album')
+			.map((entry) => {
+				const album = entry.representative;
+				const topTrackSignal = topTrackAlbumSignals.get(album.id);
+				const traits = getDiscographyTraits(album);
+				const popularityScore = Math.max(0, album.popularity ?? 0) * 1.6;
+				const trackCountScore = Math.min(Math.max(album.numberOfTracks ?? 0, 0), 24) * 0.45;
+				const topTrackHits = topTrackSignal?.hits ?? 0;
+				const topTrackPopularity = topTrackSignal?.popularitySum ?? 0;
+				const topTrackHitsScore = topTrackHits * 16;
+				const topTrackPopularityScore = topTrackPopularity * 0.55;
+				const topTrackRankScore = (topTrackSignal?.rankWeight ?? 0) * 0.75;
+				const variantPenalty = (traits.isLive ? 26 : 0) + (traits.isRemaster ? 10 : 0);
+				const score =
+					popularityScore +
+					trackCountScore +
+					topTrackHitsScore +
+					topTrackPopularityScore +
+					topTrackRankScore -
+					variantPenalty;
+				return {
+					entry,
+					score,
+					topTrackHits,
+					topTrackPopularity
+				} satisfies FeaturedDiscographyAlbum;
+			})
+			.sort((a, b) => {
+				if (b.score !== a.score) return b.score - a.score;
+				const popularityA = a.entry.representative.popularity ?? 0;
+				const popularityB = b.entry.representative.popularity ?? 0;
+				if (popularityB !== popularityA) return popularityB - popularityA;
+				const hitsDelta = b.topTrackHits - a.topTrackHits;
+				if (hitsDelta !== 0) return hitsDelta;
+				return a.entry.representative.title.localeCompare(b.entry.representative.title);
+			})
+			.slice(0, FEATURED_DISCOGRAPHY_ALBUM_LIMIT);
+	});
 	const discographyMissingCoverCount = $derived(
 		Math.max(0, discographyEntries.length - discographyEntriesWithLoadedCovers.length)
 	);
@@ -221,6 +290,7 @@
 		'This album is already in your local library. Browser downloads cannot overwrite existing files and may append (2) to filenames. Continue anyway?';
 	let recommendedArtistsRail = $state<HTMLDivElement | null>(null);
 	let recommendedAlbumsRail = $state<HTMLDivElement | null>(null);
+	let featuredDiscographyRail = $state<HTMLDivElement | null>(null);
 
 	$effect(() => {
 		const id = Number(artistId);
@@ -279,6 +349,32 @@
 		const timestamp = Date.parse(date);
 		if (Number.isNaN(timestamp)) return null;
 		return new Date(timestamp).getFullYear().toString();
+	}
+
+	function formatFeaturedDiscographyMeta(item: FeaturedDiscographyAlbum): string {
+		const album = item.entry.representative;
+		const parts: string[] = [];
+		if (item.topTrackHits > 0) {
+			parts.push(`${item.topTrackHits} top track${item.topTrackHits === 1 ? '' : 's'}`);
+		}
+		const popularity = Math.max(0, album.popularity ?? 0);
+		if (popularity > 0) {
+			parts.push(`Popularity ${Math.round(popularity)}`);
+		}
+		if (item.topTrackPopularity > 0) {
+			parts.push(`Top-track score ${Math.round(item.topTrackPopularity)}`);
+		}
+		if (album.numberOfTracks && album.numberOfTracks > 0) {
+			parts.push(`${album.numberOfTracks} tracks`);
+		}
+		const year = getReleaseYear(album.releaseDate ?? null);
+		if (year) {
+			parts.push(year);
+		}
+		if (parts.length === 0) {
+			return 'Ranked from discography metadata';
+		}
+		return parts.join(' • ');
 	}
 
 	function formatAlbumMeta(album: Album): string | null {
@@ -1738,6 +1834,126 @@
 				{/if}
 			</section>
 
+			{#if featuredDiscographyAlbums.length > 0}
+				<section>
+					<div class="discography-featured">
+						<div class="discography-featured__header">
+							<div>
+								<h2 class="text-2xl font-semibold text-white">Recommended Albums</h2>
+								<p class="text-sm text-gray-300">
+									Best-known releases from {artist.name}, ranked using popularity and top-track
+									signals from the API.
+								</p>
+							</div>
+							<div class="recommendation-slider__controls">
+								<button
+									type="button"
+									class="recommendation-slider__control"
+									onclick={() => scrollRecommendationRail(featuredDiscographyRail, 'left')}
+									aria-label="Scroll recommended discography albums left"
+								>
+									<ChevronLeft size={16} />
+								</button>
+								<button
+									type="button"
+									class="recommendation-slider__control"
+									onclick={() => scrollRecommendationRail(featuredDiscographyRail, 'right')}
+									aria-label="Scroll recommended discography albums right"
+								>
+									<ChevronRight size={16} />
+								</button>
+							</div>
+						</div>
+
+						<div
+							class="recommendation-slider discography-featured__slider"
+							role="region"
+							aria-label="Recommended albums from this artist discography"
+							bind:this={featuredDiscographyRail}
+						>
+							{#each featuredDiscographyAlbums as featured (`featured:${featured.entry.key}:${featured.entry.representative.id}`)}
+								{@const album = featured.entry.representative}
+								{@const hasOfficialTidalSource = album.discographySource === 'official_tidal'}
+								{@const coverOverride = albumCoverOverrides[album.id]}
+								{@const coverImageCandidates = buildAlbumCoverCandidates(
+									album,
+									featured.entry.versions,
+									hasOfficialTidalSource,
+									coverOverride
+								)}
+								{@const coverCacheKey = getCoverCacheKey({
+									coverId: coverOverride || album.cover,
+									size: '640',
+									proxy: hasOfficialTidalSource,
+									overrideKey: `artist:${artist?.id ?? 0}:album:${album.id}`
+								})}
+								{@const resolvedCoverUrl = getResolvedCoverUrl(coverCacheKey)}
+								{@const coverImageUrl = resolvedCoverUrl ?? ''}
+								<article class="ui-media-card recommendation-slider__item discography-featured__item" data-recommendation-card="true">
+									<span class="discography-featured__badge">
+										{#if featured.topTrackHits > 0}
+											{featured.topTrackHits} top track{featured.topTrackHits === 1 ? '' : 's'}
+										{:else if (album.popularity ?? 0) > 0}
+											Popularity {Math.round(album.popularity ?? 0)}
+										{:else}
+											Featured
+										{/if}
+									</span>
+									<a
+										href={`/album/${album.id}`}
+										class="ui-media-card__primary-link"
+									>
+										<div class="ui-media-card__artwork">
+											{#if coverImageUrl && !albumCoverFailures[album.id]}
+												<img
+													src={coverImageUrl}
+													data-album-id={album.id}
+													data-cover-use-proxy={hasOfficialTidalSource ? '1' : '0'}
+													data-cover-candidates={serializeCoverCandidates(coverImageCandidates)}
+													data-cover-index="0"
+													data-cover-generation={coverHydrationGeneration}
+													data-cover-recovery-tried="0"
+													data-cover-cache-key={coverCacheKey}
+													onerror={handleAlbumCoverError}
+													onload={handleAlbumCoverLoad}
+													alt={album.title}
+													class="h-full w-full object-cover"
+													loading="lazy"
+													decoding="async"
+												/>
+											{:else}
+												<div class="flex h-full w-full items-center justify-center text-sm text-gray-500">
+													No artwork
+												</div>
+											{/if}
+										</div>
+										<div class="ui-media-card__body">
+											<h3 class="ui-media-card__title ui-media-card__title--truncate">
+												{album.title}
+											</h3>
+											{#if formatAlbumMeta(album)}
+												<p class="ui-media-card__subtitle">{formatAlbumMeta(album)}</p>
+											{/if}
+											<p class="ui-media-card__meta">
+												{formatFeaturedDiscographyMeta(featured)}
+											</p>
+										</div>
+									</a>
+									<div class="ui-media-card__links ui-media-card__links--paired">
+										<a href={`/album/${album.id}`} class="ui-media-card__link">
+											Album Page
+										</a>
+										<a href={`/artist/${artist.id}`} class="ui-media-card__link">
+											Artist Page
+										</a>
+									</div>
+								</article>
+							{/each}
+						</div>
+					</div>
+				</section>
+			{/if}
+
 				<section>
 					<div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
 						<div>
@@ -2232,6 +2448,55 @@
 
 	.recommendation-slider__item {
 		scroll-snap-align: start;
+	}
+
+	.discography-featured {
+		display: flex;
+		flex-direction: column;
+		gap: 0.85rem;
+		border: 1px solid rgba(34, 197, 94, 0.34);
+		background:
+			linear-gradient(
+				180deg,
+				rgba(21, 128, 61, 0.18) 0%,
+				rgba(15, 23, 42, 0.42) 60%,
+				rgba(2, 6, 23, 0.18) 100%
+			);
+		padding: 1rem;
+	}
+
+	.discography-featured__header {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+	}
+
+	.discography-featured__slider {
+		padding-top: 0.15rem;
+	}
+
+	.discography-featured__item {
+		border-color: rgba(74, 222, 128, 0.35);
+		background: rgba(5, 46, 22, 0.44);
+	}
+
+	.discography-featured__badge {
+		position: absolute;
+		top: 0.7rem;
+		left: 0.7rem;
+		z-index: 20;
+		display: inline-flex;
+		align-items: center;
+		border: 1px solid rgba(134, 239, 172, 0.65);
+		background: rgba(20, 83, 45, 0.74);
+		padding: 0.18rem 0.5rem;
+		font-size: 0.68rem;
+		font-weight: 700;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: rgb(220 252 231 / 0.94);
 	}
 
 	@media (max-width: 900px) {

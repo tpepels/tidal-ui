@@ -70,6 +70,10 @@ describe('metadataStandard', () => {
 		const metadata = buildStandardMetadataObject(buildLookup());
 		expect(metadata.title).toBe('Track Title');
 		expect(metadata.album).toBe('Album Title');
+		expect(metadata.TRACKID).toBe('123');
+		expect(metadata.TIDAL_TRACK_ID).toBe('123');
+		expect(metadata.TIDAL_ALBUM_ID).toBe('456');
+		expect(metadata.TIDAL_ARTIST_ID).toBe('1');
 		expect(metadata.track).toBe('2/10');
 		expect(metadata.year).toBe('2024');
 	});

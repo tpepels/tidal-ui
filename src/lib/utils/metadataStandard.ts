@@ -22,6 +22,10 @@ export const STANDARD_METADATA_KEY_ORDER = [
 	'DISCTOTAL',
 	'date',
 	'year',
+	'TRACKID',
+	'TIDAL_TRACK_ID',
+	'TIDAL_ALBUM_ID',
+	'TIDAL_ARTIST_ID',
 	'ISRC',
 	'BARCODE',
 	'copyright',
@@ -59,11 +63,18 @@ function normalizePositiveInteger(value: number | null | undefined): number | un
 }
 
 function sanitizeMetadataValue(value: unknown): string | undefined {
+	let normalizedValue: string;
 	if (typeof value !== 'string') {
-		return undefined;
+		if (typeof value === 'number' && Number.isFinite(value)) {
+			normalizedValue = String(value);
+		} else {
+			return undefined;
+		}
+	} else {
+		normalizedValue = value;
 	}
 	// Remove control characters to prevent malformed tags or accidental multi-line values.
-	const sanitized = value
+	const sanitized = normalizedValue
 		.replace(/[\u0000-\u001f\u007f]/g, ' ')
 		.replace(/\s+/g, ' ')
 		.trim();
@@ -111,6 +122,21 @@ export function buildStandardMetadataEntries(
 	setMetadataValue(metadata, 'artist', mainArtist);
 	setMetadataValue(metadata, 'album_artist', albumArtist);
 	setMetadataValue(metadata, 'album', overrideAlbumTitle ?? album?.title);
+	setMetadataValue(metadata, 'TRACKID', track.id);
+	setMetadataValue(metadata, 'TIDAL_TRACK_ID', track.id);
+	setMetadataValue(metadata, 'TIDAL_ALBUM_ID', album?.id);
+	const artistIds = Array.from(
+		new Set(
+			(track.artists ?? [])
+				.map((artist) => artist?.id)
+				.filter((artistId): artistId is number => Number.isFinite(artistId))
+		)
+	);
+	if (artistIds.length > 0) {
+		setMetadataValue(metadata, 'TIDAL_ARTIST_ID', artistIds.join(';'));
+	} else if (Number.isFinite(track.artist?.id)) {
+		setMetadataValue(metadata, 'TIDAL_ARTIST_ID', track.artist.id);
+	}
 
 	const trackNumberOverride = normalizePositiveInteger(overrides?.trackNumber);
 	const totalTracksOverride = normalizePositiveInteger(overrides?.totalTracks);
