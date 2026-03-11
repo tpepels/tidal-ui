@@ -624,7 +624,7 @@
 		<!-- Back Button -->
 		<button
 			onclick={handleBackNavigation}
-			class="flex items-center gap-2 text-gray-400 transition-colors hover:text-white"
+			class="ui-chip-button ui-chip-button--compact ui-detail-back"
 		>
 			<ArrowLeft size={20} />
 			Back
@@ -721,7 +721,7 @@
 					{/if}
 					{#if album.mediaMetadata?.tags}
 						{#each album.mediaMetadata.tags as tag (tag)}
-							<div class="rounded bg-blue-900/30 px-2 py-1 text-xs font-semibold text-blue-400">
+							<div class="ui-meta-pill">
 								{tag}
 							</div>
 						{/each}
@@ -735,109 +735,110 @@
 				{/if}
 
 				{#if tracks.length > 0}
-					<div class="flex flex-wrap items-center gap-3">
-						<button
-							onclick={handleAlbumPlaybackToggle}
-							class="flex items-center gap-2 rounded-full bg-blue-600 px-8 py-3 font-semibold transition-colors hover:bg-blue-700"
-							aria-label={isAlbumPlaying ? 'Pause album' : 'Play album'}
-						>
-							{#if isAlbumPlaying}
-								<Pause size={20} fill="currentColor" />
-								Pause
-							{:else}
-								<Play size={20} fill="currentColor" />
-								Play Album
-							{/if}
-						</button>
-						<button
-							onclick={handleShufflePlay}
-							class="flex items-center gap-2 rounded-full border border-purple-400/50 px-6 py-3 text-sm font-semibold text-purple-200 transition-colors hover:border-purple-300 hover:text-purple-100"
-						>
-							<Shuffle size={18} />
-							Shuffle Album
-						</button>
-						<button
-							onclick={handleDownloadAll}
-							class="flex items-center gap-2 rounded-full border border-blue-400/40 px-6 py-3 text-sm font-semibold text-blue-300 transition-colors hover:border-blue-400 hover:text-blue-200 disabled:cursor-not-allowed disabled:opacity-60"
-							disabled={queueStatus === 'submitting'}
-							aria-label={isQueueDownloadCancellable ? 'Stop album download' : 'Download album'}
-							aria-busy={hasActiveQueueDownload || isDownloadingAll}
-						>
-							{#if isQueueDownloadCancellable}
-								<X size={18} />
-								Stop Download
-							{:else if queueStatus === 'submitting'}
-								<LoaderCircle size={18} class="animate-spin" />
-								Queueing…
-							{:else if isDownloadingAll}
-								<LoaderCircle size={18} class="animate-spin" />
-								Downloading {downloadedCount}/{tracks.length}
-							{:else}
-								<Download size={18} />
-								{queueStatus === 'failed'
-									? 'Retry Download'
-									: queueStatus === 'paused'
-										? 'Resume Download'
-									: queueStatus === 'cancelled'
-										? 'Resume Download'
-										: queueStatus === 'completed'
-											? 'Download Again'
-											: albumInLibrary && queueStatus === 'idle'
-												? 'Redownload Album'
-											: 'Download Album'}
-							{/if}
+					<div class="ui-action-panel">
+						<div class="ui-action-row">
+							<button
+								onclick={handleAlbumPlaybackToggle}
+								class="ui-action-button ui-action-button--primary"
+								aria-label={isAlbumPlaying ? 'Pause album' : 'Play album'}
+							>
+								{#if isAlbumPlaying}
+									<Pause size={16} fill="currentColor" />
+									Pause
+								{:else}
+									<Play size={16} fill="currentColor" />
+									Play Album
+								{/if}
+							</button>
+							<button
+								onclick={handleShufflePlay}
+								class="ui-action-button"
+							>
+								<Shuffle size={16} />
+								Shuffle Album
+							</button>
+							<button
+								onclick={handleDownloadAll}
+								class="ui-action-button"
+								disabled={queueStatus === 'submitting'}
+								aria-label={isQueueDownloadCancellable ? 'Stop album download' : 'Download album'}
+								aria-busy={hasActiveQueueDownload || isDownloadingAll}
+							>
+								{#if isQueueDownloadCancellable}
+									<X size={16} />
+									Stop Download
+								{:else if queueStatus === 'submitting'}
+									<LoaderCircle size={16} class="animate-spin" />
+									Queueing…
+								{:else if isDownloadingAll}
+									<LoaderCircle size={16} class="animate-spin" />
+									Downloading {downloadedCount}/{tracks.length}
+								{:else}
+									<Download size={16} />
+									{queueStatus === 'failed'
+										? 'Retry Download'
+										: queueStatus === 'paused'
+											? 'Resume Download'
+										: queueStatus === 'cancelled'
+											? 'Resume Download'
+											: queueStatus === 'completed'
+												? 'Download Again'
+												: albumInLibrary && queueStatus === 'idle'
+													? 'Redownload Album'
+												: 'Download Album'}
+								{/if}
 							</button>
 							{#if albumInLibrary}
 								<button
 									onclick={handleRepairAlbum}
-									class="flex items-center gap-2 rounded-full border border-emerald-400/40 px-6 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:border-emerald-400 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+									class="ui-action-button"
 									disabled={isRepairingAlbum}
 									aria-busy={isRepairingAlbum}
 								>
 									{#if isRepairingAlbum}
-										<LoaderCircle size={18} class="animate-spin" />
+										<LoaderCircle size={16} class="animate-spin" />
 										Checking Integrity…
 									{:else}
 										Repair Corrupt Files
 									{/if}
 								</button>
 							{/if}
-
 							<ShareButton type="album" id={album.id} variant="secondary" />
 						</div>
-					{#if queueStatus === 'queued'}
-						<p class="mt-2 text-sm text-blue-300">
-							Queued on server. Open Download Manager for live progress.
-						</p>
-					{:else if queueStatus === 'processing'}
-						<p class="mt-2 text-sm text-blue-300">
-							Downloading on server
-							{#if queueTotalTracks > 0}
-								({queueCompletedTracks}/{queueTotalTracks} tracks)
-							{/if}
-							…
-						</p>
-					{:else if queueStatus === 'completed'}
-						<p class="mt-2 text-sm text-emerald-300">Album download completed.</p>
-					{:else if queueStatus === 'cancelled'}
-						<p class="mt-2 text-sm text-amber-300">Album download stopped.</p>
+						{#if queueStatus === 'queued'}
+							<p class="ui-action-status" data-tone="info">
+								Queued on server. Open Download Manager for live progress.
+							</p>
+						{:else if queueStatus === 'processing'}
+							<p class="ui-action-status" data-tone="info">
+								Downloading on server
+								{#if queueTotalTracks > 0}
+									({queueCompletedTracks}/{queueTotalTracks} tracks)
+								{/if}
+								…
+							</p>
+						{:else if queueStatus === 'completed'}
+							<p class="ui-action-status" data-tone="success">Album download completed.</p>
+						{:else if queueStatus === 'cancelled'}
+							<p class="ui-action-status" data-tone="warning">Album download stopped.</p>
 						{:else if queueStatus === 'paused'}
-							<p class="mt-2 text-sm text-amber-300">Album download paused.</p>
-							{:else if albumInLibrary}
-								<p class="mt-2 text-sm text-emerald-300">
-									{#if downloadStoragePreference === 'server'}
-										Already in local library ({albumLibraryTrackCount} track{albumLibraryTrackCount === 1 ? '' : 's'} found). Click "Redownload Album" to overwrite.
-									{:else}
-										Already in local library ({albumLibraryTrackCount} track{albumLibraryTrackCount === 1 ? '' : 's'} found). Browser redownloads may append (2) to filenames.
-									{/if}
-								</p>
-							{/if}
+							<p class="ui-action-status" data-tone="warning">Album download paused.</p>
+						{:else if albumInLibrary}
+							<p class="ui-action-status" data-tone="success">
+								{#if downloadStoragePreference === 'server'}
+									Already in local library ({albumLibraryTrackCount} track{albumLibraryTrackCount === 1 ? '' : 's'} found). Click "Redownload Album" to overwrite.
+								{:else}
+									Already in local library ({albumLibraryTrackCount} track{albumLibraryTrackCount === 1 ? '' : 's'} found). Browser redownloads may append (2) to filenames.
+								{/if}
+							</p>
+						{/if}
 						{#if repairMessage}
-							<p class="mt-2 text-sm text-emerald-300">{repairMessage}</p>
+							<p class="ui-action-status" data-tone="success">{repairMessage}</p>
 						{/if}
 						{#if downloadError}
-							<p class="mt-2 text-sm text-red-400">{downloadError}</p>
+							<p class="ui-action-status" data-tone="error">{downloadError}</p>
 						{/if}
+					</div>
 				{/if}
 			</div>
 		</div>

@@ -162,7 +162,7 @@
 					<div class="min-w-0 flex-1">
 						<button
 							onclick={() => handlePlayTrack(track, index)}
-							class="truncate font-medium text-left w-full text-sm sm:text-base {isCurrentTrack(track)
+							class="w-full text-left text-sm font-medium leading-tight break-words whitespace-normal sm:text-base sm:truncate {isCurrentTrack(track)
 								? 'text-blue-500'
 								: 'text-white hover:text-blue-400'}"
 							title="Play track"

@@ -164,7 +164,7 @@
 
 					<div class="min-w-0 flex-1">
 						<h3
-							class="truncate text-lg font-semibold {isCurrentTrack(track)
+							class="text-base font-semibold leading-tight break-words whitespace-normal sm:text-lg sm:truncate {isCurrentTrack(track)
 								? 'text-blue-500'
 								: 'text-white group-hover:text-blue-400'}"
 						>

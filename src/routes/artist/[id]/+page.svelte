@@ -1287,7 +1287,7 @@
 		<!-- Back Button -->
 		<button
 			onclick={handleBackNavigation}
-			class="flex items-center gap-2 text-gray-400 transition-colors hover:text-white"
+			class="ui-chip-button ui-chip-button--compact ui-detail-back"
 		>
 			<ArrowLeft size={20} />
 			Back
@@ -1315,21 +1315,31 @@
 				<p class="mb-2 text-sm text-gray-400">ARTIST</p>
 				<h1 class="mb-4 text-4xl font-bold md:text-6xl">{artist.name}</h1>
 
-				<div class="mb-6">
-					<ShareButton type="artist" id={artist.id} variant="secondary" />
+				<div class="mb-6 ui-action-panel">
+					<div class="ui-action-row">
+						<ShareButton type="artist" id={artist.id} variant="secondary" />
+						{#if artist.url}
+							<a
+								href={artist.url}
+								target="_blank"
+								rel="noopener noreferrer"
+								class="ui-action-button"
+							>
+								View Profile
+							</a>
+						{/if}
+					</div>
 				</div>
 
-				<div class="mb-6 flex flex-wrap items-center gap-4">
+				<div class="mb-6 flex flex-wrap items-center gap-2">
 					{#if artist.popularity}
-						<div class="text-sm text-gray-400">
+						<div class="ui-meta-pill">
 							Popularity: <span class="font-semibold text-white">{artist.popularity}</span>
 						</div>
 					{/if}
 					{#if artist.artistTypes && artist.artistTypes.length > 0}
 						{#each artist.artistTypes as type (type)}
-							<div
-								class="rounded-full bg-blue-900/30 px-3 py-1 text-xs font-semibold text-blue-400"
-							>
+							<div class="ui-meta-pill">
 								{type}
 							</div>
 						{/each}
@@ -1341,7 +1351,7 @@
 						<h3 class="mb-2 text-sm font-semibold text-gray-400">Roles</h3>
 						<div class="flex flex-wrap gap-2">
 							{#each artist.artistRoles as role (role.category)}
-								<div class="rounded-full bg-gray-800 px-3 py-1 text-xs text-gray-300">
+								<div class="ui-meta-pill">
 									{role.category}
 								</div>
 							{/each}
@@ -1373,102 +1383,96 @@
 				{/if}
 			</section>
 
-			<section>
-				<div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-					<div>
-						<h2 class="text-2xl font-semibold text-white">Discography</h2>
-						<p class="text-sm text-gray-400">Albums, EPs, and more from {artist.name}.</p>
-					</div>
-					<div class="flex items-center gap-2">
-						<button
-							onclick={handleDownloadDiscography}
-							type="button"
-							class="inline-flex items-center gap-2 rounded-full border border-blue-600 bg-blue-600/10 px-4 py-2 text-sm font-semibold text-blue-100 transition-colors hover:bg-blue-600/20 disabled:cursor-not-allowed disabled:opacity-60"
-							disabled={isDownloadingDiscography || discography.length === 0}
-							aria-live="polite"
-						>
-							{#if isDownloadingDiscography}
-								<LoaderCircle size={16} class="animate-spin" />
-								<span class="whitespace-nowrap">
-									Downloading
-									{#if discographyProgress.total > 0}
-										{discographyProgress.completed}/{displayTrackTotal(discographyProgress.total)}
-									{:else}
-										{discographyProgress.completed}
-									{/if}
-									tracks
-								</span>
-							{:else}
-								<Download size={16} />
-								<span class="whitespace-nowrap">Download Discography</span>
-							{/if}
-						</button>
-					</div>
-				</div>
-				<div class="mt-4 space-y-3 rounded-xl border border-gray-800 bg-gray-900/40 p-4">
-					<div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-						<p class="text-xs font-semibold tracking-wide text-gray-300 uppercase">
-							Discography Selection
-						</p>
-						<label class="flex items-center gap-2 text-xs text-gray-400">
-							<span>Best edition</span>
-							<select
-								bind:value={bestEditionRule}
-								class="rounded-md border border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-100"
-								aria-label="Best edition rule"
+				<section>
+					<div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+						<div>
+							<h2 class="text-2xl font-semibold text-white">Discography</h2>
+							<p class="text-sm text-gray-400">Albums, EPs, and more from {artist.name}.</p>
+						</div>
+						<div class="ui-action-row">
+							<button
+								onclick={handleDownloadDiscography}
+								type="button"
+								class="ui-action-button"
+								disabled={isDownloadingDiscography || discography.length === 0}
+								aria-live="polite"
 							>
-								<option value="balanced">Balanced</option>
-								<option value="quality_first">Quality first</option>
-								<option value="completeness_first">Most complete</option>
-								<option value="original_release">Original release</option>
-							</select>
-						</label>
+								{#if isDownloadingDiscography}
+									<LoaderCircle size={16} class="animate-spin" />
+									<span class="whitespace-nowrap">
+										Downloading
+										{#if discographyProgress.total > 0}
+											{discographyProgress.completed}/{displayTrackTotal(discographyProgress.total)}
+										{:else}
+											{discographyProgress.completed}
+										{/if}
+										tracks
+									</span>
+								{:else}
+									<Download size={16} />
+									<span class="whitespace-nowrap">Download Discography</span>
+								{/if}
+							</button>
+						</div>
 					</div>
-						<div class="flex flex-wrap gap-2">
+					<div class="mt-4 ui-action-panel">
+						<div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+							<p class="text-xs font-semibold tracking-wide text-gray-300 uppercase">
+								Discography Selection
+							</p>
+							<label class="flex items-center gap-2 text-xs text-gray-400">
+								<span>Best edition</span>
+								<select
+									bind:value={bestEditionRule}
+									class="ui-select"
+									aria-label="Best edition rule"
+								>
+									<option value="balanced">Balanced</option>
+									<option value="quality_first">Quality first</option>
+									<option value="completeness_first">Most complete</option>
+									<option value="original_release">Original release</option>
+								</select>
+							</label>
+						</div>
+						<div class="ui-action-row">
 							{#each [
 								{ key: 'album', label: 'Albums' },
 								{ key: 'ep', label: 'EPs' },
 								{ key: 'single', label: 'Singles' }
 							] as release (release.key)}
-							<button
-								type="button"
-								onclick={() => toggleDiscographyFilter(release.key as 'album' | 'ep' | 'single')}
-								class={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
-									discographyFilterState[release.key as 'album' | 'ep' | 'single']
-										? 'border-blue-500 bg-blue-600/20 text-blue-100'
-										: 'border-gray-700 bg-gray-900 text-gray-400 hover:text-gray-200'
-								}`}
-							>
-								{release.label}
-							</button>
-						{/each}
-					</div>
-							<div class="flex flex-wrap gap-2">
-								{#each [
-									{ key: 'live', label: 'Live' },
-									{ key: 'remaster', label: 'Remaster/Deluxe' },
-									{ key: 'explicit', label: 'Explicit' },
-									{ key: 'clean', label: 'Non-explicit' }
-								] as filter (filter.key)}
-							<button
-								type="button"
-								onclick={() =>
-									toggleDiscographyFilter(
-										filter.key as 'live' | 'remaster' | 'explicit' | 'clean'
-									)}
-								class={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
-									discographyFilterState[
-										filter.key as 'live' | 'remaster' | 'explicit' | 'clean'
-									]
-										? 'border-emerald-600 bg-emerald-700/20 text-emerald-100'
-										: 'border-gray-700 bg-gray-900 text-gray-400 hover:text-gray-200'
-								}`}
-							>
-								{filter.label}
-							</button>
+								<button
+									type="button"
+									onclick={() => toggleDiscographyFilter(release.key as 'album' | 'ep' | 'single')}
+									class="ui-filter-chip"
+									class:is-active={discographyFilterState[release.key as 'album' | 'ep' | 'single']}
+								>
+									{release.label}
+								</button>
 							{/each}
 						</div>
-						<p class="text-xs text-gray-500">
+						<div class="ui-action-row">
+							{#each [
+								{ key: 'live', label: 'Live' },
+								{ key: 'remaster', label: 'Remaster/Deluxe' },
+								{ key: 'explicit', label: 'Explicit' },
+								{ key: 'clean', label: 'Non-explicit' }
+							] as filter (filter.key)}
+								<button
+									type="button"
+									onclick={() =>
+										toggleDiscographyFilter(
+											filter.key as 'live' | 'remaster' | 'explicit' | 'clean'
+										)}
+									class="ui-filter-chip ui-filter-chip--soft"
+									class:is-active={discographyFilterState[
+										filter.key as 'live' | 'remaster' | 'explicit' | 'clean'
+									]}
+								>
+									{filter.label}
+								</button>
+							{/each}
+						</div>
+						<p class="ui-action-status">
 							Content filters use release metadata. “Non-explicit” is what some catalogs label as “clean”.
 						</p>
 					</div>
@@ -1531,7 +1535,7 @@
 					</div>
 				{/if}
 				{#if discographyError}
-					<p class="mt-2 text-sm text-red-400" role="alert">{discographyError}</p>
+					<p class="mt-2 ui-action-status" data-tone="error" role="alert">{discographyError}</p>
 				{/if}
 				{#if discography.length > 0}
 					<div class="mt-6 space-y-8">
@@ -1756,15 +1760,5 @@
 			</section>
 		</div>
 
-		{#if artist.url}
-			<a
-				href={artist.url}
-				target="_blank"
-				rel="noopener noreferrer"
-				class="inline-block text-sm text-blue-400 transition-colors hover:text-blue-300"
-			>
-				View profile →
-			</a>
-		{/if}
 	</div>
 {/if}

@@ -1,6 +1,5 @@
 <script lang="ts">
 	import DownloadLog from '$lib/components/DownloadLog.svelte';
-	import ToolNavGrid from '$lib/components/ui/ToolNavGrid.svelte';
 	import { getRouteMeta } from '$lib/config/routeMeta';
 
 	const meta = getRouteMeta('/download-log');
@@ -17,12 +16,6 @@
 			<h1 class="ui-page__title">{meta?.title ?? 'Download Log'}</h1>
 			<p class="ui-page__subtitle">{meta?.subtitle ?? 'Live download events, health checks, and cleanup tools.'}</p>
 		</div>
-		<div class="ui-page__actions">
-			<a href="/download-center" class="ui-chip-link">Download Center</a>
-			<a href="/status" class="ui-chip-link">Status</a>
-			<a href="/settings" class="ui-chip-link">Settings</a>
-		</div>
 	</header>
-	<ToolNavGrid current="/download-log" />
 	<DownloadLog />
 </section>

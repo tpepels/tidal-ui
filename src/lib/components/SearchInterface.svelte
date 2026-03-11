@@ -1039,7 +1039,7 @@
 								class="h-10 w-10 sm:h-12 sm:w-12 flex-shrink-0 rounded object-cover"
 							/>
 							<div class="min-w-0 flex-1">
-								<h3 class="truncate font-semibold text-sm sm:text-base text-white group-hover:text-blue-400">
+								<h3 class="font-semibold text-sm leading-tight break-words whitespace-normal sm:text-base sm:truncate text-white group-hover:text-blue-400">
 									{track.title}
 								</h3>
 								<p class="truncate text-xs sm:text-sm text-gray-400">
@@ -1136,7 +1136,7 @@
 								/>
 							{/if}
 							<div class="min-w-0 flex-1">
-								<h3 class="truncate font-semibold text-white group-hover:text-blue-400">
+								<h3 class="font-semibold text-sm leading-tight break-words whitespace-normal sm:text-base sm:truncate text-white group-hover:text-blue-400">
 									{track.title}{asTrack(track).version ? ` (${asTrack(track).version})` : ''}
 									{#if asTrack(track).explicit}
 										<svg
@@ -1467,28 +1467,68 @@
 				{/each}
 			</div>
 		{:else if $searchStore.activeTab === 'playlists' && ($searchStore.results?.playlists ?? []).length > 0}
-			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+			<div class="ui-media-grid ui-media-grid--playlists">
 				{#each ($searchStore.results?.playlists ?? []) as playlist (playlist.uuid)}
-					<a
-						href={`/playlist/${playlist.uuid}`}
-						class="group text-left"
-						data-sveltekit-preload-data
-					>
-						<div class="relative mb-2 aspect-square overflow-hidden rounded-lg">
-							{#if playlist.squareImage || playlist.image}
-								<img
-									src={losslessAPI.getCoverUrl(playlist.squareImage || playlist.image, '640')}
-									alt={playlist.title}
-									class="h-full w-full object-cover transition-transform group-hover:scale-105"
-								/>
+					<article class="ui-media-card search-media-card search-media-card--playlist">
+						<a
+							href={`/playlist/${playlist.uuid}`}
+							class="ui-media-card__primary-link"
+							data-sveltekit-preload-data
+						>
+							<div class="ui-media-card__artwork">
+								{#if playlist.squareImage || playlist.image}
+									<img
+										src={losslessAPI.getCoverUrl(playlist.squareImage || playlist.image, '640')}
+										alt={playlist.title}
+										class="search-media-card__image"
+									/>
+								{:else}
+									<div class="search-media-card__placeholder">
+										<List size={24} />
+									</div>
+								{/if}
+							</div>
+							<div class="ui-media-card__body">
+								<h3 class="ui-media-card__title ui-media-card__title--truncate">
+									{playlist.title}
+								</h3>
+								<p class="ui-media-card__subtitle ui-media-card__title--truncate">
+									{playlist.creator.name}
+								</p>
+								<p class="ui-media-card__meta">
+									{displayTrackTotal(playlist.numberOfTracks)} track{displayTrackTotal(
+										playlist.numberOfTracks
+									) === 1
+										? ''
+										: 's'}
+									{#if playlist.duration}
+										• {losslessAPI.formatDuration(playlist.duration)}
+									{/if}
+								</p>
+								<p class="ui-media-card__meta">
+									Open playlist details, promoted artists, and full track list.
+								</p>
+							</div>
+						</a>
+						<div class="ui-media-card__links">
+							<a
+								href={`/playlist/${playlist.uuid}`}
+								class="ui-media-card__link"
+								data-sveltekit-preload-data
+							>
+								Playlist Page
+							</a>
+							{#if playlist.promotedArtists?.[0]}
+								<a
+									href={`/artist/${playlist.promotedArtists[0].id}`}
+									class="ui-media-card__link"
+									data-sveltekit-preload-data
+								>
+									Featured Artist
+								</a>
 							{/if}
 						</div>
-						<h3 class="truncate font-semibold text-white group-hover:text-blue-400">
-							{playlist.title}
-						</h3>
-						<p class="truncate text-sm text-gray-400">{playlist.creator.name}</p>
-						<p class="text-xs text-gray-500">{playlist.numberOfTracks} tracks</p>
-					</a>
+					</article>
 				{/each}
 			</div>
 			<!-- News Section -->

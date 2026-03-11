@@ -7,10 +7,9 @@
 		type ErrorReport
 	} from '$lib/core/errorTracker';
 	import { getRetrySummary, type RetrySummary } from '$lib/core/retryTracker';
-	import { Activity, Gauge, Download, Logs, Settings } from 'lucide-svelte';
+	import { Activity, Gauge } from 'lucide-svelte';
 	import ApiTargetsStatusCard from '$lib/components/status/ApiTargetsStatusCard.svelte';
 	import PageState from '$lib/components/ui/PageState.svelte';
-	import ToolNavGrid from '$lib/components/ui/ToolNavGrid.svelte';
 
 	let diagnosticsLoading = $state(false);
 	let diagnosticsSummary = $state<ReturnType<typeof getErrorSummary> | null>(null);
@@ -110,18 +109,6 @@
 			</p>
 		</div>
 		<div class="ui-page__actions">
-			<a href="/download-center" class="ui-chip-link">
-				<Download size={14} />
-				<span>Download Center</span>
-			</a>
-			<a href="/download-log" class="ui-chip-link">
-				<Logs size={14} />
-				<span>Download Log</span>
-			</a>
-			<a href="/settings" class="ui-chip-link">
-				<Settings size={14} />
-				<span>Settings</span>
-			</a>
 			<button
 				type="button"
 				class="ui-chip-button status-page__refresh-btn"
@@ -135,7 +122,6 @@
 			</button>
 		</div>
 	</div>
-	<ToolNavGrid current="/status" />
 
 	{#if diagnosticsError}
 		<PageState kind="error" title="Diagnostics unavailable" message={diagnosticsError} actionLabel="Retry" onAction={() => void refreshDiagnostics()} />

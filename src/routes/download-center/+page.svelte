@@ -1,6 +1,5 @@
 <script lang="ts">
 	import DownloadManager from '$lib/components/DownloadManager.svelte';
-	import ToolNavGrid from '$lib/components/ui/ToolNavGrid.svelte';
 	import { getRouteMeta } from '$lib/config/routeMeta';
 
 	const meta = getRouteMeta('/download-center');
@@ -17,12 +16,6 @@
 			<h1 class="ui-page__title">{meta?.title ?? 'Download Center'}</h1>
 			<p class="ui-page__subtitle">{meta?.subtitle ?? 'Live queue monitoring, controls, and failure recovery tools.'}</p>
 		</div>
-		<div class="ui-page__actions">
-			<a href="/status" class="ui-chip-link">Status</a>
-			<a href="/download-log" class="ui-chip-link">Download Log</a>
-			<a href="/settings" class="ui-chip-link">Settings</a>
-		</div>
 	</header>
-	<ToolNavGrid current="/download-center" />
 	<DownloadManager pageMode={true} />
 </section>
