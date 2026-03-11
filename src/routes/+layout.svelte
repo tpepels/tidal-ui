@@ -16,7 +16,10 @@
 		fetchCorrectAndDeduplicateStatus,
 		fetchLibraryDeduplicateStatus,
 		fetchFullLibraryRepairStatus,
+		fetchMediaLibrarySuggestions,
 		repairFullLibraryInLibrary,
+		type MediaLibraryAlbumSuggestion,
+		type MediaLibraryArtistSuggestion,
 		sweepTemporaryLibraryArtifacts
 	} from '$lib/utils/mediaLibraryClient';
 
@@ -71,7 +74,9 @@
 		PanelLeft,
 		PanelRight,
 		Music2,
-		History
+		History,
+		User,
+		Disc
 	} from 'lucide-svelte';
 	import { type Track, type AudioQuality, type PlayableTrack, isSonglinkTrack } from '$lib/types';
 	import { getRouteMeta } from '$lib/config/routeMeta';
@@ -244,6 +249,19 @@
 	const downloadCenterBadgeLabel = $derived(
 		`${downloadCenterCurrentDownloads}/${downloadCenterQueueSize}`
 	);
+	const LIBRARY_SUGGESTION_ARTIST_LIMIT = 4;
+	const LIBRARY_SUGGESTION_ALBUM_LIMIT = 4;
+	const LIBRARY_SUGGESTIONS_REFRESH_MS = 120_000;
+	let librarySuggestions = $state<{
+		artists: MediaLibraryArtistSuggestion[];
+		albums: MediaLibraryAlbumSuggestion[];
+		scannedAt: number | null;
+	}>({
+		artists: [],
+		albums: [],
+		scannedAt: null
+	});
+	let librarySuggestionsLoading = $state(false);
 	const currentTrackRoute = $derived.by(() => {
 		const current = $machineCurrentTrack;
 		if (!current || isSonglinkTrack(current)) return null;
@@ -362,6 +380,49 @@
 
 	function routeNavLabel(path: string, fallback: string): string {
 		return getRouteMeta(path)?.navLabel ?? fallback;
+	}
+
+	function buildSearchHref(query: string, tab: 'artists' | 'albums'): string {
+		const normalizedQuery = query.trim();
+		if (!normalizedQuery) {
+			return '/';
+		}
+		const params = new URLSearchParams({
+			q: normalizedQuery,
+			tab
+		});
+		return `/?${params.toString()}`;
+	}
+
+	function formatSuggestionTrackCount(trackCount: number): string {
+		if (!Number.isFinite(trackCount) || trackCount <= 0) {
+			return '0 tracks';
+		}
+		return `${trackCount} ${trackCount === 1 ? 'track' : 'tracks'}`;
+	}
+
+	async function refreshLibrarySuggestions(force = false): Promise<void> {
+		if (librarySuggestionsLoading && !force) return;
+		librarySuggestionsLoading = true;
+		try {
+			const result = await fetchMediaLibrarySuggestions({
+				artistLimit: LIBRARY_SUGGESTION_ARTIST_LIMIT,
+				albumLimit: LIBRARY_SUGGESTION_ALBUM_LIMIT,
+				force
+			});
+			if (!result.success) {
+				throw new Error(result.error || 'Unable to load media library suggestions');
+			}
+			librarySuggestions = {
+				artists: Array.isArray(result.artists) ? result.artists : [],
+				albums: Array.isArray(result.albums) ? result.albums : [],
+				scannedAt: typeof result.scannedAt === 'number' ? result.scannedAt : null
+			};
+		} catch (error) {
+			console.warn('[Layout] Failed to load library suggestions:', error);
+		} finally {
+			librarySuggestionsLoading = false;
+		}
 	}
 
 	function handleSidebarNavKeydown(event: KeyboardEvent): void {
@@ -1357,6 +1418,19 @@
 		playerHeight = height;
 	};
 
+	onMount(() => {
+		if (isEmbed) {
+			return;
+		}
+		void refreshLibrarySuggestions();
+		const interval = setInterval(() => {
+			void refreshLibrarySuggestions();
+		}, LIBRARY_SUGGESTIONS_REFRESH_MS);
+		return () => {
+			clearInterval(interval);
+		};
+	});
+
 	let controllerChangeHandler: (() => void) | null = null;
 
 	onMount(() => {
@@ -1578,6 +1652,58 @@
 									<History size={16} />
 									<span class="sidebar-action__label">{routeNavLabel('/history', 'History')}</span>
 								</a>
+							</div>
+
+							<div class="app-sidebar__section">
+								<p class="app-sidebar__section-title">Library Suggestions</p>
+								{#if librarySuggestionsLoading && librarySuggestions.artists.length === 0 && librarySuggestions.albums.length === 0}
+									<p class="sidebar-suggestion-empty">Scanning local library...</p>
+								{:else if librarySuggestions.artists.length === 0 && librarySuggestions.albums.length === 0}
+									<p class="sidebar-suggestion-empty">No local albums indexed yet.</p>
+								{:else}
+									{#if librarySuggestions.artists.length > 0}
+										<p class="app-sidebar__subsection-title">Artists</p>
+										{#each librarySuggestions.artists as suggestion (suggestion.artistDir)}
+											<a
+												class="sidebar-action sidebar-action--suggestion"
+												href={buildSearchHref(suggestion.searchQuery || suggestion.artistName, 'artists')}
+												title={`Search artist: ${suggestion.artistName}`}
+												data-sidebar-item
+											>
+												<User size={16} />
+												<span class="sidebar-action__content">
+													<span class="sidebar-action__label">{suggestion.artistName}</span>
+													<span class="sidebar-action__meta">
+														{suggestion.albumCount} album{suggestion.albumCount === 1 ? '' : 's'} · {formatSuggestionTrackCount(suggestion.trackCount)}
+													</span>
+												</span>
+											</a>
+										{/each}
+									{/if}
+
+									{#if librarySuggestions.albums.length > 0}
+										<p class="app-sidebar__subsection-title">Albums</p>
+										{#each librarySuggestions.albums as suggestion (`${suggestion.artistDir}::${suggestion.albumDir}`)}
+											<a
+												class="sidebar-action sidebar-action--suggestion"
+												href={buildSearchHref(
+													suggestion.searchQuery || `${suggestion.artistName} ${suggestion.albumTitle}`,
+													'albums'
+												)}
+												title={`Search album: ${suggestion.artistName} - ${suggestion.albumTitle}`}
+												data-sidebar-item
+											>
+												<Disc size={16} />
+												<span class="sidebar-action__content">
+													<span class="sidebar-action__label">{suggestion.albumTitle}</span>
+													<span class="sidebar-action__meta">
+														{suggestion.artistName} · {formatSuggestionTrackCount(suggestion.trackCount)}
+													</span>
+												</span>
+											</a>
+										{/each}
+									{/if}
+								{/if}
 							</div>
 
 							<div class="app-sidebar__section">
@@ -1815,6 +1941,22 @@
 		color: rgba(161, 161, 161, 0.72);
 	}
 
+	.app-sidebar__subsection-title {
+		margin: 0.3rem 0 0.1rem;
+		font-size: 0.66rem;
+		font-weight: 700;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: rgba(185, 185, 185, 0.76);
+	}
+
+	.sidebar-suggestion-empty {
+		margin: 0;
+		padding: 0.4rem 0.15rem;
+		font-size: 0.8rem;
+		color: rgba(196, 196, 196, 0.78);
+	}
+
 	.sidebar-icon-btn {
 		display: inline-flex;
 		align-items: center;
@@ -1900,6 +2042,26 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+
+	.sidebar-action--suggestion {
+		align-items: flex-start;
+	}
+
+	.sidebar-action__content {
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.18rem;
+	}
+
+	.sidebar-action__meta {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		font-size: 0.72rem;
+		font-weight: 500;
+		color: rgba(204, 204, 204, 0.8);
 	}
 
 	.sidebar-action__bubble {

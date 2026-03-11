@@ -10,7 +10,8 @@
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 	import { artistCacheStore } from '$lib/stores/artistCache';
 	import ShareButton from '$lib/components/ShareButton.svelte';
-	import { LoaderCircle, Play, ArrowLeft, Disc, User, Clock, Download, X } from 'lucide-svelte';
+	import EntityMediaCard from '$lib/components/ui/EntityMediaCard.svelte';
+	import { LoaderCircle, Play, ArrowLeft, Disc, Clock, Download, X } from 'lucide-svelte';
 	import { formatArtists } from '$lib/utils/formatters';
 
 	let track = $state<Track | null>(null);
@@ -158,22 +159,41 @@
 					</span>
 				{/if}
 
-				<div class="mb-6 space-y-2">
-					<div class="flex items-center gap-2 text-xl text-gray-300">
-						<User size={20} />
-						<a href={`/artist/${track.artist.id}`} class="hover:text-blue-400 hover:underline">
-							{formatArtists(track.artists)}
-						</a>
-					</div>
-					<div class="flex items-center gap-2 text-lg text-gray-400">
-						<Disc size={20} />
-						<a href={`/album/${track.album.id}`} class="hover:text-blue-400 hover:underline">
-							{track.album.title}
-						</a>
-					</div>
+				<div class="mb-6 space-y-4">
 					<div class="flex items-center gap-2 text-gray-500">
 						<Clock size={18} />
 						<span>{formatDuration(track.duration)}</span>
+					</div>
+					<div class="grid gap-4 sm:grid-cols-2">
+						<EntityMediaCard
+							type="artist"
+							href={`/artist/${track.artist.id}`}
+							title={track.artist.name}
+							subtitle={
+								track.artists.length > 1
+									? `${track.artists.length} credited artists`
+									: track.artist.type || 'Artist'
+							}
+							meta={formatArtists(track.artists)}
+							imageSrc={
+								track.artist.picture ? losslessAPI.getArtistPictureUrl(track.artist.picture) : null
+							}
+							imageAlt={`Portrait of ${track.artist.name}`}
+							links={[{ href: `/artist/${track.artist.id}`, label: 'Artist Page' }]}
+						/>
+						<EntityMediaCard
+							type="album"
+							href={`/album/${track.album.id}`}
+							title={track.album.title}
+							subtitle={track.album.artist?.name ?? track.artist.name}
+							meta={track.album.releaseDate ? track.album.releaseDate.split('-')[0] : null}
+							imageSrc={track.album.cover ? losslessAPI.getCoverUrl(track.album.cover, '640') : null}
+							imageAlt={`Cover for ${track.album.title}`}
+							links={[
+								{ href: `/album/${track.album.id}`, label: 'Album Page' },
+								{ href: `/artist/${track.artist.id}`, label: 'Artist Page' }
+							]}
+						/>
 					</div>
 				</div>
 

@@ -224,8 +224,15 @@ async function buildMetadataObjectWithEnhancements(
 	}
 
 	const trackLabel = `${lookup.track?.id ?? 'unknown'}:${lookup.track?.title ?? 'Unknown Track'}`;
+	const lookupMode = preferredReleaseId
+		? strictMatch
+			? 'selected release + strict ISRC'
+			: 'selected release'
+		: strictMatch
+			? 'strict ISRC'
+			: 'flex';
 	console.log(
-		`[MusicBrainz] Lookup ${strictMatch ? 'strict' : 'flex'} for ${trackLabel}${
+		`[MusicBrainz] Lookup ${lookupMode} for ${trackLabel}${
 			preferredReleaseId ? ` (preferred release ${preferredReleaseId})` : ''
 		}`
 	);

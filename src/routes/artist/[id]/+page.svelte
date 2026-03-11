@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { losslessAPI } from '$lib/api';
 	import { downloadAlbum } from '$lib/downloads';
 	import { isAlbumDownloadQueueActive, type AlbumDownloadStatus } from '$lib/controllers/albumDownloadUi';
@@ -20,7 +20,8 @@
 		isCoverInFailureBackoff,
 		markCoverFailed,
 		markCoverResolved,
-		prefetchCoverCandidates
+		prefetchCoverCandidates,
+		subscribeCoverPipelineEvents
 	} from '$lib/utils/coverPipeline';
 	import { scoreAlbumForSelection } from '$lib/utils/albumSelection';
 	import { sortTopTracks } from '$lib/utils/topTracks';
@@ -80,15 +81,49 @@
 	);
 	const hasGroupedDiscography = $derived(groupedDiscographyEntries.length > 0);
 	const filtersHideAllDiscography = $derived(hasGroupedDiscography && discographyEntries.length === 0);
+	const discographyEntriesWithLoadedCovers = $derived.by(() => {
+		coverResolutionTick;
+		const currentArtistId = artist?.id ?? 0;
+		return discographyEntries.filter((entry) => {
+			const album = entry.representative;
+			if (!album || !Number.isFinite(album.id) || album.id <= 0) return false;
+			if (albumCoverFailures[album.id]) return false;
+			const hasOfficialTidalSource = album.discographySource === 'official_tidal';
+			const coverOverride = albumCoverOverrides[album.id];
+			const coverImageCandidates = buildAlbumCoverCandidates(
+				album,
+				entry.versions,
+				hasOfficialTidalSource,
+				coverOverride
+			);
+			if (coverImageCandidates.length === 0) return false;
+			const coverCacheKey = getCoverCacheKey({
+				coverId: coverOverride || album.cover,
+				size: '640',
+				proxy: hasOfficialTidalSource,
+				overrideKey: `artist:${currentArtistId}:album:${album.id}`
+			});
+			return Boolean(getResolvedCoverUrl(coverCacheKey));
+		});
+	});
 	const discography = $derived(discographyEntries.map((entry) => entry.representative));
+	const visibleDiscography = $derived(
+		discographyEntriesWithLoadedCovers.map((entry) => entry.representative)
+	);
 	const discographyAlbums = $derived(
-		discographyEntries.filter((entry) => entry.section === 'album')
+		discographyEntriesWithLoadedCovers.filter((entry) => entry.section === 'album')
 	);
 	const discographyEps = $derived(
-		discographyEntries.filter((entry) => entry.section === 'ep')
+		discographyEntriesWithLoadedCovers.filter((entry) => entry.section === 'ep')
 	);
 	const discographySingles = $derived(
-		discographyEntries.filter((entry) => entry.section === 'single')
+		discographyEntriesWithLoadedCovers.filter((entry) => entry.section === 'single')
+	);
+	const discographyMissingCoverCount = $derived(
+		Math.max(0, discographyEntries.length - discographyEntriesWithLoadedCovers.length)
+	);
+	const waitingForCoverLoads = $derived(
+		discographyEntries.length > 0 && visibleDiscography.length === 0
 	);
 	const recentMeaningfulEnrichmentPasses = $derived(
 		(enrichmentDiagnostics?.passes ?? [])
@@ -168,6 +203,7 @@
 	let artistLoadAbortController: AbortController | null = null;
 	let activeArtistLoadId: number | null = null;
 	let albumLibraryLookupToken = 0;
+	let coverResolutionTick = $state(0);
 	const COVER_CANDIDATE_DELIMITER = '\n';
 	const FORCE_OVERWRITE_CONFIRMATION =
 		'This album is already in your local library. Redownload it and overwrite existing files?';
@@ -208,6 +244,22 @@
 		artistLoadAbortController = null;
 		activeArtistLoadId = null;
 		stopAllAlbumQueuePolling();
+	});
+
+	onMount(() => {
+		const unsubscribeCoverEvents = subscribeCoverPipelineEvents((event) => {
+			const currentArtistId = artist?.id;
+			if (!Number.isFinite(currentArtistId)) {
+				return;
+			}
+			if (!event.cacheKey.startsWith(`artist:${currentArtistId}:album:`)) {
+				return;
+			}
+			coverResolutionTick += 1;
+		});
+		return () => {
+			unsubscribeCoverEvents();
+		};
 	});
 
 	function getReleaseYear(date?: string | null): string | null {
@@ -690,7 +742,13 @@
 			})
 			.filter((entry): entry is { cacheKey: string; candidates: string[] } => entry !== null);
 		if (batch.length === 0) return;
-		void prefetchCoverCandidates(batch);
+		void prefetchCoverCandidates(batch)
+			.then(() => {
+				coverResolutionTick += 1;
+			})
+			.catch(() => {
+				// failures are tracked in cover pipeline caches
+			});
 	});
 
 	$effect(() => {
@@ -1567,7 +1625,7 @@
 													{/if}
 												</div>
 											</a>
-											<div class="ui-media-card__links">
+											<div class="ui-media-card__links" class:ui-media-card__links--paired={Boolean(recommendationAlbum.artist)}>
 												<a
 													href={`/album/${recommendationAlbum.id}`}
 													class="ui-media-card__link"
@@ -1752,15 +1810,18 @@
 				{#if discographyError}
 					<p class="mt-2 ui-action-status" data-tone="error" role="alert">{discographyError}</p>
 				{/if}
-				{#if discography.length > 0}
+				{#if visibleDiscography.length > 0}
 					<div class="mt-6 space-y-8">
-						{#if duplicateCollapsedCount > 0 || filteredOutCount > 0}
+						{#if duplicateCollapsedCount > 0 || filteredOutCount > 0 || discographyMissingCoverCount > 0}
 							<p class="text-xs text-gray-500">
 									{#if duplicateCollapsedCount > 0}
 										Merged {duplicateCollapsedCount} duplicate resolution variant{duplicateCollapsedCount === 1 ? '' : 's'}.
 									{/if}
 									{#if filteredOutCount > 0}
 										Filtered out {filteredOutCount} release{filteredOutCount === 1 ? '' : 's'} by selection settings.
+									{/if}
+									{#if discographyMissingCoverCount > 0}
+										Hiding {discographyMissingCoverCount} release{discographyMissingCoverCount === 1 ? '' : 's'} without loaded cover art.
 									{/if}
 								Showing one version per release for {formatQualityLabel(downloadQuality)} quality preference.
 							</p>
@@ -1802,7 +1863,8 @@
 													proxy: hasOfficialTidalSource,
 													overrideKey: `artist:${artist?.id ?? 0}:album:${album.id}`
 												})}
-												{@const coverImageUrl = coverImageCandidates[0] ?? ''}
+												{@const resolvedCoverUrl = getResolvedCoverUrl(coverCacheKey)}
+												{@const coverImageUrl = resolvedCoverUrl ?? ''}
 												{@const albumDownloadState =
 													albumDownloadStates[album.id] ??
 													createDefaultAlbumDownloadState(album.numberOfTracks ?? 0)}
@@ -1810,9 +1872,7 @@
 													albumDownloadState
 												)}
 												{@const albumInLibrary = albumLibraryPresence[album.id]?.exists === true}
-												<div
-													class="group relative flex h-full flex-col rounded-xl border border-gray-800 bg-gray-900/40 p-4 text-center transition-colors hover:border-blue-700 hover:bg-gray-900"
-												>
+												<article class="ui-media-card group">
 												{#if hasOfficialTidalSource}
 													<span
 														class="absolute top-3 left-3 z-30 rounded-full border border-emerald-600/60 bg-emerald-900/70 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-emerald-200"
@@ -1861,11 +1921,9 @@
 												</button>
 												<a
 													href={`/album/${album.id}`}
-													class="flex flex-1 flex-col items-center gap-4 rounded-lg text-center focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-900"
+													class="ui-media-card__primary-link"
 													>
-														<div
-															class="mx-auto aspect-square w-full max-w-[220px] overflow-hidden rounded-lg bg-gray-800"
-														>
+														<div class="ui-media-card__artwork">
 															{#if coverImageUrl && !albumCoverFailures[album.id]}
 																<img
 																	src={coverImageUrl}
@@ -1879,32 +1937,41 @@
 																	onerror={handleAlbumCoverError}
 																	onload={handleAlbumCoverLoad}
 																	alt={album.title}
-																	class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+																	class="h-full w-full object-cover"
 																	loading="lazy"
 																	decoding="async"
 																/>
 														{:else}
-															<div
-																class="flex h-full w-full items-center justify-center text-sm text-gray-500"
-															>
+															<div class="flex h-full w-full items-center justify-center text-sm text-gray-500">
 																No artwork
 															</div>
 														{/if}
 													</div>
-													<div class="w-full">
-														<h3
-															class="truncate text-lg font-semibold text-balance text-white group-hover:text-blue-400"
-														>
+													<div class="ui-media-card__body">
+														<h3 class="ui-media-card__title ui-media-card__title--truncate">
 															{album.title}
 														</h3>
 														{#if formatAlbumMeta(album)}
-															<p class="mt-1 text-sm text-gray-400">{formatAlbumMeta(album)}</p>
+															<p class="ui-media-card__subtitle">{formatAlbumMeta(album)}</p>
 														{/if}
-														<p class="mt-1 text-xs text-gray-500">
+														<p class="ui-media-card__meta">
 															Quality: {formatQualityLabel(downloadQuality)}
 														</p>
 													</div>
 												</a>
+												<div class="ui-media-card__links ui-media-card__links--paired">
+													<a href={`/album/${album.id}`} class="ui-media-card__link">
+														Album Page
+													</a>
+													{#if album.artist?.id || artist?.id}
+														<a
+															href={`/artist/${album.artist?.id ?? artist?.id}`}
+															class="ui-media-card__link"
+														>
+															Artist Page
+														</a>
+													{/if}
+												</div>
 												{#if albumDownloadState.status === 'queued'}
 													<p class="mt-3 text-xs text-blue-300">
 														Queued on server…
@@ -1940,17 +2007,17 @@
 															{/if}
 														</p>
 													{/if}
-												</div>
+												</article>
 											{/each}
 									</div>
 								</div>
 							{/if}
 						{/each}
 					</div>
-				{:else if filtersHideAllDiscography}
-					<div
-						class="mt-6 space-y-3 rounded-lg border border-amber-700/40 bg-amber-900/20 p-6 text-sm text-amber-200"
-					>
+					{:else if filtersHideAllDiscography}
+						<div
+							class="mt-6 space-y-3 rounded-lg border border-amber-700/40 bg-amber-900/20 p-6 text-sm text-amber-200"
+						>
 						<p>Current discography filters hide all releases.</p>
 						<p class="text-xs text-amber-100/90">
 							Tip: keep both “Explicit” and “Non-explicit” enabled if you want all editions.
@@ -1962,12 +2029,18 @@
 								class="rounded-full border border-amber-500/60 bg-amber-700/20 px-3 py-1 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-700/30"
 							>
 								Reset discography filters
-							</button>
+								</button>
+							</div>
 						</div>
-					</div>
-				{:else}
-					<div
-						class="mt-6 rounded-lg border border-gray-800 bg-gray-900/40 p-6 text-sm text-gray-400"
+					{:else if waitingForCoverLoads}
+						<div
+							class="mt-6 rounded-lg border border-gray-800 bg-gray-900/40 p-6 text-sm text-gray-300"
+						>
+							<p>Loading discography cover art. Albums will appear as soon as covers resolve.</p>
+						</div>
+					{:else}
+						<div
+							class="mt-6 rounded-lg border border-gray-800 bg-gray-900/40 p-6 text-sm text-gray-400"
 					>
 						<p>Discography information isn&apos;t available right now.</p>
 					</div>

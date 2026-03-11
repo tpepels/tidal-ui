@@ -49,6 +49,7 @@
 		status?: string;
 		country?: string;
 		date?: string;
+		trackCount?: number;
 		barcode?: string;
 	};
 
@@ -224,8 +225,13 @@
 	}
 
 	function formatMusicBrainzReleaseOption(release: MusicBrainzReleaseOption): string {
+		const trackCountLabel =
+			typeof release.trackCount === 'number' && Number.isFinite(release.trackCount) && release.trackCount > 0
+				? `${Math.trunc(release.trackCount)} track${Math.trunc(release.trackCount) === 1 ? '' : 's'}`
+				: undefined;
 		const parts = [
 			release.title?.trim() || 'Untitled release',
+			trackCountLabel,
 			release.artistCredit?.trim(),
 			release.date?.trim(),
 			release.country?.trim(),

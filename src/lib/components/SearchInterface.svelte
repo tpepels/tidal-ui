@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
+	import { page } from '$app/stores';
 	import { losslessAPI } from '$lib/api';
 	import { hasRegionTargets } from '$lib/config';
 	import { downloadAlbum } from '$lib/downloads';
@@ -51,6 +52,11 @@
 	} from 'lucide-svelte';
 
 	import { searchStore, searchStoreActions, type SearchTab } from '$lib/stores/searchStoreAdapter';
+	const SEARCH_TABS: SearchTab[] = ['tracks', 'albums', 'artists', 'playlists'];
+
+	function isSearchTab(value: string | null): value is SearchTab {
+		return !!value && SEARCH_TABS.includes(value as SearchTab);
+	}
 
 	function getLongLink(type: 'track' | 'album' | 'artist' | 'playlist', id: string | number) {
 		return `https://music.binimum.org/${type}/${id}`;
@@ -125,6 +131,7 @@
 		$userPreferencesStore.strictMusicBrainzMatching
 	);
 	let selectedRegion = $state<RegionOption>('us');
+	let lastUrlSearchKey = $state('');
 
 
 
@@ -169,6 +176,33 @@
 	);
 
 	const isQueryAUrl = $derived(isQueryATidalUrl || isQueryAStreamingUrl || isQueryASpotifyPlaylist);
+
+	$effect(() => {
+		const queryParam = ($page.url.searchParams.get('q') ?? '').trim();
+		const tabParam = $page.url.searchParams.get('tab');
+		const resolvedTab = isSearchTab(tabParam) ? tabParam : null;
+		const lookupKey = `${queryParam}::${resolvedTab ?? ''}`;
+		if (lookupKey === lastUrlSearchKey) {
+			return;
+		}
+		lastUrlSearchKey = lookupKey;
+		if (!queryParam) {
+			return;
+		}
+
+		if (resolvedTab && $searchStore.activeTab !== resolvedTab) {
+			searchStoreActions.commit({ activeTab: resolvedTab });
+		}
+		if ($searchStore.query !== queryParam) {
+			searchStoreActions.setQuery(queryParam);
+		}
+
+		const targetTab = resolvedTab ?? $searchStore.activeTab;
+		void searchOrchestrator.search(queryParam, targetTab, {
+			region: selectedRegion,
+			showErrorToasts: false
+		});
+	});
 
 	type AlbumDownloadState = {
 		status: AlbumDownloadStatus;
@@ -1376,7 +1410,7 @@
 								<p class="ui-media-card__meta">Open album details, track list, and artist page.</p>
 							</div>
 						</a>
-						<div class="ui-media-card__links">
+						<div class="ui-media-card__links" class:ui-media-card__links--paired={Boolean(album.artist)}>
 							<a href={`/album/${album.id}`} class="ui-media-card__link" data-sveltekit-preload-data>
 								Album Page
 							</a>

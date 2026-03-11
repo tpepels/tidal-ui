@@ -7,6 +7,33 @@ export type AlbumLibraryStatusInput = {
 
 export type AlbumLibraryStatusMap = Record<number, { exists: boolean; matchedTracks: number }>;
 
+export type MediaLibraryArtistSuggestion = {
+	artistDir: string;
+	artistName: string;
+	trackCount: number;
+	albumCount: number;
+	searchQuery: string;
+};
+
+export type MediaLibraryAlbumSuggestion = {
+	artistDir: string;
+	artistName: string;
+	albumDir: string;
+	albumTitle: string;
+	trackCount: number;
+	searchQuery: string;
+};
+
+export type MediaLibrarySuggestionsResult = {
+	success: boolean;
+	scannedAt?: number;
+	totalArtists?: number;
+	totalAlbums?: number;
+	artists?: MediaLibraryArtistSuggestion[];
+	albums?: MediaLibraryAlbumSuggestion[];
+	error?: string;
+};
+
 export type AlbumRepairTrackInput = {
 	trackId: number;
 	trackTitle?: string;
@@ -303,6 +330,49 @@ export async function fetchAlbumLibraryStatus(
 		return payload.albums;
 	} catch {
 		return {};
+	}
+}
+
+export async function fetchMediaLibrarySuggestions(input?: {
+	artistLimit?: number;
+	albumLimit?: number;
+	force?: boolean;
+}): Promise<MediaLibrarySuggestionsResult> {
+	try {
+		const params = new URLSearchParams();
+		if (typeof input?.artistLimit === 'number' && Number.isFinite(input.artistLimit)) {
+			params.set('artistLimit', String(Math.max(1, Math.trunc(input.artistLimit))));
+		}
+		if (typeof input?.albumLimit === 'number' && Number.isFinite(input.albumLimit)) {
+			params.set('albumLimit', String(Math.max(1, Math.trunc(input.albumLimit))));
+		}
+		if (input?.force === true) {
+			params.set('force', 'true');
+		}
+
+		const queryString = params.toString();
+		const endpoint = queryString.length > 0 ? `/api/media-library/suggestions?${queryString}` : '/api/media-library/suggestions';
+		const response = await fetch(endpoint);
+		const payload = (await response.json()) as MediaLibrarySuggestionsResult;
+		if (!response.ok) {
+			return {
+				success: false,
+				error: payload?.error || 'Failed to fetch media library suggestions'
+			};
+		}
+		return {
+			success: true,
+			scannedAt: payload.scannedAt,
+			totalArtists: payload.totalArtists,
+			totalAlbums: payload.totalAlbums,
+			artists: Array.isArray(payload.artists) ? payload.artists : [],
+			albums: Array.isArray(payload.albums) ? payload.albums : []
+		};
+	} catch {
+		return {
+			success: false,
+			error: 'Failed to fetch media library suggestions'
+		};
 	}
 }
 

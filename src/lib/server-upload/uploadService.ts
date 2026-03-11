@@ -242,8 +242,15 @@ export const downloadTrackServerSide = async (
 		const sizeMsg = `[Server Download] Phase 1: Sending metadata for "${trackTitle}" (${(blob.size / 1024 / 1024).toFixed(2)} MB)${useChunks ? ' (chunked)' : ''}`;
 		downloadLogStore.log(sizeMsg);
 		if (musicBrainzEnabled) {
+			const musicBrainzMode = preferredMusicBrainzReleaseId
+				? strictMusicBrainzMatch
+					? 'selected release + strict ISRC'
+					: 'selected release'
+				: strictMusicBrainzMatch
+					? 'strict ISRC'
+					: 'flex';
 			downloadLogStore.log(
-				`[MusicBrainz] ${buildTrackLabel(trackId, trackTitle)}: tagging enabled (${strictMusicBrainzMatch ? 'strict ISRC' : 'flex'} mode).`
+				`[MusicBrainz] ${buildTrackLabel(trackId, trackTitle)}: tagging enabled (${musicBrainzMode} mode).`
 			);
 			if (preferredMusicBrainzReleaseId) {
 				downloadLogStore.log(

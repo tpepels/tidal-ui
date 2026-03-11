@@ -103,29 +103,41 @@ describe('lookupMusicBrainzTagsForTrack', () => {
 		);
 	});
 
-	it('prefers a user-selected release when available', async () => {
+	it('uses selected release directly and skips flex recording lookup', async () => {
 		const preferredReleaseId = '11111111-2222-4333-8444-555555555555';
 		const fetchSpy = vi
 			.fn()
 			.mockResolvedValue(
 				new Response(
 					JSON.stringify({
-						recordings: [
+						id: preferredReleaseId,
+						title: 'Album B',
+						status: 'Official',
+						country: 'US',
+						barcode: '1234567890123',
+						'artist-credit': [{ name: 'Sample Artist', artist: { id: 'artist-1' } }],
+						'release-group': { id: 'release-group-1', 'primary-type': 'Album' },
+						media: [
 							{
-								id: 'recording-1',
-								title: 'Autumn Leaves',
-								score: 90,
-								'artist-credit': [{ name: 'Sample Artist', artist: { id: 'artist-1' } }],
-								releases: [
+								position: 1,
+								'track-count': 2,
+								tracks: [
 									{
-										id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
-										title: 'Album A',
-										status: 'Official'
+										number: '1',
+										title: 'Autumn Leaves',
+										recording: {
+											id: 'recording-1',
+											title: 'Autumn Leaves',
+											isrcs: ['USABC2400001'],
+											'artist-credit': [
+												{ name: 'Sample Artist', artist: { id: 'artist-1' } }
+											]
+										}
 									},
 									{
-										id: preferredReleaseId,
-										title: 'Album B',
-										status: 'Official'
+										number: '2',
+										title: 'Another Song',
+										recording: { id: 'recording-2', title: 'Another Song' }
 									}
 								]
 							}
@@ -144,12 +156,20 @@ describe('lookupMusicBrainzTagsForTrack', () => {
 			{
 				title: 'Autumn Leaves',
 				artist: { name: 'Sample Artist' },
+				isrc: 'US-ABC-24-00001',
+				trackNumber: 1,
 				album: { title: 'Some Album' }
 			},
 			{ preferredReleaseId }
 		);
 
 		expect(tags.MUSICBRAINZ_ALBUMID).toBe(preferredReleaseId);
+		expect(tags.MUSICBRAINZ_TRACKID).toBe('recording-1');
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		const firstUrl = String(fetchSpy.mock.calls[0]?.[0] ?? '');
+		expect(firstUrl).toContain(`/release/${preferredReleaseId}`);
+		expect(firstUrl).not.toContain('/recording?query=');
+		expect(firstUrl).not.toContain('/isrc/');
 	});
 });
 
@@ -173,6 +193,7 @@ describe('searchMusicBrainzReleases', () => {
 							title: 'Nearby Match',
 							status: 'Bootleg',
 							date: '2002-01-01',
+							'track-count': 8,
 							'artist-credit': [{ name: 'Another Artist' }]
 						},
 						{
@@ -181,6 +202,7 @@ describe('searchMusicBrainzReleases', () => {
 							status: 'Official',
 							date: '2001-09-09',
 							barcode: '1234567890123',
+							'track-count': 12,
 							'artist-credit': [{ name: 'Sample Artist' }]
 						}
 					]
@@ -204,5 +226,39 @@ describe('searchMusicBrainzReleases', () => {
 		expect(releases).toHaveLength(2);
 		expect(releases[0]?.id).toBe('11111111-2222-4333-8444-555555555555');
 		expect(releases[0]?.title).toBe('Exact Match Album');
+		expect(releases[0]?.trackCount).toBe(12);
+		expect(releases[1]?.trackCount).toBe(8);
+	});
+
+	it('falls back to media track counts when top-level track-count is missing', async () => {
+		const fetchSpy = vi.fn().mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					releases: [
+						{
+							id: '11111111-2222-4333-8444-555555555555',
+							title: 'Media Count Album',
+							status: 'Official',
+							media: [{ 'track-count': 6 }, { 'track-count': 7 }],
+							'artist-credit': [{ name: 'Sample Artist' }]
+						}
+					]
+				}),
+				{
+					status: 200,
+					headers: { 'Content-Type': 'application/json' }
+				}
+			)
+		);
+		vi.stubGlobal('fetch', fetchSpy as unknown as typeof fetch);
+
+		const { searchMusicBrainzReleases } = await import('./musicBrainzLookup');
+		const releases = await searchMusicBrainzReleases({
+			albumTitle: 'Media Count Album',
+			artistName: 'Sample Artist'
+		});
+
+		expect(releases).toHaveLength(1);
+		expect(releases[0]?.trackCount).toBe(13);
 	});
 });

@@ -10,6 +10,17 @@ type CachedFailureEntry = {
 	failures: number;
 };
 
+type CoverPipelineEvent =
+	| {
+			type: 'resolved';
+			cacheKey: string;
+			url: string;
+	  }
+	| {
+			type: 'failed';
+			cacheKey: string;
+	  };
+
 const RESOLVED_TTL_MS = Math.max(
 	60_000,
 	Number(import.meta.env.VITE_COVER_RESOLVED_TTL_MS || 24 * 60 * 60 * 1000)
@@ -28,6 +39,7 @@ export type CoverImageSize = '1280' | '640' | '320' | '160' | '80';
 const resolvedCoverCache = new Map<string, CachedResolvedEntry>();
 const failedCoverCache = new Map<string, CachedFailureEntry>();
 const inFlightPrefetch = new Set<string>();
+const coverPipelineListeners = new Set<(event: CoverPipelineEvent) => void>();
 
 function now(): number {
 	return Date.now();
@@ -43,6 +55,16 @@ function pruneCoverCaches(): void {
 	for (const [key, entry] of failedCoverCache.entries()) {
 		if (entry.expiresAt <= current) {
 			failedCoverCache.delete(key);
+		}
+	}
+}
+
+function emitCoverPipelineEvent(event: CoverPipelineEvent): void {
+	for (const listener of coverPipelineListeners) {
+		try {
+			listener(event);
+		} catch {
+			// ignore listener failures to avoid breaking cover loading flow
 		}
 	}
 }
@@ -103,6 +125,7 @@ export function markCoverResolved(cacheKey: string, url: string): void {
 		expiresAt: now() + RESOLVED_TTL_MS
 	});
 	failedCoverCache.delete(cacheKey);
+	emitCoverPipelineEvent({ type: 'resolved', cacheKey, url });
 }
 
 export function markCoverFailed(cacheKey: string): void {
@@ -117,6 +140,16 @@ export function markCoverFailed(cacheKey: string): void {
 		failures,
 		expiresAt: now() + backoffMs
 	});
+	emitCoverPipelineEvent({ type: 'failed', cacheKey });
+}
+
+export function subscribeCoverPipelineEvents(
+	listener: (event: CoverPipelineEvent) => void
+): () => void {
+	coverPipelineListeners.add(listener);
+	return () => {
+		coverPipelineListeners.delete(listener);
+	};
 }
 
 async function tryPrefetchCandidates(cacheKey: string, candidates: string[]): Promise<void> {
@@ -188,4 +221,5 @@ export function clearCoverPipelineCaches(): void {
 	resolvedCoverCache.clear();
 	failedCoverCache.clear();
 	inFlightPrefetch.clear();
+	coverPipelineListeners.clear();
 }

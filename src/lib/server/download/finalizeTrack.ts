@@ -80,11 +80,16 @@ function logMusicBrainzFinalizeSummary(
 		return;
 	}
 
-	const mode = summary.strictMatch ? 'strict ISRC' : 'flex';
-	const releaseSuffix =
-		typeof musicBrainzReleaseId === 'string' && musicBrainzReleaseId.trim().length > 0
-			? `, release ${musicBrainzReleaseId.trim()}`
-			: '';
+	const hasPreferredRelease =
+		typeof musicBrainzReleaseId === 'string' && musicBrainzReleaseId.trim().length > 0;
+	const mode = hasPreferredRelease
+		? summary.strictMatch
+			? 'selected release + strict ISRC'
+			: 'selected release'
+		: summary.strictMatch
+			? 'strict ISRC'
+			: 'flex';
+	const releaseSuffix = hasPreferredRelease ? `, release ${musicBrainzReleaseId.trim()}` : '';
 	const phase = context === 'skip' ? 'skip' : 'finalize';
 	if (!summary.lookupAttempted) {
 		console.warn(

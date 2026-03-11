@@ -4,6 +4,7 @@
 	import { losslessAPI } from '$lib/api';
 	import TrackList from '$lib/components/TrackList.svelte';
 	import ShareButton from '$lib/components/ShareButton.svelte';
+	import EntityMediaCard from '$lib/components/ui/EntityMediaCard.svelte';
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 	import type { Playlist, Track } from '$lib/types';
 	import { ArrowLeft, Play, User, Clock, LoaderCircle } from 'lucide-svelte';
@@ -180,15 +181,17 @@
 		{#if playlist.promotedArtists && playlist.promotedArtists.length > 0}
 			<div>
 				<h3 class="mb-3 text-sm font-semibold text-gray-400">Featured Artists</h3>
-				<div class="flex flex-wrap gap-2">
+				<div class="ui-media-grid ui-media-grid--artists">
 					{#each playlist.promotedArtists as artist (artist.id)}
-						<a
+						<EntityMediaCard
+							type="artist"
 							href={`/artist/${artist.id}`}
-							data-sveltekit-preload-data
-							class="rounded-full bg-gray-800 px-3 py-1.5 text-sm transition-colors hover:bg-gray-700"
-						>
-							{artist.name}
-						</a>
+							title={artist.name}
+							subtitle={artist.type || 'Artist'}
+							imageSrc={artist.picture ? losslessAPI.getArtistPictureUrl(artist.picture) : null}
+							imageAlt={`Portrait of ${artist.name}`}
+							links={[{ href: `/artist/${artist.id}`, label: 'Artist Page' }]}
+						/>
 					{/each}
 				</div>
 			</div>

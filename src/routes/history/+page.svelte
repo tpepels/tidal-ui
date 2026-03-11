@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { navigationHistoryStore } from '$lib/stores/navigationHistory';
 	import PageState from '$lib/components/ui/PageState.svelte';
-	import { Library, User, Trash2, Clock3, ArrowUpRight } from 'lucide-svelte';
+	import EntityMediaCard from '$lib/components/ui/EntityMediaCard.svelte';
+	import { Library, User, Trash2, Clock3 } from 'lucide-svelte';
 	import { getRouteMeta } from '$lib/config/routeMeta';
 	import { losslessAPI } from '$lib/api';
 
@@ -16,7 +17,7 @@
 		if (typeof cover !== 'string' || cover.trim().length === 0) {
 			return null;
 		}
-		const src = losslessAPI.getCoverUrl(cover, '160');
+		const src = losslessAPI.getCoverUrl(cover, '640');
 		return src || null;
 	};
 
@@ -69,60 +70,54 @@
 	</header>
 
 	<div class="ui-surface-grid history-page__overview">
-		<article class="ui-surface-card history-highlight-card">
-			<div class="history-highlight-card__heading">
+		<article class="ui-surface-card history-overview-card">
+			<div class="history-overview-card__heading">
 				<Clock3 size={16} />
 				<p>Resume last album</p>
 			</div>
 			{#if latestAlbum}
 				{@const latestAlbumCoverSrc = getAlbumCoverSrc(latestAlbum.cover)}
-				<a class="history-highlight-card__link" href={latestAlbum.href}>
-					<span class="history-highlight-card__media">
-						{#if latestAlbumCoverSrc}
-							<img src={latestAlbumCoverSrc} alt={`Cover for ${latestAlbum.title}`} loading="lazy" />
-						{:else}
-							<Library size={17} />
-						{/if}
-					</span>
-					<span class="history-highlight-card__content">
-						<strong>{latestAlbum.title}</strong>
-						<span>{latestAlbum.artistName}</span>
-						<span class="history-highlight-card__timestamp">
-							{formatVisitedAt(latestAlbum.visitedAt)}
-							<ArrowUpRight size={13} />
-						</span>
-					</span>
-				</a>
+				<EntityMediaCard
+					type="album"
+					href={latestAlbum.href}
+					title={latestAlbum.title}
+					subtitle={latestAlbum.artistName}
+					meta={formatVisitedAt(latestAlbum.visitedAt)}
+					imageSrc={latestAlbumCoverSrc}
+					imageAlt={`Cover for ${latestAlbum.title}`}
+					links={[{ href: latestAlbum.href, label: 'Open Album' }]}
+				/>
 			{:else}
-				<PageState kind="empty" title="No album history yet" message="Visit albums to populate this shortcut." />
+				<PageState
+					kind="empty"
+					title="No album history yet"
+					message="Visit albums to populate this shortcut."
+				/>
 			{/if}
 		</article>
 
-		<article class="ui-surface-card history-highlight-card">
-			<div class="history-highlight-card__heading">
+		<article class="ui-surface-card history-overview-card">
+			<div class="history-overview-card__heading">
 				<Clock3 size={16} />
 				<p>Resume last artist</p>
 			</div>
 			{#if latestArtist}
 				{@const latestArtistPortraitSrc = getArtistPortraitSrc(latestArtist.picture)}
-				<a class="history-highlight-card__link" href={latestArtist.href}>
-					<span class="history-highlight-card__media history-highlight-card__media--artist">
-						{#if latestArtistPortraitSrc}
-							<img src={latestArtistPortraitSrc} alt={`Portrait of ${latestArtist.name}`} loading="lazy" />
-						{:else}
-							<User size={17} />
-						{/if}
-					</span>
-					<span class="history-highlight-card__content">
-						<strong>{latestArtist.name}</strong>
-						<span class="history-highlight-card__timestamp">
-							{formatVisitedAt(latestArtist.visitedAt)}
-							<ArrowUpRight size={13} />
-						</span>
-					</span>
-				</a>
+				<EntityMediaCard
+					type="artist"
+					href={latestArtist.href}
+					title={latestArtist.name}
+					meta={formatVisitedAt(latestArtist.visitedAt)}
+					imageSrc={latestArtistPortraitSrc}
+					imageAlt={`Portrait of ${latestArtist.name}`}
+					links={[{ href: latestArtist.href, label: 'Open Artist' }]}
+				/>
 			{:else}
-				<PageState kind="empty" title="No artist history yet" message="Visit artists to populate this shortcut." />
+				<PageState
+					kind="empty"
+					title="No artist history yet"
+					message="Visit artists to populate this shortcut."
+				/>
 			{/if}
 		</article>
 	</div>
@@ -147,26 +142,21 @@
 			{#if !hasAlbumHistory}
 				<PageState kind="empty" title="No album visits yet" message="Visited albums will appear here." />
 			{:else}
-				<ol class="history-card-grid">
+				<ol class="history-media-grid ui-media-grid ui-media-grid--albums">
 					{#each $navigationHistoryStore.albums as entry, index (entry.id)}
 						{@const entryCoverSrc = getAlbumCoverSrc(entry.cover)}
 						<li>
-							<a class="history-entry-card" href={entry.href}>
-								<span class="history-entry-card__index">#{index + 1}</span>
-								<span class="history-entry-card__media">
-									{#if entryCoverSrc}
-										<img src={entryCoverSrc} alt={`Cover for ${entry.title}`} loading="lazy" />
-									{:else}
-										<Library size={14} />
-									{/if}
-								</span>
-								<span class="history-entry-card__body">
-									<span class="history-entry-card__title">{entry.title}</span>
-									<span class="history-entry-card__meta">{entry.artistName}</span>
-									<span class="history-entry-card__timestamp">{formatVisitedAt(entry.visitedAt)}</span>
-								</span>
-								<ArrowUpRight size={14} />
-							</a>
+							<EntityMediaCard
+								type="album"
+								href={entry.href}
+								title={entry.title}
+								subtitle={entry.artistName}
+								meta={`#${index + 1}`}
+								description={formatVisitedAt(entry.visitedAt)}
+								imageSrc={entryCoverSrc}
+								imageAlt={`Cover for ${entry.title}`}
+								links={[{ href: entry.href, label: 'Album Page' }]}
+							/>
 						</li>
 					{/each}
 				</ol>
@@ -192,25 +182,20 @@
 			{#if !hasArtistHistory}
 				<PageState kind="empty" title="No artist visits yet" message="Visited artists will appear here." />
 			{:else}
-				<ol class="history-card-grid">
+				<ol class="history-media-grid ui-media-grid ui-media-grid--artists">
 					{#each $navigationHistoryStore.artists as entry, index (entry.id)}
 						{@const entryPortraitSrc = getArtistPortraitSrc(entry.picture)}
 						<li>
-							<a class="history-entry-card" href={entry.href}>
-								<span class="history-entry-card__index">#{index + 1}</span>
-								<span class="history-entry-card__media history-entry-card__media--artist">
-									{#if entryPortraitSrc}
-										<img src={entryPortraitSrc} alt={`Portrait of ${entry.name}`} loading="lazy" />
-									{:else}
-										<User size={14} />
-									{/if}
-								</span>
-								<span class="history-entry-card__body">
-									<span class="history-entry-card__title">{entry.name}</span>
-									<span class="history-entry-card__timestamp">{formatVisitedAt(entry.visitedAt)}</span>
-								</span>
-								<ArrowUpRight size={14} />
-							</a>
+							<EntityMediaCard
+								type="artist"
+								href={entry.href}
+								title={entry.name}
+								meta={`#${index + 1}`}
+								description={formatVisitedAt(entry.visitedAt)}
+								imageSrc={entryPortraitSrc}
+								imageAlt={`Portrait of ${entry.name}`}
+								links={[{ href: entry.href, label: 'Artist Page' }]}
+							/>
 						</li>
 					{/each}
 				</ol>
@@ -228,13 +213,13 @@
 		grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 	}
 
-	.history-highlight-card {
+	.history-overview-card {
 		display: flex;
 		flex-direction: column;
-		gap: 0.6rem;
+		gap: 0.72rem;
 	}
 
-	.history-highlight-card__heading {
+	.history-overview-card__heading {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.4rem;
@@ -243,79 +228,8 @@
 		color: rgba(212, 212, 212, 0.85);
 	}
 
-	.history-highlight-card__heading p {
+	.history-overview-card__heading p {
 		margin: 0;
-	}
-
-	.history-highlight-card__link {
-		display: grid;
-		grid-template-columns: auto 1fr;
-		align-items: center;
-		gap: 0.58rem;
-		padding: 0.58rem 0.66rem;
-		border-radius: 10px;
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
-		color: inherit;
-		text-decoration: none;
-		transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
-		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-	}
-
-	.history-highlight-card__media {
-		width: 2.8rem;
-		height: 2.8rem;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		border-radius: 10px;
-		overflow: hidden;
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
-		color: rgba(212, 212, 212, 0.78);
-	}
-
-	.history-highlight-card__media--artist {
-		border-radius: 999px;
-	}
-
-	.history-highlight-card__media img {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		display: block;
-	}
-
-	.history-highlight-card__content {
-		display: flex;
-		flex-direction: column;
-		gap: 0.2rem;
-		min-width: 0;
-	}
-
-	.history-highlight-card__content strong {
-		font-size: 0.9rem;
-		line-height: 1.28;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.history-highlight-card__content span {
-		font-size: 0.72rem;
-		color: rgba(212, 212, 212, 0.78);
-	}
-
-	.history-highlight-card__timestamp {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.25rem;
-	}
-
-	.history-highlight-card__link:hover {
-		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
-		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 	}
 
 	.history-page__columns {
@@ -348,94 +262,14 @@
 		font-size: 0.92rem;
 	}
 
-	.history-card-grid {
+	.history-media-grid {
 		list-style: none;
-		display: grid;
-		gap: 0.52rem;
 		padding: 0;
 		margin: 0;
 	}
 
-	.history-entry-card {
-		display: grid;
-		grid-template-columns: auto auto 1fr auto;
-		align-items: center;
-		gap: 0.62rem;
-		padding: 0.56rem 0.66rem;
-		border-radius: 10px;
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
-		color: inherit;
-		text-decoration: none;
-		transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
-		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-	}
-
-	.history-entry-card:hover {
-		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
-		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-	}
-
-	.history-entry-card__index {
-		display: inline-flex;
-		min-width: 2.2rem;
-		justify-content: center;
-		padding: 0.18rem 0.36rem;
-		border-radius: 999px;
-		font-size: 0.62rem;
-		font-weight: 700;
-		letter-spacing: 0.12em;
-		text-transform: uppercase;
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
-		color: rgba(212, 212, 212, 0.85);
-	}
-
-	.history-entry-card__body {
-		display: flex;
-		flex-direction: column;
-		gap: 0.1rem;
+	.history-media-grid li {
 		min-width: 0;
-	}
-
-	.history-entry-card__media {
-		width: 2rem;
-		height: 2rem;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		border-radius: 8px;
-		overflow: hidden;
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
-		color: rgba(212, 212, 212, 0.7);
-	}
-
-	.history-entry-card__media--artist {
-		border-radius: 999px;
-	}
-
-	.history-entry-card__media img {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		display: block;
-	}
-
-	.history-entry-card__title {
-		font-size: 0.8rem;
-		font-weight: 600;
-		line-height: 1.26;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.history-entry-card__meta,
-	.history-entry-card__timestamp {
-		font-size: 0.68rem;
-		color: rgba(212, 212, 212, 0.74);
 	}
 
 	@media (min-width: 960px) {

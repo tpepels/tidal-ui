@@ -67,6 +67,23 @@ export interface LocalMediaSnapshot {
 	files: LocalMediaFile[];
 }
 
+export interface MediaLibraryArtistSuggestion {
+	artistDir: string;
+	artistName: string;
+	trackCount: number;
+	albumCount: number;
+	searchQuery: string;
+}
+
+export interface MediaLibraryAlbumSuggestion {
+	artistDir: string;
+	artistName: string;
+	albumDir: string;
+	albumTitle: string;
+	trackCount: number;
+	searchQuery: string;
+}
+
 export interface AlbumIntegrityTrackInput {
 	trackId: number;
 	trackTitle?: string;
@@ -152,7 +169,33 @@ type EmbeddedTags = {
 	discNo?: number;
 };
 
+type AlbumLookupGroup = {
+	artistDir: string;
+	albumDir: string;
+	files: LocalMediaFile[];
+	albumComparable: string;
+};
+
+type LibraryAlbumLookupIndex = {
+	scannedAt: number;
+	baseDir: string;
+	files: LocalMediaFile[];
+	groupsByPath: Map<string, AlbumLookupGroup>;
+	groupsByAlbumDir: Map<string, AlbumLookupGroup[]>;
+	groupsByComparableAlbum: Map<string, AlbumLookupGroup[]>;
+	suggestions: {
+		artists: MediaLibraryArtistSuggestion[];
+		albums: MediaLibraryAlbumSuggestion[];
+	};
+};
+
 let scanCache: { expiresAt: number; snapshot: LocalMediaSnapshot } | null = null;
+let albumLookupCache: {
+	expiresAt: number;
+	scannedAt: number;
+	baseDir: string;
+	index: LibraryAlbumLookupIndex;
+} | null = null;
 const embeddedTagCache = new Map<
 	string,
 	{
@@ -191,6 +234,131 @@ function normalizeDirComparable(value: string | undefined): string {
 		.replace(/[_:]+/g, ' ')
 		.replace(/\s+/g, ' ')
 		.trim();
+}
+
+function makeAlbumGroupKey(artistDir: string, albumDir: string): string {
+	return `${artistDir}\u0000${albumDir}`;
+}
+
+function appendToMapArray<K, V>(map: Map<K, V[]>, key: K, value: V): void {
+	const existing = map.get(key);
+	if (existing) {
+		existing.push(value);
+		return;
+	}
+	map.set(key, [value]);
+}
+
+function formatSuggestionLabel(dirName: string, fallback: string): string {
+	const normalized = dirName.replace(/[_]+/g, ' ').replace(/\s+/g, ' ').trim();
+	return normalized.length > 0 ? normalized : fallback;
+}
+
+function buildSearchQuery(artistName: string, albumTitle?: string): string {
+	if (albumTitle && albumTitle.trim().length > 0) {
+		return `${artistName} ${albumTitle}`.trim();
+	}
+	return artistName.trim();
+}
+
+function buildLibraryAlbumLookupIndex(snapshot: LocalMediaSnapshot): LibraryAlbumLookupIndex {
+	const groupsByPath = new Map<string, AlbumLookupGroup>();
+	for (const file of snapshot.files) {
+		const artistDir = file.artistDir || 'Unknown Artist';
+		const albumDir = file.albumDir || 'Unknown Album';
+		const key = makeAlbumGroupKey(artistDir, albumDir);
+		const existing = groupsByPath.get(key);
+		if (existing) {
+			existing.files.push(file);
+			continue;
+		}
+		groupsByPath.set(key, {
+			artistDir,
+			albumDir,
+			files: [file],
+			albumComparable: normalizeDirComparable(albumDir)
+		});
+	}
+
+	const groupsByAlbumDir = new Map<string, AlbumLookupGroup[]>();
+	const groupsByComparableAlbum = new Map<string, AlbumLookupGroup[]>();
+	const artistStats = new Map<string, { trackCount: number; albumDirs: Set<string> }>();
+
+	for (const group of groupsByPath.values()) {
+		appendToMapArray(groupsByAlbumDir, group.albumDir, group);
+		if (group.albumComparable.length > 0) {
+			appendToMapArray(groupsByComparableAlbum, group.albumComparable, group);
+		}
+
+		const stats = artistStats.get(group.artistDir);
+		if (stats) {
+			stats.trackCount += group.files.length;
+			stats.albumDirs.add(group.albumDir);
+			continue;
+		}
+		artistStats.set(group.artistDir, {
+			trackCount: group.files.length,
+			albumDirs: new Set([group.albumDir])
+		});
+	}
+
+	const artists = Array.from(artistStats.entries())
+		.map(([artistDir, stats]) => {
+			const artistName = formatSuggestionLabel(artistDir, 'Unknown Artist');
+			return {
+				artistDir,
+				artistName,
+				trackCount: stats.trackCount,
+				albumCount: stats.albumDirs.size,
+				searchQuery: buildSearchQuery(artistName)
+			} satisfies MediaLibraryArtistSuggestion;
+		})
+		.sort((a, b) => {
+			if (b.trackCount !== a.trackCount) {
+				return b.trackCount - a.trackCount;
+			}
+			if (b.albumCount !== a.albumCount) {
+				return b.albumCount - a.albumCount;
+			}
+			return a.artistName.localeCompare(b.artistName);
+		});
+
+	const albums = Array.from(groupsByPath.values())
+		.map((group) => {
+			const artistName = formatSuggestionLabel(group.artistDir, 'Unknown Artist');
+			const albumTitle = formatSuggestionLabel(group.albumDir, 'Unknown Album');
+			return {
+				artistDir: group.artistDir,
+				artistName,
+				albumDir: group.albumDir,
+				albumTitle,
+				trackCount: group.files.length,
+				searchQuery: buildSearchQuery(artistName, albumTitle)
+			} satisfies MediaLibraryAlbumSuggestion;
+		})
+		.sort((a, b) => {
+			if (b.trackCount !== a.trackCount) {
+				return b.trackCount - a.trackCount;
+			}
+			const artistCompare = a.artistName.localeCompare(b.artistName);
+			if (artistCompare !== 0) {
+				return artistCompare;
+			}
+			return a.albumTitle.localeCompare(b.albumTitle);
+		});
+
+	return {
+		scannedAt: snapshot.scannedAt,
+		baseDir: snapshot.baseDir,
+		files: snapshot.files,
+		groupsByPath,
+		groupsByAlbumDir,
+		groupsByComparableAlbum,
+		suggestions: {
+			artists,
+			albums
+		}
+	};
 }
 
 function stripExtension(filename: string): string {
@@ -638,7 +806,8 @@ async function resolveAlbumMatches(
 		albumTitle?: string;
 		targetArtistDir?: string;
 		targetAlbumDir?: string;
-	}
+	},
+	index?: LibraryAlbumLookupIndex
 ): Promise<LocalMediaFile[]> {
 	const overrideArtistDir =
 		typeof input.targetArtistDir === 'string' && input.targetArtistDir.trim().length > 0
@@ -655,27 +824,34 @@ async function resolveAlbumMatches(
 	const expectedArtistComparable = normalizeDirComparable(overrideArtistDir ?? input.artistName);
 	const expectedAlbumComparable = normalizeDirComparable(overrideAlbumDir ?? input.albumTitle);
 
-	const primaryPathMatches = files.filter(
-		(file) => file.artistDir === expectedArtistDir && file.albumDir === expectedAlbumDir
-	);
+	const primaryPathMatches =
+		index?.groupsByPath.get(makeAlbumGroupKey(expectedArtistDir, expectedAlbumDir))?.files ??
+		files.filter((file) => file.artistDir === expectedArtistDir && file.albumDir === expectedAlbumDir);
 	if (primaryPathMatches.length > 0) {
 		return primaryPathMatches;
 	}
 
 	// Compilations are commonly filed under "Various Artists/Album Name".
 	if (expectedArtistDir !== VARIOUS_ARTISTS_DIR) {
-		const compilationPathMatches = files.filter(
-			(file) => file.artistDir === VARIOUS_ARTISTS_DIR && file.albumDir === expectedAlbumDir
-		);
+		const compilationPathMatches =
+			index?.groupsByPath.get(makeAlbumGroupKey(VARIOUS_ARTISTS_DIR, expectedAlbumDir))?.files ??
+			files.filter((file) => file.artistDir === VARIOUS_ARTISTS_DIR && file.albumDir === expectedAlbumDir);
 		if (compilationPathMatches.length > 0) {
 			return compilationPathMatches;
 		}
 	}
 
 	if (expectedAlbumComparable) {
-		const normalizedDirMatches = files.filter((file) => {
-			const albumMatches = normalizeDirComparable(file.albumDir) === expectedAlbumComparable;
-			if (!albumMatches) return false;
+		const comparableCandidates = index
+			? (index.groupsByComparableAlbum.get(expectedAlbumComparable) ?? []).flatMap(
+					(group) => group.files
+				)
+			: files;
+		const normalizedDirMatches = comparableCandidates.filter((file) => {
+			if (!index) {
+				const albumMatches = normalizeDirComparable(file.albumDir) === expectedAlbumComparable;
+				if (!albumMatches) return false;
+			}
 			if (!expectedArtistComparable) return true;
 			return (
 				normalizeDirComparable(file.artistDir) === expectedArtistComparable ||
@@ -691,12 +867,25 @@ async function resolveAlbumMatches(
 	if (!expectedAlbumKey) {
 		return [];
 	}
-	const albumDirCandidates = files.filter(
-		(file) =>
-			file.albumDir === expectedAlbumDir ||
-			(expectedAlbumComparable.length > 0 &&
-				normalizeDirComparable(file.albumDir) === expectedAlbumComparable)
+	const indexedExactCandidates = (index?.groupsByAlbumDir.get(expectedAlbumDir) ?? []).flatMap(
+		(group) => group.files
 	);
+	const indexedComparableCandidates =
+		expectedAlbumComparable.length > 0
+			? (index?.groupsByComparableAlbum.get(expectedAlbumComparable) ?? []).flatMap(
+					(group) => group.files
+				)
+			: [];
+	const albumDirCandidates = index
+		? indexedExactCandidates.length > 0
+			? indexedExactCandidates
+			: indexedComparableCandidates
+		: files.filter(
+				(file) =>
+					file.albumDir === expectedAlbumDir ||
+					(expectedAlbumComparable.length > 0 &&
+						normalizeDirComparable(file.albumDir) === expectedAlbumComparable)
+			);
 	if (albumDirCandidates.length === 0) {
 		return [];
 	}
@@ -744,17 +933,44 @@ export async function scanLocalMediaLibrary(options?: {
 	return snapshot;
 }
 
+async function getLibraryAlbumLookupIndex(options?: {
+	force?: boolean;
+}): Promise<LibraryAlbumLookupIndex> {
+	const snapshot = await scanLocalMediaLibrary({ force: options?.force });
+	const now = Date.now();
+
+	if (
+		!options?.force &&
+		albumLookupCache &&
+		albumLookupCache.expiresAt > now &&
+		albumLookupCache.scannedAt === snapshot.scannedAt &&
+		albumLookupCache.baseDir === snapshot.baseDir
+	) {
+		return albumLookupCache.index;
+	}
+
+	const index = buildLibraryAlbumLookupIndex(snapshot);
+	const expiresAt = scanCache?.expiresAt ?? now + LIBRARY_SCAN_CACHE_TTL_MS;
+	albumLookupCache = {
+		expiresAt,
+		scannedAt: snapshot.scannedAt,
+		baseDir: snapshot.baseDir,
+		index
+	};
+	return index;
+}
+
 export async function checkAlbumInLibrary(input: {
 	artistName?: string;
 	albumTitle?: string;
 	expectedTrackCount?: number;
 	force?: boolean;
 }): Promise<{ exists: boolean; matchedTracks: number; samplePaths: string[] }> {
-	const snapshot = await scanLocalMediaLibrary({ force: input.force });
-	const matches = await resolveAlbumMatches(snapshot.files, {
+	const index = await getLibraryAlbumLookupIndex({ force: input.force });
+	const matches = await resolveAlbumMatches(index.files, {
 		artistName: input.artistName,
 		albumTitle: input.albumTitle
-	});
+	}, index);
 	const matchedTracks = matches.length;
 	const expectedTrackCount =
 		typeof input.expectedTrackCount === 'number' && input.expectedTrackCount > 0
@@ -878,13 +1094,13 @@ export async function inspectAlbumIntegrity(input: {
 				.filter((track) => Number.isFinite(track.trackId) && track.trackId > 0)
 		: [];
 
-	const snapshot = await scanLocalMediaLibrary({ force: input.force });
-	const albumFiles = await resolveAlbumMatches(snapshot.files, {
+	const index = await getLibraryAlbumLookupIndex({ force: input.force });
+	const albumFiles = await resolveAlbumMatches(index.files, {
 		artistName: input.artistName,
 		albumTitle: input.albumTitle,
 		targetArtistDir: input.targetArtistDir,
 		targetAlbumDir: input.targetAlbumDir
-	});
+	}, index);
 	const resolvedArtistDir = albumFiles[0]?.artistDir;
 	const resolvedAlbumDir = albumFiles[0]?.albumDir;
 
@@ -947,7 +1163,7 @@ export async function inspectAlbumIntegrity(input: {
 			candidateTrackCount: candidates.length,
 			validationConcurrency,
 			forceRescan: input.force === true,
-			scannedAt: snapshot.scannedAt
+			scannedAt: index.scannedAt
 		})
 	);
 
@@ -1049,7 +1265,7 @@ export async function inspectAlbumIntegrity(input: {
 	);
 
 	return {
-		scannedAt: snapshot.scannedAt,
+		scannedAt: index.scannedAt,
 		totalFilesInAlbumDir: albumFiles.length,
 		resolvedArtistDir,
 		resolvedAlbumDir,
@@ -1071,14 +1287,14 @@ export async function batchAlbumLibraryStatus(
 		expectedTrackCount?: number;
 	}>
 ): Promise<Record<number, { exists: boolean; matchedTracks: number }>> {
-	const snapshot = await scanLocalMediaLibrary();
+	const index = await getLibraryAlbumLookupIndex();
 	const response: Record<number, { exists: boolean; matchedTracks: number }> = {};
 
 	for (const album of albums) {
-		const matches = await resolveAlbumMatches(snapshot.files, {
+		const matches = await resolveAlbumMatches(index.files, {
 			artistName: album.artistName,
 			albumTitle: album.albumTitle
-		});
+		}, index);
 		const matchedTracks = matches.length;
 		const expectedTrackCount =
 			typeof album.expectedTrackCount === 'number' && album.expectedTrackCount > 0
@@ -1091,6 +1307,30 @@ export async function batchAlbumLibraryStatus(
 	}
 
 	return response;
+}
+
+export async function getMediaLibrarySuggestions(options?: {
+	force?: boolean;
+	artistLimit?: number;
+	albumLimit?: number;
+}): Promise<{
+	scannedAt: number;
+	totalArtists: number;
+	totalAlbums: number;
+	artists: MediaLibraryArtistSuggestion[];
+	albums: MediaLibraryAlbumSuggestion[];
+}> {
+	const index = await getLibraryAlbumLookupIndex({ force: options?.force });
+	const artistLimit = Math.max(1, Number(options?.artistLimit ?? 5));
+	const albumLimit = Math.max(1, Number(options?.albumLimit ?? 5));
+
+	return {
+		scannedAt: index.scannedAt,
+		totalArtists: index.suggestions.artists.length,
+		totalAlbums: index.suggestions.albums.length,
+		artists: index.suggestions.artists.slice(0, artistLimit),
+		albums: index.suggestions.albums.slice(0, albumLimit)
+	};
 }
 
 type AlbumDirGroup = {
@@ -1676,5 +1916,6 @@ export async function deduplicateMediaLibrary(options?: {
 
 export function clearMediaLibraryScanCache(): void {
 	scanCache = null;
+	albumLookupCache = null;
 	embeddedTagCache.clear();
 }

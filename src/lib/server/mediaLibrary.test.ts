@@ -17,6 +17,7 @@ import {
 	checkTrackInLibrary,
 	clearMediaLibraryScanCache,
 	deduplicateMediaLibrary,
+	getMediaLibrarySuggestions,
 	sweepTransientAlbumArtifacts
 } from './mediaLibrary';
 import { sanitizeDirName } from '../../routes/api/download-track/_shared';
@@ -131,6 +132,66 @@ describe('mediaLibrary', () => {
 			exists: true,
 			matchedTracks: 1
 		});
+	});
+
+	it('builds most-common artist and album suggestions from the indexed library cache', async () => {
+		await writeTrack('Massive Attack', 'Mezzanine', '01 - Angel.flac');
+		await writeTrack('Massive Attack', 'Mezzanine', '02 - Risingson.flac');
+		await writeTrack('Massive Attack', 'Mezzanine', '03 - Teardrop.flac');
+		await writeTrack('Massive Attack', 'Mezzanine', '04 - Inertia Creeps.flac');
+		await writeTrack('Portishead', 'Dummy', '01 - Mysterons.flac');
+		await writeTrack('Portishead', 'Dummy', '02 - Sour Times.flac');
+		await writeTrack('Portishead', 'Roseland NYC Live', '01 - Humming.flac');
+		await writeTrack('Portishead', 'Roseland NYC Live', '02 - Cowboys.flac');
+
+		const suggestions = await getMediaLibrarySuggestions({
+			artistLimit: 2,
+			albumLimit: 2
+		});
+
+		expect(suggestions.totalArtists).toBe(2);
+		expect(suggestions.totalAlbums).toBe(3);
+		expect(suggestions.artists).toEqual([
+			expect.objectContaining({
+				artistName: 'Portishead',
+				trackCount: 4,
+				albumCount: 2
+			}),
+			expect.objectContaining({
+				artistName: 'Massive Attack',
+				trackCount: 4,
+				albumCount: 1
+			})
+		]);
+		expect(suggestions.albums).toEqual([
+			expect.objectContaining({
+				artistName: 'Massive Attack',
+				albumTitle: 'Mezzanine',
+				trackCount: 4
+			}),
+			expect.objectContaining({
+				artistName: 'Portishead',
+				albumTitle: 'Dummy',
+				trackCount: 2
+			})
+		]);
+	});
+
+	it('keeps album suggestions stable within cache ttl unless force rescan is requested', async () => {
+		await writeTrack('Autechre', 'Amber', '01 - Foil.flac');
+
+		const initial = await getMediaLibrarySuggestions({ artistLimit: 5, albumLimit: 5, force: true });
+		expect(initial.totalAlbums).toBe(1);
+
+		await writeTrack('Autechre', 'Tri Repetae', '01 - Dael.flac');
+
+		const cached = await getMediaLibrarySuggestions({ artistLimit: 5, albumLimit: 5 });
+		expect(cached.totalAlbums).toBe(1);
+		expect(cached.albums.map((album) => album.albumTitle)).not.toContain('Tri Repetae');
+
+		const refreshed = await getMediaLibrarySuggestions({ artistLimit: 5, albumLimit: 5, force: true });
+		expect(refreshed.totalAlbums).toBe(2);
+		expect(refreshed.albums.map((album) => album.albumTitle)).toContain('Tri Repetae');
 	});
 
 	it('avoids false positives when only loose fallback candidates exist', async () => {
