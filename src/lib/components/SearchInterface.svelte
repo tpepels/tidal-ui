@@ -1,57 +1,54 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-import { losslessAPI } from '$lib/api';
-import { hasRegionTargets } from '$lib/config';
-import { downloadAlbum } from '$lib/downloads';
-import { isAlbumDownloadQueueActive, type AlbumDownloadStatus } from '$lib/controllers/albumDownloadUi';
+	import { losslessAPI } from '$lib/api';
+	import { hasRegionTargets } from '$lib/config';
+	import { downloadAlbum } from '$lib/downloads';
+	import { isAlbumDownloadQueueActive, type AlbumDownloadStatus } from '$lib/controllers/albumDownloadUi';
 	import { formatArtists } from '$lib/utils/formatters';
-import { playbackFacade } from '$lib/controllers/playbackFacade';
-import { createTrackDownloadUi } from '$lib/controllers/trackDownloadUi';
-import TrackDownloadButton from '$lib/components/TrackDownloadButton.svelte';
-import { fetchAlbumLibraryStatus } from '$lib/utils/mediaLibraryClient';
-import CoverArt from '$lib/components/CoverArt.svelte';
-import {
-	getCoverCacheKey,
-	getUnifiedCoverCandidates,
-	prefetchCoverCandidates
-} from '$lib/utils/coverPipeline';
+	import { playbackFacade } from '$lib/controllers/playbackFacade';
+	import { createTrackDownloadUi } from '$lib/controllers/trackDownloadUi';
+	import TrackDownloadButton from '$lib/components/TrackDownloadButton.svelte';
+	import { fetchAlbumLibraryStatus } from '$lib/utils/mediaLibraryClient';
+	import CoverArt from '$lib/components/CoverArt.svelte';
+	import {
+		getCoverCacheKey,
+		getUnifiedCoverCandidates,
+		prefetchCoverCandidates
+	} from '$lib/utils/coverPipeline';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { regionStore, type RegionOption } from '$lib/stores/region';
 	import { isTidalUrl } from '$lib/utils/urlParser';
 	import { areTestHooksEnabled } from '$lib/utils/testHooks';
-	import { isSupportedStreamingUrl, isSpotifyPlaylistUrl as isSpotifyPlaylistUrlUtil, getPlatformName } from '$lib/utils/songlink';
+	import {
+		isSupportedStreamingUrl,
+		isSpotifyPlaylistUrl as isSpotifyPlaylistUrlUtil,
+		getPlatformName
+	} from '$lib/utils/songlink';
 	// Orchestrators
 	import { searchOrchestrator, downloadOrchestrator } from '$lib/orchestrators';
-	import type {
-		Track,
-		Album,
-		AudioQuality,
-		PlayableTrack
-	} from '$lib/types';
+	import type { Track, Album, AudioQuality, PlayableTrack } from '$lib/types';
 	import { isSonglinkTrack } from '$lib/types';
 	import { toasts } from '$lib/stores/toasts';
-import {
-	Music,
-	User,
-	Disc,
-	Download,
-	RotateCcw,
-	X,
-	Newspaper,
-	ListPlus,
-	ListVideo,
-	LoaderCircle,
-	Link2,
-	MoreVertical,
-	List,
-	Play,
-	Shuffle,
-	Copy,
-	Code
-} from 'lucide-svelte';
-	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
-
+	import {
+		Music,
+		User,
+		Disc,
+		Download,
+		RotateCcw,
+		X,
+		Newspaper,
+		ListPlus,
+		ListVideo,
+		LoaderCircle,
+		Link2,
+		MoreVertical,
+		List,
+		Play,
+		Shuffle,
+		Copy,
+		Code
+	} from 'lucide-svelte';
 
 	import { searchStore, searchStoreActions, type SearchTab } from '$lib/stores/searchStoreAdapter';
 
@@ -1269,20 +1266,20 @@ import {
 				{/each}
 			</div>
 		{:else if $searchStore.activeTab === 'albums' && ($searchStore.results?.albums ?? []).length > 0}
-			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+			<div class="ui-media-grid ui-media-grid--albums">
 				{#each ($searchStore.results?.albums ?? []) as album (album.id)}
 					{@const albumDownloadState =
 						albumDownloadStates[album.id] ??
 						createDefaultAlbumDownloadState(album.numberOfTracks ?? 0)}
 					{@const canCancelAlbumDownload = isAlbumQueueDownloadCancellable(albumDownloadState)}
 					{@const albumInLibrary = albumLibraryPresence[album.id]?.exists === true}
-					<div class="group relative text-left">
+					<article class="ui-media-card search-media-card group">
 						{#if albumInLibrary}
 							<span
-								class="absolute top-3 left-3 z-30 rounded-full border border-blue-500/60 bg-blue-900/70 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-blue-100"
+								class="search-media-card__badge"
 								title="Already in local library"
 							>
-								IN LIBRARY
+								In Library
 							</span>
 						{/if}
 						<button
@@ -1291,7 +1288,7 @@ import {
 									? cancelAlbumQueueDownload(album.id, event)
 									: handleAlbumDownloadClick(album, event)}
 							type="button"
-							class="absolute top-3 right-3 z-40 flex items-center justify-center rounded-full bg-black/50 p-2 text-gray-200 backdrop-blur-md transition-colors hover:bg-blue-600/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+							class="search-media-card__action-btn"
 							disabled={albumDownloadState.status === 'submitting'}
 							aria-label={
 								canCancelAlbumDownload
@@ -1314,16 +1311,16 @@ import {
 						</button>
 						<a
 							href={`/album/${album.id}`}
-							class="flex w-full flex-col text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-900"
+							class="ui-media-card__primary-link"
 							data-sveltekit-preload-data
 						>
-							<div class="relative mb-2 aspect-square overflow-hidden rounded-lg">
+							<div class="ui-media-card__artwork">
 								{#if album.videoCover}
 									<video
 										src={losslessAPI.getVideoCoverUrl(album.videoCover, '640')}
 										poster={album.cover ? losslessAPI.getCoverUrl(album.cover, '640') : undefined}
 										aria-label={album.title}
-										class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+										class="search-media-card__image"
 										autoplay
 										loop
 										muted
@@ -1347,47 +1344,56 @@ import {
 										cacheKey={coverCacheKey}
 										candidates={coverCandidates}
 										alt={album.title}
-										class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+										class="search-media-card__image"
 									/>
 								{:else}
-									<div
-										class="flex h-full w-full items-center justify-center bg-gray-800 text-sm text-gray-500"
-									>
-										No artwork
+									<div class="search-media-card__placeholder">
+										<Disc size={24} />
 									</div>
 								{/if}
 							</div>
-							<h3 class="truncate font-semibold text-white group-hover:text-blue-400">
-								{album.title}
-								{#if album.explicit}
-									<svg
-										class="inline h-4 w-4 flex-shrink-0 align-middle"
-										xmlns="http://www.w3.org/2000/svg"
-										fill="currentColor"
-										height="24"
-										viewBox="0 0 24 24"
-										width="24"
-										focusable="false"
-										aria-hidden="true"
-										><path
-											d="M20 2H4a2 2 0 00-2 2v16a2 2 0 002 2h16a2 2 0 002-2V4a2 2 0 00-2-2ZM8 6h8a1 1 0 110 2H9v3h5a1 1 0 010 2H9v3h7a1 1 0 010 2H8a1 1 0 01-1-1V7a1 1 0 011-1Z"
-										></path></svg
-									>
+							<div class="ui-media-card__body">
+								<h3 class="ui-media-card__title ui-media-card__title--truncate">
+									{album.title}
+									{#if album.explicit}
+										<span class="search-media-card__explicit-tag">Explicit</span>
+									{/if}
+								</h3>
+								{#if album.artist}
+									<p class="ui-media-card__subtitle ui-media-card__title--truncate">
+										{album.artist.name}
+									</p>
 								{/if}
-							</h3>
-							{#if album.artist}
-								<p class="truncate text-sm text-gray-400">
-									<ArtistLinks artists={[album.artist]} />
+								<p class="ui-media-card__meta">
+									{#if album.releaseDate}
+										{album.releaseDate.split('-')[0]} •
+									{/if}
+									{displayTrackTotal(album.numberOfTracks)} track{displayTrackTotal(album.numberOfTracks) ===
+									1
+										? ''
+										: 's'}
 								</p>
-							{/if}
-							{#if album.releaseDate}
-								<p class="text-xs text-gray-500">{album.releaseDate.split('-')[0]}</p>
-							{/if}
+								<p class="ui-media-card__meta">Open album details, track list, and artist page.</p>
+							</div>
 						</a>
+						<div class="ui-media-card__links">
+							<a href={`/album/${album.id}`} class="ui-media-card__link" data-sveltekit-preload-data>
+								Album Page
+							</a>
+							{#if album.artist}
+								<a
+									href={`/artist/${album.artist.id}`}
+									class="ui-media-card__link"
+									data-sveltekit-preload-data
+								>
+									Artist Page
+								</a>
+							{/if}
+						</div>
 						{#if albumDownloadState.status === 'queued'}
-							<p class="mt-2 text-xs text-blue-300">Queued on server…</p>
+							<p class="search-media-status">Queued on server…</p>
 						{:else if albumDownloadState.downloading}
-							<p class="mt-2 text-xs text-blue-300">
+							<p class="search-media-status">
 								Downloading
 								{#if albumDownloadState.total}
 									{albumDownloadState.completed ?? 0}/{displayTrackTotal(
@@ -1399,49 +1405,65 @@ import {
 								tracks…
 							</p>
 						{:else if albumDownloadState.status === 'completed'}
-							<p class="mt-2 text-xs text-emerald-300">Download completed.</p>
+							<p class="search-media-status search-media-status--success">Download completed.</p>
 						{:else if albumDownloadState.status === 'cancelled'}
-							<p class="mt-2 text-xs text-amber-300">Download stopped.</p>
+							<p class="search-media-status search-media-status--warning">Download stopped.</p>
 						{:else if albumDownloadState.status === 'paused'}
-							<p class="mt-2 text-xs text-amber-300">Download paused.</p>
-							{:else if albumDownloadState.error}
-								<p class="mt-2 text-xs text-red-400" role="alert">
-									{albumDownloadState.error}
-								</p>
-							{:else if albumInLibrary}
-								<p class="mt-2 text-xs text-emerald-300">
-									{#if $downloadPreferencesStore.storage === 'server'}
-										Already in local library. Redownload will overwrite.
-									{:else}
-										Already in local library. Browser redownloads may append (2).
-									{/if}
-								</p>
-							{/if}
-						</div>
-					{/each}
+							<p class="search-media-status search-media-status--warning">Download paused.</p>
+						{:else if albumDownloadState.error}
+							<p class="search-media-status search-media-status--error" role="alert">
+								{albumDownloadState.error}
+							</p>
+						{:else if albumInLibrary}
+							<p class="search-media-status search-media-status--success">
+								{#if $downloadPreferencesStore.storage === 'server'}
+									Already in local library. Redownload will overwrite.
+								{:else}
+									Already in local library. Browser redownloads may append (2).
+								{/if}
+							</p>
+						{/if}
+					</article>
+				{/each}
 			</div>
 		{:else if $searchStore.activeTab === 'artists' && ($searchStore.results?.artists ?? []).length > 0}
-			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+			<div class="ui-media-grid ui-media-grid--artists">
 				{#each ($searchStore.results?.artists ?? []) as artist (artist.id)}
-					<a href={`/artist/${artist.id}`} class="group text-center" data-sveltekit-preload-data>
-						<div class="relative mb-2 aspect-square overflow-hidden rounded-full">
-							{#if artist.picture}
-								<img
-									src={losslessAPI.getArtistPictureUrl(artist.picture)}
-									alt={artist.name}
-									class="h-full w-full object-cover transition-transform group-hover:scale-105"
-								/>
-							{:else}
-								<div class="flex h-full w-full items-center justify-center bg-gray-800">
-									<User size={48} class="text-gray-600" />
-								</div>
-							{/if}
+					<article class="ui-media-card search-media-card search-media-card--artist">
+						<a
+							href={`/artist/${artist.id}`}
+							class="ui-media-card__primary-link"
+							data-sveltekit-preload-data
+						>
+							<div class="ui-media-card__artwork ui-media-card__artwork--circle">
+								{#if artist.picture}
+									<img
+										src={losslessAPI.getArtistPictureUrl(artist.picture)}
+										alt={artist.name}
+										class="search-media-card__image"
+									/>
+								{:else}
+									<div class="search-media-card__placeholder">
+										<User size={40} />
+									</div>
+								{/if}
+							</div>
+							<div class="ui-media-card__body">
+								<h3 class="ui-media-card__title ui-media-card__title--truncate">{artist.name}</h3>
+								<p class="ui-media-card__subtitle">
+									{artist.type && artist.type.trim().length > 0 ? artist.type : 'Artist'}
+								</p>
+								<p class="ui-media-card__meta">
+									Open artist profile, discography, and top tracks.
+								</p>
+							</div>
+						</a>
+						<div class="ui-media-card__links">
+							<a href={`/artist/${artist.id}`} class="ui-media-card__link" data-sveltekit-preload-data>
+								Artist Page
+							</a>
 						</div>
-						<h3 class="truncate font-semibold text-white group-hover:text-blue-400">
-							{artist.name}
-						</h3>
-						<p class="text-xs text-gray-500">Artist</p>
-					</a>
+					</article>
 				{/each}
 			</div>
 		{:else if $searchStore.activeTab === 'playlists' && ($searchStore.results?.playlists ?? []).length > 0}
@@ -1509,6 +1531,114 @@ import {
 </div>
 
 <style>
+	.search-media-card {
+		gap: 0.58rem;
+	}
+
+	.search-media-card__badge {
+		position: absolute;
+		top: 0.78rem;
+		left: 0.78rem;
+		z-index: 20;
+		padding: 0.2rem 0.44rem;
+		border-radius: 999px;
+		font-size: 0.56rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		border: 1px solid var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+		background: rgba(255, 255, 255, 0.14);
+		color: rgba(245, 245, 245, 0.94);
+	}
+
+	.search-media-card__action-btn {
+		position: absolute;
+		top: 0.74rem;
+		right: 0.74rem;
+		z-index: 30;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2rem;
+		height: 2rem;
+		border-radius: 999px;
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: rgba(10, 10, 10, 0.64);
+		color: rgba(236, 236, 236, 0.92);
+		cursor: pointer;
+		transition: border-color 140ms ease, background 140ms ease;
+	}
+
+	.search-media-card__action-btn:hover:not(:disabled) {
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+		background: rgba(255, 255, 255, 0.12);
+	}
+
+	.search-media-card__action-btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.search-media-card__image {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		transition: transform 220ms ease;
+	}
+
+	.search-media-card:hover .search-media-card__image {
+		transform: scale(1.03);
+	}
+
+	.search-media-card__placeholder {
+		display: flex;
+		width: 100%;
+		height: 100%;
+		align-items: center;
+		justify-content: center;
+		color: rgba(163, 163, 163, 0.78);
+		background: rgba(255, 255, 255, 0.05);
+	}
+
+	.search-media-card__explicit-tag {
+		display: inline-flex;
+		align-items: center;
+		padding: 0.07rem 0.32rem;
+		margin-left: 0.28rem;
+		border-radius: 999px;
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		font-size: 0.56rem;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		vertical-align: text-top;
+	}
+
+	.search-media-status {
+		margin: 0;
+		font-size: 0.64rem;
+		line-height: 1.35;
+		color: rgba(212, 212, 212, 0.82);
+	}
+
+	.search-media-status--success {
+		color: rgba(187, 247, 208, 0.9);
+	}
+
+	.search-media-status--warning {
+		color: rgba(253, 224, 71, 0.88);
+	}
+
+	.search-media-status--error {
+		color: rgba(252, 165, 165, 0.9);
+	}
+
+	.search-media-card--artist .ui-media-card__body,
+	.search-media-card--artist .ui-media-card__links {
+		align-items: center;
+		text-align: center;
+	}
+
 	.search-glass {
 		background: transparent;
 		border-color: rgba(148, 163, 184, 0.2);

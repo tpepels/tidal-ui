@@ -20,6 +20,16 @@ describe('downloadQueueWorker policy helpers', () => {
 		expect(missing.map((track) => track.trackId)).toEqual([2]);
 	});
 
+	it('accepts Picard-style fallback filenames during reconciliation', () => {
+		const missing = __test.findMissingPublishedTracks({
+			expectedTracks: [{ trackId: 10, trackTitle: 'Teachers', trackNumber: 10 }],
+			expectedFileByTrackId: new Map(),
+			publishedFiles: new Set(['10. Teachers.flac'])
+		});
+
+		expect(missing).toEqual([]);
+	});
+
 	it('marks definitive external failures correctly', () => {
 		expect(
 			__test.isDefinitiveExternalTrackFailure({
@@ -48,4 +58,3 @@ describe('downloadQueueWorker policy helpers', () => {
 		);
 	});
 });
-

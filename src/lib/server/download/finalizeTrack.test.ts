@@ -172,6 +172,33 @@ describe('finalizeTrack', () => {
 		await expect(fs.stat(sanitizedPath)).rejects.toThrow();
 	});
 
+	it('reuses existing Picard-style filenames when overwriting', async () => {
+		const targetDir = path.join(downloadDir, 'Sade', 'Love Deluxe');
+		await fs.mkdir(targetDir, { recursive: true });
+		const existingFilename = '1. No Ordinary Love.flac';
+		const existingPath = path.join(targetDir, existingFilename);
+		await fs.writeFile(existingPath, Buffer.from('old-audio-bytes'));
+
+		const payload = Buffer.from('new-audio-bytes');
+		const result = await finalizeTrack({
+			trackId: 360,
+			quality: 'LOSSLESS',
+			artistName: 'Sade',
+			albumTitle: 'Love Deluxe',
+			trackTitle: 'No Ordinary Love',
+			trackNumber: 1,
+			buffer: payload,
+			downloadCoverSeperately: false
+		});
+
+		expect(result.success).toBe(true);
+		if (!result.success) return;
+		expect(result.filename).toBe(existingFilename);
+		expect(result.filepath).toBe(existingPath);
+		await expect(fs.readFile(existingPath)).resolves.toEqual(payload);
+		await expect(fs.stat(path.join(targetDir, '01 - No Ordinary Love.flac'))).rejects.toThrow();
+	});
+
 	it('fails repair-mode finalization when target directory does not exist', async () => {
 		const result = await finalizeTrack({
 			trackId: 351,

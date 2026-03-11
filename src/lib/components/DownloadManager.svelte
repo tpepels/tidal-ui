@@ -1754,14 +1754,14 @@
 <style>
 	.download-manager-container {
 		--color-primary: #f5f5f5;
-		--color-success: #10b981;
+		--color-success: #e5e7eb;
 		--color-warning: #f59e0b;
 		--color-error: #ef4444;
-		--color-bg-primary: rgba(11, 16, 26, 0.98);
-		--color-bg-secondary: rgba(255, 255, 255, 0.05);
-		--color-border: rgba(255, 255, 255, 0.1);
-		--color-text-primary: #e2e8f0;
-		--color-text-secondary: #a1a5b5;
+		--color-bg-primary: var(--mono-surface-card);
+		--color-bg-secondary: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		--color-border: var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		--color-text-primary: rgba(245, 245, 245, 0.96);
+		--color-text-secondary: rgba(163, 163, 163, 0.86);
 	}
 
 	.download-manager-container--page {
@@ -1779,19 +1779,21 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 56px;
-		height: 56px;
+		width: 52px;
+		height: 52px;
 		border-radius: 50%;
-		background: var(--color-primary);
-		color: #070707;
-		font-size: 24px;
-		box-shadow: 0 4px 20px rgba(255, 255, 255, 0.22);
-		transition: all 0.3s ease;
+		border: 1px solid var(--color-border);
+		background: var(--color-bg-primary);
+		color: var(--color-text-primary);
+		font-size: 22px;
+		box-shadow: var(--ui-shadow-soft, 0 10px 28px rgba(0, 0, 0, 0.22));
+		transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
 	}
 
 	.download-manager-toggle:hover {
-		transform: scale(1.1);
-		box-shadow: 0 6px 24px rgba(255, 255, 255, 0.28);
+		transform: translateY(-1px);
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
 	}
 
 	.download-manager-badge {
@@ -1802,14 +1804,14 @@
 		height: 26px;
 		padding: 0 6px;
 		border-radius: 13px;
-		background: var(--color-error);
+		background: rgba(239, 68, 68, 0.88);
 		color: white;
 		font-size: 11px;
 		font-weight: 700;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		border: 2px solid var(--color-bg-primary);
+		border: 2px solid rgba(8, 8, 8, 0.9);
 	}
 
 	.download-manager-panel {
@@ -1820,10 +1822,10 @@
 		width: 680px;
 		max-height: 80vh;
 		max-height: 80dvh;
-		border-radius: 14px;
-		background: linear-gradient(180deg, rgba(16, 24, 35, 0.96), rgba(8, 13, 22, 0.98));
-		border: 1px solid rgba(148, 163, 184, 0.22);
-		box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+		border-radius: 16px;
+		background: var(--color-bg-primary);
+		border: 1px solid var(--color-border);
+		box-shadow: var(--ui-shadow-soft, 0 10px 28px rgba(0, 0, 0, 0.22));
 		animation: slideUp 0.3s ease;
 		display: flex;
 		flex-direction: column;
@@ -1839,7 +1841,7 @@
 		width: 100%;
 		max-height: min(78vh, 980px);
 		animation: none;
-		box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+		box-shadow: var(--ui-shadow-soft, 0 10px 28px rgba(0, 0, 0, 0.22));
 	}
 
 	@keyframes slideUp {
@@ -1858,7 +1860,7 @@
 		align-items: center;
 		justify-content: space-between;
 		padding: 16px;
-		border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+		border-bottom: 1px solid var(--color-border);
 		flex-shrink: 0;
 		gap: 12px;
 	}
@@ -2025,14 +2027,14 @@
 		padding: 12px;
 		border-radius: 12px;
 		border: 1px solid rgba(148, 163, 184, 0.22);
-		background: linear-gradient(135deg, rgba(34, 197, 94, 0.12), rgba(59, 130, 246, 0.16));
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 		display: flex;
 		flex-direction: column;
 		gap: 10px;
 	}
 
 	.download-status-hero[data-active='false'] {
-		background: linear-gradient(135deg, rgba(148, 163, 184, 0.12), rgba(99, 102, 241, 0.12));
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 	}
 
 	.download-status-hero__main {
@@ -2072,14 +2074,18 @@
 	.download-status-hero__meter-track {
 		height: 8px;
 		border-radius: 999px;
-		background: rgba(15, 23, 42, 0.45);
+		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
 		overflow: hidden;
 		border: 1px solid rgba(226, 232, 240, 0.16);
 	}
 
 	.download-status-hero__meter-fill {
 		height: 100%;
-		background: linear-gradient(90deg, #34d399, #38bdf8);
+		background: linear-gradient(
+			90deg,
+			rgba(245, 245, 245, 0.95),
+			rgba(212, 212, 212, 0.76)
+		);
 		transition: width 220ms ease;
 	}
 
@@ -2134,10 +2140,10 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
 		gap: 8px;
-		border-top: 1px solid rgba(148, 163, 184, 0.18);
-		border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+		border-top: 1px solid var(--color-border);
+		border-bottom: 1px solid var(--color-border);
 		padding: 12px 16px;
-		background: rgba(15, 23, 42, 0.24);
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 		position: sticky;
 		top: 0;
 		z-index: 2;
@@ -2149,8 +2155,8 @@
 		flex-wrap: wrap;
 		gap: 8px;
 		padding: 10px 16px;
-		border-bottom: 1px solid rgba(148, 163, 184, 0.18);
-		background: rgba(15, 23, 42, 0.2);
+		border-bottom: 1px solid var(--color-border);
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 	}
 
 	.top-strip-item {
@@ -2159,8 +2165,8 @@
 		gap: 6px;
 		padding: 10px;
 		border-radius: 10px;
-		background: rgba(15, 23, 42, 0.4);
-		border: 1px solid rgba(148, 163, 184, 0.18);
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		border: 1px solid var(--color-border);
 		min-width: 0;
 	}
 
@@ -2188,7 +2194,7 @@
 	}
 
 	.top-strip-item--running .top-strip-value {
-		color: #10b981;
+		color: rgba(245, 245, 245, 0.96);
 	}
 
 	.top-strip-item--queued .top-strip-value {
@@ -2221,7 +2227,7 @@
 
 	.current-section {
 		border: 1px solid rgba(16, 185, 129, 0.32);
-		background: linear-gradient(145deg, rgba(16, 185, 129, 0.14), rgba(8, 13, 22, 0.34));
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 		padding: 12px;
 		border-radius: 10px;
 	}
@@ -2375,7 +2381,11 @@
 
 	.progress-fill {
 		height: 100%;
-		background: linear-gradient(90deg, #34d399, #38bdf8);
+		background: linear-gradient(
+			90deg,
+			rgba(245, 245, 245, 0.95),
+			rgba(212, 212, 212, 0.76)
+		);
 		transition: width 0.2s ease;
 	}
 
@@ -2580,8 +2590,8 @@
 
 	/* Completion summary */
 	.completion-summary {
-		background: rgba(6, 182, 212, 0.05);
-		border: 1px solid rgba(6, 182, 212, 0.2);
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		border: 1px solid var(--color-border);
 		border-radius: 6px;
 		padding: 10px;
 		font-size: 12px;
@@ -2601,8 +2611,8 @@
 	.completed-item {
 		padding: 10px;
 		border-radius: 8px;
-		border: 1px solid rgba(6, 182, 212, 0.18);
-		background: rgba(6, 182, 212, 0.05);
+		border: 1px solid var(--color-border);
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 	}
 
 	.completed-item-header {

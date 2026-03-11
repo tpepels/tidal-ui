@@ -10,6 +10,7 @@
 	import { Activity, Gauge, Download, Logs, Settings } from 'lucide-svelte';
 	import ApiTargetsStatusCard from '$lib/components/status/ApiTargetsStatusCard.svelte';
 	import PageState from '$lib/components/ui/PageState.svelte';
+	import ToolNavGrid from '$lib/components/ui/ToolNavGrid.svelte';
 
 	let diagnosticsLoading = $state(false);
 	let diagnosticsSummary = $state<ReturnType<typeof getErrorSummary> | null>(null);
@@ -134,6 +135,7 @@
 			</button>
 		</div>
 	</div>
+	<ToolNavGrid current="/status" />
 
 	{#if diagnosticsError}
 		<PageState kind="error" title="Diagnostics unavailable" message={diagnosticsError} actionLabel="Retry" onAction={() => void refreshDiagnostics()} />

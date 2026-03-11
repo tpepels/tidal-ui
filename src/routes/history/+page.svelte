@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { navigationHistoryStore } from '$lib/stores/navigationHistory';
 	import PageState from '$lib/components/ui/PageState.svelte';
+	import ToolNavGrid from '$lib/components/ui/ToolNavGrid.svelte';
 	import { Library, User, Trash2, Clock3, ArrowUpRight } from 'lucide-svelte';
 	import { getRouteMeta } from '$lib/config/routeMeta';
 	import { losslessAPI } from '$lib/api';
@@ -67,6 +68,7 @@
 			</button>
 		</div>
 	</header>
+	<ToolNavGrid current="/history" />
 
 	<div class="ui-surface-grid history-page__overview">
 		<article class="ui-surface-card history-highlight-card">

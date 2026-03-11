@@ -197,11 +197,11 @@ function stripExtension(filename: string): string {
 	return filename.replace(/\.[^/.]+$/, '');
 }
 
+const DISC_TRACK_PREFIX_RE = /^\d{1,2}\s*[-_]\s*\d{1,2}\s*(?:-|\.|_)\s*/i;
+const TRACK_PREFIX_RE = /^\d{1,3}\s*(?:-|\.|_)\s*/i;
+
 function stripTrackPrefix(value: string): string {
-	return value
-		.replace(/^\d{1,2}\s*[-_]\s*\d{1,2}\s*-\s*/i, '')
-		.replace(/^\d{1,3}\s*-\s*/i, '')
-		.trim();
+	return value.replace(DISC_TRACK_PREFIX_RE, '').replace(TRACK_PREFIX_RE, '').trim();
 }
 
 function normalizeTrackFilename(filename: string): string {
@@ -211,7 +211,7 @@ function normalizeTrackFilename(filename: string): string {
 
 function parseTrackOrderKey(filename: string): string | null {
 	const stem = stripExtension(filename).trim();
-	const discTrackMatch = /^(\d{1,2})\s*[-_]\s*(\d{1,2})\s*-\s*/.exec(stem);
+	const discTrackMatch = /^(\d{1,2})\s*[-_]\s*(\d{1,2})\s*(?:-|\.|_)\s*/.exec(stem);
 	if (discTrackMatch?.[1] && discTrackMatch?.[2]) {
 		const disc = Number.parseInt(discTrackMatch[1], 10);
 		const track = Number.parseInt(discTrackMatch[2], 10);
@@ -219,7 +219,7 @@ function parseTrackOrderKey(filename: string): string | null {
 			return `${String(disc).padStart(2, '0')}${String(track).padStart(2, '0')}`;
 		}
 	}
-	const compactTrackMatch = /^(\d{2,3})\s*-\s*/.exec(stem);
+	const compactTrackMatch = /^(\d{2,3})\s*(?:-|\.|_)\s*/.exec(stem);
 	if (compactTrackMatch?.[1]) {
 		const raw = compactTrackMatch[1];
 		if (raw.length >= 3) {
@@ -227,7 +227,7 @@ function parseTrackOrderKey(filename: string): string | null {
 		}
 		return raw.padStart(2, '0');
 	}
-	const trackOnlyMatch = /^(\d{1,3})\s*-\s*/.exec(stem);
+	const trackOnlyMatch = /^(\d{1,3})\s*(?:-|\.|_)\s*/.exec(stem);
 	if (trackOnlyMatch?.[1]) {
 		return trackOnlyMatch[1].padStart(2, '0');
 	}
@@ -251,12 +251,12 @@ function hasTrackDuplicates(files: LocalMediaFile[]): boolean {
 
 function parseTrackNumberFromFilename(filename: string): number | undefined {
 	const stem = stripExtension(filename).trim();
-	const discTrackMatch = /^(\d{1,2})\s*[-_]\s*(\d{1,2})\s*-\s*/.exec(stem);
+	const discTrackMatch = /^(\d{1,2})\s*[-_]\s*(\d{1,2})\s*(?:-|\.|_)\s*/.exec(stem);
 	if (discTrackMatch?.[2]) {
 		const parsed = Number.parseInt(discTrackMatch[2], 10);
 		return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 	}
-	const trackOnlyMatch = /^(\d{1,3})\s*-\s*/.exec(stem);
+	const trackOnlyMatch = /^(\d{1,3})\s*(?:-|\.|_)\s*/.exec(stem);
 	if (trackOnlyMatch?.[1]) {
 		const parsed = Number.parseInt(trackOnlyMatch[1], 10);
 		return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;

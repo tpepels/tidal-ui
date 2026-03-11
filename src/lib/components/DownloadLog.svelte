@@ -89,8 +89,12 @@
 <section class="download-log-container">
 	<div class="download-log-panel">
 		<div class="download-log-header">
-			<h3 class="download-log-title">Event Stream</h3>
+			<div class="download-log-heading">
+				<h3 class="download-log-title">Event Stream</h3>
+				<p class="download-log-subtitle">Realtime queue, metadata, and file-system logs.</p>
+			</div>
 			<div class="download-log-actions">
+				<span class="download-log-count" title="Current log lines">{$downloadLogStore.entries.length}</span>
 				<button type="button" class="download-log-btn" title="Check server health" on:click={fetchHealth} disabled={loadingHealth}>
 					<Heart size={16} />
 				</button>
@@ -196,6 +200,12 @@
 		flex-shrink: 0;
 	}
 
+	.download-log-heading {
+		display: flex;
+		flex-direction: column;
+		gap: 0.18rem;
+	}
+
 	.download-log-title {
 		margin: 0;
 		font-size: 0.78rem;
@@ -205,9 +215,31 @@
 		text-transform: uppercase;
 	}
 
+	.download-log-subtitle {
+		margin: 0;
+		font-size: 0.68rem;
+		color: rgba(163, 163, 163, 0.84);
+	}
+
 	.download-log-actions {
 		display: flex;
+		align-items: center;
 		gap: 8px;
+	}
+
+	.download-log-count {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 2rem;
+		height: 1.7rem;
+		padding: 0 0.5rem;
+		border-radius: 999px;
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		font-size: 0.68rem;
+		font-weight: 600;
+		color: rgba(212, 212, 212, 0.82);
 	}
 
 	.download-log-btn {
@@ -279,11 +311,20 @@
 	}
 
 	.download-log-entry {
-		margin: 4px 0;
+		margin: 0;
+		padding: 0.34rem 0.48rem;
+		border-radius: 8px;
+		border: 1px solid transparent;
 		display: flex;
 		gap: 8px;
 		align-items: flex-start;
 		word-break: break-word;
+		transition: border-color 140ms ease, background 140ms ease;
+	}
+
+	.download-log-entry:hover {
+		border-color: var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 	}
 
 	.download-log-time {
@@ -364,23 +405,26 @@
 }
 
 .download-health-stats {
-	display: flex;
-	flex-direction: column;
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 	gap: 8px;
 	margin-bottom: 12px;
 }
 
 .download-health-stat {
 	display: flex;
-	justify-content: space-between;
-	align-items: center;
+	flex-direction: column;
+	gap: 4px;
+	align-items: flex-start;
+	padding: 0.5rem 0.58rem;
+	border-radius: 10px;
+	border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+	background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 	font-size: 13px;
 }
 
 .download-health-stat--wide {
-	align-items: flex-start;
-	flex-direction: column;
-	gap: 4px;
+	grid-column: 1 / -1;
 }
 
 .download-health-label {

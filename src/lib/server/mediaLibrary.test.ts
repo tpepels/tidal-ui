@@ -97,6 +97,20 @@ describe('mediaLibrary', () => {
 		expect(status.matchedTracks).toBe(1);
 	});
 
+	it('counts Picard-style track filenames when checking album presence', async () => {
+		await writeTrack('Daft Punk', 'Homework', '1. Daftendirekt.flac');
+		await writeTrack('Daft Punk', 'Homework', '10. Teachers.flac');
+
+		const status = await checkAlbumInLibrary({
+			artistName: 'Daft Punk',
+			albumTitle: 'Homework',
+			expectedTrackCount: 2
+		});
+
+		expect(status.exists).toBe(true);
+		expect(status.matchedTracks).toBe(2);
+	});
+
 	it('reports compilation presence in batch album status calls', async () => {
 		await writeTrack(
 			'Various Artists',
@@ -130,6 +144,19 @@ describe('mediaLibrary', () => {
 
 		expect(status.exists).toBe(false);
 		expect(status.matches).toEqual([]);
+	});
+
+	it('matches Picard-style dot-prefixed filenames in track lookups', async () => {
+		await writeTrack('Sade', 'Love Deluxe', '1. No Ordinary Love.flac');
+
+		const status = await checkTrackInLibrary({
+			artistName: 'Sade',
+			albumTitle: 'Love Deluxe',
+			trackTitle: 'No Ordinary Love'
+		});
+
+		expect(status.exists).toBe(true);
+		expect(status.matches).toHaveLength(1);
 	});
 
 	it('ignores transient publishing/backup album directories during library scans', async () => {

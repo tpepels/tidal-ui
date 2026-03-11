@@ -1,5 +1,6 @@
 <script lang="ts">
 	import DownloadLog from '$lib/components/DownloadLog.svelte';
+	import ToolNavGrid from '$lib/components/ui/ToolNavGrid.svelte';
 	import { getRouteMeta } from '$lib/config/routeMeta';
 
 	const meta = getRouteMeta('/download-log');
@@ -22,5 +23,6 @@
 			<a href="/settings" class="ui-chip-link">Settings</a>
 		</div>
 	</header>
+	<ToolNavGrid current="/download-log" />
 	<DownloadLog />
 </section>

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import SettingsPageContent from '$lib/components/pages/SettingsPageContent.svelte';
+	import ToolNavGrid from '$lib/components/ui/ToolNavGrid.svelte';
 	import { getRouteMeta } from '$lib/config/routeMeta';
 
 	const meta = getRouteMeta('/settings');
@@ -22,5 +23,6 @@
 			<a href="/download-log" class="ui-chip-link">Download Log</a>
 		</div>
 	</header>
+	<ToolNavGrid current="/settings" />
 	<SettingsPageContent />
 </section>

@@ -253,6 +253,19 @@ function findMissingPublishedTracks(params: {
 	expectedFileByTrackId: Map<number, string>;
 	publishedFiles: Set<string>;
 }): ExpectedAlbumTrack[] {
+	const hasTrackNumberFallbackMatch = (filename: string, trackNumber: number): boolean => {
+		const parsed = path.parse(filename);
+		const stem = parsed.name.trim();
+		const normalizedTrackNumber = Math.trunc(trackNumber);
+		if (!Number.isFinite(normalizedTrackNumber) || normalizedTrackNumber <= 0) {
+			return false;
+		}
+		const plainPrefix = String(normalizedTrackNumber);
+		const paddedPrefix = plainPrefix.padStart(2, '0');
+		const matcher = new RegExp(`^(?:${paddedPrefix}|${plainPrefix})\\s*(?:-|\\.)\\s*`, 'i');
+		return matcher.test(stem);
+	};
+
 	const missing: ExpectedAlbumTrack[] = [];
 	for (const track of params.expectedTracks) {
 		const expectedFile = params.expectedFileByTrackId.get(track.trackId);
@@ -262,8 +275,9 @@ function findMissingPublishedTracks(params: {
 			}
 			continue;
 		}
-		const prefix = `${String(track.trackNumber).padStart(2, '0')} - `;
-		const hasFallbackMatch = [...params.publishedFiles].some((name) => name.startsWith(prefix));
+		const hasFallbackMatch = [...params.publishedFiles].some((name) =>
+			hasTrackNumberFallbackMatch(name, track.trackNumber)
+		);
 		if (!hasFallbackMatch) {
 			missing.push(track);
 		}

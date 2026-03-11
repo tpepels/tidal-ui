@@ -1,5 +1,6 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import type { Dirent } from 'node:fs';
 import type { AudioQuality, TrackLookup } from '$lib/types';
 import {
 	embedMetadataToFile,
@@ -168,6 +169,148 @@ function sanitizeTargetFilenameHint(input: string | undefined): string | null {
 	return trimmed;
 }
 
+const AUDIO_FILE_EXTENSIONS = new Set([
+	'.flac',
+	'.m4a',
+	'.mp4',
+	'.mp3',
+	'.aac',
+	'.wav',
+	'.ogg',
+	'.opus'
+]);
+const DISC_TRACK_FILENAME_PREFIX_RE = /^\d{1,2}\s*[-_]\s*\d{1,2}\s*(?:-|\.|_)\s*/i;
+const TRACK_FILENAME_PREFIX_RE = /^\d{1,3}\s*(?:-|\.|_)\s*/i;
+
+function normalizeFilenameMatchKey(value: string | undefined): string {
+	return (value ?? '')
+		.toLowerCase()
+		.replace(/[_-]+/g, ' ')
+		.replace(/\s+/g, ' ')
+		.trim();
+}
+
+function stripTrackPrefixFromStem(stem: string): string {
+	return stem
+		.replace(DISC_TRACK_FILENAME_PREFIX_RE, '')
+		.replace(TRACK_FILENAME_PREFIX_RE, '')
+		.trim();
+}
+
+function parseTrackNumberFromStem(stem: string): number | undefined {
+	const discTrackMatch = /^(\d{1,2})\s*[-_]\s*(\d{1,2})\s*(?:-|\.|_)\s*/.exec(stem);
+	if (discTrackMatch?.[2]) {
+		const parsed = Number.parseInt(discTrackMatch[2], 10);
+		return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+	}
+	const trackOnlyMatch = /^(\d{1,3})\s*(?:-|\.|_)\s*/.exec(stem);
+	if (trackOnlyMatch?.[1]) {
+		const parsed = Number.parseInt(trackOnlyMatch[1], 10);
+		return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+	}
+	return undefined;
+}
+
+function scoreFilenameCandidate(input: {
+	filename: string;
+	titleKey: string;
+	expectedTrackNo?: number;
+}): number {
+	const stem = path.parse(input.filename).name.trim();
+	const candidateTrackNo = parseTrackNumberFromStem(stem);
+	const candidateTitleKey = normalizeFilenameMatchKey(stripTrackPrefixFromStem(stem));
+	const hasTitle = input.titleKey.length > 0;
+
+	if (input.expectedTrackNo !== undefined && candidateTrackNo !== undefined) {
+		if (candidateTrackNo !== input.expectedTrackNo) {
+			return 0;
+		}
+	}
+
+	let score = 0;
+	if (input.expectedTrackNo !== undefined && candidateTrackNo === input.expectedTrackNo) {
+		score += 100;
+	}
+	if (hasTitle) {
+		if (!candidateTitleKey) {
+			return 0;
+		}
+		if (candidateTitleKey === input.titleKey) {
+			score += 80;
+		} else if (
+			candidateTitleKey.includes(input.titleKey) ||
+			input.titleKey.includes(candidateTitleKey)
+		) {
+			score += 40;
+		} else {
+			return 0;
+		}
+	}
+
+	return score;
+}
+
+async function findExistingFilenameHint(params: {
+	targetDir: string;
+	trackTitle?: string;
+	trackNumber?: number;
+	expectedExtension: string;
+}): Promise<string | null> {
+	let entries: Dirent[];
+	try {
+		entries = await fs.readdir(params.targetDir, { withFileTypes: true });
+	} catch {
+		return null;
+	}
+
+	const titleKey = normalizeFilenameMatchKey(params.trackTitle);
+	const numericTrackNumber = Number(params.trackNumber);
+	const expectedTrackNo =
+		Number.isFinite(numericTrackNumber) && numericTrackNumber > 0
+			? Math.trunc(numericTrackNumber)
+			: undefined;
+	if (!titleKey && expectedTrackNo === undefined) {
+		return null;
+	}
+
+	const extension = params.expectedExtension.startsWith('.')
+		? params.expectedExtension.toLowerCase()
+		: `.${params.expectedExtension.toLowerCase()}`;
+	const scored: Array<{ filename: string; score: number }> = [];
+	for (const entry of entries) {
+		if (!entry.isFile()) {
+			continue;
+		}
+		const candidateExtension = path.extname(entry.name).toLowerCase();
+		if (!AUDIO_FILE_EXTENSIONS.has(candidateExtension) || candidateExtension !== extension) {
+			continue;
+		}
+		const score = scoreFilenameCandidate({
+			filename: entry.name,
+			titleKey,
+			expectedTrackNo
+		});
+		if (score <= 0) {
+			continue;
+		}
+		scored.push({ filename: entry.name, score });
+	}
+
+	if (scored.length === 0) {
+		return null;
+	}
+	scored.sort((a, b) => {
+		if (a.score !== b.score) {
+			return b.score - a.score;
+		}
+		if (a.filename.length !== b.filename.length) {
+			return a.filename.length - b.filename.length;
+		}
+		return a.filename.localeCompare(b.filename);
+	});
+	return scored[0]?.filename ?? null;
+}
+
 export async function finalizeTrack(params: FinalizeTrackParams): Promise<FinalizeTrackResult> {
 	const {
 		trackId,
@@ -295,6 +438,22 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 		await ensureDir(targetDir);
 	}
 	let initialFilepath = path.join(targetDir, filename);
+	if (!requireExistingTargetDir && !overrideFilenameHint && conflictResolution !== 'rename') {
+		const existingFilenameHint = await findExistingFilenameHint({
+			targetDir,
+			trackTitle,
+			trackNumber,
+			expectedExtension: ext
+		});
+		if (existingFilenameHint) {
+			initialFilepath = path.join(targetDir, existingFilenameHint);
+			if (existingFilenameHint !== filename) {
+				console.log(
+					`[Server Download] Reusing existing filename for track ${trackId}: ${existingFilenameHint}`
+				);
+			}
+		}
+	}
 	if (requireExistingTargetDir && overrideFilenameHint) {
 		const hintedPath = path.join(targetDir, overrideFilenameHint);
 		let hintedStat;
