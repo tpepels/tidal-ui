@@ -22,6 +22,13 @@ const ROUTES: AppRouteMeta[] = [
 		navGroup: 'navigation'
 	},
 	{
+		path: '/library-suggestions',
+		title: 'Library Suggestions',
+		subtitle: 'Common library artists and API-powered discovery picks',
+		navLabel: 'Library Suggestions',
+		navGroup: 'navigation'
+	},
+	{
 		path: '/settings',
 		title: 'Settings',
 		subtitle: 'Streaming, downloads, and maintenance',

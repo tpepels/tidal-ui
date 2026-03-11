@@ -3,7 +3,15 @@ import { appRoutes, getRouteMeta } from './routeMeta';
 
 describe('routeMeta', () => {
 	it('registers all critical sidebar routes', () => {
-		const criticalPaths = ['/', '/history', '/settings', '/download-center', '/download-log', '/status'];
+		const criticalPaths = [
+			'/',
+			'/history',
+			'/library-suggestions',
+			'/settings',
+			'/download-center',
+			'/download-log',
+			'/status'
+		];
 		for (const path of criticalPaths) {
 			expect(getRouteMeta(path)).toBeTruthy();
 		}
