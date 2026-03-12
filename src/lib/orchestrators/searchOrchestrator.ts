@@ -13,7 +13,12 @@ import { playbackMachine } from '$lib/stores/playbackMachine.svelte';
 import { playbackFacade } from '$lib/controllers/playbackFacade';
 import { toasts } from '$lib/stores/toasts';
 import { trackError } from '$lib/core/errorTracker';
-import { executeTabSearch, type SearchError, type SearchResults } from '$lib/services/search/searchService';
+import {
+	executeTabSearch,
+	type SearchError,
+	type SearchProgressUpdate,
+	type SearchResults
+} from '$lib/services/search/searchService';
 import {
 	convertStreamingUrl,
 	type ConversionError
@@ -38,6 +43,9 @@ export interface SearchOrchestratorOptions {
 
 	/** Enforce exact artist-name matching for album searches */
 	strictAlbumArtistMatch?: boolean;
+
+	/** Fetch all standard result sections (tracks/albums/artists/playlists) in one pass */
+	aggregateAllTabs?: boolean;
 }
 
 /**
@@ -135,11 +143,13 @@ export class SearchOrchestrator {
 		tab: SearchTab,
 		region?: RegionOption,
 		albumArtistQuery?: string,
-		strictAlbumArtistMatch?: boolean
+		strictAlbumArtistMatch?: boolean,
+		aggregateAllTabs?: boolean
 	): string {
 		const normalizedAlbumArtistQuery = tab === 'albums' ? (albumArtistQuery?.trim().toLowerCase() ?? '') : '';
 		const strictFlag = tab === 'albums' && strictAlbumArtistMatch ? 'strict' : 'relaxed';
-		return `${tab}:${region ?? 'auto'}:${query.toLowerCase()}:${normalizedAlbumArtistQuery}:${strictFlag}`;
+		const mode = aggregateAllTabs ? 'aggregate' : 'single';
+		return `${tab}:${region ?? 'auto'}:${query.toLowerCase()}:${normalizedAlbumArtistQuery}:${strictFlag}:${mode}`;
 	}
 
 	/**
@@ -184,7 +194,8 @@ export class SearchOrchestrator {
 			tab,
 			options?.region,
 			options?.albumArtistQuery,
-			options?.strictAlbumArtistMatch
+			options?.strictAlbumArtistMatch,
+			options?.aggregateAllTabs
 		);
 		const inflight = this.inflightSearches.get(searchKey);
 		if (inflight) {
@@ -202,18 +213,121 @@ export class SearchOrchestrator {
 			// Execute search via service
 			const trimmedAlbumArtistQuery = options?.albumArtistQuery?.trim() ?? '';
 			const strictAlbumArtistMatch = options?.strictAlbumArtistMatch === true;
+			const shouldAggregate = options?.aggregateAllTabs === true;
+			type AlbumSearchExecutionOptions = {
+				albumArtistQuery?: string;
+				strictAlbumArtistMatch?: boolean;
+				onProgress?: (update: SearchProgressUpdate) => void;
+			};
+			const loadingState = {
+				tracks: tab === 'tracks',
+				albums: tab === 'albums',
+				artists: tab === 'artists',
+				playlists: tab === 'playlists'
+			};
+			const cloneResults = (source: SearchResults): SearchResults => ({
+				tracks: [...source.tracks],
+				albums: [...source.albums],
+				artists: [...source.artists],
+				playlists: [...source.playlists]
+			});
+			const commitProgressResults = (source: SearchResults): void => {
+				if (requestToken !== this.currentSearchToken) {
+					return;
+				}
+				searchStoreActions.commit({
+					results: cloneResults(source),
+					isLoading: true,
+					error: null,
+					tabLoading: loadingState
+				});
+			};
+
+			const combinedResults: SearchResults = {
+				tracks: [],
+				albums: [],
+				artists: [],
+				playlists: []
+			};
 			let result;
-			if (tab === 'albums' && (trimmedAlbumArtistQuery.length > 0 || strictAlbumArtistMatch)) {
-				const albumSearchOptions: { albumArtistQuery?: string; strictAlbumArtistMatch?: boolean } = {};
-				if (trimmedAlbumArtistQuery.length > 0) {
-					albumSearchOptions.albumArtistQuery = trimmedAlbumArtistQuery;
+			if (shouldAggregate) {
+				const aggregateTabs: SearchTab[] = ['tracks', 'albums', 'artists', 'playlists'];
+				const settled = await Promise.all(
+					aggregateTabs.map(async (searchTab) => {
+						if (searchTab !== 'albums') {
+							const tabResult = await executeTabSearch(query, searchTab, options?.region);
+							if (tabResult.success) {
+								if (searchTab === 'tracks') {
+									combinedResults.tracks = tabResult.results.tracks;
+								} else if (searchTab === 'artists') {
+									combinedResults.artists = tabResult.results.artists;
+								} else if (searchTab === 'playlists') {
+									combinedResults.playlists = tabResult.results.playlists;
+								}
+								commitProgressResults(combinedResults);
+							}
+							return { tab: searchTab, tabResult };
+						}
+
+						const albumSearchOptions: AlbumSearchExecutionOptions = {
+							onProgress: (update) => {
+								combinedResults.albums = update.items;
+								commitProgressResults(combinedResults);
+							}
+						};
+						if (trimmedAlbumArtistQuery.length > 0) {
+							albumSearchOptions.albumArtistQuery = trimmedAlbumArtistQuery;
+						}
+						if (strictAlbumArtistMatch) {
+							albumSearchOptions.strictAlbumArtistMatch = true;
+						}
+
+						const tabResult = await executeTabSearch(query, searchTab, options?.region, albumSearchOptions);
+						if (tabResult.success) {
+							combinedResults.albums = tabResult.results.albums;
+							commitProgressResults(combinedResults);
+						}
+						return { tab: searchTab, tabResult };
+					})
+				);
+
+				let successfulTabCount = 0;
+				let firstError: SearchError | null = null;
+				for (const { tab: tabKey, tabResult } of settled) {
+					if (tabResult?.success) {
+						successfulTabCount += 1;
+					} else if (!firstError && tabResult && !tabResult.success) {
+						firstError = tabResult.error;
+					}
 				}
-				if (strictAlbumArtistMatch) {
-					albumSearchOptions.strictAlbumArtistMatch = true;
+
+				if (successfulTabCount === 0) {
+					result = { success: false as const, error: firstError ?? {
+						code: 'UNKNOWN_ERROR' as const,
+						retry: false,
+						message: 'Search failed'
+					} };
+				} else {
+					result = { success: true as const, results: combinedResults };
 				}
-				result = await executeTabSearch(query, tab, options?.region, albumSearchOptions);
 			} else {
-				result = await executeTabSearch(query, tab, options?.region);
+				if (tab === 'albums') {
+					const albumSearchOptions: AlbumSearchExecutionOptions = {
+						onProgress: (update) => {
+							combinedResults.albums = update.items;
+							commitProgressResults(combinedResults);
+						}
+					};
+					if (trimmedAlbumArtistQuery.length > 0) {
+						albumSearchOptions.albumArtistQuery = trimmedAlbumArtistQuery;
+					}
+					if (strictAlbumArtistMatch) {
+						albumSearchOptions.strictAlbumArtistMatch = true;
+					}
+					result = await executeTabSearch(query, tab, options?.region, albumSearchOptions);
+				} else {
+					result = await executeTabSearch(query, tab, options?.region);
+				}
 			}
 
 			// Check if this request has been superseded by a newer search

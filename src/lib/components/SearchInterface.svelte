@@ -11,8 +11,6 @@
 	import TrackDownloadButton from '$lib/components/TrackDownloadButton.svelte';
 	import { fetchAlbumLibraryStatus } from '$lib/utils/mediaLibraryClient';
 	import CoverArt from '$lib/components/CoverArt.svelte';
-	import EntityMediaCard from '$lib/components/ui/EntityMediaCard.svelte';
-	import ToolPanel from '$lib/components/ui/ToolPanel.svelte';
 	import StateBlock from '$lib/components/ui/StateBlock.svelte';
 	import {
 		getCoverCacheKey,
@@ -217,11 +215,16 @@
 		if (targetTab === 'albums') {
 			strictAlbumArtistMatch = strictFromUrl;
 		}
+		const isUrlQuery =
+			isTidalUrl(queryParam) ||
+			isSupportedStreamingUrl(queryParam) ||
+			isSpotifyPlaylistUrlUtil(queryParam);
 		void searchOrchestrator.search(queryParam, targetTab, {
 			region: selectedRegion,
 			showErrorToasts: false,
 			albumArtistQuery: targetTab === 'albums' ? albumArtistFilter.trim() : undefined,
-			strictAlbumArtistMatch: targetTab === 'albums' ? strictAlbumArtistMatch : undefined
+			strictAlbumArtistMatch: targetTab === 'albums' ? strictAlbumArtistMatch : undefined,
+			aggregateAllTabs: !isUrlQuery
 		});
 	});
 
@@ -287,6 +290,16 @@
 
 	const trackSkeletons = Array.from({ length: 6 }, (_, index) => index);
 	const gridSkeletons = Array.from({ length: 8 }, (_, index) => index);
+	const trackResults = $derived($searchStore.results?.tracks ?? []);
+	const albumResults = $derived($searchStore.results?.albums ?? []);
+	const artistResults = $derived($searchStore.results?.artists ?? []);
+	const playlistResults = $derived($searchStore.results?.playlists ?? []);
+	const hasAnySearchResults = $derived(
+		trackResults.length > 0 ||
+			albumResults.length > 0 ||
+			artistResults.length > 0 ||
+			playlistResults.length > 0
+	);
 
 	interface Props {
 		onTrackSelect?: (track: PlayableTrack) => void;
@@ -800,7 +813,8 @@
 			showErrorToasts: true,
 			albumArtistQuery: $searchStore.activeTab === 'albums' ? artistFilter : undefined,
 			strictAlbumArtistMatch:
-				$searchStore.activeTab === 'albums' ? strictAlbumArtistMatch : undefined
+				$searchStore.activeTab === 'albums' ? strictAlbumArtistMatch : undefined,
+			aggregateAllTabs: !isQueryAUrl
 		});
 	}
 
@@ -851,10 +865,6 @@
 		}
 	}
 
-	function handleTabChange(tab: SearchTab) {
-		searchStoreActions.commit({ activeTab: tab });
-	}
-
 	function displayTrackTotal(total?: number | null): number {
 		if (!Number.isFinite(total)) return 0;
 		return total && total > 0 ? total : (total ?? 0);
@@ -885,9 +895,9 @@
 
 <div class="w-full">
 	<!-- Search Input -->
-	<div class="mb-6 space-y-3">
-		<div class="ui-action-panel search-input-panel">
-			<label for="catalog-search-input" class="ui-action-panel__intent">Search Catalog</label>
+	<div class="search-toolbar-stack mb-6">
+		<section class="search-toolbar" aria-label="Catalog search">
+			<label for="catalog-search-input" class="search-toolbar__label">Search Catalog</label>
 			<div class="search-input-panel__row">
 				<input
 					id="catalog-search-input"
@@ -918,21 +928,21 @@
 						$searchStore.tabLoading[$searchStore.activeTab]
 					}
 					aria-busy={$searchStore.isLoading || $searchStore.tabLoading[$searchStore.activeTab]}
-				>
-					{#if $searchStore.isLoading || $searchStore.tabLoading[$searchStore.activeTab]}
-						<LoaderCircle size={16} class="animate-spin" />
-						Searching…
-					{:else}
-						<Search size={16} />
-						Search
-					{/if}
-				</button>
-			</div>
-		</div>
+					>
+						{#if $searchStore.isLoading || $searchStore.tabLoading[$searchStore.activeTab]}
+							<LoaderCircle size={16} class="animate-spin" />
+							Searching…
+						{:else}
+							<Search size={16} />
+							Search
+						{/if}
+					</button>
+				</div>
+		</section>
 
 		{#if !isQueryAUrl && $searchStore.activeTab === 'albums'}
-			<div class="ui-action-panel search-input-panel search-input-panel--secondary">
-				<label for="album-artist-filter" class="ui-action-panel__intent">Artist Filter (Optional)</label>
+			<section class="search-toolbar search-toolbar--secondary" aria-label="Album artist filter">
+				<label for="album-artist-filter" class="search-toolbar__label">Artist Filter (Optional)</label>
 				<div class="search-input-panel__row">
 					<input
 						id="album-artist-filter"
@@ -940,11 +950,11 @@
 						value={albumArtistFilter}
 						oninput={(event) => {
 							const target = event.currentTarget as HTMLInputElement | null;
-						if (target) {
-							albumArtistFilter = target.value;
-						}
-					}}
-					placeholder="Artist name (e.g. Daft Punk)"
+							if (target) {
+								albumArtistFilter = target.value;
+							}
+						}}
+						placeholder="Artist name (e.g. Daft Punk)"
 						class="search-input-panel__input"
 					/>
 				</div>
@@ -962,89 +972,71 @@
 					/>
 					<span>Strict artist match (exact artist name only)</span>
 				</label>
-			</div>
+			</section>
 		{/if}
 	</div>
 
-	<!-- Tabs (hidden when URL is detected) -->
-	{#if !isQueryAUrl}
-		<div class="search-tab-row mb-6">
-			<button
-				onclick={() => handleTabChange('tracks')}
-				class="ui-filter-chip search-tab-chip"
-				class:is-active={$searchStore.activeTab === 'tracks'}
-			>
-				<Music size={18} />
-				<span>Tracks</span>
-			</button>
-			<button
-				onclick={() => handleTabChange('albums')}
-				class="ui-filter-chip search-tab-chip"
-				class:is-active={$searchStore.activeTab === 'albums'}
-			>
-				<Disc size={18} />
-				<span>Albums</span>
-			</button>
-			<button
-				onclick={() => handleTabChange('artists')}
-				class="ui-filter-chip search-tab-chip"
-				class:is-active={$searchStore.activeTab === 'artists'}
-			>
-				<User size={18} />
-				<span>Artists</span>
-			</button>
-			<button
-				onclick={() => handleTabChange('playlists')}
-				class="ui-filter-chip search-tab-chip"
-				class:is-active={$searchStore.activeTab === 'playlists'}
-			>
-				<List size={18} />
-				<span>Playlists</span>
-			</button>
-		</div>
+	{#if !isQueryAUrl && $searchStore.query.trim().length > 0 && hasAnySearchResults}
+		<nav class="search-section-nav mb-6" aria-label="Result sections">
+			{#if trackResults.length > 0}
+				<a href="#search-section-tracks" class="ui-chip-link search-tab-chip">
+					<Music size={16} />
+					<span>Songs</span>
+					<span class="search-tab-chip__count">{trackResults.length}</span>
+				</a>
+			{/if}
+			{#if albumResults.length > 0}
+				<a href="#search-section-albums" class="ui-chip-link search-tab-chip">
+					<Disc size={16} />
+					<span>Albums</span>
+					<span class="search-tab-chip__count">{albumResults.length}</span>
+				</a>
+			{/if}
+			{#if artistResults.length > 0}
+				<a href="#search-section-artists" class="ui-chip-link search-tab-chip">
+					<User size={16} />
+					<span>Artists</span>
+					<span class="search-tab-chip__count">{artistResults.length}</span>
+				</a>
+			{/if}
+			{#if playlistResults.length > 0}
+				<a href="#search-section-playlists" class="ui-chip-link search-tab-chip">
+					<List size={16} />
+					<span>Playlists</span>
+					<span class="search-tab-chip__count">{playlistResults.length}</span>
+				</a>
+			{/if}
+		</nav>
 	{/if}
 
 	<!-- Loading State -->
-	{#if $searchStore.isLoading || $searchStore.tabLoading[$searchStore.activeTab]}
-		{#if $searchStore.activeTab === 'tracks'}
-				<div class="space-y-2">
-					{#each trackSkeletons as i (i)}
-						<div class="flex w-full items-center gap-3 rounded-lg bg-gray-800/70 p-3">
-							<div class="h-12 w-12 flex-shrink-0 animate-pulse rounded bg-gray-700/80"></div>
-							<div class="flex-1 space-y-2">
-								<div class="h-4 w-2/3 animate-pulse rounded bg-gray-700/80"></div>
-								<div class="h-3 w-1/3 animate-pulse rounded bg-gray-700/60"></div>
-								<div class="h-3 w-1/4 animate-pulse rounded bg-gray-700/40"></div>
-							</div>
-							<div class="h-6 w-12 animate-pulse rounded-full bg-gray-700/80"></div>
+	{#if $searchStore.isLoading && !hasAnySearchResults}
+		<div class="search-loading">
+			<div class="search-loading__section">
+				<div class="search-loading__title"></div>
+				{#each trackSkeletons.slice(0, 5) as i (i)}
+					<div class="search-loading__row">
+						<div class="search-loading__thumb"></div>
+						<div class="search-loading__line-group">
+							<div class="search-loading__line search-loading__line--lg"></div>
+							<div class="search-loading__line search-loading__line--sm"></div>
 						</div>
-					{/each}
-				</div>
-			{:else if $searchStore.activeTab === 'albums' || $searchStore.activeTab === 'playlists'}
-				<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-					{#each gridSkeletons as i (i)}
-						<div class="space-y-3">
-							<div class="aspect-square w-full animate-pulse rounded-lg bg-gray-800/70"></div>
-							<div class="h-4 w-3/4 animate-pulse rounded bg-gray-700/80"></div>
-							<div class="h-3 w-1/2 animate-pulse rounded bg-gray-700/60"></div>
+					</div>
+				{/each}
+			</div>
+			<div class="search-loading__section">
+				<div class="search-loading__title search-loading__title--short"></div>
+				{#each gridSkeletons.slice(0, 4) as i (i)}
+					<div class="search-loading__row">
+						<div class="search-loading__thumb"></div>
+						<div class="search-loading__line-group">
+							<div class="search-loading__line search-loading__line--lg"></div>
+							<div class="search-loading__line search-loading__line--sm"></div>
 						</div>
-					{/each}
-				</div>
-			{:else if $searchStore.activeTab === 'artists'}
-				<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-					{#each gridSkeletons as i (i)}
-						<div class="flex flex-col items-center gap-3">
-							<div class="aspect-square w-full animate-pulse rounded-full bg-gray-800/70"></div>
-							<div class="h-4 w-3/4 animate-pulse rounded bg-gray-700/80"></div>
-							<div class="h-3 w-1/2 animate-pulse rounded bg-gray-700/60"></div>
-						</div>
-					{/each}
-				</div>
-			{:else}
-				<div class="flex items-center justify-center py-12">
-					<div class="h-10 w-10 animate-spin rounded-full border-b-2 border-white/80"></div>
-				</div>
-			{/if}
+					</div>
+				{/each}
+			</div>
+		</div>
 	{/if}
 
 	<!-- Error State -->
@@ -1054,511 +1046,576 @@
 
 	<!-- Playlist Loading Progress -->
 	{#if $searchStore.playlistLoadingMessage}
-		<div class="ui-action-panel mb-4 flex items-center gap-3 p-4 text-white/85">
+		<div class="search-inline-status mb-4">
 			<LoaderCircle class="animate-spin" size={20} />
 			<span>{$searchStore.playlistLoadingMessage}</span>
 		</div>
 	{/if}
 
 	<!-- Results -->
-	{#if !$searchStore.tabLoading[$searchStore.activeTab]}
-		{#if (!$searchStore.isLoading && !$searchStore.error) || ($searchStore.isPlaylistConversionMode && ($searchStore.results?.tracks ?? []).length > 0)}
-		{#if $searchStore.activeTab === 'tracks' && ($searchStore.results?.tracks ?? []).length > 0}
-			<!-- Playlist Controls (shown when in playlist conversion mode) -->
-			{#if $searchStore.isPlaylistConversionMode}
-				<div class="mb-6 flex flex-wrap items-center gap-3">
-					<button
-						onclick={handlePlayAll}
-						class="ui-action-button ui-action-button--primary"
-						aria-label="Play search results"
-					>
-						<Play size={16} fill="currentColor" />
-						Play Results
-					</button>
-					<button
-						onclick={handleShuffleAll}
-						class="ui-action-button"
-						aria-label="Shuffle search results"
-					>
-						<Shuffle size={16} />
-						Shuffle Results
-					</button>
-					<button
-						onclick={handleDownloadAll}
-						class="ui-action-button"
-						aria-label="Download search results"
-					>
-						<Download size={16} />
-						Download Results
-					</button>
-					<div class="ml-auto text-sm text-gray-400">
-						{($searchStore.results?.tracks ?? []).length} of {$searchStore.playlistConversionTotal} tracks
-					</div>
-				</div>
-			{/if}
-
-			<div class="space-y-2">
-				{#each ($searchStore.results?.tracks ?? []) as track (track.id)}
-					<div
-						role="button"
-						tabindex="0"
-						onclick={(e) => {
-							if (
-								e.target instanceof Element &&
-								(e.target.closest('a') || e.target.closest('button'))
-							)
-								return;
-							handleTrackActivation(track);
-						}}
-						onkeydown={(event) => handleTrackKeydown(event, track)}
-						class="search-track-row ui-surface-card group flex w-full cursor-pointer items-center gap-2 overflow-hidden p-2 sm:gap-3 sm:p-3 {activeMenuId ===
-						track.id
-							? 'relative z-20'
-							: ''}"
-					>
-						{#if isSonglinkTrack(track)}
-							<!-- Display for SonglinkTrack -->
-							<img
-								src={track.thumbnailUrl || '/placeholder-album.jpg'}
-								alt={`${track.title} by ${track.artistName}`}
-								class="h-10 w-10 sm:h-12 sm:w-12 flex-shrink-0 rounded object-cover"
-							/>
-							<div class="min-w-0 flex-1">
-								<h3 class="font-semibold text-sm leading-tight break-words whitespace-normal sm:text-base sm:truncate text-white group-hover:text-gray-100">
-									{track.title}
-								</h3>
-								<p class="truncate text-xs sm:text-sm text-gray-400">
-									{track.artistName}
-								</p>
-								<p class="text-xs text-gray-500">
-									{formatQualityLabel(track.audioQuality)}
-								</p>
-							</div>
-							<!-- Queue actions for Songlink tracks -->
-							<div class="flex items-center gap-2 text-sm text-gray-400">
-								<div class="relative">
-									<button
-										onclick={(event) => {
-											event.stopPropagation();
-											activeMenuId = activeMenuId === track.id ? null : track.id;
-										}}
-										class="search-track-menu__trigger"
-										title="Queue actions"
-										aria-label="Queue actions for {track.title}"
-									>
-										<MoreVertical size={18} />
-									</button>
-									<!-- Dropdown menu for queue actions -->
-									{#if activeMenuId === track.id}
-										<div
-											class="search-track-menu track-menu-container absolute top-full right-0 z-10 mt-1 w-48"
-										>
-											<button
-												onclick={(event) => {
-													handlePlayNext(track, event);
-													activeMenuId = null;
-												}}
-												class="search-track-menu__item"
-											>
-												<ListVideo size={16} />
-												Play Next
-											</button>
-											<button
-												onclick={(event) => {
-													handleAddToQueue(track, event);
-													activeMenuId = null;
-												}}
-												class="search-track-menu__item"
-											>
-												<ListPlus size={16} />
-												Add to Queue
-											</button>
-											<div class="search-track-menu__divider"></div>
-											<button
-												onclick={(event) => {
-													event.stopPropagation();
-													copyToClipboard(getLongLink('track', track.id));
-													activeMenuId = null;
-												}}
-												class="search-track-menu__item"
-											>
-												<Link2 size={16} />
-												Share Link
-											</button>
-											<button
-												onclick={(event) => {
-													event.stopPropagation();
-													copyToClipboard(getShortLink('track', track.id));
-													activeMenuId = null;
-												}}
-												class="search-track-menu__item"
-											>
-												<Copy size={16} />
-												Share Short Link
-											</button>
-											<button
-												onclick={(event) => {
-													event.stopPropagation();
-													copyToClipboard(getEmbedCode('track', track.id));
-													activeMenuId = null;
-												}}
-												class="search-track-menu__item"
-											>
-												<Code size={16} />
-												Copy Embed Code
-											</button>
-										</div>
-									{/if}
+	{#if !$searchStore.error}
+		{#if hasAnySearchResults}
+			<div class="search-sections">
+				{#if trackResults.length > 0}
+					<section id="search-section-tracks" class="search-section">
+						<header class="search-section__header">
+							<h2 class="search-section__title">Songs</h2>
+							<span class="search-section__count">{trackResults.length}</span>
+						</header>
+						{#if $searchStore.isPlaylistConversionMode}
+							<div class="search-section__actions">
+								<button
+									onclick={handlePlayAll}
+									class="ui-action-button ui-action-button--primary"
+									aria-label="Play search results"
+								>
+									<Play size={16} fill="currentColor" />
+									Play Results
+								</button>
+								<button
+									onclick={handleShuffleAll}
+									class="ui-action-button"
+									aria-label="Shuffle search results"
+								>
+									<Shuffle size={16} />
+									Shuffle Results
+								</button>
+								<button
+									onclick={handleDownloadAll}
+									class="ui-action-button"
+									aria-label="Download search results"
+								>
+									<Download size={16} />
+									Download Results
+								</button>
+								<div class="search-section__meta">
+									{trackResults.length} of {$searchStore.playlistConversionTotal} tracks
 								</div>
 							</div>
-						{:else}
-							<!-- Display for regular Track -->
-							{#if asTrack(track).album.cover}
-								<img
-									src={losslessAPI.getCoverUrl(asTrack(track).album.cover, '160')}
-									alt={track.title}
-									class="h-12 w-12 rounded object-cover"
-								/>
-							{/if}
-							<div class="min-w-0 flex-1">
-								<h3 class="font-semibold text-sm leading-tight break-words whitespace-normal sm:text-base sm:truncate text-white group-hover:text-gray-100">
-									{track.title}{asTrack(track).version ? ` (${asTrack(track).version})` : ''}
-									{#if asTrack(track).explicit}
-										<svg
-											class="inline h-4 w-4 flex-shrink-0 align-middle"
-											xmlns="http://www.w3.org/2000/svg"
-											fill="currentColor"
-											height="24"
-											viewBox="0 0 24 24"
-											width="24"
-											focusable="false"
-											aria-hidden="true"
-											><path
-												d="M20 2H4a2 2 0 00-2 2v16a2 2 0 002 2h16a2 2 0 002-2V4a2 2 0 00-2-2ZM8 6h8a1 1 0 110 2H9v3h5a1 1 0 010 2H9v3h7a1 1 0 010 2H8a1 1 0 01-1-1V7a1 1 0 011-1Z"
-											></path></svg
-										>
-									{/if}
-								</h3>
-								<a
-									href={`/artist/${asTrack(track).artist.id}`}
-									class="inline-block truncate text-sm text-gray-400 hover:text-white hover:underline"
-									data-sveltekit-preload-data
+						{/if}
+						<div class="search-track-list">
+							{#each trackResults as track (track.id)}
+								<div
+									role="button"
+									tabindex="0"
+									onclick={(e) => {
+										if (
+											e.target instanceof Element &&
+											(e.target.closest('a') || e.target.closest('button'))
+										)
+											return;
+										handleTrackActivation(track);
+									}}
+									onkeydown={(event) => handleTrackKeydown(event, track)}
+									class={`search-track-row ${activeMenuId === track.id ? 'relative z-20' : ''}`}
 								>
-									{formatArtists(asTrack(track).artists)}
-								</a>
-								<p class="text-xs text-gray-500">
+									{#if isSonglinkTrack(track)}
+										<img
+											src={track.thumbnailUrl || '/placeholder-album.jpg'}
+											alt={`${track.title} by ${track.artistName}`}
+											class="h-10 w-10 sm:h-12 sm:w-12 flex-shrink-0 rounded object-cover"
+										/>
+										<div class="min-w-0 flex-1">
+											<h3 class="font-semibold text-sm leading-tight break-words whitespace-normal sm:text-base sm:truncate text-white group-hover:text-gray-100">
+												{track.title}
+											</h3>
+											<p class="truncate text-xs sm:text-sm text-gray-400">
+												{track.artistName}
+											</p>
+											<p class="text-xs text-gray-500">
+												{formatQualityLabel(track.audioQuality)}
+											</p>
+										</div>
+										<div class="flex items-center gap-2 text-sm text-gray-400">
+											<div class="relative">
+												<button
+													onclick={(event) => {
+														event.stopPropagation();
+														activeMenuId = activeMenuId === track.id ? null : track.id;
+													}}
+													class="search-track-menu__trigger"
+													title="Queue actions"
+													aria-label="Queue actions for {track.title}"
+												>
+													<MoreVertical size={18} />
+												</button>
+												{#if activeMenuId === track.id}
+													<div
+														class="search-track-menu track-menu-container absolute top-full right-0 z-10 mt-1 w-48"
+													>
+														<button
+															onclick={(event) => {
+																handlePlayNext(track, event);
+																activeMenuId = null;
+															}}
+															class="search-track-menu__item"
+														>
+															<ListVideo size={16} />
+															Play Next
+														</button>
+														<button
+															onclick={(event) => {
+																handleAddToQueue(track, event);
+																activeMenuId = null;
+															}}
+															class="search-track-menu__item"
+														>
+															<ListPlus size={16} />
+															Add to Queue
+														</button>
+														<div class="search-track-menu__divider"></div>
+														<button
+															onclick={(event) => {
+																event.stopPropagation();
+																copyToClipboard(getLongLink('track', track.id));
+																activeMenuId = null;
+															}}
+															class="search-track-menu__item"
+														>
+															<Link2 size={16} />
+															Share Link
+														</button>
+														<button
+															onclick={(event) => {
+																event.stopPropagation();
+																copyToClipboard(getShortLink('track', track.id));
+																activeMenuId = null;
+															}}
+															class="search-track-menu__item"
+														>
+															<Copy size={16} />
+															Share Short Link
+														</button>
+														<button
+															onclick={(event) => {
+																event.stopPropagation();
+																copyToClipboard(getEmbedCode('track', track.id));
+																activeMenuId = null;
+															}}
+															class="search-track-menu__item"
+														>
+															<Code size={16} />
+															Copy Embed Code
+														</button>
+													</div>
+												{/if}
+											</div>
+										</div>
+									{:else}
+										{#if asTrack(track).album.cover}
+											<img
+												src={losslessAPI.getCoverUrl(asTrack(track).album.cover, '160')}
+												alt={track.title}
+												class="h-12 w-12 rounded object-cover"
+											/>
+										{/if}
+										<div class="min-w-0 flex-1">
+											<h3 class="font-semibold text-sm leading-tight break-words whitespace-normal sm:text-base sm:truncate text-white group-hover:text-gray-100">
+												{track.title}{asTrack(track).version ? ` (${asTrack(track).version})` : ''}
+												{#if asTrack(track).explicit}
+													<svg
+														class="inline h-4 w-4 flex-shrink-0 align-middle"
+														xmlns="http://www.w3.org/2000/svg"
+														fill="currentColor"
+														height="24"
+														viewBox="0 0 24 24"
+														width="24"
+														focusable="false"
+														aria-hidden="true"
+														><path
+															d="M20 2H4a2 2 0 00-2 2v16a2 2 0 002 2h16a2 2 0 002-2V4a2 2 0 00-2-2ZM8 6h8a1 1 0 110 2H9v3h5a1 1 0 010 2H9v3h7a1 1 0 010 2H8a1 1 0 01-1-1V7a1 1 0 011-1Z"
+														></path></svg
+													>
+												{/if}
+											</h3>
+											<a
+												href={`/artist/${asTrack(track).artist.id}`}
+												class="inline-block truncate text-sm text-gray-400 hover:text-white hover:underline"
+												data-sveltekit-preload-data
+											>
+												{formatArtists(asTrack(track).artists)}
+											</a>
+											<p class="text-xs text-gray-500">
+												<a
+													href={`/album/${asTrack(track).album.id}`}
+													class="hover:text-white hover:underline"
+													data-sveltekit-preload-data
+												>
+													{asTrack(track).album.title}
+												</a>
+												• {formatQualityLabel(track.audioQuality)}
+											</p>
+										</div>
+										<div class="flex items-center gap-2 text-sm text-gray-400">
+											<TrackDownloadButton
+												isDownloading={$downloadingIds.has(track.id)}
+												isCancelled={$cancelledIds.has(track.id)}
+												onCancel={(event) => handleCancelDownload(track.id, event)}
+												onDownload={(event) => handleDownloadWithFallback(track, event)}
+												title={$downloadingIds.has(track.id) ? 'Cancel download' : `${downloadActionLabel} track`}
+												ariaLabel={$downloadingIds.has(track.id)
+													? `Cancel download for ${track.title}`
+													: `${downloadActionLabel} ${track.title}`}
+												class="rounded-full"
+											/>
+											<div class="relative">
+												<button
+													onclick={(event) => {
+														event.stopPropagation();
+														activeMenuId = activeMenuId === track.id ? null : track.id;
+													}}
+													class="search-track-menu__trigger"
+													title="Queue actions"
+													aria-label="Queue actions for {track.title}"
+												>
+													<MoreVertical size={18} />
+												</button>
+												{#if activeMenuId === track.id}
+													<div
+														class="search-track-menu track-menu-container absolute top-full right-0 z-10 mt-1 w-48"
+													>
+														<button
+															onclick={(event) => {
+																handlePlayNext(track, event);
+																activeMenuId = null;
+															}}
+															class="search-track-menu__item"
+														>
+															<ListVideo size={16} />
+															Play Next
+														</button>
+														<button
+															onclick={(event) => {
+																handleAddToQueue(track, event);
+																activeMenuId = null;
+															}}
+															class="search-track-menu__item"
+														>
+															<ListPlus size={16} />
+															Add to Queue
+														</button>
+														<div class="search-track-menu__divider"></div>
+														<button
+															onclick={(event) => {
+																event.stopPropagation();
+																copyToClipboard(getLongLink('track', track.id));
+																activeMenuId = null;
+															}}
+															class="search-track-menu__item"
+														>
+															<Link2 size={16} />
+															Share Link
+														</button>
+														<button
+															onclick={(event) => {
+																event.stopPropagation();
+																copyToClipboard(getShortLink('track', track.id));
+																activeMenuId = null;
+															}}
+															class="search-track-menu__item"
+														>
+															<Copy size={16} />
+															Share Short Link
+														</button>
+														<button
+															onclick={(event) => {
+																event.stopPropagation();
+																copyToClipboard(getEmbedCode('track', track.id));
+																activeMenuId = null;
+															}}
+															class="search-track-menu__item"
+														>
+															<Code size={16} />
+															Copy Embed Code
+														</button>
+													</div>
+												{/if}
+											</div>
+										</div>
+									{/if}
+									{#if !('isSonglinkTrack' in track && track.isSonglinkTrack)}
+										<span class="search-track-row__duration">
+											{losslessAPI.formatDuration(track.duration)}
+										</span>
+									{/if}
+								</div>
+							{/each}
+						</div>
+					</section>
+				{/if}
+
+				{#if albumResults.length > 0}
+					<section id="search-section-albums" class="search-section">
+						<header class="search-section__header">
+							<h2 class="search-section__title">Albums</h2>
+							<span class="search-section__count">{albumResults.length}</span>
+						</header>
+						<div class="search-entity-list">
+							{#each albumResults as album (album.id)}
+								{@const albumDownloadState =
+									albumDownloadStates[album.id] ??
+									createDefaultAlbumDownloadState(album.numberOfTracks ?? 0)}
+								{@const canCancelAlbumDownload = isAlbumQueueDownloadCancellable(albumDownloadState)}
+								{@const albumInLibrary = albumLibraryPresence[album.id]?.exists === true}
+								<article class="search-entity-row search-entity-row--album">
 									<a
-										href={`/album/${asTrack(track).album.id}`}
-										class="hover:text-white hover:underline"
+										href={`/album/${album.id}`}
+										class="search-entity-row__main"
+										aria-label={`Open album ${album.title}`}
 										data-sveltekit-preload-data
 									>
-										{asTrack(track).album.title}
+										<div class="search-entity-row__artwork">
+											{#if album.videoCover}
+												<video
+													src={losslessAPI.getVideoCoverUrl(album.videoCover, '640')}
+													poster={album.cover ? losslessAPI.getCoverUrl(album.cover, '640') : undefined}
+													aria-label={album.title}
+													class="search-entity-row__image"
+													autoplay
+													loop
+													muted
+													playsinline
+													preload="metadata"
+												></video>
+											{:else if album.cover}
+												{@const coverCacheKey = getCoverCacheKey({
+													coverId: album.cover,
+													size: '640',
+													proxy: false,
+													overrideKey: `search:${album.id}`
+												})}
+												{@const coverCandidates = getUnifiedCoverCandidates({
+													coverId: album.cover,
+													size: '640',
+													proxy: false,
+													includeLowerSizes: true
+												})}
+												<CoverArt
+													cacheKey={coverCacheKey}
+													candidates={coverCandidates}
+													alt={album.title}
+													class="search-entity-row__image"
+												/>
+											{:else}
+												<div class="search-entity-row__placeholder">
+													<Disc size={24} />
+												</div>
+											{/if}
+										</div>
+										<div class="search-entity-row__body">
+											<h3 class="search-entity-row__title">{album.title}</h3>
+											<p class="search-entity-row__subtitle">
+												{album.artist?.name ?? 'Unknown artist'}
+											</p>
+											<p class="search-entity-row__meta">
+												{album.releaseDate ? `${album.releaseDate.split('-')[0]} • ` : ''}{displayTrackTotal(
+													album.numberOfTracks
+												)}
+												track{displayTrackTotal(album.numberOfTracks) === 1 ? '' : 's'}
+												{#if albumInLibrary}
+													• In Library
+												{/if}
+											</p>
+										</div>
 									</a>
-									• {formatQualityLabel(track.audioQuality)}
-								</p>
-							</div>
-							<div class="flex items-center gap-2 text-sm text-gray-400">
-								<TrackDownloadButton
-									isDownloading={$downloadingIds.has(track.id)}
-									isCancelled={$cancelledIds.has(track.id)}
-									onCancel={(event) => handleCancelDownload(track.id, event)}
-									onDownload={(event) => handleDownloadWithFallback(track, event)}
-									title={$downloadingIds.has(track.id) ? 'Cancel download' : `${downloadActionLabel} track`}
-									ariaLabel={$downloadingIds.has(track.id)
-										? `Cancel download for ${track.title}`
-										: `${downloadActionLabel} ${track.title}`}
-									class="rounded-full"
-								/>
-								<div class="relative">
-									<button
-										onclick={(event) => {
-											event.stopPropagation();
-											activeMenuId = activeMenuId === track.id ? null : track.id;
-										}}
-										class="search-track-menu__trigger"
-										title="Queue actions"
-										aria-label="Queue actions for {track.title}"
-									>
-										<MoreVertical size={18} />
-									</button>
-									{#if activeMenuId === track.id}
-										<div
-											class="search-track-menu track-menu-container absolute top-full right-0 z-10 mt-1 w-48"
+									<div class="search-entity-row__actions">
+										<button
+											onclick={(event) =>
+												canCancelAlbumDownload
+													? cancelAlbumQueueDownload(album.id, event)
+													: handleAlbumDownloadClick(album, event)}
+											type="button"
+											class="search-entity-row__action-btn"
+											disabled={albumDownloadState.status === 'submitting'}
+											aria-label={
+												canCancelAlbumDownload
+													? `Stop download ${album.title}`
+													: albumDownloadState.status === 'paused'
+														? `Resume download ${album.title}`
+														: `Download ${album.title}`
+											}
+											aria-busy={albumDownloadState.status === 'submitting' || albumDownloadState.status === 'queued' || albumDownloadState.downloading}
 										>
-											<button
-												onclick={(event) => {
-													handlePlayNext(track, event);
-													activeMenuId = null;
-												}}
-												class="search-track-menu__item"
+											{#if canCancelAlbumDownload}
+												<X size={16} />
+											{:else if albumDownloadState.status === 'submitting' || albumDownloadState.downloading}
+												<LoaderCircle size={16} class="animate-spin" />
+											{:else if albumDownloadState.status === 'paused'}
+												<RotateCcw size={16} />
+											{:else}
+												<Download size={16} />
+											{/if}
+										</button>
+										{#if albumDownloadState.status === 'queued'}
+											<p class="search-entity-row__status">Queued on server…</p>
+										{:else if albumDownloadState.downloading}
+											<p class="search-entity-row__status">
+												Downloading
+												{#if albumDownloadState.total}
+													{albumDownloadState.completed ?? 0}/{displayTrackTotal(
+														albumDownloadState.total ?? 0
+													)}
+												{:else}
+													{albumDownloadState.completed ?? 0}
+												{/if}
+												tracks…
+											</p>
+										{:else if albumDownloadState.status === 'completed'}
+											<p class="search-entity-row__status search-entity-row__status--success">
+												Download completed.
+											</p>
+										{:else if albumDownloadState.status === 'cancelled'}
+											<p class="search-entity-row__status search-entity-row__status--warning">
+												Download stopped.
+											</p>
+										{:else if albumDownloadState.status === 'paused'}
+											<p class="search-entity-row__status search-entity-row__status--warning">
+												Download paused.
+											</p>
+										{:else if albumDownloadState.error}
+											<p class="search-entity-row__status search-entity-row__status--error" role="alert">
+												{albumDownloadState.error}
+											</p>
+										{:else if albumInLibrary}
+											<p class="search-entity-row__status search-entity-row__status--success">
+												{#if $downloadPreferencesStore.storage === 'server'}
+													Already in local library. Redownload will overwrite.
+												{:else}
+													Already in local library. Browser redownloads may append (2).
+												{/if}
+											</p>
+										{/if}
+									</div>
+								</article>
+							{/each}
+						</div>
+					</section>
+				{/if}
+
+				{#if artistResults.length > 0}
+					<section id="search-section-artists" class="search-section">
+						<header class="search-section__header">
+							<h2 class="search-section__title">Artists</h2>
+							<span class="search-section__count">{artistResults.length}</span>
+						</header>
+						<div class="search-entity-list search-entity-list--compact">
+							{#each artistResults as artist (artist.id)}
+								<a
+									href={`/artist/${artist.id}`}
+									class="search-entity-row search-entity-row--link"
+									aria-label={`Open artist ${artist.name}`}
+									data-sveltekit-preload-data
+								>
+									<div class="search-entity-row__artwork search-entity-row__artwork--round">
+										{#if artist.picture}
+											<img
+												src={losslessAPI.getArtistPictureUrl(artist.picture)}
+												alt={artist.name}
+												class="search-entity-row__image"
+											/>
+										{:else}
+											<div class="search-entity-row__placeholder">
+												<User size={40} />
+											</div>
+										{/if}
+									</div>
+									<div class="search-entity-row__body">
+										<h3 class="search-entity-row__title">{artist.name}</h3>
+										<p class="search-entity-row__subtitle">
+											{artist.type && artist.type.trim().length > 0 ? artist.type : 'Artist'}
+										</p>
+									</div>
+								</a>
+							{/each}
+						</div>
+					</section>
+				{/if}
+
+				{#if playlistResults.length > 0}
+					<section id="search-section-playlists" class="search-section">
+						<header class="search-section__header">
+							<h2 class="search-section__title">Playlists</h2>
+							<span class="search-section__count">{playlistResults.length}</span>
+						</header>
+						<div class="search-entity-list">
+							{#each playlistResults as playlist (playlist.uuid)}
+								<article class="search-entity-row search-entity-row--playlist">
+									<a
+										href={`/playlist/${playlist.uuid}`}
+										class="search-entity-row__main"
+										aria-label={`Open playlist ${playlist.title}`}
+										data-sveltekit-preload-data
+									>
+										<div class="search-entity-row__artwork">
+										{#if playlist.squareImage || playlist.image}
+											<img
+												src={losslessAPI.getCoverUrl(playlist.squareImage || playlist.image, '640')}
+												alt={playlist.title}
+												class="search-entity-row__image"
+											/>
+										{:else}
+											<div class="search-entity-row__placeholder">
+												<List size={24} />
+											</div>
+										{/if}
+										</div>
+										<div class="search-entity-row__body">
+											<h3 class="search-entity-row__title">{playlist.title}</h3>
+											<p class="search-entity-row__subtitle">{playlist.creator.name}</p>
+											<p class="search-entity-row__meta">
+												{displayTrackTotal(playlist.numberOfTracks)}
+												track{displayTrackTotal(playlist.numberOfTracks) === 1 ? '' : 's'}
+												{#if playlist.duration}
+													• {losslessAPI.formatDuration(playlist.duration)}
+												{/if}
+											</p>
+										</div>
+									</a>
+									{#if playlist.promotedArtists?.[0]}
+										<div class="search-entity-row__actions">
+											<a
+												href={`/artist/${playlist.promotedArtists[0].id}`}
+												class="ui-chip-link"
+												data-sveltekit-preload-data
 											>
-												<ListVideo size={16} />
-												Play Next
-											</button>
-											<button
-												onclick={(event) => {
-													handleAddToQueue(track, event);
-													activeMenuId = null;
-												}}
-												class="search-track-menu__item"
-											>
-												<ListPlus size={16} />
-												Add to Queue
-											</button>
-											<div class="search-track-menu__divider"></div>
-											<button
-												onclick={(event) => {
-													event.stopPropagation();
-													copyToClipboard(getLongLink('track', track.id));
-													activeMenuId = null;
-												}}
-												class="search-track-menu__item"
-											>
-												<Link2 size={16} />
-												Share Link
-											</button>
-											<button
-												onclick={(event) => {
-													event.stopPropagation();
-													copyToClipboard(getShortLink('track', track.id));
-													activeMenuId = null;
-												}}
-												class="search-track-menu__item"
-											>
-												<Copy size={16} />
-												Share Short Link
-											</button>
-											<button
-												onclick={(event) => {
-													event.stopPropagation();
-													copyToClipboard(getEmbedCode('track', track.id));
-													activeMenuId = null;
-												}}
-												class="search-track-menu__item"
-											>
-												<Code size={16} />
-												Copy Embed Code
-											</button>
+												<User size={14} />
+												Featured Artist
+											</a>
 										</div>
 									{/if}
-								</div>
-							</div>
-						{/if}
-						{#if !('isSonglinkTrack' in track && track.isSonglinkTrack)}
-							<span class="search-track-row__duration">{losslessAPI.formatDuration(track.duration)}</span>
-						{/if}
-					</div>
-				{/each}
+								</article>
+							{/each}
+						</div>
+					</section>
+				{/if}
 			</div>
-		{:else if $searchStore.activeTab === 'albums' && ($searchStore.results?.albums ?? []).length > 0}
-			<div class="ui-media-grid ui-media-grid--albums">
-				{#each ($searchStore.results?.albums ?? []) as album (album.id)}
-					{@const albumDownloadState =
-						albumDownloadStates[album.id] ??
-						createDefaultAlbumDownloadState(album.numberOfTracks ?? 0)}
-					{@const canCancelAlbumDownload = isAlbumQueueDownloadCancellable(albumDownloadState)}
-					{@const albumInLibrary = albumLibraryPresence[album.id]?.exists === true}
-					<EntityMediaCard
-						type="album"
-						href={`/album/${album.id}`}
-						title={album.title}
-						subtitle={album.artist?.name}
-						meta={`${album.releaseDate ? `${album.releaseDate.split('-')[0]} • ` : ''}${displayTrackTotal(album.numberOfTracks)} track${displayTrackTotal(album.numberOfTracks) === 1 ? '' : 's'}`}
-						class="search-media-card group"
-					>
-						{#snippet badge()}
-							{#if albumInLibrary}
-								<span class="search-media-card__badge" title="Already in local library">In Library</span>
-							{/if}
-						{/snippet}
-						{#snippet action()}
-							<button
-								onclick={(event) =>
-									canCancelAlbumDownload
-										? cancelAlbumQueueDownload(album.id, event)
-										: handleAlbumDownloadClick(album, event)}
-								type="button"
-								class="search-media-card__action-btn"
-								disabled={albumDownloadState.status === 'submitting'}
-								aria-label={
-									canCancelAlbumDownload
-										? `Stop download ${album.title}`
-										: albumDownloadState.status === 'paused'
-											? `Resume download ${album.title}`
-											: `Download ${album.title}`
-								}
-								aria-busy={albumDownloadState.status === 'submitting' || albumDownloadState.status === 'queued' || albumDownloadState.downloading}
-							>
-								{#if canCancelAlbumDownload}
-									<X size={16} />
-								{:else if albumDownloadState.status === 'submitting' || albumDownloadState.downloading}
-									<LoaderCircle size={16} class="animate-spin" />
-								{:else if albumDownloadState.status === 'paused'}
-									<RotateCcw size={16} />
-								{:else}
-									<Download size={16} />
-								{/if}
-							</button>
-						{/snippet}
-						{#snippet artwork()}
-							{#if album.videoCover}
-								<video
-									src={losslessAPI.getVideoCoverUrl(album.videoCover, '640')}
-									poster={album.cover ? losslessAPI.getCoverUrl(album.cover, '640') : undefined}
-									aria-label={album.title}
-									class="search-media-card__image"
-									autoplay
-									loop
-									muted
-									playsinline
-									preload="metadata"
-								></video>
-							{:else if album.cover}
-								{@const coverCacheKey = getCoverCacheKey({
-									coverId: album.cover,
-									size: '640',
-									proxy: false,
-									overrideKey: `search:${album.id}`
-								})}
-								{@const coverCandidates = getUnifiedCoverCandidates({
-									coverId: album.cover,
-									size: '640',
-									proxy: false,
-									includeLowerSizes: true
-								})}
-								<CoverArt
-									cacheKey={coverCacheKey}
-									candidates={coverCandidates}
-									alt={album.title}
-									class="search-media-card__image"
-								/>
-							{:else}
-								<div class="search-media-card__placeholder">
-									<Disc size={24} />
-								</div>
-							{/if}
-						{/snippet}
-						{#snippet footer()}
-							{#if albumDownloadState.status === 'queued'}
-								<p class="search-media-status">Queued on server…</p>
-							{:else if albumDownloadState.downloading}
-								<p class="search-media-status">
-									Downloading
-									{#if albumDownloadState.total}
-										{albumDownloadState.completed ?? 0}/{displayTrackTotal(
-											albumDownloadState.total ?? 0
-										)}
-									{:else}
-										{albumDownloadState.completed ?? 0}
-									{/if}
-									tracks…
-								</p>
-							{:else if albumDownloadState.status === 'completed'}
-								<p class="search-media-status search-media-status--success">Download completed.</p>
-							{:else if albumDownloadState.status === 'cancelled'}
-								<p class="search-media-status search-media-status--warning">Download stopped.</p>
-							{:else if albumDownloadState.status === 'paused'}
-								<p class="search-media-status search-media-status--warning">Download paused.</p>
-							{:else if albumDownloadState.error}
-								<p class="search-media-status search-media-status--error" role="alert">
-									{albumDownloadState.error}
-								</p>
-							{:else if albumInLibrary}
-								<p class="search-media-status search-media-status--success">
-									{#if $downloadPreferencesStore.storage === 'server'}
-										Already in local library. Redownload will overwrite.
-									{:else}
-										Already in local library. Browser redownloads may append (2).
-									{/if}
-								</p>
-							{/if}
-						{/snippet}
-					</EntityMediaCard>
-				{/each}
-			</div>
-		{:else if $searchStore.activeTab === 'artists' && ($searchStore.results?.artists ?? []).length > 0}
-			<div class="ui-media-grid ui-media-grid--artists">
-				{#each ($searchStore.results?.artists ?? []) as artist (artist.id)}
-					<EntityMediaCard
-						type="artist"
-						href={`/artist/${artist.id}`}
-						title={artist.name}
-						subtitle={artist.type && artist.type.trim().length > 0 ? artist.type : 'Artist'}
-						links={[{ href: `/artist/${artist.id}`, label: 'Open Artist' }]}
-						class="search-media-card search-media-card--artist"
-					>
-						{#snippet artwork()}
-							{#if artist.picture}
-								<img
-									src={losslessAPI.getArtistPictureUrl(artist.picture)}
-									alt={artist.name}
-									class="search-media-card__image"
-								/>
-							{:else}
-								<div class="search-media-card__placeholder">
-									<User size={40} />
-								</div>
-							{/if}
-						{/snippet}
-					</EntityMediaCard>
-				{/each}
-			</div>
-		{:else if $searchStore.activeTab === 'playlists' && ($searchStore.results?.playlists ?? []).length > 0}
-			<div class="ui-media-grid ui-media-grid--playlists">
-				{#each ($searchStore.results?.playlists ?? []) as playlist (playlist.uuid)}
-					<EntityMediaCard
-						type="playlist"
-						href={`/playlist/${playlist.uuid}`}
-						title={playlist.title}
-						subtitle={playlist.creator.name}
-						meta={`${displayTrackTotal(playlist.numberOfTracks)} track${displayTrackTotal(playlist.numberOfTracks) === 1 ? '' : 's'}${playlist.duration ? ` • ${losslessAPI.formatDuration(playlist.duration)}` : ''}`}
-						links={[
-							{ href: `/playlist/${playlist.uuid}`, label: 'Open Playlist' },
-							...(playlist.promotedArtists?.[0]
-								? [{ href: `/artist/${playlist.promotedArtists[0].id}`, label: 'View Featured Artist' }]
-								: [])
-						]}
-						class="search-media-card search-media-card--playlist"
-					>
-						{#snippet artwork()}
-							{#if playlist.squareImage || playlist.image}
-								<img
-									src={losslessAPI.getCoverUrl(playlist.squareImage || playlist.image, '640')}
-									alt={playlist.title}
-									class="search-media-card__image"
-								/>
-							{:else}
-								<div class="search-media-card__placeholder">
-									<List size={24} />
-								</div>
-							{/if}
-						{/snippet}
-					</EntityMediaCard>
-				{/each}
-			</div>
-			<!-- News Section -->
+			{#if $searchStore.isLoading}
+				<div class="search-inline-status mt-4">
+					<LoaderCircle class="animate-spin" size={18} />
+					<span>Finding more results…</span>
+				</div>
+			{/if}
 		{:else if !$searchStore.query.trim()}
-			<ToolPanel
-				eyebrow="Updates"
-				title="News"
-				subtitle="Recent changes to search, streaming, and downloads."
-				panelRole="search-news"
-			>
-				<section class="search-news-grid">
+			<section class="search-section search-section--news">
+				<header class="search-section__header">
+					<h2 class="search-section__title">News</h2>
+					<span class="search-section__count">{newsItems.length}</span>
+				</header>
+				<div class="search-news-list">
 					{#each newsItems as item, i (i)}
-						<article class="search-news-card ui-surface-card">
-							<div class="search-news-card__header">
-								<div class="search-news-card__icon">
-									<Newspaper size={18} />
-								</div>
-								<h3 class="search-news-card__title">{item.title}</h3>
+						<article class="search-news-item">
+							<div class="search-news-item__icon">
+								<Newspaper size={18} />
 							</div>
-							<p class="search-news-card__body">{item.description}</p>
+							<div class="search-news-item__body">
+								<h3 class="search-news-item__title">{item.title}</h3>
+								<p class="search-news-item__text">{item.description}</p>
+							</div>
 						</article>
 					{/each}
-				</section>
-			</ToolPanel>
-		{:else if isQueryATidalUrl && !$searchStore.isLoading}
+				</div>
+			</section>
+		{:else if isQueryATidalUrl}
 			<div class="py-12 text-center text-gray-400">
 				<div class="flex flex-col items-center gap-4">
 					<Link2 size={48} class="text-white/85" />
@@ -1566,136 +1623,53 @@
 					<p class="text-sm">Click Search to load this content</p>
 				</div>
 			</div>
-		{:else if $searchStore.query.trim() && !$searchStore.isLoading && !isQueryATidalUrl}
-			<div class="py-12 text-center text-gray-400">
-				<p>No results found...</p>
-			</div>
+		{:else if !$searchStore.isLoading}
+			<StateBlock
+				kind="empty"
+				title="No results found"
+				message="Try a different query or disable strict artist match."
+			/>
 		{/if}
-	{/if}
 	{/if}
 </div>
 
 <style>
-	:global(.search-media-card) {
-		gap: 0.58rem;
-	}
-
-	.search-media-card__badge {
-		position: absolute;
-		top: 0.78rem;
-		left: 0.78rem;
-		z-index: 20;
-		padding: 0.2rem 0.44rem;
-		border-radius: 999px;
-		font-size: 0.56rem;
-		font-weight: 700;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		border: 1px solid var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		background: rgba(255, 255, 255, 0.14);
-		color: rgba(245, 245, 245, 0.94);
-	}
-
-	.search-media-card__action-btn {
-		position: absolute;
-		top: 0.74rem;
-		right: 0.74rem;
-		z-index: 30;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 2rem;
-		height: 2rem;
-		border-radius: 999px;
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
-		color: rgba(236, 236, 236, 0.92);
-		cursor: pointer;
-		transition:
-			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
-	}
-
-	.search-media-card__action-btn:hover:not(:disabled) {
-		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
-		transform: translateY(var(--ui-lift-y, -1px));
-	}
-
-	.search-media-card__action-btn:active:not(:disabled) {
-		transform: translateY(var(--ui-press-y, 0px));
-	}
-
-	.search-media-card__action-btn:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-	}
-
-	.search-media-card__image {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		transition: transform var(--ui-motion-medium, 200ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
-	}
-
-	:global(.search-media-card:hover .search-media-card__image) {
-		transform: scale(1.01);
-	}
-
-	.search-media-card__placeholder {
+	.search-toolbar-stack {
 		display: flex;
-		width: 100%;
-		height: 100%;
-		align-items: center;
-		justify-content: center;
-		color: rgba(163, 163, 163, 0.78);
-		background: rgba(255, 255, 255, 0.05);
+		flex-direction: column;
+		gap: 0.72rem;
 	}
 
-	.search-media-status {
-		margin: 0;
-		font-size: 0.64rem;
-		line-height: 1.35;
-		color: rgba(212, 212, 212, 0.82);
+	.search-toolbar {
+		padding: 1rem 1.06rem;
+		border: 1px solid rgba(255, 255, 255, 0.14);
+		border-radius: var(--ui-radius-md, 12px);
+		background: rgba(10, 10, 10, 0.42);
+		display: flex;
+		flex-direction: column;
+		gap: 0.62rem;
 	}
 
-	.search-media-status--success {
-		color: rgba(230, 230, 230, 0.9);
-	}
-
-	.search-media-status--warning {
-		color: rgba(218, 218, 218, 0.88);
-	}
-
-	.search-media-status--error {
-		color: rgba(206, 206, 206, 0.9);
-	}
-
-	:global(.search-media-card--artist .ui-media-card__body),
-	:global(.search-media-card--artist .ui-media-card__links) {
-		align-items: center;
-		text-align: center;
-	}
-
-	.search-input-panel {
-		padding: 0.82rem 0.92rem;
-		gap: 0.52rem;
-	}
-
-	.search-input-panel--secondary {
+	.search-toolbar--secondary {
 		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
-		box-shadow: none;
+	}
+
+	.search-toolbar__label {
+		font-size: 0.74rem;
+		font-weight: 700;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: rgba(184, 184, 184, 0.82);
 	}
 
 	.search-input-panel__row {
 		display: flex;
 		align-items: center;
-		gap: 0.52rem;
-		padding: 0.18rem 0.24rem;
+		gap: 0.62rem;
+		padding: 0.2rem 0.34rem;
 		border-radius: var(--ui-radius-sm, 8px);
 		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: rgba(10, 10, 10, 0.58);
+		background: rgba(10, 10, 10, 0.52);
 	}
 
 	.search-input-panel__input {
@@ -1703,8 +1677,8 @@
 		min-width: 0;
 		border: 0;
 		background: transparent;
-		padding: 0.34rem 0.2rem;
-		font-size: 1rem;
+		padding: 0.5rem 0.24rem;
+		font-size: 1.04rem;
 		line-height: 1.4;
 		color: rgba(245, 245, 245, 0.96);
 		outline: none;
@@ -1715,17 +1689,28 @@
 		min-width: 7.4rem;
 	}
 
+	.search-inline-status {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.62rem;
+		padding: 0.72rem 0.9rem;
+		border: 1px solid rgba(255, 255, 255, 0.14);
+		border-radius: var(--ui-radius-sm, 9px);
+		background: rgba(10, 10, 10, 0.38);
+		color: rgba(234, 234, 234, 0.9);
+	}
+
 	.search-input-panel__toggle {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.44rem;
-		font-size: 0.86rem;
+		gap: 0.5rem;
+		font-size: 0.92rem;
 		color: rgba(212, 212, 212, 0.82);
 	}
 
 	.search-input-panel__toggle input[type='checkbox'] {
-		width: 1rem;
-		height: 1rem;
+		width: 1.08rem;
+		height: 1.08rem;
 		border-radius: 0.2rem;
 		accent-color: #f3f3f3;
 	}
@@ -1740,33 +1725,190 @@
 		opacity: 1;
 	}
 
-	.search-tab-row {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.48rem;
-	}
-
 	.search-tab-chip {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.4rem;
-		font-size: 0.95rem;
-		padding-inline: 0.75rem;
+		gap: 0.44rem;
+		font-size: 0.96rem;
+		padding-inline: 0.84rem;
+	}
+
+	.search-section-nav {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.56rem;
+		padding-bottom: 0.42rem;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+	}
+
+	.search-tab-chip__count {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 1.64rem;
+		height: 1.3rem;
+		padding: 0 0.42rem;
+		border-radius: 999px;
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		font-size: 0.8rem;
+		font-weight: 700;
+		color: rgba(226, 226, 226, 0.92);
+	}
+
+	.search-sections {
+		display: flex;
+		flex-direction: column;
+		gap: 1.42rem;
+	}
+
+	.search-section {
+		display: flex;
+		flex-direction: column;
+		gap: 0.74rem;
+	}
+
+	.search-section__header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.6rem;
+		padding: 0.2rem 0.16rem;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+	}
+
+	.search-section__title {
+		margin: 0;
+		font-size: 1.2rem;
+		font-weight: 700;
+		line-height: 1.28;
+		color: rgba(245, 245, 245, 0.96);
+	}
+
+	.search-section__count {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 1.8rem;
+		height: 1.34rem;
+		padding: 0 0.48rem;
+		border-radius: 999px;
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		font-size: 0.82rem;
+		font-weight: 700;
+		color: rgba(226, 226, 226, 0.92);
+	}
+
+	.search-section__actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.6rem;
+	}
+
+	.search-section__meta {
+		margin-left: auto;
+		font-size: 0.9rem;
+		color: rgba(176, 176, 176, 0.82);
+	}
+
+	.search-loading {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	.search-loading__section {
+		display: flex;
+		flex-direction: column;
+		gap: 0;
+		border: 1px solid rgba(255, 255, 255, 0.14);
+		border-radius: var(--ui-radius-md, 12px);
+		overflow: hidden;
+		background: rgba(10, 10, 10, 0.4);
+	}
+
+	.search-loading__title {
+		width: 8.6rem;
+		height: 1.1rem;
+		margin: 0.95rem 0.95rem 0.6rem;
+		border-radius: 999px;
+		background: rgba(255, 255, 255, 0.12);
+		animation: search-skeleton 1.4s ease-in-out infinite;
+	}
+
+	.search-loading__title--short {
+		width: 6rem;
+	}
+
+	.search-loading__row {
+		display: flex;
+		align-items: center;
+		gap: 0.72rem;
+		padding: 0.78rem 0.95rem;
+		border-top: 1px solid rgba(255, 255, 255, 0.07);
+	}
+
+	.search-loading__thumb {
+		flex-shrink: 0;
+		width: 3rem;
+		height: 3rem;
+		border-radius: 0.56rem;
+		background: rgba(255, 255, 255, 0.1);
+		animation: search-skeleton 1.4s ease-in-out infinite;
+	}
+
+	.search-loading__line-group {
+		display: flex;
+		flex: 1;
+		flex-direction: column;
+		gap: 0.44rem;
+	}
+
+	.search-loading__line {
+		height: 0.72rem;
+		border-radius: 999px;
+		background: rgba(255, 255, 255, 0.1);
+		animation: search-skeleton 1.4s ease-in-out infinite;
+	}
+
+	.search-loading__line--lg {
+		width: 62%;
+	}
+
+	.search-loading__line--sm {
+		width: 36%;
+	}
+
+	.search-track-list {
+		display: flex;
+		flex-direction: column;
+		border: 1px solid rgba(255, 255, 255, 0.14);
+		border-radius: var(--ui-radius-md, 12px);
+		overflow: hidden;
+		background: rgba(10, 10, 10, 0.4);
 	}
 
 	.search-track-row {
+		display: flex;
+		align-items: center;
 		padding: 0.58rem 0.66rem;
-		gap: 0.6rem;
-		box-shadow: none;
+		gap: 0.68rem;
+		cursor: pointer;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 		transition:
 			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
 			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
 	}
 
+	.search-track-row:last-child {
+		border-bottom: 0;
+	}
+
 	.search-track-row:hover,
 	.search-track-row:focus-within {
-		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		background: var(--ui-surface-interactive, #171717);
+		background: var(--ui-surface-interactive, #161616);
 	}
 
 	.search-track-row:focus-visible {
@@ -1779,6 +1921,169 @@
 		font-weight: 600;
 		color: rgba(196, 196, 196, 0.86);
 		white-space: nowrap;
+	}
+
+	.search-entity-list {
+		display: flex;
+		flex-direction: column;
+		border: 1px solid rgba(255, 255, 255, 0.14);
+		border-radius: var(--ui-radius-md, 12px);
+		overflow: hidden;
+		background: rgba(10, 10, 10, 0.4);
+	}
+
+	.search-entity-list--compact .search-entity-row--link {
+		padding-block: 0.68rem;
+	}
+
+	.search-entity-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.76rem;
+		padding: 0.72rem 0.84rem;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+	}
+
+	.search-entity-row:last-child {
+		border-bottom: 0;
+	}
+
+	.search-entity-row--link {
+		text-decoration: none;
+		color: inherit;
+	}
+
+	.search-entity-row__main {
+		display: flex;
+		align-items: center;
+		gap: 0.86rem;
+		min-width: 0;
+		flex: 1;
+		color: inherit;
+		text-decoration: none;
+	}
+
+	.search-entity-row__main:hover .search-entity-row__title,
+	.search-entity-row--link:hover .search-entity-row__title {
+		color: rgba(250, 250, 250, 0.99);
+	}
+
+	.search-entity-row__artwork {
+		width: 4.25rem;
+		height: 4.25rem;
+		border-radius: var(--ui-radius-sm, 9px);
+		overflow: hidden;
+		flex-shrink: 0;
+		border: 1px solid rgba(255, 255, 255, 0.14);
+		background: rgba(255, 255, 255, 0.05);
+	}
+
+	.search-entity-row__artwork--round {
+		border-radius: 999px;
+	}
+
+	.search-entity-row__image {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+
+	.search-entity-row__placeholder {
+		display: flex;
+		width: 100%;
+		height: 100%;
+		align-items: center;
+		justify-content: center;
+		color: rgba(168, 168, 168, 0.76);
+		background: rgba(255, 255, 255, 0.04);
+	}
+
+	.search-entity-row__body {
+		display: flex;
+		flex: 1;
+		min-width: 0;
+		flex-direction: column;
+		gap: 0.16rem;
+	}
+
+	.search-entity-row__title {
+		margin: 0;
+		font-size: 1.04rem;
+		line-height: 1.28;
+		font-weight: 700;
+		color: rgba(241, 241, 241, 0.96);
+	}
+
+	.search-entity-row__subtitle {
+		margin: 0;
+		font-size: 0.92rem;
+		line-height: 1.32;
+		color: rgba(204, 204, 204, 0.84);
+	}
+
+	.search-entity-row__meta {
+		margin: 0;
+		font-size: 0.82rem;
+		line-height: 1.32;
+		color: rgba(174, 174, 174, 0.78);
+	}
+
+	.search-entity-row__actions {
+		display: flex;
+		min-width: 12rem;
+		flex-direction: column;
+		align-items: flex-end;
+		justify-content: center;
+		gap: 0.36rem;
+	}
+
+	.search-entity-row__action-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2.15rem;
+		height: 2.15rem;
+		border-radius: 999px;
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: rgba(255, 255, 255, 0.06);
+		color: rgba(236, 236, 236, 0.92);
+		cursor: pointer;
+		transition:
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
+	}
+
+	.search-entity-row__action-btn:hover:not(:disabled) {
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+		background: rgba(255, 255, 255, 0.12);
+		transform: translateY(var(--ui-lift-y, -1px));
+	}
+
+	.search-entity-row__action-btn:disabled {
+		opacity: 0.55;
+		cursor: not-allowed;
+	}
+
+	.search-entity-row__status {
+		margin: 0;
+		text-align: right;
+		font-size: 0.76rem;
+		line-height: 1.36;
+		color: rgba(202, 202, 202, 0.84);
+	}
+
+	.search-entity-row__status--success {
+		color: rgba(227, 227, 227, 0.95);
+	}
+
+	.search-entity-row__status--warning {
+		color: rgba(213, 213, 213, 0.9);
+	}
+
+	.search-entity-row__status--error {
+		color: rgba(200, 200, 200, 0.95);
 	}
 
 	.search-track-menu {
@@ -1839,67 +2144,124 @@
 		border-top: 1px solid rgba(255, 255, 255, 0.1);
 	}
 
-	.search-news-grid {
-		display: grid;
-		gap: 0.75rem;
-	}
-
-	@media (min-width: 700px) {
-		.search-news-grid {
-			grid-template-columns: repeat(2, minmax(0, 1fr));
-		}
-	}
-
-	.search-news-card {
+	.search-news-list {
 		display: flex;
 		flex-direction: column;
-		gap: 0.58rem;
-		padding: 0.9rem;
-		box-shadow: none;
+		border: 1px solid rgba(255, 255, 255, 0.14);
+		border-radius: var(--ui-radius-md, 12px);
+		overflow: hidden;
+		background: rgba(10, 10, 10, 0.4);
 	}
 
-	.search-news-card__header {
-		display: inline-flex;
+	.search-news-item {
+		display: flex;
 		align-items: center;
-		gap: 0.6rem;
+		gap: 0.72rem;
+		padding: 0.82rem 0.9rem;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 	}
 
-	.search-news-card__icon {
+	.search-news-item:last-child {
+		border-bottom: 0;
+	}
+
+	.search-news-item__icon {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 1.95rem;
-		height: 1.95rem;
+		width: 2rem;
+		height: 2rem;
 		border-radius: var(--ui-radius-sm, 8px);
 		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 		color: rgba(228, 228, 228, 0.9);
+		flex-shrink: 0;
 	}
 
-	.search-news-card__title {
+	.search-news-item__body {
+		display: flex;
+		min-width: 0;
+		flex-direction: column;
+		gap: 0.22rem;
+	}
+
+	.search-news-item__title {
 		margin: 0;
-		font-size: 1.01rem;
+		font-size: 1.02rem;
 		line-height: 1.3;
 		color: rgba(242, 242, 242, 0.96);
 	}
 
-	.search-news-card__body {
+	.search-news-item__text {
 		margin: 0;
 		font-size: 0.9rem;
-		line-height: 1.45;
+		line-height: 1.4;
 		color: rgba(206, 206, 206, 0.84);
 	}
 
-	@media (prefers-reduced-motion: reduce) {
-		.search-media-card__image,
-		.search-media-card__action-btn,
-		.search-track-menu__trigger,
-		.search-news-card {
-			transition: none;
+	@keyframes search-skeleton {
+		0%,
+		100% {
+			opacity: 0.42;
+		}
+		50% {
+			opacity: 0.82;
+		}
+	}
+
+	@media (max-width: 900px) {
+		.search-entity-row {
+			padding: 0.68rem 0.76rem;
 		}
 
-		:global(.search-media-card:hover .search-media-card__image),
-		.search-media-card__action-btn:hover:not(:disabled),
+		.search-entity-row__actions {
+			min-width: 10.4rem;
+		}
+	}
+
+	@media (max-width: 700px) {
+		.search-section__actions {
+			gap: 0.5rem;
+		}
+
+		.search-entity-row {
+			align-items: flex-start;
+			flex-direction: column;
+			gap: 0.62rem;
+		}
+
+		.search-entity-row--link {
+			align-items: center;
+			flex-direction: row;
+		}
+
+		.search-entity-row__main {
+			width: 100%;
+		}
+
+		.search-entity-row__actions {
+			width: 100%;
+			min-width: 0;
+			align-items: flex-start;
+		}
+
+		.search-entity-row__status {
+			text-align: left;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.search-loading__title,
+		.search-loading__thumb,
+		.search-loading__line,
+		.search-entity-row__action-btn,
+		.search-track-menu__trigger,
+		.search-tab-chip {
+			transition: none;
+			animation: none;
+		}
+
+		.search-entity-row__action-btn:hover:not(:disabled),
 		.search-track-menu__trigger:hover {
 			transform: none;
 		}

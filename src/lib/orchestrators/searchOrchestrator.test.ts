@@ -286,6 +286,44 @@ describe('SearchOrchestrator', () => {
 			});
 		});
 
+		it('aggregates all sections in one search pass when requested', async () => {
+			mockExecuteTabSearch
+				.mockResolvedValueOnce({
+					success: true,
+					results: { tracks: [mockTrack], albums: [], artists: [], playlists: [] }
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					results: { tracks: [], albums: [mockAlbum], artists: [], playlists: [] }
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					results: {
+						tracks: [],
+						albums: [],
+						artists: [{ id: 99, name: 'Artist', type: 'MAIN' }],
+						playlists: []
+					}
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					results: { tracks: [], albums: [], artists: [], playlists: [mockPlaylist] }
+				});
+
+			const result = await orchestrator.search('test query', 'albums', {
+				region: 'us',
+				aggregateAllTabs: true
+			});
+
+			expect(result.workflow).toBe('standard');
+			expect(result.success).toBe(true);
+			expect(mockExecuteTabSearch).toHaveBeenCalledTimes(4);
+			expect(mockExecuteTabSearch).toHaveBeenNthCalledWith(1, 'test query', 'tracks', 'us');
+			expect(mockExecuteTabSearch).toHaveBeenNthCalledWith(2, 'test query', 'albums', 'us');
+			expect(mockExecuteTabSearch).toHaveBeenNthCalledWith(3, 'test query', 'artists', 'us');
+			expect(mockExecuteTabSearch).toHaveBeenNthCalledWith(4, 'test query', 'playlists', 'us');
+		});
+
 		it('does not dedupe album in-flight searches across different artist filters', async () => {
 			let resolveFirst: (value: unknown) => void;
 			let resolveSecond: (value: unknown) => void;

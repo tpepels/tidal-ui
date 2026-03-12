@@ -10,9 +10,17 @@ import { losslessAPI } from '$lib/api';
 import type { Track, Album, Artist, Playlist, SonglinkTrack } from '$lib/types';
 export type SearchTab = 'tracks' | 'albums' | 'artists' | 'playlists';
 export type RegionOption = 'auto' | 'us' | 'eu';
+export type SearchProgressUpdate = {
+	tab: 'albums';
+	phase: 'base' | 'enriched';
+	items: Album[];
+	processedArtists?: number;
+	totalArtists?: number;
+};
 type SearchExecutionOptions = {
 	albumArtistQuery?: string;
 	strictAlbumArtistMatch?: boolean;
+	onProgress?: (update: SearchProgressUpdate) => void;
 };
 
 export interface SearchResults {
@@ -440,7 +448,8 @@ async function fetchEnrichedAlbumsFromTidal(
 	region: RegionOption | undefined,
 	artistQuery: string | undefined,
 	baseAlbums: Album[],
-	strictAlbumArtistMatch = false
+	strictAlbumArtistMatch = false,
+	onProgress?: (enrichedAlbums: Album[], progress: { processedArtists: number; totalArtists: number }) => void
 ): Promise<Album[]> {
 	const normalizedArtistQuery = normalizeToken(artistQuery ?? '');
 	const candidateArtistScores = new Map<number, number>();
@@ -547,9 +556,11 @@ async function fetchEnrichedAlbumsFromTidal(
 
 	const enrichedAlbums: Album[] = [];
 	let reachedLimit = false;
+	let processedArtists = 0;
 	await runWithConcurrency(artistIds, ARTIST_ENRICHMENT_CONCURRENCY, async (artistId) => {
-		if (reachedLimit) return;
+		let addedAlbums = false;
 		try {
+			if (reachedLimit) return;
 			// getArtist includes official-discography enrichment when available in browser context.
 			const artistDetails = await fetchWithRetry(() => losslessAPI.getArtist(artistId), 2, 220);
 			const albums = Array.isArray(artistDetails?.albums) ? artistDetails.albums : [];
@@ -558,6 +569,7 @@ async function fetchEnrichedAlbumsFromTidal(
 				if (!albumTitleMatchesQuery(album, albumQuery)) continue;
 				if (!albumMatchesArtistFilter(album, artistQuery ?? '', strictAlbumArtistMatch)) continue;
 				enrichedAlbums.push(album);
+				addedAlbums = true;
 				if (enrichedAlbums.length >= MAX_ENRICHED_ALBUMS) {
 					reachedLimit = true;
 					break;
@@ -565,6 +577,14 @@ async function fetchEnrichedAlbumsFromTidal(
 			}
 		} catch {
 			// Non-fatal.
+		} finally {
+			processedArtists += 1;
+			if (onProgress && (addedAlbums || processedArtists === artistIds.length)) {
+				onProgress([...enrichedAlbums], {
+					processedArtists,
+					totalArtists: artistIds.length
+				});
+			}
 		}
 	});
 
@@ -620,12 +640,32 @@ export async function executeTabSearch(
 							albumArtistQuery || undefined,
 							strictAlbumArtistMatch
 						);
+						options?.onProgress?.({
+							tab: 'albums',
+							phase: 'base',
+							items: [...baseItems]
+						});
 						const enrichedItems = await fetchEnrichedAlbumsFromTidal(
 							trimmedQuery,
 							region,
 							albumArtistQuery || undefined,
 							baseItems,
-							strictAlbumArtistMatch
+							strictAlbumArtistMatch,
+							(partialEnrichedItems, progress) => {
+								const mergedPartialItems = mergeAlbumResults(
+									baseItems,
+									partialEnrichedItems,
+									trimmedQuery,
+									albumArtistQuery || undefined
+								);
+								options?.onProgress?.({
+									tab: 'albums',
+									phase: 'enriched',
+									items: mergedPartialItems,
+									processedArtists: progress.processedArtists,
+									totalArtists: progress.totalArtists
+								});
+							}
 						);
 						const items =
 							enrichedItems.length > 0
