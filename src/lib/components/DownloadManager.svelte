@@ -1772,6 +1772,10 @@
 		--dm-warn: rgba(225, 225, 225, 0.92);
 		--dm-danger: rgba(205, 205, 205, 0.95);
 		--dm-section-radius: var(--ui-radius-md, 12px);
+		--dm-motion-fast: var(--ui-motion-fast, 140ms);
+		--dm-motion-medium: var(--ui-motion-medium, 200ms);
+		--dm-ease-standard: var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
+		--dm-ease-emphasis: var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 		font-family: var(--ui-font-sans, 'Figtree', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif);
 		font-size: 1rem;
 		line-height: 1.45;
@@ -1800,13 +1804,20 @@
 		color: var(--color-text-primary);
 		font-size: 22px;
 		box-shadow: var(--ui-shadow-soft, 0 10px 28px rgba(0, 0, 0, 0.22));
-		transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+		transition:
+			border-color var(--dm-motion-fast) var(--dm-ease-standard),
+			background var(--dm-motion-fast) var(--dm-ease-standard),
+			transform var(--dm-motion-fast) var(--dm-ease-emphasis);
 	}
 
 	.download-manager-toggle:hover {
 		transform: translateY(-1px);
 		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
 		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+	}
+
+	.download-manager-toggle:active {
+		transform: translateY(0);
 	}
 
 	.download-manager-badge {
@@ -2278,13 +2289,21 @@
 		font-size: 20px;
 		border-radius: var(--ui-radius-sm, 9px);
 		color: var(--color-text-secondary);
-		transition: all 0.2s;
+		transition:
+			background var(--dm-motion-fast) var(--dm-ease-standard),
+			color var(--dm-motion-fast) var(--dm-ease-standard),
+			transform var(--dm-motion-fast) var(--dm-ease-emphasis);
 		flex-shrink: 0;
 	}
 
 	.download-manager-close:hover {
 		background: var(--color-bg-secondary);
 		color: var(--color-text-primary);
+		transform: translateY(-1px);
+	}
+
+	.download-manager-close:active {
+		transform: translateY(0);
 	}
 
 	.download-manager-error {
@@ -2571,10 +2590,18 @@
 		padding: 4px 6px;
 		box-sizing: border-box;
 		min-height: 40px;
+		transition:
+			background var(--dm-motion-fast) var(--dm-ease-standard),
+			transform var(--dm-motion-fast) var(--dm-ease-emphasis);
 	}
 
 	.section-toggle:hover {
 		background: rgba(255, 255, 255, 0.04);
+		transform: translateY(-1px);
+	}
+
+	.section-toggle:active {
+		transform: translateY(0);
 	}
 
 	.section-title-main {
@@ -2786,7 +2813,9 @@
 	.failed-item-click {
 		cursor: pointer;
 		padding: 12px;
-		transition: background 0.2s;
+		transition:
+			background var(--dm-motion-fast) var(--dm-ease-standard),
+			transform var(--dm-motion-fast) var(--dm-ease-emphasis);
 		background: none;
 		border: none;
 		text-align: left;
@@ -2798,6 +2827,12 @@
 	.queue-item-click:hover,
 	.failed-item-click:hover {
 		background: rgba(255, 255, 255, 0.08);
+		transform: translateY(-1px);
+	}
+
+	.queue-item-click:active,
+	.failed-item-click:active {
+		transform: translateY(0);
 	}
 
 	.queue-item-main {
@@ -2980,11 +3015,18 @@
 	.failed-item-click {
 		cursor: pointer;
 		padding: 10px;
-		transition: background 0.2s;
+		transition:
+			background var(--dm-motion-fast) var(--dm-ease-standard),
+			transform var(--dm-motion-fast) var(--dm-ease-emphasis);
 	}
 
 	.failed-item-click:hover {
 		background: rgba(255, 255, 255, 0.12);
+		transform: translateY(-1px);
+	}
+
+	.failed-item-click:active {
+		transform: translateY(0);
 	}
 
 	.failed-item-main {
@@ -3054,7 +3096,11 @@
 		gap: 6px;
 		font-size: 12px;
 		font-weight: 600;
-		transition: all 0.2s;
+		transition:
+			border-color var(--dm-motion-fast) var(--dm-ease-standard),
+			background var(--dm-motion-fast) var(--dm-ease-standard),
+			color var(--dm-motion-fast) var(--dm-ease-standard),
+			transform var(--dm-motion-fast) var(--dm-ease-emphasis);
 		white-space: nowrap;
 		border: 1px solid transparent;
 		min-height: 40px;
@@ -3076,14 +3122,19 @@
 		background: rgba(255, 255, 255, 0.04);
 		min-height: 28px;
 		box-sizing: border-box;
+		transition:
+			border-color var(--dm-motion-fast) var(--dm-ease-standard),
+			background var(--dm-motion-fast) var(--dm-ease-standard),
+			transform var(--dm-motion-fast) var(--dm-ease-emphasis);
 	}
 
 	.item-action-btn:hover {
 		background: rgba(255, 255, 255, 0.08);
+		transform: translateY(-1px);
 	}
 
 	.item-action-btn:active {
-		transform: translateY(1px);
+		transform: translateY(0);
 	}
 
 	.item-action-btn:disabled,
@@ -3156,8 +3207,12 @@
 		cursor: not-allowed;
 	}
 
+	.control-btn:hover:not(:disabled) {
+		transform: translateY(-1px);
+	}
+
 	.control-btn:active:not(:disabled) {
-		transform: translateY(1px);
+		transform: translateY(0);
 	}
 
 	/* Empty state */
@@ -3203,11 +3258,18 @@
 		font-size: 12px;
 		font-weight: 600;
 		text-decoration: none;
-		transition: all 0.2s;
+		transition:
+			background var(--dm-motion-fast) var(--dm-ease-standard),
+			transform var(--dm-motion-fast) var(--dm-ease-emphasis);
 	}
 
 	.empty-cta-btn:hover {
 		background: rgba(245, 245, 245, 0.24);
+		transform: translateY(-1px);
+	}
+
+	.empty-cta-btn:active {
+		transform: translateY(0);
 	}
 
 	.empty-steps {

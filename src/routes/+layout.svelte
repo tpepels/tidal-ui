@@ -1830,15 +1830,19 @@
 		color: rgba(236, 236, 236, 0.95);
 		cursor: pointer;
 		transition:
-			border-color 150ms ease,
-			background-color 150ms ease,
-			transform 140ms ease;
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			background-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 	}
 
 	.sidebar-icon-btn:hover {
 		transform: translateY(-1px);
 		border-color: rgba(255, 255, 255, 0.65);
 		background: rgba(24, 24, 24, 0.62);
+	}
+
+	.sidebar-icon-btn:active {
+		transform: translateY(0);
 	}
 
 	.sidebar-action {
@@ -1858,10 +1862,10 @@
 		position: relative;
 		overflow: hidden;
 		transition:
-			border-color 140ms ease,
-			transform 140ms ease,
-			background-color 160ms ease,
-			box-shadow 160ms ease;
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1)),
+			background-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			box-shadow var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
 	}
 
 	.sidebar-action::after {
@@ -1882,6 +1886,10 @@
 
 	.sidebar-action:hover::after {
 		opacity: 1;
+	}
+
+	.sidebar-action:active:not(:disabled) {
+		transform: translateY(0);
 	}
 
 	.sidebar-action.is-active {
@@ -1959,10 +1967,18 @@
 		font-size: 0.94rem;
 		cursor: pointer;
 		backdrop-filter: blur(10px);
+		transition:
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 	}
 
 	.diagnostics-toggle:hover {
 		background: rgba(255, 255, 255, 0.22);
+		transform: translateY(-1px);
+	}
+
+	.diagnostics-toggle:active {
+		transform: translateY(0);
 	}
 
 	.glass-panel {
@@ -2034,9 +2050,9 @@
 		cursor: pointer;
 		text-align: left;
 		transition:
-			border-color 140ms ease,
-			transform 140ms ease,
-			box-shadow 160ms ease;
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1)),
+			box-shadow var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
 	}
 
 	.glass-option--compact {
@@ -2058,6 +2074,10 @@
 		transform: translateY(-1px) scale(1.002);
 		box-shadow: 0 10px 30px rgba(7, 7, 7, 0.3);
 		border-color: rgba(255, 255, 255, 0.44);
+	}
+
+	.glass-option:active {
+		transform: translateY(0);
 	}
 
 	.glass-option.is-active {
@@ -2151,9 +2171,9 @@
 		color: inherit;
 		cursor: pointer;
 		transition:
-			border-color 140ms ease,
-			box-shadow 160ms ease,
-			transform 160ms ease;
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			box-shadow var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 	}
 
 	.glass-action:disabled {
@@ -2165,6 +2185,10 @@
 		transform: translateY(-1px) scale(1.002);
 		border-color: rgba(255, 255, 255, 0.44);
 		box-shadow: none;
+	}
+
+	.glass-action:active:not(:disabled) {
+		transform: translateY(0);
 	}
 
 	.glass-action__label {

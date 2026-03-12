@@ -90,6 +90,10 @@ a[aria-disabled='true'] {
 	--ui-border-subtle: rgba(255, 255, 255, 0.1);
 	--ui-border-strong: rgba(255, 255, 255, 0.22);
 	--ui-shadow-soft: 0 12px 38px rgba(0, 0, 0, 0.24);
+	--ui-motion-fast: 140ms;
+	--ui-motion-medium: 200ms;
+	--ui-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+	--ui-ease-emphasis: cubic-bezier(0.16, 1, 0.3, 1);
 	--mono-ink-0: #ffffff;
 	--mono-ink-1: #f2f2f2;
 	--mono-ink-2: #d8d8d8;
@@ -638,9 +642,10 @@ textarea {
 	color: inherit;
 	text-decoration: none;
 	transition:
-		border-color 140ms ease,
-		background 140ms ease,
-		box-shadow 140ms ease;
+		border-color var(--ui-motion-fast) var(--ui-ease-standard),
+		background var(--ui-motion-fast) var(--ui-ease-standard),
+		box-shadow var(--ui-motion-fast) var(--ui-ease-standard),
+		transform var(--ui-motion-fast) var(--ui-ease-emphasis);
 	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
@@ -649,10 +654,16 @@ textarea {
 	border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
 	background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
 	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+	transform: translateY(-1px);
 }
 
 .ui-chip-button {
 	cursor: pointer;
+}
+
+.ui-chip-link:active,
+.ui-chip-button:active:not(:disabled) {
+	transform: translateY(0);
 }
 
 .ui-chip-button:disabled {
@@ -700,9 +711,9 @@ textarea {
 	backdrop-filter: none;
 	-webkit-backdrop-filter: none;
 	transition:
-		border-color 150ms ease,
-		background 150ms ease,
-		transform 150ms ease;
+		border-color var(--ui-motion-fast) var(--ui-ease-standard),
+		background var(--ui-motion-fast) var(--ui-ease-standard),
+		transform var(--ui-motion-medium) var(--ui-ease-emphasis);
 }
 
 .ui-action-panel:hover,
@@ -746,8 +757,8 @@ textarea {
 	margin-top: 0.1rem;
 	border-top: 1px solid rgba(255, 255, 255, 0.08);
 	transition:
-		opacity 140ms ease,
-		transform 140ms ease;
+		opacity var(--ui-motion-fast) var(--ui-ease-standard),
+		transform var(--ui-motion-fast) var(--ui-ease-emphasis);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -778,15 +789,21 @@ textarea {
 	color: rgba(245, 245, 245, 0.94);
 	text-decoration: none;
 	transition:
-		border-color 140ms ease,
-		background 140ms ease,
-		box-shadow 140ms ease;
+		border-color var(--ui-motion-fast) var(--ui-ease-standard),
+		background var(--ui-motion-fast) var(--ui-ease-standard),
+		box-shadow var(--ui-motion-fast) var(--ui-ease-standard),
+		transform var(--ui-motion-fast) var(--ui-ease-emphasis);
 	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .ui-action-button:hover:not(:disabled) {
 	border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
 	background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+	transform: translateY(-1px);
+}
+
+.ui-action-button:active:not(:disabled) {
+	transform: translateY(0);
 }
 
 .ui-action-button:disabled {
@@ -825,14 +842,20 @@ textarea {
 	line-height: 1.25;
 	color: rgba(212, 212, 212, 0.82);
 	transition:
-		border-color 140ms ease,
-		background 140ms ease,
-		color 140ms ease;
+		border-color var(--ui-motion-fast) var(--ui-ease-standard),
+		background var(--ui-motion-fast) var(--ui-ease-standard),
+		color var(--ui-motion-fast) var(--ui-ease-standard),
+		transform var(--ui-motion-fast) var(--ui-ease-emphasis);
 }
 
 .ui-filter-chip:hover {
 	border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
 	color: rgba(245, 245, 245, 0.94);
+	transform: translateY(-1px);
+}
+
+.ui-filter-chip:active {
+	transform: translateY(0);
 }
 
 .ui-filter-chip--soft.is-active {
@@ -927,15 +950,21 @@ textarea {
 	text-decoration: none;
 	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 	transition:
-		border-color 140ms ease,
-		background 140ms ease,
-		box-shadow 140ms ease;
+		border-color var(--ui-motion-fast) var(--ui-ease-standard),
+		background var(--ui-motion-fast) var(--ui-ease-standard),
+		box-shadow var(--ui-motion-fast) var(--ui-ease-standard),
+		transform var(--ui-motion-fast) var(--ui-ease-emphasis);
 }
 
 .ui-link-card:hover {
 	border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
 	background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
 	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+	transform: translateY(-1px);
+}
+
+.ui-link-card:active {
+	transform: translateY(0);
 }
 
 .ui-link-card[data-active='true'] {
@@ -1014,9 +1043,9 @@ textarea {
 	backdrop-filter: none;
 	-webkit-backdrop-filter: none;
 	transition:
-		border-color 150ms ease,
-		background 150ms ease,
-		transform 150ms ease;
+		border-color var(--ui-motion-fast) var(--ui-ease-standard),
+		background var(--ui-motion-fast) var(--ui-ease-standard),
+		transform var(--ui-motion-medium) var(--ui-ease-emphasis);
 }
 
 .ui-media-card:hover,
@@ -1112,8 +1141,8 @@ textarea {
 	padding-top: 0.4rem;
 	border-top: 1px solid rgba(255, 255, 255, 0.08);
 	transition:
-		opacity 140ms ease,
-		transform 140ms ease;
+		opacity var(--ui-motion-fast) var(--ui-ease-standard),
+		transform var(--ui-motion-fast) var(--ui-ease-emphasis);
 }
 
 .ui-media-card__links--paired {
@@ -1135,8 +1164,9 @@ textarea {
 	color: inherit;
 	text-decoration: none;
 	transition:
-		border-color 140ms ease,
-		background 140ms ease;
+		border-color var(--ui-motion-fast) var(--ui-ease-standard),
+		background var(--ui-motion-fast) var(--ui-ease-standard),
+		transform var(--ui-motion-fast) var(--ui-ease-emphasis);
 }
 
 .ui-media-card__links--paired .ui-media-card__link {
@@ -1151,6 +1181,11 @@ textarea {
 .ui-media-card__link:hover {
 	border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
 	background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+	transform: translateY(-1px);
+}
+
+.ui-media-card__link:active {
+	transform: translateY(0);
 }
 
 @media (hover: hover) and (pointer: fine) {

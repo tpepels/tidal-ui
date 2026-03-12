@@ -1517,7 +1517,11 @@
 		color: inherit;
 		text-align: left;
 		cursor: pointer;
-		transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+		transition:
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			box-shadow var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 	}
 
@@ -1528,6 +1532,11 @@
 	.settings-choice:hover:not(:disabled) {
 		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
 		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+		transform: translateY(-1px);
+	}
+
+	.settings-choice:active:not(:disabled) {
+		transform: translateY(0);
 	}
 
 	.settings-choice.is-active {
@@ -1589,12 +1598,20 @@
 		color: inherit;
 		text-align: left;
 		cursor: pointer;
-		transition: border-color 140ms ease, background 140ms ease;
+		transition:
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 	}
 
 	.settings-toggle:hover:not(:disabled) {
 		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
 		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+		transform: translateY(-1px);
+	}
+
+	.settings-toggle:active:not(:disabled) {
+		transform: translateY(0);
 	}
 
 	.settings-toggle.is-active {
@@ -1653,7 +1670,9 @@
 		border-radius: 999px;
 		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 		background: rgba(22, 22, 22, 0.75);
-		transition: border-color 140ms ease, background 140ms ease;
+		transition:
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
 	}
 
 	.settings-toggle__switch.is-active {
@@ -1667,7 +1686,7 @@
 		height: 1.3rem;
 		border-radius: 999px;
 		background: rgba(245, 245, 245, 0.95);
-		transition: transform 160ms ease;
+		transition: transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 		transform: translateX(0);
 	}
 
@@ -1696,7 +1715,10 @@
 		font-size: 0.88rem;
 		font-weight: 620;
 		cursor: pointer;
-		transition: border-color 140ms ease, background 140ms ease;
+		transition:
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 	}
 
 	.settings-action--primary {
@@ -1707,6 +1729,11 @@
 	.settings-action:hover:not(:disabled) {
 		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
 		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+		transform: translateY(-1px);
+	}
+
+	.settings-action:active:not(:disabled) {
+		transform: translateY(0);
 	}
 
 	.settings-action:disabled {
