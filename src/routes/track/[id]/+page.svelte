@@ -18,6 +18,11 @@
 	let isLoading = $state(true);
 	let error = $state<string | null>(null);
 	let activeRequestToken = 0;
+	let musicBrainzTags = $state<Record<string, string>>({});
+	let isMusicBrainzLookupLoading = $state(false);
+	let musicBrainzLookupError = $state<string | null>(null);
+	let hasMusicBrainzLookupAttempted = $state(false);
+	let musicBrainzLookupToken = 0;
 
 	const trackId = $derived($page.params.id);
 	const downloadActionLabel = $derived(
@@ -31,6 +36,16 @@
 	const { downloadingIds, cancelledIds, handleCancelDownload, handleDownload } = trackDownloadUi;
 	const isDownloading = $derived(track ? $downloadingIds.has(track.id) : false);
 	const isCancelled = $derived(track ? $cancelledIds.has(track.id) : false);
+	const musicBrainzTrackId = $derived(musicBrainzTags.MUSICBRAINZ_TRACKID ?? '');
+	const musicBrainzReleaseId = $derived(musicBrainzTags.MUSICBRAINZ_ALBUMID ?? '');
+	const musicBrainzReleaseGroupId = $derived(musicBrainzTags.MUSICBRAINZ_RELEASEGROUPID ?? '');
+	const musicBrainzReleaseType = $derived(musicBrainzTags.MUSICBRAINZ_RELEASETYPE ?? '');
+	const musicBrainzArtistIds = $derived.by(() =>
+		(musicBrainzTags.MUSICBRAINZ_ARTISTID ?? '')
+			.split(';')
+			.map((id) => id.trim())
+			.filter((id) => id.length > 0)
+	);
 
 	$effect(() => {
 		const parsedTrackId = Number.parseInt(trackId ?? '', 10);
@@ -38,16 +53,83 @@
 			track = null;
 			error = 'Invalid track id';
 			isLoading = false;
+			musicBrainzLookupToken += 1;
+			musicBrainzTags = {};
+			isMusicBrainzLookupLoading = false;
+			musicBrainzLookupError = null;
+			hasMusicBrainzLookupAttempted = false;
 			return;
 		}
 		const requestToken = ++activeRequestToken;
 		void loadTrack(parsedTrackId, requestToken);
 	});
 
+	async function lookupTrackMusicBrainzMetadata(activeTrack: Track): Promise<void> {
+		const lookupToken = ++musicBrainzLookupToken;
+		isMusicBrainzLookupLoading = true;
+		musicBrainzLookupError = null;
+		hasMusicBrainzLookupAttempted = true;
+		try {
+			const response = await fetch('/api/metadata/musicbrainz', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					track: activeTrack
+				})
+			});
+			const payload = (await response.json().catch(() => null)) as {
+				success?: boolean;
+				error?: string;
+				tags?: Record<string, string>;
+			} | null;
+			if (
+				lookupToken !== musicBrainzLookupToken ||
+				!track ||
+				track.id !== activeTrack.id
+			) {
+				return;
+			}
+			if (!response.ok || !payload?.success) {
+				throw new Error(payload?.error || 'Failed to lookup MusicBrainz metadata');
+			}
+
+			const normalizedTags: Record<string, string> = {};
+			const payloadTags = payload.tags;
+			if (payloadTags && typeof payloadTags === 'object' && !Array.isArray(payloadTags)) {
+				for (const [key, value] of Object.entries(payloadTags)) {
+					if (typeof key !== 'string' || typeof value !== 'string') {
+						continue;
+					}
+					const normalizedValue = value.trim();
+					if (!normalizedValue) {
+						continue;
+					}
+					normalizedTags[key] = normalizedValue;
+				}
+			}
+			musicBrainzTags = normalizedTags;
+		} catch (lookupError) {
+			musicBrainzLookupError =
+				lookupError instanceof Error
+					? lookupError.message
+					: 'Failed to lookup MusicBrainz metadata';
+			musicBrainzTags = {};
+		} finally {
+			if (lookupToken === musicBrainzLookupToken) {
+				isMusicBrainzLookupLoading = false;
+			}
+		}
+	}
+
 	async function loadTrack(id: number, requestToken: number) {
 		try {
 			isLoading = true;
 			error = null;
+			musicBrainzLookupToken += 1;
+			musicBrainzTags = {};
+			isMusicBrainzLookupLoading = false;
+			musicBrainzLookupError = null;
+			hasMusicBrainzLookupAttempted = false;
 			const data = await losslessAPI.getTrack(id);
 			if (requestToken !== activeRequestToken) {
 				return;
@@ -78,6 +160,7 @@
 			if (track) {
 				browseState.setViewingTrack(track);
 			}
+			void lookupTrackMusicBrainzMetadata(data.track);
 		} catch (err) {
 			if (requestToken === activeRequestToken) {
 				error = err instanceof Error ? err.message : 'Failed to load track';
@@ -243,6 +326,115 @@
 
 						<ShareButton type="track" id={track.id} variant="secondary" />
 					</div>
+				</div>
+
+				<div class="ui-action-panel">
+					<div class="ui-action-subpanel__header">
+						<p class="ui-action-panel__intent">MusicBrainz Track Metadata</p>
+						<button
+							type="button"
+							onclick={() => lookupTrackMusicBrainzMetadata(track!)}
+							class="ui-chip-button ui-chip-button--compact"
+							disabled={isMusicBrainzLookupLoading}
+						>
+							{#if isMusicBrainzLookupLoading}
+								Refreshing…
+							{:else}
+								Refresh Metadata
+							{/if}
+						</button>
+					</div>
+					{#if isMusicBrainzLookupLoading && Object.keys(musicBrainzTags).length === 0}
+						<p class="ui-action-status">Resolving MusicBrainz metadata…</p>
+					{:else if Object.keys(musicBrainzTags).length > 0}
+						<div class="ui-data-grid">
+							{#if musicBrainzTrackId}
+								<div class="ui-data-point">
+									<p class="ui-data-point__label">Track MBID</p>
+									<p class="ui-data-point__value">{musicBrainzTrackId}</p>
+								</div>
+							{/if}
+							{#if musicBrainzReleaseId}
+								<div class="ui-data-point">
+									<p class="ui-data-point__label">Release MBID</p>
+									<p class="ui-data-point__value">{musicBrainzReleaseId}</p>
+								</div>
+							{/if}
+							{#if musicBrainzReleaseGroupId}
+								<div class="ui-data-point">
+									<p class="ui-data-point__label">Release Group</p>
+									<p class="ui-data-point__value">{musicBrainzReleaseGroupId}</p>
+								</div>
+							{/if}
+							{#if musicBrainzReleaseType}
+								<div class="ui-data-point">
+									<p class="ui-data-point__label">Release Type</p>
+									<p class="ui-data-point__value">{musicBrainzReleaseType}</p>
+								</div>
+							{/if}
+							{#if musicBrainzTags.MUSICBRAINZ_RELEASESTATUS}
+								<div class="ui-data-point">
+									<p class="ui-data-point__label">Release Status</p>
+									<p class="ui-data-point__value">{musicBrainzTags.MUSICBRAINZ_RELEASESTATUS}</p>
+								</div>
+							{/if}
+							{#if musicBrainzTags.MUSICBRAINZ_RELEASECOUNTRY}
+								<div class="ui-data-point">
+									<p class="ui-data-point__label">Release Country</p>
+									<p class="ui-data-point__value">{musicBrainzTags.MUSICBRAINZ_RELEASECOUNTRY}</p>
+								</div>
+							{/if}
+							{#if musicBrainzTags.BARCODE}
+								<div class="ui-data-point">
+									<p class="ui-data-point__label">Barcode</p>
+									<p class="ui-data-point__value">{musicBrainzTags.BARCODE}</p>
+								</div>
+							{/if}
+							{#if musicBrainzArtistIds.length > 0}
+								<div class="ui-data-point">
+									<p class="ui-data-point__label">Artist MBIDs</p>
+									<p class="ui-data-point__value">{musicBrainzArtistIds.length}</p>
+								</div>
+							{/if}
+						</div>
+						<div class="ui-action-row">
+							{#if musicBrainzTrackId}
+								<a
+									href={`https://musicbrainz.org/recording/${musicBrainzTrackId}`}
+									target="_blank"
+									rel="noreferrer"
+									class="ui-chip-button ui-chip-button--compact"
+								>
+									Open Recording
+								</a>
+							{/if}
+							{#if musicBrainzReleaseId}
+								<a
+									href={`https://musicbrainz.org/release/${musicBrainzReleaseId}`}
+									target="_blank"
+									rel="noreferrer"
+									class="ui-chip-button ui-chip-button--compact"
+								>
+									Open Release
+								</a>
+							{/if}
+							{#if musicBrainzArtistIds.length > 0}
+								<a
+									href={`https://musicbrainz.org/artist/${musicBrainzArtistIds[0]}`}
+									target="_blank"
+									rel="noreferrer"
+									class="ui-chip-button ui-chip-button--compact"
+								>
+									Open Artist
+								</a>
+							{/if}
+						</div>
+					{:else if hasMusicBrainzLookupAttempted}
+						<p class="ui-action-status">No MusicBrainz metadata match found for this track.</p>
+					{/if}
+					{#if musicBrainzLookupError}
+						<p class="ui-action-status" data-tone="error">{musicBrainzLookupError}</p>
+					{/if}
 				</div>
 			</div>
 		</div>

@@ -82,7 +82,6 @@
 	const recommendedAlbums = $derived(recommendations?.albums ?? []);
 	const FEATURED_DISCOGRAPHY_ALBUM_LIMIT = 12;
 	const discographyInfo = $derived(artist?.discographyInfo ?? null);
-	const enrichmentDiagnostics = $derived(discographyInfo?.enrichmentDiagnostics ?? null);
 	const downloadQuality = $derived($downloadPreferencesStore.downloadQuality as AudioQuality);
 	let bestEditionRule = $state<DiscographyBestEditionRule>('balanced');
 	let discographyFilterState = $state({
@@ -107,12 +106,6 @@
 			if (!discographyFilterState.clean && !traits.isExplicit) return false;
 			return true;
 		})
-	);
-	const duplicateCollapsedCount = $derived(
-		Math.max(0, rawDiscography.length - groupedDiscographyEntries.length)
-	);
-	const filteredOutCount = $derived(
-		Math.max(0, groupedDiscographyEntries.length - discographyEntries.length)
 	);
 	const hasGroupedDiscography = $derived(groupedDiscographyEntries.length > 0);
 	const filtersHideAllDiscography = $derived(hasGroupedDiscography && discographyEntries.length === 0);
@@ -143,18 +136,10 @@
 		});
 	});
 	const discography = $derived(discographyEntries.map((entry) => entry.representative));
-	const visibleDiscography = $derived(
-		discographyEntriesWithLoadedCovers.map((entry) => entry.representative)
-	);
-	const discographyAlbums = $derived(
-		discographyEntriesWithLoadedCovers.filter((entry) => entry.section === 'album')
-	);
-	const discographyEps = $derived(
-		discographyEntriesWithLoadedCovers.filter((entry) => entry.section === 'ep')
-	);
-	const discographySingles = $derived(
-		discographyEntriesWithLoadedCovers.filter((entry) => entry.section === 'single')
-	);
+	const visibleDiscography = $derived(discographyEntries.map((entry) => entry.representative));
+	const discographyAlbums = $derived(discographyEntries.filter((entry) => entry.section === 'album'));
+	const discographyEps = $derived(discographyEntries.filter((entry) => entry.section === 'ep'));
+	const discographySingles = $derived(discographyEntries.filter((entry) => entry.section === 'single'));
 	type AlbumTopTrackSignal = {
 		hits: number;
 		popularitySum: number;
@@ -226,31 +211,6 @@
 	const discographyMissingCoverCount = $derived(
 		Math.max(0, discographyEntries.length - discographyEntriesWithLoadedCovers.length)
 	);
-	const waitingForCoverLoads = $derived(
-		discographyEntries.length > 0 && visibleDiscography.length === 0
-	);
-	const recentMeaningfulEnrichmentPasses = $derived(
-		(enrichmentDiagnostics?.passes ?? [])
-			.filter(
-				(pass) =>
-					pass.name === 'official-tidal' ||
-					pass.accepted > 0 ||
-					pass.returned > 0 ||
-					pass.newlyAdded > 0 ||
-					(typeof pass.total === 'number' && pass.total > 0)
-			)
-			.slice(-4)
-	);
-	const zeroResultEnrichmentPasses = $derived(
-		(enrichmentDiagnostics?.passes ?? []).filter(
-			(pass) =>
-				pass.name !== 'official-tidal' &&
-				pass.accepted === 0 &&
-				pass.returned === 0 &&
-				pass.newlyAdded === 0 &&
-				(pass.total === undefined || pass.total === 0)
-		).length
-	);
 	const downloadMode = $derived($downloadPreferencesStore.mode);
 	const convertAacToMp3Preference = $derived($userPreferencesStore.convertAacToMp3);
 	const experimentalMusicBrainzTaggingPreference = $derived(
@@ -269,6 +229,18 @@
 		error: string | null;
 		failedTracks: number;
 		queueJobId: string | null;
+	};
+
+	type MusicBrainzArtistOption = {
+		id: string;
+		name?: string;
+		type?: string;
+		country?: string;
+		area?: string;
+		disambiguation?: string;
+		lifeSpanBegin?: string;
+		lifeSpanEnd?: string;
+		score?: number;
 	};
 
 	let isDownloadingDiscography = $state(false);
@@ -308,6 +280,7 @@
 	let activeArtistLoadId: number | null = null;
 	let albumLibraryLookupToken = 0;
 	let coverResolutionTick = $state(0);
+	let isDocumentVisible = $state(true);
 	const COVER_CANDIDATE_DELIMITER = '\n';
 	const FORCE_OVERWRITE_CONFIRMATION =
 		'This album is already in your local library. Redownload it and overwrite existing files?';
@@ -316,6 +289,18 @@
 	let recommendedArtistsRail = $state<HTMLDivElement | null>(null);
 	let recommendedAlbumsRail = $state<HTMLDivElement | null>(null);
 	let featuredDiscographyRail = $state<HTMLDivElement | null>(null);
+	let musicBrainzArtistOptions = $state<MusicBrainzArtistOption[]>([]);
+	let selectedMusicBrainzArtistId = $state<string>('');
+	let isMusicBrainzArtistLookupLoading = $state(false);
+	let musicBrainzArtistLookupError = $state<string | null>(null);
+	let hasMusicBrainzArtistLookupAttempted = $state(false);
+	let musicBrainzArtistLookupToken = 0;
+
+	const selectedMusicBrainzArtist = $derived.by(
+		() =>
+			musicBrainzArtistOptions.find((candidate) => candidate.id === selectedMusicBrainzArtistId) ??
+			null
+	);
 
 	$effect(() => {
 		const id = Number(artistId);
@@ -332,6 +317,12 @@
 			recommendations = null;
 			recommendationsLoading = false;
 			recommendationsError = null;
+			musicBrainzArtistLookupToken += 1;
+			musicBrainzArtistOptions = [];
+			selectedMusicBrainzArtistId = '';
+			isMusicBrainzArtistLookupLoading = false;
+			musicBrainzArtistLookupError = null;
+			hasMusicBrainzArtistLookupAttempted = false;
 			error = 'Invalid artist id';
 			isLoading = false;
 			return;
@@ -354,6 +345,11 @@
 	});
 
 	onMount(() => {
+		const updateDocumentVisibility = () => {
+			isDocumentVisible = document.visibilityState !== 'hidden';
+		};
+		updateDocumentVisibility();
+		document.addEventListener('visibilitychange', updateDocumentVisibility);
 		const unsubscribeCoverEvents = subscribeCoverPipelineEvents((event) => {
 			const currentArtistId = artist?.id;
 			if (!Number.isFinite(currentArtistId)) {
@@ -365,8 +361,24 @@
 			coverResolutionTick += 1;
 		});
 		return () => {
+			document.removeEventListener('visibilitychange', updateDocumentVisibility);
 			unsubscribeCoverEvents();
 		};
+	});
+
+	$effect(() => {
+		if (!artist) {
+			musicBrainzArtistOptions = [];
+			selectedMusicBrainzArtistId = '';
+			isMusicBrainzArtistLookupLoading = false;
+			musicBrainzArtistLookupError = null;
+			hasMusicBrainzArtistLookupAttempted = false;
+			return;
+		}
+		void lookupMusicBrainzArtists({
+			id: artist.id,
+			name: artist.name
+		});
 	});
 
 	function normalizeToken(value: string | null | undefined): string {
@@ -377,6 +389,112 @@
 			.toLowerCase()
 			.replace(/[^a-z0-9]+/g, ' ')
 			.trim();
+	}
+
+	function formatMusicBrainzArtistLifeSpan(candidate: MusicBrainzArtistOption): string | null {
+		const begin = candidate.lifeSpanBegin?.trim();
+		const end = candidate.lifeSpanEnd?.trim();
+		if (!begin && !end) {
+			return null;
+		}
+		if (begin && end) {
+			return `${begin} - ${end}`;
+		}
+		if (begin) {
+			return `${begin} - present`;
+		}
+		return end ?? null;
+	}
+
+	function pickDefaultMusicBrainzArtistId(
+		candidates: MusicBrainzArtistOption[],
+		artistName: string
+	): string {
+		if (candidates.length === 0) {
+			return '';
+		}
+		const normalizedTarget = normalizeToken(artistName);
+		if (!normalizedTarget) {
+			return candidates[0]?.id ?? '';
+		}
+		const exactMatch =
+			candidates.find((candidate) => normalizeToken(candidate.name) === normalizedTarget) ?? null;
+		if (exactMatch) {
+			return exactMatch.id;
+		}
+		const partialMatch =
+			candidates.find((candidate) => {
+				const normalizedCandidate = normalizeToken(candidate.name);
+				return (
+					normalizedCandidate.includes(normalizedTarget) ||
+					normalizedTarget.includes(normalizedCandidate)
+				);
+			}) ?? null;
+		if (partialMatch) {
+			return partialMatch.id;
+		}
+		return candidates[0]?.id ?? '';
+	}
+
+	async function lookupMusicBrainzArtists(
+		activeArtist: Pick<ArtistDetails, 'id' | 'name'>
+	): Promise<void> {
+		const lookupToken = ++musicBrainzArtistLookupToken;
+		isMusicBrainzArtistLookupLoading = true;
+		musicBrainzArtistLookupError = null;
+		hasMusicBrainzArtistLookupAttempted = true;
+		try {
+			const response = await fetch('/api/metadata/musicbrainz-artist-search', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					artistName: activeArtist.name,
+					limit: 10
+				})
+			});
+			const payload = (await response.json().catch(() => null)) as {
+				success?: boolean;
+				error?: string;
+				artists?: MusicBrainzArtistOption[];
+			} | null;
+			if (
+				lookupToken !== musicBrainzArtistLookupToken ||
+				!artist ||
+				artist.id !== activeArtist.id
+			) {
+				return;
+			}
+			if (!response.ok || !payload?.success) {
+				throw new Error(payload?.error || 'Failed to search MusicBrainz artists');
+			}
+
+			const candidates = Array.isArray(payload.artists)
+				? payload.artists.filter(
+						(candidate) => typeof candidate?.id === 'string' && candidate.id.length > 0
+					)
+				: [];
+			musicBrainzArtistOptions = candidates;
+			if (candidates.length === 0) {
+				selectedMusicBrainzArtistId = '';
+				return;
+			}
+			const hasExisting = candidates.some(
+				(candidate) => candidate.id === selectedMusicBrainzArtistId
+			);
+			if (hasExisting) {
+				return;
+			}
+			selectedMusicBrainzArtistId = pickDefaultMusicBrainzArtistId(candidates, activeArtist.name);
+		} catch (lookupError) {
+			musicBrainzArtistLookupError =
+				lookupError instanceof Error
+					? lookupError.message
+					: 'Failed to search MusicBrainz artists';
+		} finally {
+			if (lookupToken === musicBrainzArtistLookupToken) {
+				isMusicBrainzArtistLookupLoading = false;
+			}
+		}
 	}
 
 	function getReleaseYear(date?: string | null): string | null {
@@ -461,21 +579,6 @@
 			explicit: true,
 			clean: true
 		};
-	}
-
-	function formatEnrichmentPassName(name: 'artist-name' | 'official-tidal'): string {
-		if (name === 'official-tidal') return 'Official TIDAL API';
-		return 'Artist-name search';
-	}
-
-	function formatEnrichmentPassStatus(pass: {
-		name: 'artist-name' | 'official-tidal';
-		query: string;
-	}): string | null {
-		if (pass.name !== 'official-tidal') return null;
-		if (pass.query === 'official-discography') return 'active';
-		const [, detail = 'unavailable'] = pass.query.split(':', 2);
-		return detail.replace(/_/g, ' ');
 	}
 
 	function displayTrackTotal(total?: number | null): number {
@@ -833,7 +936,7 @@
 	}
 
 	$effect(() => {
-		if (!artist) return;
+		if (!artist || !isDocumentVisible) return;
 		const generation = coverHydrationGeneration;
 		for (const entry of discographyEntries) {
 			const album = entry.representative;
@@ -856,12 +959,11 @@
 	});
 
 	$effect(() => {
-		if (!artist || discographyEntries.length === 0) {
+		if (!artist || !isDocumentVisible || discographyEntries.length === 0) {
 			return;
 		}
 		const artistIdForKey = artist.id;
 		const batch = discographyEntries
-			.slice(0, 30)
 			.map((entry) => {
 				const representative = entry.representative;
 				const override = albumCoverOverrides[representative.id];
@@ -1465,6 +1567,12 @@
 		recommendations = null;
 		recommendationsLoading = false;
 		recommendationsError = null;
+		musicBrainzArtistLookupToken += 1;
+		musicBrainzArtistOptions = [];
+		selectedMusicBrainzArtistId = '';
+		isMusicBrainzArtistLookupLoading = false;
+		musicBrainzArtistLookupError = null;
+		hasMusicBrainzArtistLookupAttempted = false;
 
 		if (cachedArtist) {
 			const normalizedCached = normalizeArtistDetails(cachedArtist);
@@ -1637,6 +1745,106 @@
 					</div>
 				</div>
 
+				<div class="mb-6 ui-action-panel">
+					<div class="ui-action-subpanel__header">
+						<p class="ui-action-panel__intent">MusicBrainz Artist Metadata</p>
+						<button
+							type="button"
+							onclick={() =>
+								lookupMusicBrainzArtists({
+									id: artist!.id,
+									name: artist!.name
+								})}
+							class="ui-chip-button ui-chip-button--compact"
+							disabled={isMusicBrainzArtistLookupLoading}
+						>
+							{#if isMusicBrainzArtistLookupLoading}
+								Refreshing…
+							{:else}
+								Refresh Match
+							{/if}
+						</button>
+					</div>
+					{#if isMusicBrainzArtistLookupLoading && musicBrainzArtistOptions.length === 0}
+						<p class="ui-action-status">Searching MusicBrainz artists…</p>
+					{:else if musicBrainzArtistOptions.length > 0}
+						<label class="ui-action-panel__intent" for="musicbrainz-artist-select">
+							Selected Artist
+						</label>
+						<select
+							id="musicbrainz-artist-select"
+							class="ui-select w-full"
+							bind:value={selectedMusicBrainzArtistId}
+						>
+							{#each musicBrainzArtistOptions as candidate, index (candidate.id)}
+								<option value={candidate.id}>
+									{index === 0 ? 'Best Match - ' : ''}{candidate.name || 'Unnamed artist'}
+									{#if candidate.country}
+										· {candidate.country}
+									{/if}
+									{#if candidate.type}
+										· {candidate.type}
+									{/if}
+								</option>
+							{/each}
+						</select>
+						{#if selectedMusicBrainzArtist}
+							<div class="ui-data-grid">
+								{#if selectedMusicBrainzArtist.type}
+									<div class="ui-data-point">
+										<p class="ui-data-point__label">Type</p>
+										<p class="ui-data-point__value">{selectedMusicBrainzArtist.type}</p>
+									</div>
+								{/if}
+								{#if selectedMusicBrainzArtist.country}
+									<div class="ui-data-point">
+										<p class="ui-data-point__label">Country</p>
+										<p class="ui-data-point__value">{selectedMusicBrainzArtist.country}</p>
+									</div>
+								{/if}
+								{#if selectedMusicBrainzArtist.area}
+									<div class="ui-data-point">
+										<p class="ui-data-point__label">Area</p>
+										<p class="ui-data-point__value">{selectedMusicBrainzArtist.area}</p>
+									</div>
+								{/if}
+								{#if formatMusicBrainzArtistLifeSpan(selectedMusicBrainzArtist)}
+									<div class="ui-data-point">
+										<p class="ui-data-point__label">Life Span</p>
+										<p class="ui-data-point__value">
+											{formatMusicBrainzArtistLifeSpan(selectedMusicBrainzArtist)}
+										</p>
+									</div>
+								{/if}
+								{#if typeof selectedMusicBrainzArtist.score === 'number'}
+									<div class="ui-data-point">
+										<p class="ui-data-point__label">Match Score</p>
+										<p class="ui-data-point__value">{selectedMusicBrainzArtist.score}/100</p>
+									</div>
+								{/if}
+							</div>
+							{#if selectedMusicBrainzArtist.disambiguation}
+								<p class="ui-action-status">{selectedMusicBrainzArtist.disambiguation}</p>
+							{/if}
+							<p class="ui-action-status">
+								<a
+									href={`https://musicbrainz.org/artist/${selectedMusicBrainzArtist.id}`}
+									target="_blank"
+									rel="noopener noreferrer"
+									class="text-gray-300 underline decoration-dotted underline-offset-2 transition-colors hover:text-white"
+								>
+									Open artist in MusicBrainz
+								</a>
+							</p>
+						{/if}
+					{:else if hasMusicBrainzArtistLookupAttempted}
+						<p class="ui-action-status">No MusicBrainz artist match found for this artist.</p>
+					{/if}
+					{#if musicBrainzArtistLookupError}
+						<p class="ui-action-status" data-tone="error">{musicBrainzArtistLookupError}</p>
+					{/if}
+				</div>
+
 				<div class="mb-6 flex flex-wrap items-center gap-2">
 					{#if artist.popularity}
 						<div class="ui-meta-pill">
@@ -1689,11 +1897,11 @@
 				{/if}
 			</section>
 
-			<section>
+			<section class="artist-secondary-zone">
 				<div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
 					<div>
-						<h2 class="text-2xl font-semibold text-white">Recommendations</h2>
-						<p class="text-sm text-gray-400">
+						<h2 class="text-xl font-semibold text-gray-100">Discovery Suggestions</h2>
+						<p class="text-xs text-gray-400">
 							Related artists and albums based on {artist.name}&apos;s mix, not part of this
 							artist&apos;s official discography.
 						</p>
@@ -1725,7 +1933,7 @@
 						</p>
 					</div>
 				{:else if recommendedArtists.length > 0 || recommendedAlbums.length > 0}
-					<div class="recommendation-spotlight mt-6 space-y-6">
+					<div class="recommendation-spotlight mt-5 space-y-5">
 						<div class="recommendation-spotlight__intro">
 							<span class="recommendation-spotlight__badge">
 								<Sparkles size={13} />
@@ -1739,7 +1947,7 @@
 						{#if recommendedArtists.length > 0}
 							<div class="space-y-3">
 								<div class="flex items-center justify-between gap-3">
-									<h3 class="text-lg font-semibold text-white">Recommended Artists</h3>
+									<h3 class="text-base font-semibold text-gray-100">Recommended Artists</h3>
 									<span class="recommendation-count-pill">
 										{recommendedArtists.length}
 									</span>
@@ -1799,7 +2007,7 @@
 						{#if recommendedAlbums.length > 0}
 							<div class="space-y-3">
 								<div class="flex items-center justify-between gap-3">
-									<h3 class="text-lg font-semibold text-white">Recommended Albums</h3>
+									<h3 class="text-base font-semibold text-gray-100">Recommended Albums</h3>
 									<span class="recommendation-count-pill">
 										{recommendedAlbums.length}
 									</span>
@@ -1865,12 +2073,12 @@
 			</section>
 
 			{#if featuredDiscographyAlbums.length > 0}
-				<section>
+				<section class="artist-secondary-zone artist-secondary-zone--featured">
 					<div class="discography-featured">
 						<div class="discography-featured__header">
 							<div>
-								<h2 class="text-2xl font-semibold text-white">Recommended Albums</h2>
-								<p class="text-sm text-gray-300">
+								<h2 class="text-xl font-semibold text-gray-100">Discography Highlights</h2>
+								<p class="text-xs text-gray-400">
 									Best-known releases from {artist.name}, ranked using popularity and top-track
 									signals from the API.
 								</p>
@@ -1918,7 +2126,7 @@
 									overrideKey: `artist:${artist?.id ?? 0}:album:${album.id}`
 								})}
 								{@const resolvedCoverUrl = getResolvedCoverUrl(coverCacheKey)}
-								{@const coverImageUrl = resolvedCoverUrl ?? ''}
+								{@const coverImageUrl = resolvedCoverUrl ?? coverImageCandidates[0] ?? ''}
 								<EntityMediaCard
 									type="album"
 									href={`/album/${album.id}`}
@@ -1928,7 +2136,7 @@
 									data-recommendation-card="true"
 								>
 									{#snippet artwork()}
-										{#if coverImageUrl && !albumCoverFailures[album.id]}
+										{#if coverImageCandidates.length > 0 && !albumCoverFailures[album.id]}
 											<img
 												src={coverImageUrl}
 												data-album-id={album.id}
@@ -1958,7 +2166,7 @@
 				</section>
 			{/if}
 
-				<section>
+				<section class="artist-discography-primary">
 					<div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
 						<div>
 							<h2 class="text-2xl font-semibold text-white">Discography</h2>
@@ -2060,56 +2268,6 @@
 						{#if discographyInfo.reason}
 							<p class="mt-1 text-xs text-amber-100/90">{discographyInfo.reason}.</p>
 						{/if}
-						{#if discographyInfo.enrichedAlbumCount > 0}
-							<p class="mt-1 text-xs text-amber-100/90">
-								Enrichment already added {discographyInfo.enrichedAlbumCount} album{discographyInfo.enrichedAlbumCount === 1 ? '' : 's'}.
-							</p>
-						{/if}
-						{#if enrichmentDiagnostics}
-							<p class="mt-2 text-xs text-amber-100/90">
-								Enrichment queries: {enrichmentDiagnostics.queryCount}/{enrichmentDiagnostics.queryBudget}
-								{#if enrichmentDiagnostics.budgetExhausted}
-									(query budget reached)
-								{/if}
-							</p>
-							{#if enrichmentDiagnostics.duplicateQueriesSkipped > 0}
-								<p class="mt-1 text-xs text-amber-100/90">
-									Duplicate queries skipped: {enrichmentDiagnostics.duplicateQueriesSkipped}
-								</p>
-							{/if}
-							{#if zeroResultEnrichmentPasses > 0}
-								<p class="mt-1 text-xs text-amber-100/90">
-									{zeroResultEnrichmentPasses} enrichment quer{zeroResultEnrichmentPasses === 1 ? 'y returned' : 'ies returned'} no album results.
-								</p>
-							{/if}
-							{#if recentMeaningfulEnrichmentPasses.length > 0}
-								<div class="mt-2 space-y-1 text-xs text-amber-100/90">
-									{#each recentMeaningfulEnrichmentPasses as pass, index (`${pass.name}-${pass.query}-${index}`)}
-										<p class="truncate">
-											{formatEnrichmentPassName(pass.name)}:
-											{pass.accepted}/{pass.returned}
-											{#if pass.total !== undefined}
-												(of {pass.total})
-											{/if}
-											matched
-											{#if pass.newlyAdded > 0}
-												, +{pass.newlyAdded} added
-											{/if}
-											{#if formatEnrichmentPassStatus(pass)}
-												({formatEnrichmentPassStatus(pass)})
-											{/if}
-										</p>
-									{/each}
-								</div>
-							{/if}
-						{/if}
-					</div>
-				{:else if discographyInfo?.enrichedAlbumCount && discographyInfo.enrichedAlbumCount > 0}
-					<div class="mt-3 rounded-lg border border-emerald-800/40 bg-emerald-900/15 p-3 text-xs text-emerald-200">
-						<p>
-							Enrichment added {discographyInfo.enrichedAlbumCount} album{discographyInfo.enrichedAlbumCount === 1 ? '' : 's'}
-							beyond the source artist payload.
-						</p>
 					</div>
 				{/if}
 				{#if discographyError}
@@ -2117,18 +2275,9 @@
 				{/if}
 				{#if visibleDiscography.length > 0}
 					<div class="mt-6 space-y-8">
-						{#if duplicateCollapsedCount > 0 || filteredOutCount > 0 || discographyMissingCoverCount > 0}
+						{#if discographyMissingCoverCount > 0}
 							<p class="text-xs text-gray-500">
-									{#if duplicateCollapsedCount > 0}
-										Merged {duplicateCollapsedCount} duplicate resolution variant{duplicateCollapsedCount === 1 ? '' : 's'}.
-									{/if}
-									{#if filteredOutCount > 0}
-										Filtered out {filteredOutCount} release{filteredOutCount === 1 ? '' : 's'} by selection settings.
-									{/if}
-									{#if discographyMissingCoverCount > 0}
-										Hiding {discographyMissingCoverCount} release{discographyMissingCoverCount === 1 ? '' : 's'} without loaded cover art.
-									{/if}
-								Showing one version per release for {formatQualityLabel(downloadQuality)} quality preference.
+								Resolving cover art for {discographyMissingCoverCount} release{discographyMissingCoverCount === 1 ? '' : 's'} in the background.
 							</p>
 						{/if}
 						{#each [
@@ -2169,7 +2318,7 @@
 													overrideKey: `artist:${artist?.id ?? 0}:album:${album.id}`
 												})}
 												{@const resolvedCoverUrl = getResolvedCoverUrl(coverCacheKey)}
-												{@const coverImageUrl = resolvedCoverUrl ?? ''}
+												{@const coverImageUrl = resolvedCoverUrl ?? coverImageCandidates[0] ?? ''}
 												{@const albumDownloadState =
 													albumDownloadStates[album.id] ??
 													createDefaultAlbumDownloadState(album.numberOfTracks ?? 0)}
@@ -2218,7 +2367,7 @@
 														</button>
 													{/snippet}
 													{#snippet artwork()}
-														{#if coverImageUrl && !albumCoverFailures[album.id]}
+														{#if coverImageCandidates.length > 0 && !albumCoverFailures[album.id]}
 															<img
 																src={coverImageUrl}
 																data-album-id={album.id}
@@ -2287,10 +2436,6 @@
 								</button>
 							</div>
 						</div>
-					{:else if waitingForCoverLoads}
-						<div class="ui-surface-card mt-6 p-6 text-sm text-gray-300">
-							<p>Loading discography cover art. Albums will appear as soon as covers resolve.</p>
-						</div>
 					{:else}
 						<div class="ui-surface-card mt-6 p-6 text-sm text-gray-400">
 						<p>Discography information isn&apos;t available right now.</p>
@@ -2303,11 +2448,23 @@
 {/if}
 
 <style>
-	.recommendation-spotlight {
-		border: 1px solid rgba(255, 255, 255, 0.14);
-		background: rgba(255, 255, 255, 0.03);
+	.artist-secondary-zone {
+		border: 1px dashed rgba(255, 255, 255, 0.2);
 		border-radius: var(--ui-radius-md, 12px);
-		padding: 1rem;
+		padding: 0.95rem;
+		background: rgba(255, 255, 255, 0.015);
+	}
+
+	.artist-discography-primary {
+		border-top: 1px solid rgba(255, 255, 255, 0.18);
+		padding-top: 0.65rem;
+	}
+
+	.recommendation-spotlight {
+		border: 0;
+		background: transparent;
+		border-radius: var(--ui-radius-md, 12px);
+		padding: 0.1rem 0;
 	}
 
 	.recommendation-spotlight__intro {
@@ -2318,8 +2475,8 @@
 
 	.recommendation-spotlight__intro p {
 		margin: 0;
-		font-size: 0.82rem;
-		color: rgba(212, 212, 212, 0.9);
+		font-size: 0.76rem;
+		color: rgba(188, 188, 188, 0.84);
 	}
 
 	.recommendation-spotlight__badge {
@@ -2330,8 +2487,8 @@
 		border: 1px solid rgba(255, 255, 255, 0.2);
 		background: rgba(255, 255, 255, 0.05);
 		border-radius: var(--ui-radius-sm, 9px);
-		padding: 0.25rem 0.55rem;
-		font-size: 0.72rem;
+		padding: 0.2rem 0.48rem;
+		font-size: 0.66rem;
 		font-weight: 700;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
@@ -2344,8 +2501,8 @@
 		border: 1px solid rgba(255, 255, 255, 0.2);
 		background: rgba(255, 255, 255, 0.05);
 		border-radius: var(--ui-radius-sm, 9px);
-		padding: 0.2rem 0.65rem;
-		font-size: 0.74rem;
+		padding: 0.14rem 0.54rem;
+		font-size: 0.68rem;
 		color: rgba(234, 234, 234, 0.95);
 	}
 
@@ -2362,7 +2519,7 @@
 		border: 1px solid rgba(255, 255, 255, 0.16);
 		background: rgba(255, 255, 255, 0.04);
 		border-radius: var(--ui-radius-sm, 9px);
-		padding: 0.38rem 0.44rem;
+		padding: 0.28rem 0.34rem;
 		color: rgba(234, 234, 234, 0.95);
 		transition:
 			background-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
@@ -2381,8 +2538,8 @@
 	.recommendation-slider {
 		display: grid;
 		grid-auto-flow: column;
-		grid-auto-columns: minmax(220px, 300px);
-		gap: 0.85rem;
+		grid-auto-columns: minmax(180px, 230px);
+		gap: 0.65rem;
 		overflow-x: auto;
 		padding: 0.1rem 0.1rem 0.5rem;
 		scroll-snap-type: x mandatory;
@@ -2406,14 +2563,32 @@
 		scroll-snap-align: start;
 	}
 
+	:global(.recommendation-slider__item.ui-media-card) {
+		padding: 0.56rem;
+		gap: 0.42rem;
+		border-radius: var(--ui-radius-sm, 9px);
+	}
+
+	:global(.recommendation-slider__item .ui-media-card__title) {
+		font-size: 0.86rem;
+	}
+
+	:global(.recommendation-slider__item .ui-media-card__subtitle) {
+		font-size: 0.76rem;
+	}
+
+	:global(.recommendation-slider__item .ui-media-card__meta) {
+		font-size: 0.7rem;
+	}
+
 	.discography-featured {
 		display: flex;
 		flex-direction: column;
-		gap: 0.85rem;
-		border: 1px solid rgba(255, 255, 255, 0.14);
-		background: rgba(255, 255, 255, 0.03);
+		gap: 0.7rem;
+		border: 0;
+		background: transparent;
 		border-radius: var(--ui-radius-md, 12px);
-		padding: 1rem;
+		padding: 0.1rem 0;
 	}
 
 	.discography-featured__header {
@@ -2429,8 +2604,8 @@
 	}
 
 	:global(.discography-featured__item) {
-		border-color: rgba(255, 255, 255, 0.16);
-		background: rgba(255, 255, 255, 0.03);
+		border-color: rgba(255, 255, 255, 0.14);
+		background: rgba(255, 255, 255, 0.02);
 	}
 
 	.album-card-status {
@@ -2445,7 +2620,7 @@
 
 	@media (max-width: 900px) {
 		.recommendation-slider {
-			grid-auto-columns: minmax(230px, 76vw);
+			grid-auto-columns: minmax(180px, 62vw);
 		}
 	}
 

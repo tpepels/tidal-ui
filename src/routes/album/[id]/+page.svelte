@@ -116,6 +116,7 @@
 			albumLoadAbortController?.abort();
 			albumLoadAbortController = null;
 			stopQueuePolling();
+			musicBrainzReleaseLookupToken += 1;
 			album = null;
 			tracks = [];
 			error = 'Invalid album id';
@@ -136,6 +137,7 @@
 			albumLibraryTrackCount = 0;
 			isRepairingAlbum = false;
 			repairMessage = null;
+			musicBrainzReleaseLookupToken += 1;
 			musicBrainzReleaseOptions = [];
 			selectedMusicBrainzReleaseId = '';
 			isMusicBrainzReleaseLookupLoading = false;
@@ -159,6 +161,12 @@
 		try {
 			isLoading = true;
 			error = null;
+			musicBrainzReleaseLookupToken += 1;
+			musicBrainzReleaseOptions = [];
+			selectedMusicBrainzReleaseId = '';
+			isMusicBrainzReleaseLookupLoading = false;
+			musicBrainzReleaseLookupError = null;
+			hasMusicBrainzReleaseLookupAttempted = false;
 			const { album: albumData, tracks: albumTracks } = await losslessAPI.getAlbum(id, {
 				signal: controller.signal
 			});
@@ -293,7 +301,7 @@
 	);
 
 	async function lookupMusicBrainzReleases(options?: { manual?: boolean }): Promise<void> {
-		if (!album || !experimentalMusicBrainzTaggingPreference) {
+		if (!album) {
 			return;
 		}
 		const lookupToken = ++musicBrainzReleaseLookupToken;
@@ -367,14 +375,12 @@
 	}
 
 	$effect(() => {
-		if (!album || !experimentalMusicBrainzTaggingPreference) {
-			if (!experimentalMusicBrainzTaggingPreference) {
-				musicBrainzReleaseOptions = [];
-				selectedMusicBrainzReleaseId = '';
-				isMusicBrainzReleaseLookupLoading = false;
-				musicBrainzReleaseLookupError = null;
-				hasMusicBrainzReleaseLookupAttempted = false;
-			}
+		if (!album) {
+			musicBrainzReleaseOptions = [];
+			selectedMusicBrainzReleaseId = '';
+			isMusicBrainzReleaseLookupLoading = false;
+			musicBrainzReleaseLookupError = null;
+			hasMusicBrainzReleaseLookupAttempted = false;
 			return;
 		}
 		void lookupMusicBrainzReleases();
@@ -915,6 +921,105 @@
 						tracks{#if missingTrackLabel} (missing {missingTrackLabel}){/if}.
 					</p>
 				{/if}
+				<div class="mb-6 ui-action-panel">
+					<div class="ui-action-subpanel__header">
+						<p class="ui-action-panel__intent">MusicBrainz Release Metadata</p>
+						<button
+							type="button"
+							onclick={() => lookupMusicBrainzReleases({ manual: true })}
+							class="ui-chip-button ui-chip-button--compact"
+							disabled={isMusicBrainzReleaseLookupLoading}
+						>
+							{#if isMusicBrainzReleaseLookupLoading}
+								Refreshing…
+							{:else}
+								Refresh Matches
+							{/if}
+						</button>
+					</div>
+					{#if isMusicBrainzReleaseLookupLoading && musicBrainzReleaseOptions.length === 0}
+						<p class="ui-action-status">Searching MusicBrainz releases…</p>
+					{:else if musicBrainzReleaseOptions.length > 0}
+						<label class="ui-action-panel__intent" for="musicbrainz-release-select">
+							Selected Release
+						</label>
+						<select
+							id="musicbrainz-release-select"
+							class="ui-select w-full"
+							bind:value={selectedMusicBrainzReleaseId}
+						>
+							{#each musicBrainzReleaseOptions as release, index (release.id)}
+								<option value={release.id}>
+									{release.id === selectedMusicBrainzReleaseId
+										? 'Selected - '
+										: index === 0
+											? 'Best Score - '
+											: ''}{formatMusicBrainzReleaseOption(release)}
+								</option>
+							{/each}
+						</select>
+						{#if selectedMusicBrainzRelease}
+							<div class="ui-data-grid">
+								{#if selectedMusicBrainzRelease.trackCount}
+									<div class="ui-data-point">
+										<p class="ui-data-point__label">Track Count</p>
+										<p class="ui-data-point__value">{selectedMusicBrainzRelease.trackCount}</p>
+									</div>
+								{/if}
+								{#if selectedMusicBrainzRelease.date}
+									<div class="ui-data-point">
+										<p class="ui-data-point__label">Release Date</p>
+										<p class="ui-data-point__value">{selectedMusicBrainzRelease.date}</p>
+									</div>
+								{/if}
+								{#if selectedMusicBrainzRelease.country}
+									<div class="ui-data-point">
+										<p class="ui-data-point__label">Country</p>
+										<p class="ui-data-point__value">{selectedMusicBrainzRelease.country}</p>
+									</div>
+								{/if}
+								{#if selectedMusicBrainzRelease.status}
+									<div class="ui-data-point">
+										<p class="ui-data-point__label">Status</p>
+										<p class="ui-data-point__value">{selectedMusicBrainzRelease.status}</p>
+									</div>
+								{/if}
+								{#if selectedMusicBrainzRelease.barcode}
+									<div class="ui-data-point">
+										<p class="ui-data-point__label">Barcode</p>
+										<p class="ui-data-point__value">{selectedMusicBrainzRelease.barcode}</p>
+									</div>
+								{/if}
+								<div class="ui-data-point">
+									<p class="ui-data-point__label">Release MBID</p>
+									<p class="ui-data-point__value">{selectedMusicBrainzRelease.id}</p>
+								</div>
+							</div>
+							<p class="ui-action-status">
+								<a
+									href={`https://musicbrainz.org/release/${selectedMusicBrainzRelease.id}`}
+									target="_blank"
+									rel="noreferrer"
+									class="text-gray-300 underline decoration-dotted underline-offset-2 transition-colors hover:text-white"
+								>
+									Open release in MusicBrainz
+								</a>
+							</p>
+						{/if}
+					{:else if hasMusicBrainzReleaseLookupAttempted}
+						<p class="ui-action-status">No MusicBrainz release matches found for this album.</p>
+					{/if}
+					{#if musicBrainzReleaseLookupError}
+						<p class="ui-action-status" data-tone="error">{musicBrainzReleaseLookupError}</p>
+					{/if}
+					<p class="ui-action-status">
+						{#if experimentalMusicBrainzTaggingPreference}
+							The selected release is used for MusicBrainz tagging when downloading this album.
+						{:else}
+							Enable experimental MusicBrainz tagging in Settings to apply this release when downloading.
+						{/if}
+					</p>
+				</div>
 
 				{#if tracks.length > 0}
 					<div class="ui-action-panel ui-action-panel--intentful">
@@ -993,75 +1098,6 @@
 							{/if}
 							<ShareButton type="album" id={album.id} variant="secondary" />
 						</div>
-							{#if experimentalMusicBrainzTaggingPreference}
-								<div class="ui-action-subpanel">
-									<div class="ui-action-subpanel__header">
-										<p class="ui-action-panel__intent">MusicBrainz Release</p>
-										<button
-											type="button"
-											onclick={() => lookupMusicBrainzReleases({ manual: true })}
-											class="ui-chip-button ui-chip-button--compact"
-											disabled={isMusicBrainzReleaseLookupLoading}
-									>
-										{#if isMusicBrainzReleaseLookupLoading}
-											Refreshing…
-										{:else}
-											Refresh Matches
-										{/if}
-									</button>
-								</div>
-								{#if isMusicBrainzReleaseLookupLoading && musicBrainzReleaseOptions.length === 0}
-									<p class="text-sm text-gray-400">Searching MusicBrainz releases…</p>
-								{:else if musicBrainzReleaseOptions.length > 0}
-										<label class="ui-action-panel__intent" for="musicbrainz-release-select">
-											Selected Release
-										</label>
-										<select
-											id="musicbrainz-release-select"
-											class="ui-select w-full"
-											bind:value={selectedMusicBrainzReleaseId}
-										>
-										{#each musicBrainzReleaseOptions as release, index (release.id)}
-											<option value={release.id}>
-												{release.id === selectedMusicBrainzReleaseId
-													? 'Selected - '
-													: index === 0
-														? 'Best Score - '
-														: ''}{formatMusicBrainzReleaseOption(release)}
-											</option>
-										{/each}
-									</select>
-										{#if selectedMusicBrainzRelease}
-											<p class="mt-2 text-sm text-gray-400">
-												{#if selectedMusicBrainzRelease.barcode}
-													Barcode: {selectedMusicBrainzRelease.barcode} -
-												{/if}
-												Release ID: {selectedMusicBrainzRelease.id}
-											</p>
-										<p class="mt-1 text-sm text-gray-400">
-											<a
-												href={`https://musicbrainz.org/release/${selectedMusicBrainzRelease.id}`}
-												target="_blank"
-												rel="noreferrer"
-												class="text-emerald-300 hover:text-emerald-200"
-											>
-												Open Release in MusicBrainz
-											</a>
-										</p>
-									{/if}
-								{:else if hasMusicBrainzReleaseLookupAttempted}
-									<p class="text-sm text-gray-400">
-										No release matches found for this album.
-									</p>
-								{/if}
-								{#if musicBrainzReleaseLookupError}
-									<p class="mt-2 text-sm text-red-300">{musicBrainzReleaseLookupError}</p>
-								{/if}
-								<p class="mt-2 text-sm text-gray-500">
-									The selected release is used for MusicBrainz tagging when downloading this album.
-								</p>
-							</div>
-						{/if}
 						{#if queueStatus === 'queued'}
 							<p class="ui-action-status" data-tone="info">
 								Queued on server. Open Download Manager for live progress.

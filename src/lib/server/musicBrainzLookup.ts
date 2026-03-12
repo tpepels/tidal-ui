@@ -26,6 +26,11 @@ export interface MusicBrainzReleaseSearchParams {
 	limit?: number;
 }
 
+export interface MusicBrainzArtistSearchParams {
+	artistName?: string;
+	limit?: number;
+}
+
 export interface MusicBrainzReleaseCandidate {
 	id: string;
 	title?: string;
@@ -38,6 +43,18 @@ export interface MusicBrainzReleaseCandidate {
 	releaseGroupId?: string;
 	primaryType?: string;
 	secondaryTypes?: string[];
+}
+
+export interface MusicBrainzArtistCandidate {
+	id: string;
+	name?: string;
+	type?: string;
+	country?: string;
+	area?: string;
+	disambiguation?: string;
+	lifeSpanBegin?: string;
+	lifeSpanEnd?: string;
+	score?: number;
 }
 
 const MUSICBRAINZ_API_BASE = 'https://musicbrainz.org/ws/2';
@@ -117,6 +134,30 @@ interface MusicBrainzIsrcLookupResponse {
 
 interface MusicBrainzReleaseSearchResponse {
 	releases?: MusicBrainzRelease[];
+}
+
+interface MusicBrainzArea {
+	name?: string;
+}
+
+interface MusicBrainzLifeSpan {
+	begin?: string;
+	end?: string;
+}
+
+interface MusicBrainzArtistResult {
+	id?: string;
+	name?: string;
+	type?: string;
+	country?: string;
+	disambiguation?: string;
+	score?: number | string;
+	area?: MusicBrainzArea;
+	'life-span'?: MusicBrainzLifeSpan;
+}
+
+interface MusicBrainzArtistSearchResponse {
+	artists?: MusicBrainzArtistResult[];
 }
 
 interface CacheEntry {
@@ -746,6 +787,27 @@ function scoreReleaseCandidate(
 	return score;
 }
 
+function scoreArtistCandidate(
+	artist: MusicBrainzArtistResult,
+	params: MusicBrainzArtistSearchParams
+): number {
+	const expectedArtistName = normalizeToken(params.artistName);
+	const candidateName = normalizeToken(artist.name);
+	let score = Number(artist.score ?? 0) || 0;
+	if (!expectedArtistName || !candidateName) {
+		return score;
+	}
+	if (candidateName === expectedArtistName) {
+		score += 180;
+	} else if (
+		candidateName.includes(expectedArtistName) ||
+		expectedArtistName.includes(candidateName)
+	) {
+		score += 70;
+	}
+	return score;
+}
+
 export async function searchMusicBrainzReleases(
 	params: MusicBrainzReleaseSearchParams
 ): Promise<MusicBrainzReleaseCandidate[]> {
@@ -799,6 +861,40 @@ export async function searchMusicBrainzReleases(
 		secondaryTypes: (release['release-group']?.['secondary-types'] ?? [])
 			.map((value) => sanitizeTagValue(value))
 			.filter((value): value is string => Boolean(value))
+		}));
+}
+
+export async function searchMusicBrainzArtists(
+	params: MusicBrainzArtistSearchParams
+): Promise<MusicBrainzArtistCandidate[]> {
+	const artistName = normalizeLookupText(params.artistName);
+	if (!artistName) {
+		return [];
+	}
+	const limit = clampReleaseSearchLimit(params.limit);
+	const query = `artist:"${escapeQueryValue(artistName)}"`;
+	const url = `${MUSICBRAINZ_API_BASE}/artist?query=${encodeURIComponent(query)}&fmt=json&limit=${limit}`;
+	const payload = await fetchMusicBrainzJson<MusicBrainzArtistSearchResponse>(url);
+	const seen = new Set<string>();
+	const artists = (payload.artists ?? [])
+		.filter((artist) => {
+			const id = normalizeReleaseId(artist.id);
+			if (!id) return false;
+			if (seen.has(id)) return false;
+			seen.add(id);
+			return true;
+		})
+		.sort((a, b) => scoreArtistCandidate(b, params) - scoreArtistCandidate(a, params));
+	return artists.map((artist) => ({
+		id: normalizeReleaseId(artist.id) as string,
+		name: sanitizeTagValue(artist.name),
+		type: sanitizeTagValue(artist.type),
+		country: sanitizeTagValue(artist.country),
+		area: sanitizeTagValue(artist.area?.name),
+		disambiguation: sanitizeTagValue(artist.disambiguation),
+		lifeSpanBegin: sanitizeTagValue(artist['life-span']?.begin),
+		lifeSpanEnd: sanitizeTagValue(artist['life-span']?.end),
+		score: Number.isFinite(Number(artist.score)) ? Math.trunc(Number(artist.score)) : undefined
 	}));
 }
 
