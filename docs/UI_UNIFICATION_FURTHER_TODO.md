@@ -7,6 +7,7 @@ Goal: keep all user-visible screens on one shared element grammar that is clear,
 - Remaining inconsistency is mostly in shared primitives and secondary UI:
   - Some shared components still used smaller typography than primary panels (notably API status + page state blocks).
   - Sidebar metadata/section labels were visually smaller than the new baseline.
+  - Some operational sections still felt visually nested ("card in card in card"), especially in Download Center detail lists and Status metric/detail blocks.
   - Manual visual QA is still needed for edge-case spacing and interaction rhythm across breakpoints and reduced-motion mode.
 - Risk level: low for functionality, medium for visual consistency polish.
 
@@ -43,3 +44,9 @@ Goal: keep all user-visible screens on one shared element grammar that is clear,
 - [x] Lift secondary route typography (`history`, `library-suggestions`) to match the larger readability baseline.
 - [x] Lift legacy detail-header/meta typography on `album` and `playlist` pages to the same baseline.
 - [x] Remove remaining ultra-small labels in Download Center status chips/hero/top-strip metadata.
+
+### Phase 4: De-Nesting Pass (In Progress)
+- [x] Download Center page mode: flatten section/list surfaces to line-separated rows (remove repeated inner card chrome).
+- [x] Status page: flatten metric/detail/error blocks and avoid card-in-card states for in-panel empties/loading.
+- [x] Settings page: simplify inner control surfaces and add cleaner section dividers per block.
+- [ ] Manual pass on remaining non-operational routes for nested-surface cleanup (`artist`, `album`, `playlist`, `search`).

@@ -284,7 +284,12 @@
 					{/each}
 				</ul>
 			{:else}
-				<PageState kind="empty" title="No domain spikes" message="No domain-specific error concentration detected." />
+				<PageState
+					kind="empty"
+					title="No domain spikes"
+					message="No domain-specific error concentration detected."
+					embedded={true}
+				/>
 			{/if}
 		</section>
 
@@ -318,9 +323,9 @@
 					{/each}
 				</ul>
 			{:else if diagnosticsLoading}
-				<PageState kind="loading" title="Loading errors" message="Fetching latest error telemetry." />
+				<PageState kind="loading" title="Loading errors" message="Fetching latest error telemetry." embedded={true} />
 			{:else}
-				<PageState kind="empty" title="No errors recorded" message="No recent errors are currently tracked." />
+				<PageState kind="empty" title="No errors recorded" message="No recent errors are currently tracked." embedded={true} />
 			{/if}
 		</section>
 
@@ -353,7 +358,12 @@
 					<pre class="status-page__json">{JSON.stringify(diagnosticsPersisted, null, 2)}</pre>
 				</details>
 			{:else}
-				<PageState kind="empty" title="No persisted summary" message="A persisted snapshot will appear after errors are tracked." />
+				<PageState
+					kind="empty"
+					title="No persisted summary"
+					message="A persisted snapshot will appear after errors are tracked."
+					embedded={true}
+				/>
 			{/if}
 		</section>
 
@@ -379,7 +389,7 @@
 	}
 
 	.status-page__panel {
-		gap: 0.58rem;
+		gap: 0.66rem;
 	}
 
 	.section-heading {
@@ -410,24 +420,23 @@
 
 	.status-page__metric-grid {
 		display: grid;
-		gap: 0.54rem;
-		grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+		gap: 0.46rem;
+		grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 	}
 
 	.status-page__metric {
 		margin: 0;
-		padding: 0.6rem 0.66rem;
-		border-radius: var(--ui-radius-sm, 9px);
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		padding: 0.32rem 0;
+		background: transparent;
 		display: flex;
-		flex-direction: column;
-		gap: 0.16rem;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 0.35rem;
 	}
 
 	.status-page__metric-label {
 		margin: 0;
-		font-size: 0.74rem;
+		font-size: 0.76rem;
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
 		color: rgba(163, 163, 163, 0.86);
@@ -435,23 +444,22 @@
 
 	.status-page__metric-value {
 		margin: 0;
-		font-size: 1.02rem;
+		font-size: 1.08rem;
 		font-weight: 650;
 		color: rgba(245, 245, 245, 0.96);
 	}
 
 	.status-page__details {
-		border-radius: var(--ui-radius-sm, 9px);
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: rgba(18, 18, 18, 0.8);
+		border-top: 1px dashed var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		border-bottom: 1px dashed var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 		overflow: hidden;
 	}
 
 	.status-page__details summary {
 		list-style: none;
 		cursor: pointer;
-		padding: 0.56rem 0.68rem;
-		font-size: 0.82rem;
+		padding: 0.6rem 0.1rem;
+		font-size: 0.84rem;
 		font-weight: 600;
 		color: rgba(220, 220, 220, 0.88);
 	}
@@ -461,16 +469,14 @@
 	}
 
 	.status-page__details[open] summary {
-		border-bottom: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: rgba(255, 255, 255, 0.03);
+		border-bottom: 1px dashed var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 	}
 
 	.status-page__json {
 		margin: 0;
-		padding: 0.74rem 0.8rem;
-		border-radius: var(--ui-radius-sm, 9px);
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		padding: 0.74rem 0.1rem;
+		border: 0;
+		background: transparent;
 		font-size: 0.84rem;
 		line-height: 1.45;
 		overflow-x: auto;
@@ -500,10 +506,9 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.24rem;
-		padding: 0.46rem 0.52rem;
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		border-radius: var(--ui-radius-sm, 9px);
-		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		padding: 0.54rem 0;
+		border-bottom: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: transparent;
 	}
 
 	.status-page__errors p {

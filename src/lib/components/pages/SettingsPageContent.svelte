@@ -1467,7 +1467,12 @@
 	.settings-block {
 		display: flex;
 		flex-direction: column;
-		gap: 0.62rem;
+		gap: 0.66rem;
+	}
+
+	.settings-block + .settings-block {
+		padding-top: 0.7rem;
+		border-top: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 	}
 
 	.settings-block--full {
@@ -1511,18 +1516,16 @@
 		width: 100%;
 		min-height: 4.5rem;
 		padding: 0.8rem 0.92rem;
-		border-radius: 12px;
+		border-radius: 10px;
 		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		background: transparent;
 		color: inherit;
 		text-align: left;
 		cursor: pointer;
 		transition:
 			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
 			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			box-shadow var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
 			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
-		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 	}
 
 	.settings-choice--compact {
@@ -1531,7 +1534,7 @@
 
 	.settings-choice:hover:not(:disabled) {
 		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+		background: rgba(255, 255, 255, 0.03);
 		transform: translateY(-1px);
 	}
 
@@ -1541,7 +1544,7 @@
 
 	.settings-choice.is-active {
 		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		background: var(--ui-surface-2, rgba(255, 255, 255, 0.09));
+		background: rgba(255, 255, 255, 0.08);
 	}
 
 	.settings-choice.is-disabled {
@@ -1592,9 +1595,9 @@
 		width: 100%;
 		min-height: 4.8rem;
 		padding: 0.82rem 0.94rem;
-		border-radius: 12px;
+		border-radius: 10px;
 		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		background: transparent;
 		color: inherit;
 		text-align: left;
 		cursor: pointer;
@@ -1606,7 +1609,7 @@
 
 	.settings-toggle:hover:not(:disabled) {
 		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+		background: rgba(255, 255, 255, 0.03);
 		transform: translateY(-1px);
 	}
 
@@ -1616,7 +1619,7 @@
 
 	.settings-toggle.is-active {
 		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		background: var(--ui-surface-2, rgba(255, 255, 255, 0.09));
+		background: rgba(255, 255, 255, 0.08);
 	}
 
 	.settings-toggle.is-disabled {
@@ -1714,9 +1717,9 @@
 		width: 100%;
 		padding: 0.9rem 1rem;
 		min-height: 52px;
-		border-radius: 12px;
+		border-radius: 10px;
 		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		background: transparent;
 		color: inherit;
 		text-align: left;
 		font-size: 0.94rem;
@@ -1730,12 +1733,12 @@
 
 	.settings-action--primary {
 		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+		background: rgba(255, 255, 255, 0.06);
 	}
 
 	.settings-action:hover:not(:disabled) {
 		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+		background: rgba(255, 255, 255, 0.03);
 		transform: translateY(-1px);
 	}
 
@@ -1761,13 +1764,15 @@
 
 	.settings-system-grid {
 		display: grid;
-		gap: 0.74rem;
+		gap: 0.82rem;
 	}
 
 	.settings-feedback {
 		display: flex;
 		flex-direction: column;
 		gap: 0.3rem;
+		padding-top: 0.6rem;
+		border-top: 1px dashed var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 	}
 
 	.settings-feedback p {

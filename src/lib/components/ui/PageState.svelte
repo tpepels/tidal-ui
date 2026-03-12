@@ -4,17 +4,24 @@
 		title,
 		message,
 		actionLabel = null,
-		onAction = null
+		onAction = null,
+		embedded = false
 	}: {
 		kind?: 'loading' | 'empty' | 'error';
 		title: string;
 		message: string;
 		actionLabel?: string | null;
 		onAction?: (() => void) | null;
+		embedded?: boolean;
 	} = $props();
 </script>
 
-<div class="page-state" data-kind={kind} role={kind === 'error' ? 'alert' : 'status'}>
+<div
+	class="page-state"
+	class:page-state--embedded={embedded}
+	data-kind={kind}
+	role={kind === 'error' ? 'alert' : 'status'}
+>
 	<h3>{title}</h3>
 	<p>{message}</p>
 	{#if onAction && actionLabel}
@@ -37,6 +44,14 @@
 	.page-state[data-kind='error'] {
 		border-color: rgba(239, 68, 68, 0.35);
 		background: rgba(239, 68, 68, 0.12);
+	}
+
+	.page-state--embedded {
+		padding: 0.72rem 0;
+		border-radius: 0;
+		border: 0;
+		background: transparent;
+		border-top: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 	}
 
 	.page-state h3 {

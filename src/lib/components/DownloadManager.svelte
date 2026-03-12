@@ -2286,7 +2286,7 @@
 	}
 
 	.download-manager-panel--page .section--priority {
-		padding: 1rem;
+		padding: 0.9rem 0 0;
 		gap: 0.78rem;
 	}
 
@@ -2298,18 +2298,19 @@
 
 	.priority-grid {
 		display: grid;
-		gap: 0.72rem;
+		gap: 0.92rem;
 		grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 	}
 
 	.priority-column {
 		display: flex;
 		flex-direction: column;
-		gap: 0.48rem;
-		border: 1px solid var(--color-border);
-		border-radius: var(--ui-radius-sm, 9px);
-		background: var(--dm-surface-1);
-		padding: 0.66rem;
+		gap: 0.54rem;
+		border-top: 1px solid var(--color-border);
+		border-bottom: 1px solid var(--color-border);
+		border-radius: 0;
+		background: transparent;
+		padding: 0.6rem 0;
 	}
 
 	.priority-column__header {
@@ -2331,17 +2332,17 @@
 	.priority-list {
 		display: flex;
 		flex-direction: column;
-		gap: 0.46rem;
+		gap: 0;
 	}
 
 	.priority-item {
 		display: flex;
 		flex-direction: column;
 		gap: 0.44rem;
-		padding: 0.56rem 0.62rem;
-		border: 1px solid var(--color-border);
-		border-radius: var(--ui-radius-sm, 9px);
-		background: var(--dm-surface-0);
+		padding: 0.62rem 0;
+		border-bottom: 1px solid var(--color-border);
+		border-radius: 0;
+		background: transparent;
 	}
 
 	.priority-item__main {
@@ -2398,10 +2399,11 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 0.75rem;
-		padding: 0.62rem 0.68rem;
-		border: 1px solid var(--color-border);
-		border-radius: var(--ui-radius-sm, 9px);
-		background: var(--dm-surface-1);
+		padding: 0.7rem 0;
+		border-top: 1px dashed var(--color-border);
+		border-bottom: 1px dashed var(--color-border);
+		border-radius: 0;
+		background: transparent;
 	}
 
 	@media (max-width: 760px) {
@@ -2425,29 +2427,22 @@
 
 	.download-manager-panel--page .section {
 		position: relative;
-		padding: 0.86rem 0.9rem;
-		border: 1px solid var(--color-border);
-		border-radius: var(--dm-section-radius);
-		background: var(--dm-surface-0);
+		padding: 0.86rem 0;
+		border: 0;
+		border-top: 1px solid var(--color-border);
+		border-radius: 0;
+		background: transparent;
 		gap: 0.78rem;
-		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+		box-shadow: none;
+	}
+
+	.download-manager-panel--page .download-manager-content > .section:first-child {
+		padding-top: 0;
+		border-top: 0;
 	}
 
 	.download-manager-panel--page .current-section {
-		border-color: var(--dm-border-strong);
-		background: var(--dm-surface-0);
-	}
-
-	.download-manager-panel--page .section--queue {
-		border-color: rgba(255, 255, 255, 0.22);
-	}
-
-	.download-manager-panel--page .section--completed {
-		border-color: rgba(255, 255, 255, 0.2);
-	}
-
-	.download-manager-panel--page .section--attention {
-		border-color: rgba(255, 255, 255, 0.24);
+		border-top-color: var(--dm-border-strong);
 	}
 
 	.download-manager-panel--page .section-title {
@@ -2466,10 +2461,18 @@
 	}
 
 	.download-manager-panel--page .section-count {
-		background: var(--dm-surface-1);
+		background: transparent;
 		border: 1px solid var(--color-border);
 		padding: 0.24rem 0.58rem;
 		font-size: 0.84rem;
+	}
+
+	.download-manager-panel--page .current-items,
+	.download-manager-panel--page .queue-list,
+	.download-manager-panel--page .completed-list,
+	.download-manager-panel--page .failed-list {
+		gap: 0;
+		border-top: 1px solid var(--color-border);
 	}
 
 	.download-manager-panel--page .current-item,
@@ -2478,16 +2481,19 @@
 	.download-manager-panel--page .failed-item-card,
 	.download-manager-panel--page .completion-summary,
 	.download-manager-panel--page .queue-more-hint {
-		border-radius: var(--ui-radius-sm, 9px);
-		border: 1px solid var(--color-border);
-		background: var(--dm-surface-0);
+		border-radius: 0;
+		border: 0;
+		border-bottom: 1px solid var(--color-border);
+		background: transparent;
 	}
 
 	.download-manager-panel--page .section-filter-row {
-		padding: 0.56rem 0.62rem;
-		border: 1px solid var(--color-border);
-		border-radius: var(--ui-radius-sm, 9px);
-		background: var(--dm-surface-1);
+		padding: 0.66rem 0;
+		border: 0;
+		border-top: 1px solid var(--color-border);
+		border-bottom: 1px solid var(--color-border);
+		border-radius: 0;
+		background: transparent;
 	}
 
 	.download-manager-panel--page .section-filter-label {
@@ -2496,7 +2502,7 @@
 
 	.download-manager-panel--page .filter-pill {
 		font-size: 0.92rem;
-		padding: 0.46rem 0.84rem;
+		padding: 0.44rem 0.72rem;
 	}
 
 	.download-manager-panel--page .queue-list,
@@ -2505,12 +2511,12 @@
 	}
 
 	.download-manager-panel--page .completed-list {
-		gap: 0.56rem;
+		gap: 0;
 	}
 
 	.download-manager-panel--page .queue-item-click,
 	.download-manager-panel--page .failed-item-click {
-		padding: 0.92rem 0.98rem;
+		padding: 0.88rem 0;
 		cursor: default;
 	}
 
@@ -2536,6 +2542,12 @@
 
 	.download-manager-panel--page .detail-row {
 		font-size: 0.9rem;
+	}
+
+	.download-manager-panel--page .queue-item-details,
+	.download-manager-panel--page .failed-item-details,
+	.download-manager-panel--page .detail-actions {
+		border-top-style: dashed;
 	}
 
 	.download-manager-panel--page .detail-value--mono {
