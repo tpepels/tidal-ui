@@ -87,9 +87,9 @@
 			{#if description}
 				<p class="ui-media-card__meta ui-entity-card__description">{description}</p>
 			{/if}
-			<p class="ui-media-card__intent">
-				{intent ?? (type === 'album' ? 'Open album details' : 'Open artist profile')}
-			</p>
+			{#if intent}
+				<p class="ui-media-card__intent">{intent}</p>
+			{/if}
 		</div>
 	</a>
 	{#if links.length > 0}

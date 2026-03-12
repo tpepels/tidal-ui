@@ -335,11 +335,23 @@
 			}
 			const existingSelection = selectedMusicBrainzReleaseId;
 			const hasExistingSelection = releases.some((release) => release.id === existingSelection);
+			const targetTrackCount = resolveMusicBrainzTargetTrackCount();
+			const recommendedSelection = pickDefaultMusicBrainzReleaseId(releases, targetTrackCount);
 			if (hasExistingSelection) {
+				if (targetTrackCount !== null) {
+					const selectedRelease = releases.find((release) => release.id === existingSelection) ?? null;
+					const selectedTrackCount = selectedRelease
+						? resolveReleaseTrackCount(selectedRelease)
+						: null;
+					const selectedIsTrackCompatible =
+						selectedTrackCount !== null && selectedTrackCount >= targetTrackCount;
+					if (!selectedIsTrackCompatible) {
+						selectedMusicBrainzReleaseId = recommendedSelection;
+					}
+				}
 				return;
 			}
-			const targetTrackCount = resolveMusicBrainzTargetTrackCount();
-			selectedMusicBrainzReleaseId = pickDefaultMusicBrainzReleaseId(releases, targetTrackCount);
+			selectedMusicBrainzReleaseId = recommendedSelection;
 		} catch (lookupError) {
 			const message =
 				lookupError instanceof Error ? lookupError.message : 'Failed to search MusicBrainz releases';

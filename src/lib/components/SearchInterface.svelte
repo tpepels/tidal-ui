@@ -1407,23 +1407,8 @@
 										? ''
 										: 's'}
 								</p>
-								<p class="ui-media-card__intent">Open album details and artist page</p>
 							</div>
 						</a>
-						<div class="ui-media-card__links" class:ui-media-card__links--paired={Boolean(album.artist)}>
-							<a href={`/album/${album.id}`} class="ui-media-card__link" data-sveltekit-preload-data>
-								Open Album
-							</a>
-							{#if album.artist}
-								<a
-									href={`/artist/${album.artist.id}`}
-									class="ui-media-card__link"
-									data-sveltekit-preload-data
-								>
-									Open Artist
-								</a>
-							{/if}
-						</div>
 						{#if albumDownloadState.status === 'queued'}
 							<p class="search-media-status">Queued on server…</p>
 						{:else if albumDownloadState.downloading}

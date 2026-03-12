@@ -132,9 +132,9 @@
 	let filteredCompletedJobs = $derived(
 		completedJobs.filter(job => matchesTypeFilter(job, completedTypeFilter))
 	);
-	let queuedPreviewJobs = $derived(queuedJobs.slice(0, 6));
-	let attentionPreviewJobs = $derived(resumableJobs.slice(0, 6));
-	let completedPreviewJobs = $derived(completedJobs.slice(0, 6));
+	let queuedPreviewJobs = $derived(queuedJobs.slice(0, 4));
+	let attentionPreviewJobs = $derived(resumableJobs.slice(0, 4));
+	let completedPreviewJobs = $derived(completedJobs.slice(0, 4));
 	let completedAlbums = $derived(
 		completedJobs.filter(j => j.job.type === 'album').length
 	);
@@ -998,13 +998,19 @@
 			<div class="download-manager-header">
 				<div>
 					<h3 class="download-manager-title">Download Status</h3>
-					<p class="download-manager-subtitle-text">Live queue activity for tracks and albums</p>
+					<p class="download-manager-subtitle-text">
+						{pageMode
+							? 'Most important queue data first.'
+							: 'Live queue activity for tracks and albums'}
+					</p>
 					<div class="download-manager-meta-row">
-						<div class="download-manager-redis" data-state={redisStatus.state}>
-							<span class="download-manager-redis-dot"></span>
-							<span>{redisStatus.label}</span>
-						</div>
-						<span class="download-manager-meta-separator">•</span>
+						{#if !pageMode}
+							<div class="download-manager-redis" data-state={redisStatus.state}>
+								<span class="download-manager-redis-dot"></span>
+								<span>{redisStatus.label}</span>
+							</div>
+							<span class="download-manager-meta-separator">•</span>
+						{/if}
 						<span class="download-manager-last-updated">Updated {lastUpdatedLabel}</span>
 						<span class="download-manager-meta-separator">•</span>
 						<span class="download-manager-poll-status" data-stale={isPollingStale}>
@@ -1013,7 +1019,7 @@
 								<span class="poll-stale-chip">STALE</span>
 							{/if}
 						</span>
-						{#if isCompactViewport}
+						{#if !pageMode && isCompactViewport}
 							<span class="download-manager-meta-separator">•</span>
 							<span class="download-manager-compact-indicator">Compact rows</span>
 						{/if}
@@ -1107,6 +1113,7 @@
 				</div>
 			</div>
 
+			{#if !pageMode}
 			<div class="download-manager-top-strip">
 				<div class="top-strip-item top-strip-item--running">
 					<span class="top-strip-label">Running</span>
@@ -1133,7 +1140,9 @@
 					<span class="top-strip-value top-strip-value--text">{lastUpdatedLabel}</span>
 				</div>
 			</div>
+			{/if}
 
+			{#if !pageMode || showDetailedSections}
 			<div class="download-manager-quick-actions">
 				<button
 					onclick={handlePauseAllActive}
@@ -1186,6 +1195,7 @@
 					<span>{isActionPending(actionKeys.createBundle) ? 'Bundling…' : 'Create Debug Bundle'}</span>
 				</button>
 			</div>
+			{/if}
 
 			<div class="download-manager-content">
 				{#if pageMode}
@@ -1213,50 +1223,6 @@
 													<p class="priority-item__title">{job.job.trackTitle || job.job.albumTitle || 'Unknown'}</p>
 													<p class="priority-item__meta">
 														{job.job.artistName || 'Unknown Artist'} • {Math.round(job.progress * 100)}%
-													</p>
-												</div>
-												<div class="detail-actions">
-													<button
-														type="button"
-														class="item-action-btn"
-														onclick={() => handlePauseJob(job)}
-														disabled={jobPending}
-													>
-														<Square size={12} />
-														<span>{jobPending ? 'Pausing…' : 'Pause'}</span>
-													</button>
-													<button
-														type="button"
-														class="item-action-btn item-action-btn--warning"
-														onclick={() => handleCancelJob(job)}
-														disabled={jobPending}
-													>
-														<Square size={12} />
-														<span>{jobPending ? 'Stopping…' : 'Stop'}</span>
-													</button>
-												</div>
-											</div>
-										{/each}
-									</div>
-								{/if}
-							</div>
-
-							<div class="priority-column">
-								<div class="priority-column__header">
-									<h4 class="priority-column__title">Up Next</h4>
-									<span class="section-count">{queuedJobs.length}</span>
-								</div>
-								{#if queuedPreviewJobs.length === 0}
-									<p class="priority-empty">Queue is empty.</p>
-								{:else}
-									<div class="priority-list">
-										{#each queuedPreviewJobs as job (job.id)}
-											{@const jobPending = isJobActionPending(job.id)}
-											<div class="priority-item">
-												<div class="priority-item__main">
-													<p class="priority-item__title">{job.job.trackTitle || job.job.albumTitle || 'Unknown'}</p>
-													<p class="priority-item__meta">
-														{job.job.artistName || 'Unknown Artist'} • {job.job.type === 'album' ? 'Album' : 'Track'}
 													</p>
 												</div>
 												<div class="detail-actions">
@@ -1337,6 +1303,41 @@
 
 							<div class="priority-column">
 								<div class="priority-column__header">
+									<h4 class="priority-column__title">Up Next</h4>
+									<span class="section-count">{queuedJobs.length}</span>
+								</div>
+								{#if queuedPreviewJobs.length === 0}
+									<p class="priority-empty">Queue is empty.</p>
+								{:else}
+									<div class="priority-list">
+										{#each queuedPreviewJobs as job (job.id)}
+											{@const jobPending = isJobActionPending(job.id)}
+											<div class="priority-item">
+												<div class="priority-item__main">
+													<p class="priority-item__title">{job.job.trackTitle || job.job.albumTitle || 'Unknown'}</p>
+													<p class="priority-item__meta">
+														{job.job.artistName || 'Unknown Artist'} • {job.job.type === 'album' ? 'Album' : 'Track'}
+													</p>
+												</div>
+												<div class="detail-actions">
+													<button
+														type="button"
+														class="item-action-btn item-action-btn--warning"
+														onclick={() => handleCancelJob(job)}
+														disabled={jobPending}
+													>
+														<Square size={12} />
+														<span>{jobPending ? 'Stopping…' : 'Stop'}</span>
+													</button>
+												</div>
+											</div>
+										{/each}
+									</div>
+								{/if}
+							</div>
+
+							<div class="priority-column">
+								<div class="priority-column__header">
 									<h4 class="priority-column__title">Recently Completed</h4>
 									<span class="section-count">{completedJobs.length}</span>
 								</div>
@@ -1379,6 +1380,44 @@
 								<a href="/" class="empty-cta-btn">Open Search</a>
 							</div>
 						{/if}
+						<div class="priority-bulk-actions">
+							<button
+								onclick={handlePauseAllActive}
+								class="control-btn control-btn--secondary"
+								type="button"
+								disabled={!canPauseAny || isActionPending(actionKeys.bulkPause)}
+							>
+								<Square size={14} />
+								<span>{isActionPending(actionKeys.bulkPause) ? 'Pausing…' : 'Pause Active'}</span>
+							</button>
+							<button
+								onclick={handleStopAllActive}
+								class="control-btn control-btn--warning"
+								type="button"
+								disabled={!canStopAny || isActionPending(actionKeys.bulkStop)}
+							>
+								<Square size={14} />
+								<span>{isActionPending(actionKeys.bulkStop) ? 'Stopping…' : 'Stop Active'}</span>
+							</button>
+							<button
+								onclick={handleResumeAll}
+								class="control-btn control-btn--primary"
+								type="button"
+								disabled={!canResumeAny || isActionPending(actionKeys.bulkResume)}
+							>
+								<RotateCcw size={14} />
+								<span>{isActionPending(actionKeys.bulkResume) ? 'Resuming…' : 'Resume Blocked'}</span>
+							</button>
+							<button
+								onclick={handleManualRefresh}
+								class="control-btn control-btn--secondary"
+								type="button"
+								disabled={isActionPending(actionKeys.refresh)}
+							>
+								<RefreshCw size={14} />
+								<span>{isActionPending(actionKeys.refresh) ? 'Refreshing…' : 'Refresh'}</span>
+							</button>
+						</div>
 						<div class="priority-overview-actions">
 							<button
 								type="button"
@@ -1944,20 +1983,22 @@
 			</div>
 
 			<!-- Footer with controls -->
-			<div class="download-manager-footer">
-				<button
-					onclick={handleManualRefresh}
-					class="control-btn control-btn--secondary"
-					type="button"
-					title="Refresh queue status"
-					disabled={isActionPending(actionKeys.refresh)}
-				>
-					<span class:rotating={isActionPending(actionKeys.refresh)}>
-						<RefreshCw size={14} />
-					</span>
-					<span>{isActionPending(actionKeys.refresh) ? 'Refreshing…' : 'Refresh'}</span>
-				</button>
-			</div>
+			{#if !pageMode}
+				<div class="download-manager-footer">
+					<button
+						onclick={handleManualRefresh}
+						class="control-btn control-btn--secondary"
+						type="button"
+						title="Refresh queue status"
+						disabled={isActionPending(actionKeys.refresh)}
+					>
+						<span class:rotating={isActionPending(actionKeys.refresh)}>
+							<RefreshCw size={14} />
+						</span>
+						<span>{isActionPending(actionKeys.refresh) ? 'Refreshing…' : 'Refresh'}</span>
+					</button>
+				</div>
+			{/if}
 		</div>
 	{/if}
 </div>
@@ -2335,6 +2376,18 @@
 		justify-content: flex-end;
 	}
 
+	.priority-bulk-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.48rem;
+		padding-top: 0.2rem;
+	}
+
+	.priority-bulk-actions .control-btn {
+		padding: 0.5rem 0.74rem;
+		font-size: 0.8rem;
+	}
+
 	.priority-empty-state {
 		display: flex;
 		align-items: center;
@@ -2344,6 +2397,19 @@
 		border: 1px solid var(--color-border);
 		border-radius: var(--ui-radius-sm, 9px);
 		background: var(--dm-surface-1);
+	}
+
+	@media (max-width: 760px) {
+		.priority-overview-actions,
+		.priority-bulk-actions {
+			justify-content: stretch;
+		}
+
+		.priority-bulk-actions .control-btn,
+		.priority-overview-actions .control-btn {
+			flex: 1 1 100%;
+			justify-content: center;
+		}
 	}
 
 	.priority-empty-state p {

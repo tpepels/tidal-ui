@@ -1889,22 +1889,6 @@
 														{/if}
 													</div>
 												</a>
-												<div class="ui-media-card__links" class:ui-media-card__links--paired={Boolean(recommendationAlbum.artist)}>
-													<a
-														href={`/album/${recommendationAlbum.id}`}
-														class="ui-media-card__link"
-													>
-														Album Page
-													</a>
-													{#if recommendationAlbum.artist}
-														<a
-															href={`/artist/${recommendationAlbum.artist.id}`}
-															class="ui-media-card__link"
-														>
-															Artist Page
-														</a>
-													{/if}
-												</div>
 											</article>
 										{/each}
 								</div>
@@ -1974,15 +1958,6 @@
 								{@const resolvedCoverUrl = getResolvedCoverUrl(coverCacheKey)}
 								{@const coverImageUrl = resolvedCoverUrl ?? ''}
 								<article class="ui-media-card recommendation-slider__item discography-featured__item" data-recommendation-card="true">
-									<span class="discography-featured__badge">
-										{#if featured.topTrackHits > 0}
-											{featured.topTrackHits} top track{featured.topTrackHits === 1 ? '' : 's'}
-										{:else if (album.popularity ?? 0) > 0}
-											Popularity {Math.round(album.popularity ?? 0)}
-										{:else}
-											Featured
-										{/if}
-									</span>
 									<a
 										href={`/album/${album.id}`}
 										class="ui-media-card__primary-link"
@@ -2018,19 +1993,8 @@
 											{#if formatAlbumMeta(album)}
 												<p class="ui-media-card__subtitle">{formatAlbumMeta(album)}</p>
 											{/if}
-											<p class="ui-media-card__meta">
-												{formatFeaturedDiscographyMeta(featured)}
-											</p>
 										</div>
 									</a>
-									<div class="ui-media-card__links ui-media-card__links--paired">
-										<a href={`/album/${album.id}`} class="ui-media-card__link">
-											Album Page
-										</a>
-										<a href={`/artist/${artist.id}`} class="ui-media-card__link">
-											Artist Page
-										</a>
-									</div>
 								</article>
 							{/each}
 						</div>
@@ -2258,22 +2222,6 @@
 												)}
 												{@const albumInLibrary = albumLibraryPresence[album.id]?.exists === true}
 												<article class="ui-media-card group">
-												{#if hasOfficialTidalSource}
-													<span
-														class="absolute top-3 left-3 z-30 rounded-full border border-emerald-600/60 bg-emerald-900/70 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-emerald-200"
-														title="Loaded from official TIDAL API enrichment"
-													>
-														TIDAL
-													</span>
-												{/if}
-												{#if albumInLibrary}
-													<span
-														class="absolute top-9 left-3 z-20 rounded-full border border-white/35 bg-black/80 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-gray-100"
-														title="Already in local library"
-													>
-														IN LIBRARY
-													</span>
-												{/if}
 												<button
 													onclick={(event) =>
 														canCancelAlbumDownload
@@ -2344,55 +2292,26 @@
 														</p>
 													</div>
 												</a>
-												<div class="ui-media-card__links ui-media-card__links--paired">
-													<a href={`/album/${album.id}`} class="ui-media-card__link">
-														Album Page
-													</a>
-													{#if album.artist?.id || artist?.id}
-														<a
-															href={`/artist/${album.artist?.id ?? artist?.id}`}
-															class="ui-media-card__link"
-														>
-															Artist Page
-														</a>
-													{/if}
-												</div>
 												{#if albumDownloadState.status === 'queued'}
-													<p class="mt-3 text-xs text-gray-300">
-														Queued on server…
-													</p>
+													<p class="album-card-status">Queued</p>
 												{:else if albumDownloadState.downloading}
-													<p class="mt-3 text-xs text-gray-300">
-														Downloading
-														{#if albumDownloadState.total}
-															{albumDownloadState.completed ?? 0}/{displayTrackTotal(
-																albumDownloadState.total ?? 0
-															)}
-														{:else}
-															{albumDownloadState.completed ?? 0}
-														{/if}
-														tracks…
+													<p class="album-card-status">
+														Downloading {albumDownloadState.completed ?? 0}/{displayTrackTotal(
+															albumDownloadState.total ?? 0
+														)}
 													</p>
 												{:else if albumDownloadState.status === 'completed'}
-													<p class="mt-3 text-xs text-emerald-300">Download completed.</p>
+													<p class="album-card-status">Downloaded</p>
 												{:else if albumDownloadState.status === 'cancelled'}
-													<p class="mt-3 text-xs text-amber-300">Download stopped.</p>
+													<p class="album-card-status">Stopped</p>
 												{:else if albumDownloadState.status === 'paused'}
-													<p class="mt-3 text-xs text-amber-300">Download paused.</p>
-													{:else if albumDownloadState.error}
-														<p class="mt-3 text-xs text-red-400" role="alert">
-															{albumDownloadState.error}
-														</p>
-													{:else if albumInLibrary}
-														<p class="mt-3 text-xs text-emerald-300">
-															{#if downloadStoragePreference === 'server'}
-																Already in local library. Redownload will overwrite.
-															{:else}
-																Already in local library. Browser redownloads may append (2).
-															{/if}
-														</p>
-													{/if}
-												</article>
+													<p class="album-card-status">Paused</p>
+												{:else if albumDownloadState.error}
+													<p class="album-card-status" role="alert">Download error</p>
+												{:else if albumInLibrary}
+													<p class="album-card-status">In library</p>
+												{/if}
+											</article>
 											{/each}
 									</div>
 								</div>
@@ -2563,22 +2482,14 @@
 		background: rgba(255, 255, 255, 0.03);
 	}
 
-	.discography-featured__badge {
-		position: absolute;
-		top: 0.7rem;
-		left: 0.7rem;
-		z-index: 20;
-		display: inline-flex;
-		align-items: center;
-		border: 1px solid rgba(255, 255, 255, 0.26);
-		background: rgba(255, 255, 255, 0.08);
-		border-radius: var(--ui-radius-sm, 9px);
-		padding: 0.18rem 0.5rem;
-		font-size: 0.68rem;
-		font-weight: 700;
-		letter-spacing: 0.06em;
+	.album-card-status {
+		margin: 0;
+		padding-top: 0.2rem;
+		font-size: 0.72rem;
+		color: rgba(200, 200, 200, 0.9);
 		text-transform: uppercase;
-		color: rgba(238, 238, 238, 0.94);
+		letter-spacing: 0.06em;
+		font-weight: 600;
 	}
 
 	@media (max-width: 900px) {
