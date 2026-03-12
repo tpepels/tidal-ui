@@ -240,6 +240,54 @@
 		return parts.join(' - ');
 	}
 
+	function resolveReleaseTrackCount(release: MusicBrainzReleaseOption): number | null {
+		const count = Number(release.trackCount);
+		if (!Number.isFinite(count) || count <= 0) {
+			return null;
+		}
+		return Math.trunc(count);
+	}
+
+	function resolveMusicBrainzTargetTrackCount(): number | null {
+		const albumTrackCount = Number(album?.numberOfTracks);
+		if (Number.isFinite(albumTrackCount) && albumTrackCount > 0) {
+			return Math.trunc(albumTrackCount);
+		}
+		if (tracks.length > 0) {
+			return tracks.length;
+		}
+		return null;
+	}
+
+	function pickDefaultMusicBrainzReleaseId(
+		releases: MusicBrainzReleaseOption[],
+		targetTrackCount: number | null
+	): string {
+		if (releases.length === 0) {
+			return '';
+		}
+		if (targetTrackCount === null) {
+			return releases[0]?.id ?? '';
+		}
+
+		const exactTrackCountMatch = releases.find(
+			(release) => resolveReleaseTrackCount(release) === targetTrackCount
+		);
+		if (exactTrackCountMatch) {
+			return exactTrackCountMatch.id;
+		}
+
+		const atLeastTrackCountMatch = releases.find((release) => {
+			const trackCount = resolveReleaseTrackCount(release);
+			return trackCount !== null && trackCount >= targetTrackCount;
+		});
+		if (atLeastTrackCountMatch) {
+			return atLeastTrackCountMatch.id;
+		}
+
+		return releases[0]?.id ?? '';
+	}
+
 	const selectedMusicBrainzRelease = $derived.by(() =>
 		musicBrainzReleaseOptions.find((release) => release.id === selectedMusicBrainzReleaseId) ?? null
 	);
@@ -290,8 +338,8 @@
 			if (hasExistingSelection) {
 				return;
 			}
-			// API results are already sorted by score; first entry is the best candidate.
-			selectedMusicBrainzReleaseId = releases[0]?.id ?? '';
+			const targetTrackCount = resolveMusicBrainzTargetTrackCount();
+			selectedMusicBrainzReleaseId = pickDefaultMusicBrainzReleaseId(releases, targetTrackCount);
 		} catch (lookupError) {
 			const message =
 				lookupError instanceof Error ? lookupError.message : 'Failed to search MusicBrainz releases';
@@ -963,7 +1011,11 @@
 										>
 										{#each musicBrainzReleaseOptions as release, index (release.id)}
 											<option value={release.id}>
-												{index === 0 ? 'Best Match - ' : ''}{formatMusicBrainzReleaseOption(release)}
+												{release.id === selectedMusicBrainzReleaseId
+													? 'Selected - '
+													: index === 0
+														? 'Best Score - '
+														: ''}{formatMusicBrainzReleaseOption(release)}
 											</option>
 										{/each}
 									</select>

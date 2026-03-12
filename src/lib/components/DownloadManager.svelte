@@ -53,6 +53,7 @@
 	let queueJobs = $state<QueueJob[]>([]);
 	let expandedJobId = $state<string | null>(null);
 	let isCompactViewport = $state(false);
+	let showDetailedSections = $state(false);
 	let actionNotice = $state<{ tone: 'success' | 'error' | 'info'; message: string } | null>(null);
 	let pendingActions = $state<Record<string, boolean>>({});
 	type JobTypeFilter = 'all' | 'albums' | 'tracks';
@@ -131,6 +132,9 @@
 	let filteredCompletedJobs = $derived(
 		completedJobs.filter(job => matchesTypeFilter(job, completedTypeFilter))
 	);
+	let queuedPreviewJobs = $derived(queuedJobs.slice(0, 6));
+	let attentionPreviewJobs = $derived(resumableJobs.slice(0, 6));
+	let completedPreviewJobs = $derived(completedJobs.slice(0, 6));
 	let completedAlbums = $derived(
 		completedJobs.filter(j => j.job.type === 'album').length
 	);
@@ -1184,6 +1188,210 @@
 			</div>
 
 			<div class="download-manager-content">
+				{#if pageMode}
+					<div class="section section--priority">
+						<div class="section-title section-title-main">
+							<span>Priority Overview</span>
+						</div>
+						<p class="priority-overview-subtitle">
+							Key queue information is always visible. Use actions here first.
+						</p>
+						<div class="priority-grid">
+							<div class="priority-column">
+								<div class="priority-column__header">
+									<h4 class="priority-column__title">Active Now</h4>
+									<span class="section-count">{processingJobs.length}</span>
+								</div>
+								{#if processingJobs.length === 0}
+									<p class="priority-empty">No active downloads.</p>
+								{:else}
+									<div class="priority-list">
+										{#each processingJobs as job (job.id)}
+											{@const jobPending = isJobActionPending(job.id)}
+											<div class="priority-item">
+												<div class="priority-item__main">
+													<p class="priority-item__title">{job.job.trackTitle || job.job.albumTitle || 'Unknown'}</p>
+													<p class="priority-item__meta">
+														{job.job.artistName || 'Unknown Artist'} • {Math.round(job.progress * 100)}%
+													</p>
+												</div>
+												<div class="detail-actions">
+													<button
+														type="button"
+														class="item-action-btn"
+														onclick={() => handlePauseJob(job)}
+														disabled={jobPending}
+													>
+														<Square size={12} />
+														<span>{jobPending ? 'Pausing…' : 'Pause'}</span>
+													</button>
+													<button
+														type="button"
+														class="item-action-btn item-action-btn--warning"
+														onclick={() => handleCancelJob(job)}
+														disabled={jobPending}
+													>
+														<Square size={12} />
+														<span>{jobPending ? 'Stopping…' : 'Stop'}</span>
+													</button>
+												</div>
+											</div>
+										{/each}
+									</div>
+								{/if}
+							</div>
+
+							<div class="priority-column">
+								<div class="priority-column__header">
+									<h4 class="priority-column__title">Up Next</h4>
+									<span class="section-count">{queuedJobs.length}</span>
+								</div>
+								{#if queuedPreviewJobs.length === 0}
+									<p class="priority-empty">Queue is empty.</p>
+								{:else}
+									<div class="priority-list">
+										{#each queuedPreviewJobs as job (job.id)}
+											{@const jobPending = isJobActionPending(job.id)}
+											<div class="priority-item">
+												<div class="priority-item__main">
+													<p class="priority-item__title">{job.job.trackTitle || job.job.albumTitle || 'Unknown'}</p>
+													<p class="priority-item__meta">
+														{job.job.artistName || 'Unknown Artist'} • {job.job.type === 'album' ? 'Album' : 'Track'}
+													</p>
+												</div>
+												<div class="detail-actions">
+													<button
+														type="button"
+														class="item-action-btn"
+														onclick={() => handlePauseJob(job)}
+														disabled={jobPending}
+													>
+														<Square size={12} />
+														<span>{jobPending ? 'Pausing…' : 'Pause'}</span>
+													</button>
+													<button
+														type="button"
+														class="item-action-btn item-action-btn--warning"
+														onclick={() => handleCancelJob(job)}
+														disabled={jobPending}
+													>
+														<Square size={12} />
+														<span>{jobPending ? 'Stopping…' : 'Stop'}</span>
+													</button>
+												</div>
+											</div>
+										{/each}
+									</div>
+								{/if}
+							</div>
+
+							<div class="priority-column">
+								<div class="priority-column__header">
+									<h4 class="priority-column__title">Needs Attention</h4>
+									<span class="section-count">{attentionPreviewJobs.length}</span>
+								</div>
+								{#if attentionPreviewJobs.length === 0}
+									<p class="priority-empty">No blocked items.</p>
+								{:else}
+									<div class="priority-list">
+										{#each attentionPreviewJobs as job (job.id)}
+											{@const jobPending = isJobActionPending(job.id)}
+											<div class="priority-item">
+												<div class="priority-item__main">
+													<p class="priority-item__title">{job.job.trackTitle || job.job.albumTitle || 'Unknown'}</p>
+													<p class="priority-item__meta">
+														{job.status === 'paused' ? 'Paused' : job.status === 'cancelled' ? 'Cancelled' : job.error || 'Failed'}
+													</p>
+												</div>
+												<div class="detail-actions">
+													<button
+														type="button"
+														class="item-action-btn item-action-btn--primary"
+														onclick={() => {
+															if (job.status === 'paused') {
+																void handleResumePausedJob(job);
+																return;
+															}
+															void handleRetryJob(job);
+														}}
+														disabled={jobPending}
+													>
+														<RotateCcw size={12} />
+														<span>{jobPending ? 'Working…' : job.status === 'paused' ? 'Resume' : 'Retry'}</span>
+													</button>
+													<button
+														type="button"
+														class="item-action-btn"
+														onclick={() => handleCopyFailureReport(job)}
+														disabled={jobPending}
+													>
+														<ClipboardCopy size={12} />
+														<span>{jobPending ? 'Copying…' : 'Report'}</span>
+													</button>
+												</div>
+											</div>
+										{/each}
+									</div>
+								{/if}
+							</div>
+
+							<div class="priority-column">
+								<div class="priority-column__header">
+									<h4 class="priority-column__title">Recently Completed</h4>
+									<span class="section-count">{completedJobs.length}</span>
+								</div>
+								{#if completedPreviewJobs.length === 0}
+									<p class="priority-empty">No completed items yet.</p>
+								{:else}
+									<div class="priority-list">
+										{#each completedPreviewJobs as job (job.id)}
+											{@const jobPending = isJobActionPending(job.id)}
+											<div class="priority-item">
+												<div class="priority-item__main">
+													<p class="priority-item__title">{job.job.trackTitle || job.job.albumTitle || 'Unknown'}</p>
+													<p class="priority-item__meta">
+														{job.job.artistName || 'Unknown Artist'}
+														{#if job.completedAt}
+															• {new Date(job.completedAt).toLocaleTimeString()}
+														{/if}
+													</p>
+												</div>
+												<div class="detail-actions">
+													<button
+														type="button"
+														class="item-action-btn"
+														onclick={() => handleRemoveJob(job)}
+														disabled={jobPending}
+													>
+														<Trash2 size={12} />
+														<span>{jobPending ? 'Removing…' : 'Dismiss'}</span>
+													</button>
+												</div>
+											</div>
+										{/each}
+									</div>
+								{/if}
+							</div>
+						</div>
+						{#if stats.total === 0}
+							<div class="priority-empty-state">
+								<p>No downloads yet. Queue a track or album from Search to start.</p>
+								<a href="/" class="empty-cta-btn">Open Search</a>
+							</div>
+						{/if}
+						<div class="priority-overview-actions">
+							<button
+								type="button"
+								class="control-btn control-btn--secondary"
+								onclick={() => (showDetailedSections = !showDetailedSections)}
+							>
+								{showDetailedSections ? 'Hide Detailed Timeline' : 'Show Detailed Timeline'}
+							</button>
+						</div>
+					</div>
+				{/if}
+
+				{#if !pageMode || showDetailedSections}
 				<!-- Current/Active Downloads -->
 				{#if stats.running > 0}
 					<div class="section section--active current-section">
@@ -1732,6 +1940,7 @@
 						</div>
 					</div>
 				{/if}
+				{/if}
 			</div>
 
 			<!-- Footer with controls -->
@@ -2028,6 +2237,119 @@
 		padding: 0.92rem 1.1rem 1.08rem;
 		gap: 0.85rem;
 		overflow-y: visible;
+	}
+
+	.download-manager-panel--page .section--priority {
+		padding: 1rem;
+		gap: 0.78rem;
+	}
+
+	.priority-overview-subtitle {
+		margin: 0;
+		font-size: 0.84rem;
+		color: rgba(214, 214, 214, 0.78);
+	}
+
+	.priority-grid {
+		display: grid;
+		gap: 0.72rem;
+		grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+	}
+
+	.priority-column {
+		display: flex;
+		flex-direction: column;
+		gap: 0.48rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--ui-radius-sm, 9px);
+		background: var(--dm-surface-1);
+		padding: 0.66rem;
+	}
+
+	.priority-column__header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+	}
+
+	.priority-column__title {
+		margin: 0;
+		font-size: 0.82rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: rgba(236, 236, 236, 0.9);
+	}
+
+	.priority-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.46rem;
+	}
+
+	.priority-item {
+		display: flex;
+		flex-direction: column;
+		gap: 0.44rem;
+		padding: 0.56rem 0.62rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--ui-radius-sm, 9px);
+		background: var(--dm-surface-0);
+	}
+
+	.priority-item__main {
+		display: flex;
+		flex-direction: column;
+		gap: 0.18rem;
+		min-width: 0;
+	}
+
+	.priority-item__title {
+		margin: 0;
+		font-size: 0.86rem;
+		font-weight: 600;
+		color: rgba(242, 242, 242, 0.95);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.priority-item__meta {
+		margin: 0;
+		font-size: 0.74rem;
+		color: rgba(192, 192, 192, 0.82);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.priority-empty {
+		margin: 0;
+		font-size: 0.78rem;
+		color: rgba(188, 188, 188, 0.82);
+	}
+
+	.priority-overview-actions {
+		display: flex;
+		justify-content: flex-end;
+	}
+
+	.priority-empty-state {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		padding: 0.62rem 0.68rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--ui-radius-sm, 9px);
+		background: var(--dm-surface-1);
+	}
+
+	.priority-empty-state p {
+		margin: 0;
+		font-size: 0.8rem;
+		color: rgba(196, 196, 196, 0.84);
 	}
 
 	.download-manager-panel--page .section {
