@@ -35,6 +35,7 @@ Goal: keep all user-visible screens on one shared element grammar that is clear,
 - [x] Mobile touch audit: guarantee primary controls meet clear hit-target sizing on all operational pages.
 - [ ] Manual route sweep: desktop + mobile + reduced-motion verification on all major routes.
   - [x] Automated sidebar route pass (`tests/e2e/sidebar-routes.spec.ts`) is green after unification changes.
+  - [x] Added automated route matrix smoke (`tests/e2e/ui-matrix-smoke.spec.ts`) for desktop + mobile + reduced-motion.
   - [ ] Visual/manual QA still required for final polish signoff.
 
 ### Phase 3: Shared Primitive Polish (In Progress)
@@ -60,7 +61,17 @@ Goal: keep all user-visible screens on one shared element grammar that is clear,
 - [x] Added automated route compliance test for archetype/block markers.
 
 ## Next Unification TODO
-- [ ] Replace remaining compatibility `glass-*` class usage with semantic `ui-*` aliases and remove dead legacy style paths.
-- [ ] Run manual visual declutter pass on secondary cards in artist/album/playlist.
-- [ ] Add visual regression snapshots per archetype (tool/detail/collection/embed).
+- [x] Replace remaining compatibility `glass-*` class usage with semantic `ui-*` aliases and remove dead legacy style paths.
+  - [x] Added guard test to block legacy class reintroduction: `src/lib/config/uiLegacyClasses.test.ts`.
+- [x] Run manual visual declutter pass on secondary cards in artist/album/playlist.
+  - [x] Artist detail: secondary recommendation/highlight zones now use shared `ToolPanel` + `StateBlock` patterns and reduced nested wrappers.
+  - [x] Artist discography cards: removed repetitive quality metadata line to keep album cards cleaner.
+  - [x] Album detail: tracklist warnings and empty state now use shared UI status/state styles.
+  - [x] Playlist detail: actions/context metadata moved to `ActionPanel` + `DataGrid`; featured artists moved to `ToolPanel`.
+  - [x] Search collection surface: input/filter/tabs now use shared action panel and chip patterns (removed legacy `search-glass`/tab bar style path).
+- [x] Add visual regression snapshots per archetype (tool/detail/collection/embed).
+  - [x] Added visual baseline route `src/routes/ui-archetypes/+page.svelte`.
+  - [x] Added Playwright snapshot spec + baseline images: `tests/e2e/ui-archetype-visual.spec.ts`.
 - [ ] Run full accessibility/manual QA matrix and log findings in a signoff report.
+  - [x] Automated findings logged in `docs/process/UI_SIGNOFF_REPORT_2026-03-12.md`.
+  - [ ] Remaining manual visual/a11y signoff still required.

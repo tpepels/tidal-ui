@@ -238,6 +238,29 @@ describe('SearchOrchestrator', () => {
 			);
 		});
 
+		it('forwards optional album artist filter for album searches', async () => {
+			mockExecuteTabSearch.mockResolvedValue({
+				success: true,
+				results: {
+					tracks: [],
+					albums: [mockAlbum],
+					artists: [],
+					playlists: []
+				}
+			});
+
+			const result = await orchestrator.search('random access memories', 'albums', {
+				region: 'us',
+				albumArtistQuery: 'daft punk'
+			});
+
+			expect(result.workflow).toBe('standard');
+			expect(result.success).toBe(true);
+			expect(mockExecuteTabSearch).toHaveBeenCalledWith('random access memories', 'albums', 'us', {
+				albumArtistQuery: 'daft punk'
+			});
+		});
+
 		it('ignores stale results when a newer search completes', async () => {
 			let resolveFirst: (value: any) => void;
 			let resolveSecond: (value: any) => void;

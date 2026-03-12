@@ -1978,8 +1978,7 @@
 		transform: translateY(0);
 	}
 
-	.ui-shell-surface,
-	.glass-panel {
+	.ui-shell-surface {
 		background: var(--surface-color);
 		border: 1px solid var(--surface-border, rgba(212, 212, 212, 0.2));
 		border-radius: var(--ui-radius-lg, 18px);

@@ -133,6 +133,7 @@
 	);
 	let selectedRegion = $state<RegionOption>('us');
 	let lastUrlSearchKey = $state('');
+	let albumArtistFilter = $state('');
 
 
 
@@ -181,6 +182,7 @@
 	$effect(() => {
 		const queryParam = ($page.url.searchParams.get('q') ?? '').trim();
 		const tabParam = $page.url.searchParams.get('tab');
+		const artistParam = ($page.url.searchParams.get('artist') ?? '').trim();
 		const resolvedTab = isSearchTab(tabParam) ? tabParam : null;
 		const lookupKey = `${queryParam}::${resolvedTab ?? ''}`;
 		if (lookupKey === lastUrlSearchKey) {
@@ -199,9 +201,13 @@
 		}
 
 		const targetTab = resolvedTab ?? $searchStore.activeTab;
+		if (targetTab === 'albums' && artistParam.length > 0 && artistParam !== albumArtistFilter) {
+			albumArtistFilter = artistParam;
+		}
 		void searchOrchestrator.search(queryParam, targetTab, {
 			region: selectedRegion,
-			showErrorToasts: false
+			showErrorToasts: false,
+			albumArtistQuery: targetTab === 'albums' ? albumArtistFilter.trim() : undefined
 		});
 	});
 
@@ -773,11 +779,13 @@
 		console.log('handleSearch called with query:', $searchStore.query);
 		const trimmedQuery = $searchStore.query.trim();
 		if (!trimmedQuery) return;
+		const artistFilter = albumArtistFilter.trim();
 
 		// Delegate to search orchestrator for all workflows
 		await searchOrchestrator.search(trimmedQuery, $searchStore.activeTab as SearchTab, {
 			region: selectedRegion,
-			showErrorToasts: true
+			showErrorToasts: true,
+			albumArtistQuery: $searchStore.activeTab === 'albums' ? artistFilter : undefined
 		});
 	}
 
@@ -828,10 +836,17 @@
 		}
 	}
 
-	function handleKeyPress(event: KeyboardEvent) {
+function handleKeyPress(event: KeyboardEvent) {
 		console.log('Key pressed:', event.key, 'query:', $searchStore.query);
 		if (event.key === 'Enter') {
 			console.log('Enter pressed, calling handleSearch');
+			handleSearch();
+		}
+	}
+
+	function handleAlbumArtistKeyPress(event: KeyboardEvent) {
+		if (event.key === 'Enter') {
+			event.preventDefault();
 			handleSearch();
 		}
 	}
@@ -874,78 +889,90 @@
 
 <div class="w-full">
 	<!-- Search Input -->
-	<div class="mb-6">
-		<div
-			class="search-glass rounded-lg border px-3 py-2 pr-2 shadow-sm transition-colors focus-within:border-white/40"
-		>
-			<div class="flex flex-row gap-2 sm:items-center sm:justify-between">
-				<div class="flex min-w-0 flex-1 items-center gap-2">
+	<div class="mb-6 space-y-3">
+		<div class="ui-action-panel search-input-panel">
+			<label for="catalog-search-input" class="ui-action-panel__intent">Search Catalog</label>
+			<div class="search-input-panel__row">
+				<input
+					id="catalog-search-input"
+					type="text"
+					value={$searchStore.query}
+					oninput={(event) => {
+						const target = event.currentTarget as HTMLInputElement | null;
+						if (target) {
+							searchStoreActions.setQuery(target.value);
+						}
+					}}
+					onkeypress={handleKeyPress}
+					placeholder={isQueryATidalUrl
+						? 'Tidal URL detected - press Enter to import'
+						: isQueryASpotifyPlaylist
+							? 'Spotify playlist detected - press Enter to convert'
+							: isQueryAStreamingUrl
+								? `${getPlatformName($searchStore.query)} URL detected - press Enter to convert`
+								: 'Search for tracks, albums, artists... or paste a URL'}
+					class="search-input-panel__input"
+				/>
+			</div>
+		</div>
+
+		{#if !isQueryAUrl && $searchStore.activeTab === 'albums'}
+			<div class="ui-action-panel search-input-panel search-input-panel--secondary">
+				<label for="album-artist-filter" class="ui-action-panel__intent">Artist Filter (Optional)</label>
+				<div class="search-input-panel__row">
 					<input
+						id="album-artist-filter"
 						type="text"
-						value={$searchStore.query}
+						value={albumArtistFilter}
 						oninput={(event) => {
 							const target = event.currentTarget as HTMLInputElement | null;
 							if (target) {
-								searchStoreActions.setQuery(target.value);
+								albumArtistFilter = target.value;
 							}
 						}}
-						onkeypress={handleKeyPress}
-						placeholder={isQueryATidalUrl
-							? 'Tidal URL detected - press Enter to import'
-							: isQueryASpotifyPlaylist
-								? 'Spotify playlist detected - press Enter to convert'
-								: isQueryAStreamingUrl
-									? `${getPlatformName($searchStore.query)} URL detected - press Enter to convert`
-									: 'Search for tracks, albums, artists... or paste a URL'}
-						class="w-full min-w-0 flex-1 border-none bg-transparent p-0 pl-1 text-white ring-0 placeholder:text-gray-400 focus:outline-none"
+						onkeypress={handleAlbumArtistKeyPress}
+						placeholder="Artist name (e.g. Daft Punk)"
+						class="search-input-panel__input"
 					/>
 				</div>
 			</div>
-		</div>
+		{/if}
 	</div>
 
 	<!-- Tabs (hidden when URL is detected) -->
 	{#if !isQueryAUrl}
-		<div class="scrollbar-hide mb-6 flex gap-2 overflow-x-auto border-b border-gray-700">
+		<div class="search-tab-row mb-6">
 			<button
 				onclick={() => handleTabChange('tracks')}
-				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {$searchStore.activeTab ===
-				'tracks'
-					? 'border-white/70 text-white'
-					: 'border-transparent text-gray-300 hover:text-white'}"
+				class="ui-filter-chip search-tab-chip"
+				class:is-active={$searchStore.activeTab === 'tracks'}
 			>
 				<Music size={18} />
-				<span class="text-sm sm:text-base">Tracks</span>
+				<span>Tracks</span>
 			</button>
 			<button
 				onclick={() => handleTabChange('albums')}
-				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {$searchStore.activeTab ===
-				'albums'
-					? 'border-white/70 text-white'
-					: 'border-transparent text-gray-300 hover:text-white'}"
+				class="ui-filter-chip search-tab-chip"
+				class:is-active={$searchStore.activeTab === 'albums'}
 			>
 				<Disc size={18} />
-				<span class="text-sm sm:text-base">Albums</span>
+				<span>Albums</span>
 			</button>
 			<button
 				onclick={() => handleTabChange('artists')}
-				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {$searchStore.activeTab ===
-				'artists'
-					? 'border-white/70 text-white'
-					: 'border-transparent text-gray-300 hover:text-white'}"
+				class="ui-filter-chip search-tab-chip"
+				class:is-active={$searchStore.activeTab === 'artists'}
 			>
 				<User size={18} />
-				<span class="text-sm sm:text-base">Artists</span>
+				<span>Artists</span>
 			</button>
 			<button
 				onclick={() => handleTabChange('playlists')}
-				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {$searchStore.activeTab ===
-				'playlists'
-					? 'border-white/70 text-white'
-					: 'border-transparent text-gray-300 hover:text-white'}"
+				class="ui-filter-chip search-tab-chip"
+				class:is-active={$searchStore.activeTab === 'playlists'}
 			>
 				<List size={18} />
-				<span class="text-sm sm:text-base">Playlists</span>
+				<span>Playlists</span>
 			</button>
 		</div>
 	{/if}
@@ -1628,15 +1655,55 @@
 		text-align: center;
 	}
 
-	.search-glass {
+	.search-input-panel {
+		padding: 0.82rem 0.92rem;
+		gap: 0.52rem;
+	}
+
+	.search-input-panel--secondary {
 		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
-		border-color: var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		backdrop-filter: none;
-		-webkit-backdrop-filter: none;
 		box-shadow: none;
-		transition:
-			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
+	}
+
+	.search-input-panel__row {
+		display: flex;
+		align-items: center;
+		gap: 0.52rem;
+		padding: 0.18rem 0.24rem;
+		border-radius: var(--ui-radius-sm, 8px);
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: rgba(10, 10, 10, 0.58);
+	}
+
+	.search-input-panel__input {
+		width: 100%;
+		min-width: 0;
+		border: 0;
+		background: transparent;
+		padding: 0.34rem 0.2rem;
+		font-size: 1rem;
+		line-height: 1.4;
+		color: rgba(245, 245, 245, 0.96);
+		outline: none;
+	}
+
+	.search-input-panel__input::placeholder {
+		color: rgb(156, 163, 175);
+		opacity: 1;
+	}
+
+	.search-tab-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.48rem;
+	}
+
+	.search-tab-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		font-size: 0.95rem;
+		padding-inline: 0.75rem;
 	}
 
 	.track-glass {
@@ -1692,22 +1759,6 @@
 
 	:global(.text-gray-500) {
 		color: rgb(115, 125, 140) !important;
-	}
-
-	/* Better placeholder contrast */
-	input::placeholder {
-		color: rgb(156, 163, 175) !important;
-		opacity: 1;
-	}
-
-	/* Hide scrollbar for mobile tabs */
-	.scrollbar-hide {
-		-ms-overflow-style: none;
-		scrollbar-width: none;
-	}
-
-	.scrollbar-hide::-webkit-scrollbar {
-		display: none;
 	}
 
 	@media (prefers-reduced-motion: reduce) {

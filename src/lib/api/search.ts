@@ -149,10 +149,18 @@ export async function searchArtists(
 export async function searchAlbums(
 	context: SearchApiContext,
 	query: string,
-	region: RegionOption = 'auto'
+	region: RegionOption = 'auto',
+	artistQuery?: string
 ): Promise<SearchResponse<Album>> {
+	const params = new URLSearchParams();
+	params.set('al', query);
+	const trimmedArtistQuery = artistQuery?.trim() ?? '';
+	if (trimmedArtistQuery.length > 0) {
+		// API supports combined album + artist filtering when both params are present.
+		params.set('a', trimmedArtistQuery);
+	}
 	const response = await context.fetch(
-		context.buildRegionalUrl(`/search/?al=${encodeURIComponent(query)}`, region)
+		context.buildRegionalUrl(`/search/?${params.toString()}`, region)
 	);
 	context.ensureNotRateLimited(response);
 	if (!response.ok) throw new Error('Failed to search albums');

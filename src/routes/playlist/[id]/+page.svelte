@@ -5,6 +5,10 @@
 	import TrackList from '$lib/components/TrackList.svelte';
 	import ShareButton from '$lib/components/ShareButton.svelte';
 	import EntityMediaCard from '$lib/components/ui/EntityMediaCard.svelte';
+	import ActionPanel from '$lib/components/ui/ActionPanel.svelte';
+	import ToolPanel from '$lib/components/ui/ToolPanel.svelte';
+	import DataGrid from '$lib/components/ui/DataGrid.svelte';
+	import StateBlock from '$lib/components/ui/StateBlock.svelte';
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 	import type { Playlist, Track } from '$lib/types';
 	import { ArrowLeft, Play, User, Clock, LoaderCircle } from 'lucide-svelte';
@@ -172,16 +176,25 @@
 				</div>
 
 				{#if tracks.length > 0}
-					<div class="ui-action-row ui-action-row--progressive" data-ui-block="primary-actions">
-						<button
-							onclick={handlePlayAll}
-							class="ui-action-button ui-action-button--primary"
-							aria-label="Play playlist"
+					<div data-ui-block="primary-actions">
+						<ActionPanel
+							intent="Playlist Actions"
+							summary="Play this playlist or share it."
+							intentful={true}
+							panelRole="playlist-actions"
 						>
-							<Play size={16} fill="currentColor" />
-							Play Playlist
-						</button>
-						<ShareButton type="playlist" id={playlist.uuid} variant="secondary" />
+							<div class="ui-action-row ui-action-row--progressive">
+								<button
+									onclick={handlePlayAll}
+									class="ui-action-button ui-action-button--primary"
+									aria-label="Play playlist"
+								>
+									<Play size={16} fill="currentColor" />
+									Play Playlist
+								</button>
+								<ShareButton type="playlist" id={playlist.uuid} variant="secondary" />
+							</div>
+						</ActionPanel>
 					</div>
 				{/if}
 			</div>
@@ -190,20 +203,25 @@
 		<!-- Promoted Artists -->
 		{#if playlist.promotedArtists && playlist.promotedArtists.length > 0}
 			<div data-ui-block="secondary-content">
-				<h3 class="mb-3 text-base font-semibold text-gray-400">Featured Artists</h3>
-				<div class="ui-media-grid ui-media-grid--artists">
-					{#each playlist.promotedArtists as artist (artist.id)}
-						<EntityMediaCard
-							type="artist"
-							href={`/artist/${artist.id}`}
-							title={artist.name}
-							subtitle={artist.type || 'Artist'}
-							imageSrc={artist.picture ? losslessAPI.getArtistPictureUrl(artist.picture) : null}
-							imageAlt={`Portrait of ${artist.name}`}
-							links={[{ href: `/artist/${artist.id}`, label: 'Artist Page' }]}
-						/>
-					{/each}
-				</div>
+				<ToolPanel
+					eyebrow="Secondary"
+					title="Featured Artists"
+					subtitle="Artists promoted in this playlist."
+					panelRole="playlist-featured-artists"
+				>
+					<div class="ui-media-grid ui-media-grid--artists">
+						{#each playlist.promotedArtists as artist (artist.id)}
+							<EntityMediaCard
+								type="artist"
+								href={`/artist/${artist.id}`}
+								title={artist.name}
+								subtitle={artist.type || 'Artist'}
+								imageSrc={artist.picture ? losslessAPI.getArtistPictureUrl(artist.picture) : null}
+								imageAlt={`Portrait of ${artist.name}`}
+							/>
+						{/each}
+					</div>
+				</ToolPanel>
 			</div>
 		{/if}
 
@@ -214,19 +232,35 @@
 				<TrackList {tracks} />
 			</div>
 		{:else}
-			<div class="ui-surface-card p-6 text-gray-400" data-ui-block="main-content">
-				<p>No tracks in this playlist.</p>
+			<div data-ui-block="main-content">
+				<StateBlock
+					kind="empty"
+					title="No tracks in this playlist"
+					message="The playlist currently has no playable tracks."
+				/>
 			</div>
 		{/if}
 
 		<!-- Metadata -->
-		<div class="ui-surface-card space-y-1 p-3 text-sm text-gray-500" data-ui-block="context-metadata">
-			{#if playlist.created}
-				<p>Created: {new Date(playlist.created).toLocaleDateString()}</p>
-			{/if}
-			{#if playlist.lastUpdated}
-				<p>Last updated: {new Date(playlist.lastUpdated).toLocaleDateString()}</p>
-			{/if}
+		<div data-ui-block="context-metadata">
+			<ActionPanel intent="Playlist Metadata" summary="Creation and update dates." intentful={true}>
+				<DataGrid>
+					{#if playlist.created}
+						<div class="ui-data-point">
+							<p class="ui-data-point__label">Created</p>
+							<p class="ui-data-point__value">{new Date(playlist.created).toLocaleDateString()}</p>
+						</div>
+					{/if}
+					{#if playlist.lastUpdated}
+						<div class="ui-data-point">
+							<p class="ui-data-point__label">Last Updated</p>
+							<p class="ui-data-point__value">
+								{new Date(playlist.lastUpdated).toLocaleDateString()}
+							</p>
+						</div>
+					{/if}
+				</DataGrid>
+			</ActionPanel>
 		</div>
 	</div>
 {/if}

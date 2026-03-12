@@ -32,6 +32,9 @@ export interface SearchOrchestratorOptions {
 
 	/** Whether to show toast notifications on error */
 	showErrorToasts?: boolean;
+
+	/** Optional artist filter for album searches */
+	albumArtistQuery?: string;
 }
 
 /**
@@ -180,7 +183,13 @@ export class SearchOrchestrator {
 
 		try {
 			// Execute search via service
-			const result = await executeTabSearch(query, tab, options?.region);
+			const trimmedAlbumArtistQuery = options?.albumArtistQuery?.trim() ?? '';
+			const result =
+				tab === 'albums' && trimmedAlbumArtistQuery.length > 0
+					? await executeTabSearch(query, tab, options?.region, {
+							albumArtistQuery: trimmedAlbumArtistQuery
+						})
+					: await executeTabSearch(query, tab, options?.region);
 
 			// Check if this request has been superseded by a newer search
 			if (requestToken !== this.currentSearchToken) {

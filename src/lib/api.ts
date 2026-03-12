@@ -752,8 +752,12 @@ class LosslessAPI {
 	/**
 	 * Search for albums
 	 */
-	async searchAlbums(query: string, region: RegionOption = 'auto'): Promise<SearchResponse<Album>> {
-		return searchAlbums(this.getSearchContext(), query, region);
+	async searchAlbums(
+		query: string,
+		region: RegionOption = 'auto',
+		artistQuery?: string
+	): Promise<SearchResponse<Album>> {
+		return searchAlbums(this.getSearchContext(), query, region, artistQuery);
 	}
 
 	/**

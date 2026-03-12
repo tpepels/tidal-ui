@@ -10,7 +10,9 @@
 	import EntityMediaCard from '$lib/components/ui/EntityMediaCard.svelte';
 	import ShareButton from '$lib/components/ShareButton.svelte';
 	import ActionPanel from '$lib/components/ui/ActionPanel.svelte';
+	import ToolPanel from '$lib/components/ui/ToolPanel.svelte';
 	import DataGrid from '$lib/components/ui/DataGrid.svelte';
+	import StateBlock from '$lib/components/ui/StateBlock.svelte';
 	import {
 		groupDiscography,
 		getDiscographyTraits,
@@ -36,7 +38,6 @@
 		Download,
 		LoaderCircle,
 		RotateCcw,
-		Sparkles,
 		User,
 		X
 	} from 'lucide-svelte';
@@ -1910,275 +1911,259 @@
 				{/if}
 			</section>
 
-			<section class="artist-secondary-zone" data-ui-block="secondary-content">
-				<div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-					<div>
-						<h2 class="text-xl font-semibold text-gray-100">Discovery Suggestions</h2>
-						<p class="text-xs text-gray-400">
-							Related artists and albums based on {artist.name}&apos;s mix, not part of this
-							artist&apos;s official discography.
-						</p>
-					</div>
+			<section data-ui-block="secondary-content">
+				<ToolPanel
+					eyebrow="Secondary"
+					title="Discovery Suggestions"
+					subtitle={`Related artists and albums based on ${artist.name}.`}
+					panelRole="artist-discovery"
+				>
 					{#if recommendations?.source === 'artist-mix' && recommendations.mixTitle}
-						<div class="ui-meta-pill">
+						<p class="ui-action-status">
 							Source: {recommendations.mixTitle}
 							{#if recommendations.mixSubtitle}
 								• {recommendations.mixSubtitle}
 							{/if}
-						</div>
-					{/if}
-				</div>
-				{#if recommendationsLoading}
-					<div
-						class="ui-surface-card mt-6 p-6 text-sm text-gray-300"
-					>
-						<div class="flex items-center gap-3" role="status">
-							<LoaderCircle size={18} class="animate-spin text-white/80" />
-							<span>Loading recommendation mix…</span>
-						</div>
-					</div>
-				{:else if recommendationsError}
-					<div
-						class="mt-6 rounded-lg border border-amber-700/40 bg-amber-900/20 p-4 text-sm text-amber-200"
-					>
-						<p>
-							Recommendations are temporarily unavailable: {recommendationsError}
 						</p>
-					</div>
-				{:else if recommendedArtists.length > 0 || recommendedAlbums.length > 0}
-					<div class="recommendation-spotlight mt-5 space-y-5">
-						<div class="recommendation-spotlight__intro">
-							<span class="recommendation-spotlight__badge">
-								<Sparkles size={13} />
-								<span>Recommendation Mix</span>
-							</span>
-							<p>
-								These picks are suggestions from the API mix and are separated from official
-								discography releases below.
-							</p>
+					{/if}
+					{#if recommendationsLoading}
+						<StateBlock
+							kind="loading"
+							title="Loading recommendations"
+							message="Fetching related artists and albums."
+							embedded={true}
+						/>
+					{:else if recommendationsError}
+						<StateBlock
+							kind="error"
+							title="Recommendations unavailable"
+							message={recommendationsError}
+							embedded={true}
+						/>
+					{:else if recommendedArtists.length > 0 || recommendedAlbums.length > 0}
+						<div class="artist-rail-stack">
+							{#if recommendedArtists.length > 0}
+								<div class="artist-rail-group">
+									<div class="artist-rail-group__header">
+										<div class="artist-rail-group__title-row">
+											<h3 class="artist-rail-group__title">Recommended Artists</h3>
+											<span class="recommendation-count-pill">{recommendedArtists.length}</span>
+										</div>
+										<div class="recommendation-slider__controls">
+											<button
+												type="button"
+												class="recommendation-slider__control"
+												onclick={() => scrollRecommendationRail(recommendedArtistsRail, 'left')}
+												aria-label="Scroll recommended artists left"
+											>
+												<ChevronLeft size={16} />
+											</button>
+											<button
+												type="button"
+												class="recommendation-slider__control"
+												onclick={() => scrollRecommendationRail(recommendedArtistsRail, 'right')}
+												aria-label="Scroll recommended artists right"
+											>
+												<ChevronRight size={16} />
+											</button>
+										</div>
+									</div>
+									<div
+										class="recommendation-slider"
+										role="region"
+										aria-label="Recommended artists"
+										bind:this={recommendedArtistsRail}
+									>
+										{#each recommendedArtists as recommendationArtist (recommendationArtist.id)}
+											<EntityMediaCard
+												type="artist"
+												href={`/artist/${recommendationArtist.id}`}
+												title={recommendationArtist.name}
+												subtitle={recommendationArtist.type || 'Artist'}
+												class="recommendation-slider__item"
+												data-recommendation-card="true"
+											>
+												{#snippet artwork()}
+													{#if recommendationArtist.picture}
+														<img
+															src={losslessAPI.getArtistPictureUrl(recommendationArtist.picture)}
+															alt={recommendationArtist.name}
+															loading="lazy"
+														/>
+													{:else}
+														<div class="flex h-full w-full items-center justify-center text-gray-500">
+															<User size={34} />
+														</div>
+													{/if}
+												{/snippet}
+											</EntityMediaCard>
+										{/each}
+									</div>
+								</div>
+							{/if}
+							{#if recommendedAlbums.length > 0}
+								<div class="artist-rail-group">
+									<div class="artist-rail-group__header">
+										<div class="artist-rail-group__title-row">
+											<h3 class="artist-rail-group__title">Recommended Albums</h3>
+											<span class="recommendation-count-pill">{recommendedAlbums.length}</span>
+										</div>
+										<div class="recommendation-slider__controls">
+											<button
+												type="button"
+												class="recommendation-slider__control"
+												onclick={() => scrollRecommendationRail(recommendedAlbumsRail, 'left')}
+												aria-label="Scroll recommended albums left"
+											>
+												<ChevronLeft size={16} />
+											</button>
+											<button
+												type="button"
+												class="recommendation-slider__control"
+												onclick={() => scrollRecommendationRail(recommendedAlbumsRail, 'right')}
+												aria-label="Scroll recommended albums right"
+											>
+												<ChevronRight size={16} />
+											</button>
+										</div>
+									</div>
+									<div
+										class="recommendation-slider"
+										role="region"
+										aria-label="Recommended albums"
+										bind:this={recommendedAlbumsRail}
+									>
+										{#each recommendedAlbums as recommendationAlbum (recommendationAlbum.id)}
+											{@const recommendationCoverCacheKey = getCoverCacheKey({
+												coverId: recommendationAlbum.cover,
+												size: '640',
+												proxy: true,
+												overrideKey: `artist:${artist.id}:recommendation:${recommendationAlbum.id}`
+											})}
+											{@const recommendationCoverCandidates = getUnifiedCoverCandidates({
+												coverId: recommendationAlbum.cover,
+												size: '640',
+												proxy: true,
+												includeLowerSizes: true
+											})}
+											<EntityMediaCard
+												type="album"
+												href={`/album/${recommendationAlbum.id}`}
+												title={recommendationAlbum.title}
+												subtitle={recommendationAlbum.artist?.name}
+												meta={formatAlbumMeta(recommendationAlbum)}
+												coverCacheKey={recommendationAlbum.cover ? recommendationCoverCacheKey : null}
+												coverCandidates={recommendationAlbum.cover ? recommendationCoverCandidates : []}
+												class="recommendation-slider__item"
+												data-recommendation-card="true"
+											/>
+										{/each}
+									</div>
+								</div>
+							{/if}
 						</div>
-						{#if recommendedArtists.length > 0}
-							<div class="space-y-3">
-								<div class="flex items-center justify-between gap-3">
-									<h3 class="text-base font-semibold text-gray-100">Recommended Artists</h3>
-									<span class="recommendation-count-pill">
-										{recommendedArtists.length}
-									</span>
-								</div>
-								<div class="recommendation-slider__controls">
-									<button
-										type="button"
-										class="recommendation-slider__control"
-										onclick={() => scrollRecommendationRail(recommendedArtistsRail, 'left')}
-										aria-label="Scroll recommended artists left"
-									>
-										<ChevronLeft size={16} />
-									</button>
-									<button
-										type="button"
-										class="recommendation-slider__control"
-										onclick={() => scrollRecommendationRail(recommendedArtistsRail, 'right')}
-										aria-label="Scroll recommended artists right"
-									>
-										<ChevronRight size={16} />
-									</button>
-								</div>
-								<div
-									class="recommendation-slider"
-									role="region"
-									aria-label="Recommended artists"
-									bind:this={recommendedArtistsRail}
-								>
-									{#each recommendedArtists as recommendationArtist (recommendationArtist.id)}
-										<EntityMediaCard
-											type="artist"
-											href={`/artist/${recommendationArtist.id}`}
-											title={recommendationArtist.name}
-											subtitle={recommendationArtist.type || 'Artist'}
-											links={[{ href: `/artist/${recommendationArtist.id}`, label: 'Artist Page' }]}
-											class="recommendation-slider__item"
-											data-recommendation-card="true"
-										>
-											{#snippet artwork()}
-												{#if recommendationArtist.picture}
-													<img
-														src={losslessAPI.getArtistPictureUrl(recommendationArtist.picture)}
-														alt={recommendationArtist.name}
-														loading="lazy"
-													/>
-												{:else}
-													<div class="flex h-full w-full items-center justify-center text-gray-500">
-														<User size={34} />
-													</div>
-												{/if}
-											{/snippet}
-										</EntityMediaCard>
-									{/each}
-								</div>
-							</div>
-						{/if}
-						{#if recommendedAlbums.length > 0}
-							<div class="space-y-3">
-								<div class="flex items-center justify-between gap-3">
-									<h3 class="text-base font-semibold text-gray-100">Recommended Albums</h3>
-									<span class="recommendation-count-pill">
-										{recommendedAlbums.length}
-									</span>
-								</div>
-								<div class="recommendation-slider__controls">
-									<button
-										type="button"
-										class="recommendation-slider__control"
-										onclick={() => scrollRecommendationRail(recommendedAlbumsRail, 'left')}
-										aria-label="Scroll recommended albums left"
-									>
-										<ChevronLeft size={16} />
-									</button>
-									<button
-										type="button"
-										class="recommendation-slider__control"
-										onclick={() => scrollRecommendationRail(recommendedAlbumsRail, 'right')}
-										aria-label="Scroll recommended albums right"
-									>
-										<ChevronRight size={16} />
-									</button>
-								</div>
-								<div
-									class="recommendation-slider"
-									role="region"
-									aria-label="Recommended albums"
-									bind:this={recommendedAlbumsRail}
-								>
-									{#each recommendedAlbums as recommendationAlbum (recommendationAlbum.id)}
-										{@const recommendationCoverCacheKey = getCoverCacheKey({
-											coverId: recommendationAlbum.cover,
-											size: '640',
-											proxy: true,
-											overrideKey: `artist:${artist.id}:recommendation:${recommendationAlbum.id}`
-										})}
-										{@const recommendationCoverCandidates = getUnifiedCoverCandidates({
-											coverId: recommendationAlbum.cover,
-											size: '640',
-											proxy: true,
-											includeLowerSizes: true
-										})}
-										<EntityMediaCard
-											type="album"
-											href={`/album/${recommendationAlbum.id}`}
-											title={recommendationAlbum.title}
-											subtitle={recommendationAlbum.artist?.name}
-											meta={formatAlbumMeta(recommendationAlbum)}
-											coverCacheKey={recommendationAlbum.cover ? recommendationCoverCacheKey : null}
-											coverCandidates={recommendationAlbum.cover ? recommendationCoverCandidates : []}
-											class="recommendation-slider__item"
-											data-recommendation-card="true"
-										/>
-									{/each}
-								</div>
-							</div>
-						{/if}
-					</div>
-				{:else}
-					<div class="ui-surface-card mt-6 p-6 text-sm text-gray-400">
-						<p>No recommendations available for this artist yet.</p>
-					</div>
-				{/if}
+					{:else}
+						<StateBlock
+							kind="empty"
+							title="No recommendations yet"
+							message="No related artists or albums are available right now."
+							embedded={true}
+						/>
+					{/if}
+				</ToolPanel>
 			</section>
 
 			{#if featuredDiscographyAlbums.length > 0}
-				<section
-					class="artist-secondary-zone artist-secondary-zone--featured"
-					data-ui-block="secondary-content"
-				>
-					<div class="discography-featured">
-						<div class="discography-featured__header">
-							<div>
-								<h2 class="text-xl font-semibold text-gray-100">Discography Highlights</h2>
-								<p class="text-xs text-gray-400">
-									Best-known releases from {artist.name}, ranked using popularity and top-track
-									signals from the API.
-								</p>
+				<section data-ui-block="secondary-content">
+					<ToolPanel
+						eyebrow="Secondary"
+						title="Discography Highlights"
+						subtitle={`Best-known releases from ${artist.name}, separated from the full catalog below.`}
+						panelRole="artist-discography-highlights"
+					>
+						<div class="artist-rail-group">
+							<div class="artist-rail-group__header">
+								<h3 class="artist-rail-group__title">Featured Releases</h3>
+								<div class="recommendation-slider__controls">
+									<button
+										type="button"
+										class="recommendation-slider__control"
+										onclick={() => scrollRecommendationRail(featuredDiscographyRail, 'left')}
+										aria-label="Scroll recommended discography albums left"
+									>
+										<ChevronLeft size={16} />
+									</button>
+									<button
+										type="button"
+										class="recommendation-slider__control"
+										onclick={() => scrollRecommendationRail(featuredDiscographyRail, 'right')}
+										aria-label="Scroll recommended discography albums right"
+									>
+										<ChevronRight size={16} />
+									</button>
+								</div>
 							</div>
-							<div class="recommendation-slider__controls">
-								<button
-									type="button"
-									class="recommendation-slider__control"
-									onclick={() => scrollRecommendationRail(featuredDiscographyRail, 'left')}
-									aria-label="Scroll recommended discography albums left"
-								>
-									<ChevronLeft size={16} />
-								</button>
-								<button
-									type="button"
-									class="recommendation-slider__control"
-									onclick={() => scrollRecommendationRail(featuredDiscographyRail, 'right')}
-									aria-label="Scroll recommended discography albums right"
-								>
-									<ChevronRight size={16} />
-								</button>
+							<div
+								class="recommendation-slider discography-featured__slider"
+								role="region"
+								aria-label="Recommended albums from this artist discography"
+								bind:this={featuredDiscographyRail}
+							>
+								{#each featuredDiscographyAlbums as featured (`featured:${featured.entry.key}:${featured.entry.representative.id}`)}
+									{@const album = featured.entry.representative}
+									{@const hasOfficialTidalSource = album.discographySource === 'official_tidal'}
+									{@const coverOverride = albumCoverOverrides[album.id]}
+									{@const coverImageCandidates = buildAlbumCoverCandidates(
+										album,
+										featured.entry.versions,
+										hasOfficialTidalSource,
+										coverOverride
+									)}
+									{@const coverCacheKey = getCoverCacheKey({
+										coverId: coverOverride || album.cover,
+										size: '640',
+										proxy: hasOfficialTidalSource,
+										overrideKey: `artist:${artist?.id ?? 0}:album:${album.id}`
+									})}
+									{@const resolvedCoverUrl = getResolvedCoverUrl(coverCacheKey)}
+									{@const coverImageUrl = resolvedCoverUrl ?? coverImageCandidates[0] ?? ''}
+									<EntityMediaCard
+										type="album"
+										href={`/album/${album.id}`}
+										title={album.title}
+										subtitle={formatAlbumMeta(album)}
+										class="recommendation-slider__item discography-featured__item"
+										data-recommendation-card="true"
+									>
+										{#snippet artwork()}
+											{#if coverImageCandidates.length > 0 && !albumCoverFailures[album.id]}
+												<img
+													src={coverImageUrl}
+													data-album-id={album.id}
+													data-cover-use-proxy={hasOfficialTidalSource ? '1' : '0'}
+													data-cover-candidates={serializeCoverCandidates(coverImageCandidates)}
+													data-cover-index="0"
+													data-cover-generation={coverHydrationGeneration}
+													data-cover-recovery-tried="0"
+													data-cover-cache-key={coverCacheKey}
+													onerror={handleAlbumCoverError}
+													onload={handleAlbumCoverLoad}
+													alt={album.title}
+													class="h-full w-full object-cover"
+													loading="lazy"
+													decoding="async"
+												/>
+											{:else}
+												<div class="flex h-full w-full items-center justify-center text-sm text-gray-500">
+													No artwork
+												</div>
+											{/if}
+										{/snippet}
+									</EntityMediaCard>
+								{/each}
 							</div>
 						</div>
-
-						<div
-							class="recommendation-slider discography-featured__slider"
-							role="region"
-							aria-label="Recommended albums from this artist discography"
-							bind:this={featuredDiscographyRail}
-						>
-							{#each featuredDiscographyAlbums as featured (`featured:${featured.entry.key}:${featured.entry.representative.id}`)}
-								{@const album = featured.entry.representative}
-								{@const hasOfficialTidalSource = album.discographySource === 'official_tidal'}
-								{@const coverOverride = albumCoverOverrides[album.id]}
-								{@const coverImageCandidates = buildAlbumCoverCandidates(
-									album,
-									featured.entry.versions,
-									hasOfficialTidalSource,
-									coverOverride
-								)}
-								{@const coverCacheKey = getCoverCacheKey({
-									coverId: coverOverride || album.cover,
-									size: '640',
-									proxy: hasOfficialTidalSource,
-									overrideKey: `artist:${artist?.id ?? 0}:album:${album.id}`
-								})}
-								{@const resolvedCoverUrl = getResolvedCoverUrl(coverCacheKey)}
-								{@const coverImageUrl = resolvedCoverUrl ?? coverImageCandidates[0] ?? ''}
-								<EntityMediaCard
-									type="album"
-									href={`/album/${album.id}`}
-									title={album.title}
-									subtitle={formatAlbumMeta(album)}
-									class="recommendation-slider__item discography-featured__item"
-									data-recommendation-card="true"
-								>
-									{#snippet artwork()}
-										{#if coverImageCandidates.length > 0 && !albumCoverFailures[album.id]}
-											<img
-												src={coverImageUrl}
-												data-album-id={album.id}
-												data-cover-use-proxy={hasOfficialTidalSource ? '1' : '0'}
-												data-cover-candidates={serializeCoverCandidates(coverImageCandidates)}
-												data-cover-index="0"
-												data-cover-generation={coverHydrationGeneration}
-												data-cover-recovery-tried="0"
-												data-cover-cache-key={coverCacheKey}
-												onerror={handleAlbumCoverError}
-												onload={handleAlbumCoverLoad}
-												alt={album.title}
-												class="h-full w-full object-cover"
-												loading="lazy"
-												decoding="async"
-											/>
-										{:else}
-											<div class="flex h-full w-full items-center justify-center text-sm text-gray-500">
-												No artwork
-											</div>
-										{/if}
-									{/snippet}
-								</EntityMediaCard>
-							{/each}
-						</div>
-					</div>
+					</ToolPanel>
 				</section>
 			{/if}
 
@@ -2279,12 +2264,14 @@
 						</p>
 					</ActionPanel>
 				{#if discographyInfo?.mayBeIncomplete}
-					<div class="mt-3 rounded-lg border border-amber-700/40 bg-amber-900/20 p-3 text-sm text-amber-200">
-						<p class="font-semibold">Discography may be incomplete from source data.</p>
-						{#if discographyInfo.reason}
-							<p class="mt-1 text-xs text-amber-100/90">{discographyInfo.reason}.</p>
-						{/if}
-					</div>
+					<StateBlock
+						kind="empty"
+						title="Discography may be incomplete"
+						message={discographyInfo.reason
+							? `${discographyInfo.reason}.`
+							: 'The upstream source can return partial release lists for some artists.'}
+						embedded={true}
+					/>
 				{/if}
 				{#if discographyError}
 					<p class="mt-2 ui-action-status" data-tone="error" role="alert">{discographyError}</p>
@@ -2347,7 +2334,6 @@
 													href={`/album/${album.id}`}
 													title={album.title}
 													subtitle={formatAlbumMeta(album)}
-													meta={`Quality: ${formatQualityLabel(downloadQuality)}`}
 													class="group"
 												>
 													{#snippet action()}
@@ -2435,20 +2421,19 @@
 						{/each}
 					</div>
 					{:else if filtersHideAllDiscography}
-						<div
-							class="mt-6 space-y-3 rounded-lg border border-amber-700/40 bg-amber-900/20 p-6 text-sm text-amber-200"
-						>
-						<p>Current discography filters hide all releases.</p>
-						<p class="text-xs text-amber-100/90">
-							Tip: keep both “Explicit” and “Non-explicit” enabled if you want all editions.
-						</p>
-						<div>
-							<button
-								type="button"
-								onclick={resetDiscographyFilters}
-								class="ui-chip-button ui-chip-button--compact"
-							>
-								Reset discography filters
+						<div class="mt-6 space-y-3">
+							<StateBlock
+								kind="empty"
+								title="Current filters hide all releases"
+								message="Enable both explicit and non-explicit filters to include all editions."
+							/>
+							<div>
+								<button
+									type="button"
+									onclick={resetDiscographyFilters}
+									class="ui-chip-button ui-chip-button--compact"
+								>
+									Reset discography filters
 								</button>
 							</div>
 						</div>
@@ -2464,51 +2449,44 @@
 {/if}
 
 <style>
-	.artist-secondary-zone {
-		border: 1px dashed rgba(255, 255, 255, 0.2);
-		border-radius: var(--ui-radius-md, 12px);
-		padding: 0.95rem;
-		background: rgba(255, 255, 255, 0.015);
-	}
-
 	.artist-discography-primary {
 		border-top: 1px solid rgba(255, 255, 255, 0.18);
-		padding-top: 0.65rem;
+		padding-top: 0.9rem;
 	}
 
-	.recommendation-spotlight {
-		border: 0;
-		background: transparent;
-		border-radius: var(--ui-radius-md, 12px);
-		padding: 0.1rem 0;
-	}
-
-	.recommendation-spotlight__intro {
+	.artist-rail-stack {
 		display: flex;
 		flex-direction: column;
-		gap: 0.45rem;
+		gap: 1rem;
 	}
 
-	.recommendation-spotlight__intro p {
-		margin: 0;
-		font-size: 0.76rem;
-		color: rgba(188, 188, 188, 0.84);
+	.artist-rail-group {
+		display: flex;
+		flex-direction: column;
+		gap: 0.55rem;
 	}
 
-	.recommendation-spotlight__badge {
-		display: inline-flex;
-		width: fit-content;
+	.artist-rail-group__header {
+		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.35rem;
-		border: 1px solid rgba(255, 255, 255, 0.2);
-		background: rgba(255, 255, 255, 0.05);
-		border-radius: var(--ui-radius-sm, 9px);
-		padding: 0.2rem 0.48rem;
-		font-size: 0.66rem;
+		justify-content: space-between;
+		gap: 0.65rem;
+	}
+
+	.artist-rail-group__title-row {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		min-width: 0;
+	}
+
+	.artist-rail-group__title {
+		margin: 0;
+		font-size: 0.96rem;
 		font-weight: 700;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
-		color: rgba(236, 236, 236, 0.95);
+		line-height: 1.3;
+		color: rgba(238, 238, 238, 0.96);
 	}
 
 	.recommendation-count-pill {
@@ -2517,8 +2495,9 @@
 		border: 1px solid rgba(255, 255, 255, 0.2);
 		background: rgba(255, 255, 255, 0.05);
 		border-radius: var(--ui-radius-sm, 9px);
-		padding: 0.14rem 0.54rem;
-		font-size: 0.68rem;
+		padding: 0.2rem 0.58rem;
+		font-size: 0.74rem;
+		font-weight: 600;
 		color: rgba(234, 234, 234, 0.95);
 	}
 
@@ -2535,7 +2514,9 @@
 		border: 1px solid rgba(255, 255, 255, 0.16);
 		background: rgba(255, 255, 255, 0.04);
 		border-radius: var(--ui-radius-sm, 9px);
-		padding: 0.28rem 0.34rem;
+		padding: 0.28rem 0.36rem;
+		min-width: 2rem;
+		min-height: 2rem;
 		color: rgba(234, 234, 234, 0.95);
 		transition:
 			background-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
@@ -2554,7 +2535,7 @@
 	.recommendation-slider {
 		display: grid;
 		grid-auto-flow: column;
-		grid-auto-columns: minmax(180px, 230px);
+		grid-auto-columns: minmax(180px, 220px);
 		gap: 0.65rem;
 		overflow-x: auto;
 		padding: 0.1rem 0.1rem 0.5rem;
@@ -2580,43 +2561,25 @@
 	}
 
 	:global(.recommendation-slider__item.ui-media-card) {
-		padding: 0.56rem;
-		gap: 0.42rem;
+		padding: 0.62rem;
+		gap: 0.46rem;
 		border-radius: var(--ui-radius-sm, 9px);
 	}
 
 	:global(.recommendation-slider__item .ui-media-card__title) {
-		font-size: 0.86rem;
+		font-size: 0.92rem;
 	}
 
 	:global(.recommendation-slider__item .ui-media-card__subtitle) {
-		font-size: 0.76rem;
+		font-size: 0.82rem;
 	}
 
 	:global(.recommendation-slider__item .ui-media-card__meta) {
-		font-size: 0.7rem;
-	}
-
-	.discography-featured {
-		display: flex;
-		flex-direction: column;
-		gap: 0.7rem;
-		border: 0;
-		background: transparent;
-		border-radius: var(--ui-radius-md, 12px);
-		padding: 0.1rem 0;
-	}
-
-	.discography-featured__header {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.75rem;
+		font-size: 0.76rem;
 	}
 
 	.discography-featured__slider {
-		padding-top: 0.15rem;
+		padding-top: 0.1rem;
 	}
 
 	:global(.discography-featured__item) {
@@ -2627,7 +2590,7 @@
 	.album-card-status {
 		margin: 0;
 		padding-top: 0.2rem;
-		font-size: 0.72rem;
+		font-size: 0.76rem;
 		color: rgba(200, 200, 200, 0.9);
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
@@ -2641,10 +2604,9 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.recommendation-spotlight,
 		.recommendation-slider__control,
-		.discography-featured,
-		.discography-featured * {
+		.recommendation-slider,
+		.recommendation-slider * {
 			animation: none !important;
 			transition: none !important;
 			transform: none !important;

@@ -41,10 +41,7 @@ a[aria-disabled='true'] {
 	-webkit-backdrop-filter: none !important;
 }
 
-:root[data-performance='low'] .glass-panel,
 :root[data-performance='low'] .ui-shell-surface,
-:root[data-performance='low'] .glass-toolbar,
-:root[data-performance='low'] .glass-panel__footer,
 :root[data-performance='low'] .navigation-overlay,
 :root[data-performance='low'] .navigation-overlay__progress {
 	background-color: rgba(12, 12, 12, 0.92) !important;

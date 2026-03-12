@@ -12,6 +12,7 @@
 	import ShareButton from '$lib/components/ShareButton.svelte';
 	import ActionPanel from '$lib/components/ui/ActionPanel.svelte';
 	import DataGrid from '$lib/components/ui/DataGrid.svelte';
+	import StateBlock from '$lib/components/ui/StateBlock.svelte';
 	import type { Album, Track } from '$lib/types';
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
 	import {
@@ -924,8 +925,8 @@
 					{/if}
 				</div>
 				{#if hasIncompleteTrackList}
-					<p class="mb-4 rounded-md border border-amber-500/35 bg-amber-950/25 px-3 py-2 text-sm text-amber-200">
-						This album metadata appears incomplete from the upstream API: showing {tracks.length}/{expectedTrackCount}
+					<p class="mb-4 ui-action-status" data-tone="warning">
+						Tracklist may be incomplete from source metadata: showing {tracks.length}/{expectedTrackCount}
 						tracks{#if missingTrackLabel} (missing {missingTrackLabel}){/if}.
 					</p>
 				{/if}
@@ -1150,17 +1151,19 @@
 		</div>
 
 		<!-- Tracks -->
-		<div class="mt-8 space-y-4" data-ui-block="secondary-content">
+		<div class="mt-8 space-y-4" data-ui-block="main-content">
 			<h2 class="text-2xl font-bold">Tracks</h2>
-			<TrackList {tracks} showAlbum={false} />
 			{#if tracks.length === 0}
-				<div class="rounded-lg border border-yellow-900 bg-yellow-900/20 p-6 text-yellow-300">
-					<p>
-						We couldn't find tracks for this album. Try refreshing or searching for individual
-						songs.
-					</p>
-				</div>
+				<StateBlock
+					kind="empty"
+					title="No tracks available"
+					message="Try refreshing this album or search for individual songs."
+				/>
+			{:else}
+				<TrackList {tracks} showAlbum={false} />
 			{/if}
+		</div>
+		<div data-ui-block="secondary-content">
 			{#if album.copyright}
 				<p class="pt-2 text-sm text-gray-500">{album.copyright}</p>
 			{/if}
