@@ -34,8 +34,8 @@
 	<div class="api-targets-card__header">
 		<p class="section-heading">{title}</p>
 		{#if onRefresh}
-			<button type="button" class="glass-action" onclick={onRefresh} disabled={loading}>
-				<span class="glass-action__label">{loading ? 'Refreshing...' : 'Refresh'}</span>
+			<button type="button" class="ui-chip-button api-targets-card__refresh" onclick={onRefresh} disabled={loading}>
+				<span>{loading ? 'Refreshing...' : 'Refresh'}</span>
 			</button>
 		{/if}
 	</div>
@@ -85,9 +85,9 @@
 	}
 
 	.section-heading {
-		font-size: 0.68rem;
+		font-size: 0.82rem;
 		text-transform: uppercase;
-		letter-spacing: 0.16em;
+		letter-spacing: 0.1em;
 		font-weight: 700;
 		margin: 0;
 		color: rgba(224, 224, 224, 0.76);
@@ -95,7 +95,7 @@
 
 	.section-footnote {
 		margin: 0;
-		font-size: 0.78rem;
+		font-size: 0.9rem;
 		color: rgba(212, 212, 212, 0.7);
 		line-height: 1.4;
 	}
@@ -104,44 +104,14 @@
 		color: rgba(212, 212, 212, 0.86);
 	}
 
-	.glass-action {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.85rem;
-		border-radius: var(--ui-radius-sm, 9px);
-		border: 1px solid rgba(255, 255, 255, 0.16);
-		background: rgba(255, 255, 255, 0.04);
-		padding: 0.42rem 0.7rem;
-		font-size: 0.78rem;
-		font-weight: 600;
-		color: inherit;
-		cursor: pointer;
-		transition:
-			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
-	}
-
-	.glass-action:hover:not(:disabled) {
-		border-color: rgba(255, 255, 255, 0.28);
-		background: rgba(255, 255, 255, 0.1);
-		transform: translateY(var(--ui-lift-y, -1px));
-	}
-
-	.glass-action:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-	}
-
-	.glass-action__label {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.55rem;
+	.api-targets-card__refresh {
+		min-height: 40px;
+		padding-inline: 0.78rem;
+		font-size: 0.86rem;
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.glass-action {
+		.api-targets-card__refresh {
 			animation: none !important;
 			transition: none !important;
 			transform: none !important;

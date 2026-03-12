@@ -1793,8 +1793,8 @@
 
 	.app-sidebar__subtitle {
 		margin: 0.15rem 0 0;
-		font-size: 0.8rem;
-		letter-spacing: 0.18em;
+		font-size: 0.88rem;
+		letter-spacing: 0.12em;
 		text-transform: uppercase;
 		color: rgba(212, 212, 212, 0.78);
 	}
@@ -1808,9 +1808,9 @@
 
 	.app-sidebar__section-title {
 		margin: 0;
-		font-size: 0.74rem;
+		font-size: 0.82rem;
 		font-weight: 700;
-		letter-spacing: 0.18em;
+		letter-spacing: 0.14em;
 		text-transform: uppercase;
 		color: rgba(161, 161, 161, 0.72);
 	}
@@ -1819,8 +1819,8 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 2rem;
-		height: 2rem;
+		width: 2.2rem;
+		height: 2.2rem;
 		border-radius: var(--ui-radius-sm, 9px);
 		border: 1px solid rgba(212, 212, 212, 0.32);
 		background: rgba(17, 17, 17, 0.5);
@@ -1921,7 +1921,7 @@
 		border: 1px solid rgba(255, 255, 255, 0.56);
 		background: rgba(255, 255, 255, 0.14);
 		color: rgba(245, 245, 245, 0.96);
-		font-size: 0.76rem;
+		font-size: 0.84rem;
 		font-weight: 700;
 		letter-spacing: 0.02em;
 		line-height: 1;
@@ -1945,8 +1945,8 @@
 		border-radius: var(--ui-radius-sm, 9px);
 		border: 1px solid rgba(212, 212, 212, 0.4);
 		background: rgba(12, 12, 12, 0.52);
-		font-size: 0.74rem;
-		letter-spacing: 0.08em;
+		font-size: 0.82rem;
+		letter-spacing: 0.06em;
 		text-transform: uppercase;
 		color: rgba(235, 235, 235, 0.96);
 	}

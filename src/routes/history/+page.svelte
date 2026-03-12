@@ -223,7 +223,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.4rem;
-		font-size: 0.72rem;
+		font-size: 0.84rem;
 		font-weight: 600;
 		color: rgba(212, 212, 212, 0.85);
 	}
@@ -259,7 +259,7 @@
 
 	.history-list-card__title h2 {
 		margin: 0;
-		font-size: 0.92rem;
+		font-size: 1.02rem;
 	}
 
 	.history-media-grid {

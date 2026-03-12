@@ -124,7 +124,7 @@
 
 			<!-- Playlist Info -->
 			<div class="flex flex-1 flex-col justify-end">
-				<p class="mb-2 text-sm text-gray-400">PLAYLIST</p>
+				<p class="mb-2 text-base text-gray-400">PLAYLIST</p>
 				<h1 class="mb-4 text-4xl font-bold md:text-6xl">{playlist.title}</h1>
 
 				{#if playlist.description}
@@ -143,10 +143,10 @@
 							<User size={16} class="text-gray-400" />
 						</div>
 					{/if}
-					<span class="text-sm text-gray-300">{playlist.creator.name}</span>
+					<span class="text-base text-gray-300">{playlist.creator.name}</span>
 				</div>
 
-				<div class="mb-6 flex flex-wrap items-center gap-4 text-sm text-gray-400">
+				<div class="mb-6 flex flex-wrap items-center gap-4 text-base text-gray-400">
 					<div>{playlist.numberOfTracks} tracks</div>
 					{#if playlist.duration}
 						<div class="flex items-center gap-1">
@@ -180,7 +180,7 @@
 		<!-- Promoted Artists -->
 		{#if playlist.promotedArtists && playlist.promotedArtists.length > 0}
 			<div>
-				<h3 class="mb-3 text-sm font-semibold text-gray-400">Featured Artists</h3>
+				<h3 class="mb-3 text-base font-semibold text-gray-400">Featured Artists</h3>
 				<div class="ui-media-grid ui-media-grid--artists">
 					{#each playlist.promotedArtists as artist (artist.id)}
 						<EntityMediaCard
@@ -210,7 +210,7 @@
 		{/if}
 
 		<!-- Metadata -->
-		<div class="ui-surface-card space-y-1 p-3 text-xs text-gray-500">
+		<div class="ui-surface-card space-y-1 p-3 text-sm text-gray-500">
 			{#if playlist.created}
 				<p>Created: {new Date(playlist.created).toLocaleDateString()}</p>
 			{/if}

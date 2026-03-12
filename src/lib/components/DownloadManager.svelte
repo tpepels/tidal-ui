@@ -2151,7 +2151,7 @@
 	.download-manager-panel--page .download-manager-last-updated,
 	.download-manager-panel--page .download-manager-poll-status,
 	.download-manager-panel--page .download-manager-meta-separator {
-		font-size: 0.76rem;
+		font-size: 0.84rem;
 	}
 
 	.download-manager-panel--page .download-manager-error,
@@ -2175,8 +2175,8 @@
 	}
 
 	.download-manager-panel--page .download-status-hero__eyebrow {
-		font-size: 0.64rem;
-		letter-spacing: 0.18em;
+		font-size: 0.74rem;
+		letter-spacing: 0.12em;
 	}
 
 	.download-manager-panel--page .download-status-hero__main h4 {
@@ -2199,7 +2199,7 @@
 		border-color: var(--color-border);
 		background: var(--dm-surface-1);
 		color: rgba(235, 235, 235, 0.9);
-		font-size: 0.62rem;
+		font-size: 0.74rem;
 	}
 
 	.download-manager-panel--page .download-status-chip[data-tone='ok'] {
@@ -2215,7 +2215,7 @@
 	}
 
 	.download-manager-panel--page .poll-stale-chip {
-		font-size: 0.54rem;
+		font-size: 0.68rem;
 	}
 
 	.download-manager-panel--page .download-manager-top-strip {
@@ -2237,8 +2237,8 @@
 	}
 
 	.download-manager-panel--page .top-strip-label {
-		letter-spacing: 0.16em;
-		font-size: 0.62rem;
+		letter-spacing: 0.1em;
+		font-size: 0.74rem;
 	}
 
 	.download-manager-panel--page .top-strip-value {
@@ -2246,7 +2246,7 @@
 	}
 
 	.download-manager-panel--page .top-strip-value--text {
-		font-size: 0.82rem;
+		font-size: 0.9rem;
 	}
 
 	.download-manager-panel--page .top-strip-item--running .top-strip-value,
@@ -2363,7 +2363,7 @@
 
 	.priority-item__meta {
 		margin: 0;
-		font-size: 0.74rem;
+		font-size: 0.84rem;
 		color: rgba(192, 192, 192, 0.82);
 		white-space: nowrap;
 		overflow: hidden;
@@ -2372,7 +2372,7 @@
 
 	.priority-empty {
 		margin: 0;
-		font-size: 0.78rem;
+		font-size: 0.88rem;
 		color: rgba(188, 188, 188, 0.82);
 	}
 
@@ -2390,7 +2390,7 @@
 
 	.priority-bulk-actions .control-btn {
 		padding: 0.5rem 0.74rem;
-		font-size: 0.8rem;
+		font-size: 0.88rem;
 	}
 
 	.priority-empty-state {
@@ -2419,7 +2419,7 @@
 
 	.priority-empty-state p {
 		margin: 0;
-		font-size: 0.8rem;
+		font-size: 0.88rem;
 		color: rgba(196, 196, 196, 0.84);
 	}
 
@@ -2594,7 +2594,7 @@
 
 	.download-manager-subtitle-text {
 		margin: 0.26rem 0 0 0;
-		font-size: 0.82rem;
+		font-size: 0.9rem;
 		color: var(--color-text-secondary);
 	}
 
@@ -2607,18 +2607,18 @@
 	}
 
 	.download-manager-meta-separator {
-		font-size: 0.72rem;
+		font-size: 0.82rem;
 		color: var(--color-text-secondary);
 		opacity: 0.7;
 	}
 
 	.download-manager-last-updated {
-		font-size: 0.72rem;
+		font-size: 0.82rem;
 		color: var(--color-text-secondary);
 	}
 
 	.download-manager-poll-status {
-		font-size: 0.72rem;
+		font-size: 0.82rem;
 		color: var(--color-text-secondary);
 		display: inline-flex;
 		align-items: center;
@@ -2630,9 +2630,9 @@
 	}
 
 	.poll-stale-chip {
-		font-size: 9px;
+		font-size: 11px;
 		line-height: 1;
-		padding: 3px 5px;
+		padding: 4px 6px;
 		border-radius: 999px;
 		letter-spacing: 0.3px;
 		font-weight: 700;
@@ -2642,7 +2642,7 @@
 	}
 
 	.download-manager-compact-indicator {
-		font-size: 0.72rem;
+		font-size: 0.82rem;
 		color: #d4d4d4;
 	}
 
@@ -2650,7 +2650,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.35rem;
-		font-size: 0.72rem;
+		font-size: 0.82rem;
 		color: var(--color-text-secondary);
 	}
 

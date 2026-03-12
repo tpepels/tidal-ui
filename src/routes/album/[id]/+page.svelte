@@ -857,7 +857,7 @@
 
 			<!-- Album Info -->
 			<div class="flex flex-1 flex-col justify-end">
-				<p class="mb-2 text-sm text-gray-400">ALBUM</p>
+				<p class="mb-2 text-base text-gray-400">ALBUM</p>
 				<h1 class="mb-4 text-4xl font-bold md:text-6xl">{album.title}</h1>
 				<div class="mb-4 flex items-center gap-1">
 					{#if album.explicit}
@@ -882,7 +882,7 @@
 					{/if}
 				</div>
 
-				<div class="mb-6 flex flex-wrap items-center gap-4 text-sm text-gray-400">
+				<div class="mb-6 flex flex-wrap items-center gap-4 text-base text-gray-400">
 					{#if album.releaseDate}
 						<div class="flex items-center gap-1">
 							<Calendar size={16} />
@@ -910,7 +910,7 @@
 					{/if}
 				</div>
 				{#if hasIncompleteTrackList}
-					<p class="mb-4 rounded-md border border-amber-500/35 bg-amber-950/25 px-3 py-2 text-xs text-amber-200">
+					<p class="mb-4 rounded-md border border-amber-500/35 bg-amber-950/25 px-3 py-2 text-sm text-amber-200">
 						This album metadata appears incomplete from the upstream API: showing {tracks.length}/{expectedTrackCount}
 						tracks{#if missingTrackLabel} (missing {missingTrackLabel}){/if}.
 					</p>
@@ -1011,7 +1011,7 @@
 									</button>
 								</div>
 								{#if isMusicBrainzReleaseLookupLoading && musicBrainzReleaseOptions.length === 0}
-									<p class="text-xs text-gray-400">Searching MusicBrainz releases…</p>
+									<p class="text-sm text-gray-400">Searching MusicBrainz releases…</p>
 								{:else if musicBrainzReleaseOptions.length > 0}
 										<label class="ui-action-panel__intent" for="musicbrainz-release-select">
 											Selected Release
@@ -1032,13 +1032,13 @@
 										{/each}
 									</select>
 										{#if selectedMusicBrainzRelease}
-											<p class="mt-2 text-xs text-gray-400">
+											<p class="mt-2 text-sm text-gray-400">
 												{#if selectedMusicBrainzRelease.barcode}
 													Barcode: {selectedMusicBrainzRelease.barcode} -
 												{/if}
 												Release ID: {selectedMusicBrainzRelease.id}
 											</p>
-										<p class="mt-1 text-xs text-gray-400">
+										<p class="mt-1 text-sm text-gray-400">
 											<a
 												href={`https://musicbrainz.org/release/${selectedMusicBrainzRelease.id}`}
 												target="_blank"
@@ -1050,14 +1050,14 @@
 										</p>
 									{/if}
 								{:else if hasMusicBrainzReleaseLookupAttempted}
-									<p class="text-xs text-gray-400">
+									<p class="text-sm text-gray-400">
 										No release matches found for this album.
 									</p>
 								{/if}
 								{#if musicBrainzReleaseLookupError}
-									<p class="mt-2 text-xs text-red-300">{musicBrainzReleaseLookupError}</p>
+									<p class="mt-2 text-sm text-red-300">{musicBrainzReleaseLookupError}</p>
 								{/if}
-								<p class="mt-2 text-xs text-gray-500">
+								<p class="mt-2 text-sm text-gray-500">
 									The selected release is used for MusicBrainz tagging when downloading this album.
 								</p>
 							</div>
@@ -1113,7 +1113,7 @@
 				</div>
 			{/if}
 			{#if album.copyright}
-				<p class="pt-2 text-xs text-gray-500">{album.copyright}</p>
+				<p class="pt-2 text-sm text-gray-500">{album.copyright}</p>
 			{/if}
 		</div>
 	</div>

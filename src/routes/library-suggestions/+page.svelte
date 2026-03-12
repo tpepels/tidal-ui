@@ -564,8 +564,8 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.4rem;
-		font-size: 0.78rem;
-		letter-spacing: 0.12em;
+		font-size: 0.86rem;
+		letter-spacing: 0.08em;
 		text-transform: uppercase;
 		color: rgba(214, 214, 214, 0.82);
 	}
@@ -581,13 +581,13 @@
 	}
 
 	.library-suggestions-overview__value--small {
-		font-size: 0.9rem;
+		font-size: 0.98rem;
 		line-height: 1.35;
 	}
 
 	.library-suggestions-overview__meta {
 		margin: 0;
-		font-size: 0.78rem;
+		font-size: 0.88rem;
 		color: rgba(209, 209, 209, 0.85);
 	}
 
@@ -599,14 +599,14 @@
 
 	.library-suggestions-section__header h2 {
 		margin: 0;
-		font-size: 1.05rem;
+		font-size: 1.2rem;
 	}
 
 	.library-suggestions-section__eyebrow {
 		margin: 0 0 0.2rem;
-		font-size: 0.72rem;
+		font-size: 0.82rem;
 		text-transform: uppercase;
-		letter-spacing: 0.14em;
+		letter-spacing: 0.1em;
 		color: rgba(204, 204, 204, 0.75);
 	}
 
@@ -630,7 +630,7 @@
 
 	.library-suggestions-column__header h3 {
 		margin: 0;
-		font-size: 0.96rem;
+		font-size: 1.08rem;
 	}
 
 	.library-suggestions-seeds {
@@ -641,8 +641,8 @@
 
 	.library-suggestions-seeds__label {
 		margin: 0;
-		font-size: 0.74rem;
-		letter-spacing: 0.12em;
+		font-size: 0.84rem;
+		letter-spacing: 0.08em;
 		text-transform: uppercase;
 		color: rgba(194, 194, 194, 0.76);
 	}
@@ -661,7 +661,7 @@
 		border-radius: var(--ui-radius-sm, 9px);
 		border: 1px solid rgba(212, 212, 212, 0.38);
 		background: rgba(18, 18, 18, 0.55);
-		font-size: 0.78rem;
+		font-size: 0.88rem;
 		text-decoration: none;
 		color: inherit;
 	}

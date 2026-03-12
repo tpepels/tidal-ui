@@ -2,6 +2,14 @@
 
 Goal: keep all user-visible screens on one shared element grammar that is clear, larger, flatter, and easier to scan.
 
+## Current GUI Assessment (Code-Based)
+- Baseline unification is now strong on major operational pages (`settings`, `status`, `download-center`), with shared panel/card patterns in place.
+- Remaining inconsistency is mostly in shared primitives and secondary UI:
+  - Some shared components still used smaller typography than primary panels (notably API status + page state blocks).
+  - Sidebar metadata/section labels were visually smaller than the new baseline.
+  - Manual visual QA is still needed for edge-case spacing and interaction rhythm across breakpoints and reduced-motion mode.
+- Risk level: low for functionality, medium for visual consistency polish.
+
 ## Standard Element Rules
 - Surfaces: use shared panel/card primitives (`ui-tool-panel`, `ui-surface-card`, unified list cards).
 - Controls: use real buttons/links/selects with consistent sizing and motion.
@@ -25,3 +33,13 @@ Goal: keep all user-visible screens on one shared element grammar that is clear,
 - [x] Track-heavy grids/lists: finish card/list typography alignment to the same baseline sizes.
 - [x] Mobile touch audit: guarantee primary controls meet clear hit-target sizing on all operational pages.
 - [ ] Manual route sweep: desktop + mobile + reduced-motion verification on all major routes.
+  - [x] Automated sidebar route pass (`tests/e2e/sidebar-routes.spec.ts`) is green after unification changes.
+  - [ ] Visual/manual QA still required for final polish signoff.
+
+### Phase 3: Shared Primitive Polish (In Progress)
+- [x] Normalize `ApiTargetsStatusCard` typography + refresh control to standard chip/button rhythm.
+- [x] Normalize `PageState` typography + action control sizing.
+- [x] Raise sidebar secondary typography/chips to the current baseline readability target.
+- [x] Lift secondary route typography (`history`, `library-suggestions`) to match the larger readability baseline.
+- [x] Lift legacy detail-header/meta typography on `album` and `playlist` pages to the same baseline.
+- [x] Remove remaining ultra-small labels in Download Center status chips/hero/top-strip metadata.
