@@ -107,36 +107,36 @@
 </svelte:head>
 
 {#if isLoading}
-	<div class="flex items-center justify-center py-24">
-		<LoaderCircle class="h-16 w-16 animate-spin text-blue-500" />
+	<div class="ui-page flex items-center justify-center py-24">
+		<LoaderCircle class="h-16 w-16 animate-spin text-white/80" />
 	</div>
 {:else if error}
-	<div class="mx-auto max-w-2xl py-12">
-		<div class="rounded-lg border border-red-900 bg-red-900/20 p-6">
-			<h2 class="mb-2 text-xl font-semibold text-red-400">Error Loading Track</h2>
-			<p class="text-red-300">{error}</p>
+	<div class="ui-page py-12">
+		<div class="ui-surface-card border-red-500/40 bg-red-950/20 p-6">
+			<h2 class="mb-2 text-xl font-semibold text-red-200">Error Loading Track</h2>
+			<p class="text-red-100/85">{error}</p>
 			<a
 				href="/"
-				class="mt-4 inline-flex rounded-lg bg-red-600 px-4 py-2 transition-colors hover:bg-red-700"
+				class="ui-action-button mt-4 inline-flex"
 			>
 				Go Home
 			</a>
 		</div>
 	</div>
 {:else if track}
-	<div class="mx-auto max-w-4xl space-y-8 py-8">
+	<div class="ui-page space-y-8 pb-32 pt-4 lg:pb-40">
 		<!-- Back Button -->
 		<button
 			onclick={handleBackNavigation}
-			class="flex items-center gap-2 text-gray-400 transition-colors hover:text-white"
+			class="ui-chip-button ui-chip-button--compact ui-detail-back"
 		>
 			<ArrowLeft size={20} />
 			Back
 		</button>
 
-		<div class="flex flex-col gap-8 md:flex-row">
+		<div class="ui-surface-card flex flex-col gap-8 p-5 md:flex-row">
 			<!-- Album Art -->
-			<div class="aspect-square w-full flex-shrink-0 overflow-hidden rounded-lg shadow-2xl md:w-96">
+			<div class="aspect-square w-full flex-shrink-0 overflow-hidden rounded-xl border border-white/12 bg-white/5 md:w-96">
 				{#if track.album.cover}
 					<img
 						src={losslessAPI.getCoverUrl(track.album.cover, '1280')}
@@ -154,7 +154,7 @@
 			<div class="flex flex-1 flex-col justify-end">
 				<h1 class="mb-2 text-4xl font-bold md:text-5xl">{track.title}</h1>
 				{#if track.version}
-					<span class="mb-4 inline-block rounded bg-gray-800 px-2 py-1 text-sm text-gray-300">
+					<span class="ui-meta-pill mb-4 inline-flex">
 						{track.version}
 					</span>
 				{/if}
@@ -197,46 +197,52 @@
 					</div>
 				</div>
 
-				<div class="flex gap-4">
+				<div class="ui-action-panel ui-action-panel--intentful">
+					<div class="ui-action-panel__header">
+						<p class="ui-action-panel__intent">Track Actions</p>
+						<p class="ui-action-panel__summary">Play, download, or share this track.</p>
+					</div>
+					<div class="ui-action-row ui-action-row--progressive">
 						<button
 							onclick={() => {
 								if (track) {
 									playbackFacade.loadQueue([track], 0, { autoPlay: true });
 								}
 							}}
-						class="flex items-center gap-2 rounded-full bg-blue-600 px-8 py-3 font-semibold transition-colors hover:bg-blue-700"
-					>
-						<Play size={20} fill="currentColor" />
-						Play
-					</button>
+							class="ui-action-button ui-action-button--primary"
+						>
+							<Play size={16} fill="currentColor" />
+							Play
+						</button>
 
-					{#if isDownloading}
-						<button
-							onclick={(event) => handleCancelDownload(track!.id, event)}
-							class="flex items-center gap-2 rounded-full bg-red-600 px-8 py-3 font-semibold transition-colors hover:bg-red-700"
-						>
-							<X size={20} />
-							Cancel
-						</button>
-					{:else if isCancelled}
-						<button
-							disabled
-							class="flex items-center gap-2 rounded-full bg-gray-600 px-8 py-3 font-semibold text-gray-300"
-						>
-							<X size={20} />
-							Cancelled
-						</button>
-					{:else}
-						<button
-							onclick={(event) => handleDownload(track!, event)}
-							class="flex items-center gap-2 rounded-full bg-gray-800 px-8 py-3 font-semibold transition-colors hover:bg-gray-700"
-						>
-							<Download size={20} />
-							{downloadActionLabel}
-						</button>
-					{/if}
+						{#if isDownloading}
+							<button
+								onclick={(event) => handleCancelDownload(track!.id, event)}
+								class="ui-action-button"
+							>
+								<X size={16} />
+								Cancel
+							</button>
+						{:else if isCancelled}
+							<button
+								disabled
+								class="ui-action-button"
+							>
+								<X size={16} />
+								Cancelled
+							</button>
+						{:else}
+							<button
+								onclick={(event) => handleDownload(track!, event)}
+								class="ui-action-button"
+							>
+								<Download size={16} />
+								{downloadActionLabel}
+							</button>
+						{/if}
 
-					<ShareButton type="track" id={track.id} variant="secondary" />
+						<ShareButton type="track" id={track.id} variant="secondary" />
+					</div>
 				</div>
 			</div>
 		</div>

@@ -20,6 +20,12 @@
 	let isLoaded = $state(false);
 	let isInView = $state(false);
 	let observer: IntersectionObserver | null = null;
+	const resolvedSrc = $derived(isInView ? src : placeholder);
+
+	$effect(() => {
+		resolvedSrc;
+		isLoaded = false;
+	});
 
 	$effect(() => {
 		if (typeof window !== 'undefined' && imgElement && !isInView) {
@@ -45,13 +51,17 @@
 	function handleLoad() {
 		isLoaded = true;
 	}
+
+	function handleError() {
+		isLoaded = true;
+	}
 </script>
 
 <img
 	bind:this={imgElement}
-	src={isInView ? src : placeholder}
+	src={resolvedSrc}
 	{alt}
-	class="{className} transition-opacity duration-300 {isLoaded ? 'opacity-100' : 'opacity-0'}"
+	class="{className} transition-opacity duration-300 ease-[cubic-bezier(0.2,0,0,1)] {isLoaded ? 'opacity-100' : 'opacity-0'}"
 	onload={handleLoad}
-	style={isInView ? '' : 'filter: blur(10px); transform: scale(1.1);'}
+	onerror={handleError}
 />

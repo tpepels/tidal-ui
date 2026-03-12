@@ -25,7 +25,7 @@
 		candidates,
 		alt,
 		class: className = '',
-		fallbackClass = 'flex h-full w-full items-center justify-center bg-gray-800 text-sm text-gray-500',
+		fallbackClass = 'cover-art-fallback',
 		fallbackLabel = 'No artwork',
 		loading = 'lazy',
 		decoding = 'async'
@@ -34,6 +34,7 @@
 	let activeSrc = $state<string | null>(null);
 	let activeIndex = $state(0);
 	let failed = $state(false);
+	let isLoaded = $state(false);
 	let retryTick = $state(0);
 	let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -57,15 +58,15 @@
 			};
 		}
 
-			const resolved = getResolvedCoverUrl(cacheKey);
-			if (resolved) {
-				const resolvedIndex = normalized.indexOf(resolved);
-				activeIndex = resolvedIndex >= 0 ? resolvedIndex : -1;
-				activeSrc = resolved;
-				failed = false;
-				void prefetchCoverCandidates([{ cacheKey, candidates: normalized }]);
-				return;
-			}
+		const resolved = getResolvedCoverUrl(cacheKey);
+		if (resolved) {
+			const resolvedIndex = normalized.indexOf(resolved);
+			activeIndex = resolvedIndex >= 0 ? resolvedIndex : -1;
+			activeSrc = resolved;
+			failed = false;
+			void prefetchCoverCandidates([{ cacheKey, candidates: normalized }]);
+			return;
+		}
 
 		if (isCoverInFailureBackoff(cacheKey)) {
 			activeSrc = null;
@@ -99,6 +100,7 @@
 		if (!activeSrc || !cacheKey) return;
 		markCoverResolved(cacheKey, activeSrc);
 		failed = false;
+		isLoaded = true;
 		clearRetryTimer();
 	}
 
@@ -116,15 +118,21 @@
 		}
 		failed = true;
 		activeSrc = null;
+		isLoaded = true;
 		retryTick += 1;
 	}
+
+	$effect(() => {
+		activeSrc;
+		isLoaded = false;
+	});
 </script>
 
 {#if !failed && activeSrc}
 	<img
 		src={activeSrc}
 		{alt}
-		class={className}
+		class={`cover-art-image ${className} ${isLoaded ? 'cover-art-image--ready' : 'cover-art-image--pending'}`.trim()}
 		{loading}
 		{decoding}
 		onerror={handleError}
@@ -135,3 +143,37 @@
 		{fallbackLabel}
 	</div>
 {/if}
+
+<style>
+	.cover-art-image {
+		transition: opacity var(--ui-motion-medium, 200ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
+	}
+
+	.cover-art-image--pending {
+		opacity: 0;
+	}
+
+	.cover-art-image--ready {
+		opacity: 1;
+	}
+
+	.cover-art-fallback {
+		display: flex;
+		height: 100%;
+		width: 100%;
+		align-items: center;
+		justify-content: center;
+		background: rgba(255, 255, 255, 0.04);
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		color: rgba(170, 170, 170, 0.92);
+		font-size: 0.78rem;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.cover-art-image {
+			animation: none !important;
+			transition: none !important;
+			transform: none !important;
+		}
+	}
+</style>

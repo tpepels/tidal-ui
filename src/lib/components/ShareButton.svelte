@@ -12,7 +12,7 @@
 		variant?: 'ghost' | 'primary' | 'secondary';
 	}
 
-	let { 
+let { 
 		type, 
 		id, 
 		title = 'Share', 
@@ -25,6 +25,7 @@
 	let copied = $state(false);
 	let menuRef = $state<HTMLDivElement | null>(null);
 	let buttonRef = $state<HTMLButtonElement | null>(null);
+	let prefersReducedMotion = $state(false);
 
 	function getLongLink() {
 		return `https://music.binimum.org/${type}/${id}`;
@@ -88,23 +89,33 @@
 	}
 
 	onMount(() => {
+		const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+		const handleMotionPreference = () => {
+			prefersReducedMotion = media.matches;
+		};
+		handleMotionPreference();
+
 		document.addEventListener('click', handleClickOutside);
+		media.addEventListener('change', handleMotionPreference);
 		return () => {
 			document.removeEventListener('click', handleClickOutside);
+			media.removeEventListener('change', handleMotionPreference);
 		};
 	});
 
 	const variantClasses = {
-		ghost: 'text-gray-400 hover:text-white hover:bg-white/10',
-		primary: 'bg-blue-600 text-white hover:bg-blue-700',
-		secondary: 'bg-gray-800 text-white hover:bg-gray-700'
+		ghost:
+			'border border-transparent text-gray-300 hover:border-white/20 hover:bg-white/10 hover:text-white',
+		primary: 'border border-white bg-white text-black hover:bg-white/90',
+		secondary:
+			'border border-white/15 bg-white/5 text-gray-100 hover:border-white/30 hover:bg-white/12'
 	};
 </script>
 
 <div class="relative inline-block">
 	<button
 		bind:this={buttonRef}
-		class="flex items-center gap-2 rounded-full transition-colors {variantClasses[variant]} {iconOnly ? 'p-2' : 'px-4 py-2'}"
+		class="share-trigger flex items-center gap-2 rounded-full transition-[background-color,border-color,color,transform] duration-200 ease-[cubic-bezier(0.2,0,0,1)] hover:-translate-y-px active:translate-y-0 {variantClasses[variant]} {iconOnly ? 'p-2' : 'px-4 py-2'}"
 		onclick={(e) => {
 			e.stopPropagation();
 			showMenu = !showMenu;
@@ -127,11 +138,11 @@
 	{#if showMenu}
 		<div
 			bind:this={menuRef}
-			transition:scale={{ duration: 100, start: 0.95 }}
-			class="absolute right-0 top-full z-50 mt-2 w-48 origin-top-right rounded-lg border border-white/10 bg-gray-900 p-1 shadow-xl backdrop-blur-xl"
+			transition:scale={{ duration: prefersReducedMotion ? 0 : 120, start: prefersReducedMotion ? 1 : 0.97 }}
+			class="share-menu absolute right-0 top-full z-50 mt-2 w-48 origin-top-right rounded-lg border border-white/15 bg-black/95 p-1 shadow-none"
 		>
 			<button
-				class="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-gray-300 hover:bg-white/10 hover:text-white"
+				class="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
 				onclick={(e) => {
 					e.stopPropagation();
 					copyToClipboard(getLongLink());
@@ -141,7 +152,7 @@
 				Copy Link
 			</button>
 			<button
-				class="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-gray-300 hover:bg-white/10 hover:text-white"
+				class="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
 				onclick={(e) => {
 					e.stopPropagation();
 					copyToClipboard(getShortLink());
@@ -151,7 +162,7 @@
 				Copy Short Link
 			</button>
 			<button
-				class="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-gray-300 hover:bg-white/10 hover:text-white"
+				class="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
 				onclick={(e) => {
 					e.stopPropagation();
 					copyToClipboard(getEmbedCode());
@@ -163,3 +174,15 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	@media (prefers-reduced-motion: reduce) {
+		.share-trigger,
+		.share-menu,
+		.share-menu button {
+			animation: none !important;
+			transition: none !important;
+			transform: none !important;
+		}
+	}
+</style>

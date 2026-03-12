@@ -705,7 +705,7 @@
 		<div class="relative mx-auto w-full max-w-screen-2xl">
 
 
-			<div class="audio-player-glass overflow-hidden rounded-2xl border shadow-2xl">
+			<div class="audio-player-glass overflow-hidden rounded-2xl border">
 				<div class="relative px-4 pb-3 pt-8">
 					<!-- NEW: dismiss (X) button -->
 					<button
@@ -728,17 +728,17 @@
 								aria-label="Seek position"
 							>
 								<div
-									class="pointer-events-none absolute inset-y-0 left-0 bg-blue-400/30 transition-all"
+									class="pointer-events-none absolute inset-y-0 left-0 bg-white/30 transition-all"
 									style="width: {bufferedPercent}%"
 									aria-hidden="true"
 								></div>
 								<div
-									class="pointer-events-none absolute inset-y-0 left-0 bg-blue-500 transition-all"
+									class="pointer-events-none absolute inset-y-0 left-0 bg-white transition-all"
 									style="width: {getPercent($machineCurrentTime, $machineDuration)}%"
 									aria-hidden="true"
 								></div>
 								<div
-									class="pointer-events-none absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-blue-500 opacity-0 transition-opacity group-hover:opacity-100"
+									class="pointer-events-none absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-white opacity-0 transition-opacity group-hover:opacity-100"
 									style="left: {getPercent($machineCurrentTime, $machineDuration)}%"
 									aria-hidden="true"
 								></div>
@@ -779,7 +779,7 @@
 										{:else}
 											<a
 												href={`/artist/${asTrack($machineCurrentTrack).artist.id}`}
-												class="truncate text-xs sm:text-sm text-gray-400 hover:text-blue-400 hover:underline inline-block"
+												class="truncate text-xs sm:text-sm text-gray-400 hover:text-white hover:underline inline-block"
 												data-sveltekit-preload-data
 											>
 												{formatArtists(asTrack($machineCurrentTrack).artists)}
@@ -787,7 +787,7 @@
 											<p class="text-xs text-gray-500">
 												<a
 													href={`/album/${asTrack($machineCurrentTrack).album.id}`}
-													class="hover:text-blue-400 hover:underline"
+													class="hover:text-white hover:underline"
 													data-sveltekit-preload-data
 												>
 													{asTrack($machineCurrentTrack).album.title}
@@ -971,7 +971,7 @@
 									<div class="flex items-center gap-2">
 										<button
 											onclick={handleShuffleQueue}
-											class="flex items-center gap-1 rounded-full border border-transparent px-3 py-1 text-xs tracking-wide text-gray-400 uppercase transition-colors hover:border-blue-500 hover:text-blue-200 disabled:opacity-40"
+											class="flex items-center gap-1 rounded-full border border-transparent px-3 py-1 text-xs tracking-wide text-gray-400 uppercase transition-colors hover:border-white/35 hover:text-white disabled:opacity-40"
 											type="button"
 											disabled={$machineQueue.length <= 1}
 											aria-label="Shuffle queue"
@@ -1013,7 +1013,7 @@
 													}}
 													tabindex="0"
 													role="button"
-													class="group flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors {index === $machineQueueIndex ? 'bg-blue-500/10 text-white' : 'text-gray-200 hover:bg-gray-800/70'}"
+													class="group flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors {index === $machineQueueIndex ? 'bg-white/10 text-white' : 'text-gray-200 hover:bg-gray-800/70'}"
 												>
 													<span class="w-6 text-xs font-semibold text-gray-500 group-hover:text-gray-300">
 														{index + 1}
@@ -1028,7 +1028,7 @@
 															<a
 																href={`/artist/${asTrack(queuedTrack).artist.id}`}
 																onclick={(e) => e.stopPropagation()}
-																class="truncate text-xs text-gray-400 hover:text-blue-400 hover:underline inline-block"
+																class="truncate text-xs text-gray-400 hover:text-white hover:underline inline-block"
 																data-sveltekit-preload-data
 															>
 																{formatArtists(asTrack(queuedTrack).artists)}
@@ -1076,22 +1076,25 @@
 
 <style>
 	.audio-player-glass {
-		background: rgba(12, 12, 12, 0.98);
-		border-color: rgba(255, 255, 255, 0.16);
-		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
-		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
-		box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 4px 18px rgba(0, 0, 0, 0.45),
-			inset 0 1px 0 rgba(255, 255, 255, 0.06);
-		transition: border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
+		background: #0f0f0f;
+		border-color: var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		backdrop-filter: none;
+		-webkit-backdrop-filter: none;
+		box-shadow: none;
+		transition:
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
 	}
 
 	.queue-panel {
-		background: rgba(12, 12, 12, 0.98);
-		border-color: rgba(255, 255, 255, 0.16);
-		backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
-		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
-		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-		transition: border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
+		background: #101010;
+		border-color: var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		backdrop-filter: none;
+		-webkit-backdrop-filter: none;
+		box-shadow: none;
+		transition:
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
 	}
 
 
@@ -1100,14 +1103,14 @@
 	}
 
 	.audio-player-backdrop::before {
-		content: '';
+		content: none;
 		position: absolute;
 		inset: 0;
 		pointer-events: none;
 		z-index: 0;
-		backdrop-filter: blur(20px);
-		-webkit-backdrop-filter: blur(20px);
-		mask: linear-gradient(to bottom, transparent 0%, black 25%);
+		backdrop-filter: none;
+		-webkit-backdrop-filter: none;
+		mask: none;
 	}
 
 	.audio-player-backdrop > * {
@@ -1140,11 +1143,20 @@
 
 
 	button.rounded-full {
-		transition: border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s ease, background 0.2s ease;
+		transition:
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 	}
 
 	button.rounded-full:hover {
 		border-color: var(--bloom-accent, rgba(255, 255, 255, 0.7)) !important;
+		transform: translateY(var(--ui-lift-y, -1px));
+	}
+
+	button.rounded-full:active {
+		transform: translateY(var(--ui-press-y, 0px));
 	}
 
 	.player-toggle-button {
@@ -1152,25 +1164,36 @@
 		align-items: center;
 		gap: 0.5rem;
 		border-radius: 9999px;
-		border: 1px solid rgba(255, 255, 255, 0.22);
-		background: transparent;
-		backdrop-filter: blur(16px) saturate(140%);
-		-webkit-backdrop-filter: blur(16px) saturate(140%);
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		backdrop-filter: none;
+		-webkit-backdrop-filter: none;
 		padding: 0.5rem 0.75rem;
 		font-size: 0.875rem;
 		color: rgba(209, 213, 219, 0.85);
-		transition: border-color 200ms ease, color 200ms ease, box-shadow 200ms ease;
+		transition:
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 	}
 
 	.player-toggle-button:hover {
 		border-color: var(--bloom-accent, rgba(255, 255, 255, 0.55));
 		color: rgba(255, 255, 255, 0.95);
+		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+		transform: translateY(var(--ui-lift-y, -1px));
 	}
 
-.player-toggle-button--active {
+	.player-toggle-button:active {
+		transform: translateY(var(--ui-press-y, 0px));
+	}
+
+	.player-toggle-button--active {
 		border-color: var(--bloom-accent, rgba(255, 255, 255, 0.62));
 		color: rgba(255, 255, 255, 0.98);
-		box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.1);
+		box-shadow: none;
+		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
 	}
 
 
@@ -1186,19 +1209,26 @@
 		width: 3rem;
 		height: 3rem;
 		border-radius: 50%;
-		background: rgba(12, 12, 12, 0.9);
-		border: 1px solid rgba(255, 255, 255, 0.25);
+		background: #101010;
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 		color: rgba(226, 232, 240, 0.9);
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-		backdrop-filter: blur(8px);
-		transition: all 0.2s ease;
+		box-shadow: none;
+		backdrop-filter: none;
+		transition:
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 		cursor: pointer;
 	}
 
 	.playback-indicator:hover {
-		background: rgba(18, 18, 18, 0.95);
-		border-color: rgba(255, 255, 255, 0.4);
-		transform: scale(1.05);
+		background: #141414;
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+		transform: translateY(var(--ui-lift-y, -1px));
+	}
+
+	.playback-indicator:active {
+		transform: translateY(var(--ui-press-y, 0px));
 	}
 
 	.playback-indicator-pulse {
@@ -1237,8 +1267,18 @@
 
 	.download-progress-bar-fill {
 		height: 100%;
-		background: linear-gradient(90deg, rgba(245, 245, 245, 0.95), rgba(210, 210, 210, 0.72));
+		background: rgba(255, 255, 255, 0.92);
 		border-radius: 2px;
-		transition: width 0.3s ease;
+		transition: width var(--ui-motion-medium, 200ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.audio-player-backdrop *,
+		.playback-indicator,
+		.playback-indicator-pulse {
+			animation: none !important;
+			transition: none !important;
+			transform: none !important;
+		}
 	}
 </style>

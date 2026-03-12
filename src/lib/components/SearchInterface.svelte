@@ -875,7 +875,7 @@
 	<!-- Search Input -->
 	<div class="mb-6">
 		<div
-			class="search-glass rounded-lg border px-3 py-2 pr-2 shadow-sm transition-colors focus-within:border-blue-500"
+			class="search-glass rounded-lg border px-3 py-2 pr-2 shadow-sm transition-colors focus-within:border-white/40"
 		>
 			<div class="flex flex-row gap-2 sm:items-center sm:justify-between">
 				<div class="flex min-w-0 flex-1 items-center gap-2">
@@ -910,7 +910,7 @@
 				onclick={() => handleTabChange('tracks')}
 				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {$searchStore.activeTab ===
 				'tracks'
-					? 'border-blue-500 text-blue-500'
+					? 'border-white/70 text-white'
 					: 'border-transparent text-gray-300 hover:text-white'}"
 			>
 				<Music size={18} />
@@ -920,7 +920,7 @@
 				onclick={() => handleTabChange('albums')}
 				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {$searchStore.activeTab ===
 				'albums'
-					? 'border-blue-500 text-blue-500'
+					? 'border-white/70 text-white'
 					: 'border-transparent text-gray-300 hover:text-white'}"
 			>
 				<Disc size={18} />
@@ -930,7 +930,7 @@
 				onclick={() => handleTabChange('artists')}
 				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {$searchStore.activeTab ===
 				'artists'
-					? 'border-blue-500 text-blue-500'
+					? 'border-white/70 text-white'
 					: 'border-transparent text-gray-300 hover:text-white'}"
 			>
 				<User size={18} />
@@ -940,7 +940,7 @@
 				onclick={() => handleTabChange('playlists')}
 				class="flex cursor-pointer items-center gap-2 border-b-2 px-3 py-2 whitespace-nowrap transition-colors sm:px-4 {$searchStore.activeTab ===
 				'playlists'
-					? 'border-blue-500 text-blue-500'
+					? 'border-white/70 text-white'
 					: 'border-transparent text-gray-300 hover:text-white'}"
 			>
 				<List size={18} />
@@ -987,7 +987,7 @@
 				</div>
 			{:else}
 				<div class="flex items-center justify-center py-12">
-					<div class="h-10 w-10 animate-spin rounded-full border-b-2 border-blue-500"></div>
+					<div class="h-10 w-10 animate-spin rounded-full border-b-2 border-white/80"></div>
 				</div>
 			{/if}
 	{/if}
@@ -1002,7 +1002,7 @@
 	<!-- Playlist Loading Progress -->
 	{#if $searchStore.playlistLoadingMessage}
 		<div
-			class="mb-4 flex items-center gap-3 rounded-lg border border-blue-900 bg-blue-900/20 p-4 text-blue-400"
+			class="mb-4 flex items-center gap-3 rounded-lg border border-white/18 bg-white/6 p-4 text-white/85"
 		>
 			<LoaderCircle class="animate-spin" size={20} />
 			<span>{$searchStore.playlistLoadingMessage}</span>
@@ -1018,26 +1018,26 @@
 				<div class="mb-6 flex flex-wrap items-center gap-3">
 					<button
 						onclick={handlePlayAll}
-						class="flex items-center gap-2 rounded-full bg-blue-600 px-6 py-3 font-semibold transition-colors hover:bg-blue-700"
+						class="ui-action-button ui-action-button--primary"
 						aria-label="Play search results"
 					>
-						<Play size={20} fill="currentColor" />
+						<Play size={16} fill="currentColor" />
 						Play Results
 					</button>
 					<button
 						onclick={handleShuffleAll}
-						class="flex items-center gap-2 rounded-full bg-purple-600 px-6 py-3 font-semibold transition-colors hover:bg-purple-700"
+						class="ui-action-button"
 						aria-label="Shuffle search results"
 					>
-						<Shuffle size={20} />
+						<Shuffle size={16} />
 						Shuffle Results
 					</button>
 					<button
 						onclick={handleDownloadAll}
-						class="flex items-center gap-2 rounded-full bg-green-600 px-6 py-3 font-semibold transition-colors hover:bg-green-700"
+						class="ui-action-button"
 						aria-label="Download search results"
 					>
-						<Download size={20} />
+						<Download size={16} />
 						Download Results
 					</button>
 					<div class="ml-auto text-sm text-gray-400">
@@ -1060,7 +1060,7 @@
 							handleTrackActivation(track);
 						}}
 						onkeydown={(event) => handleTrackKeydown(event, track)}
-						class="track-glass group flex w-full cursor-pointer items-center gap-2 sm:gap-3 rounded-lg p-2 sm:p-3 transition-colors hover:brightness-110 focus:ring-2 focus:ring-blue-500 focus:outline-none overflow-hidden {activeMenuId ===
+						class="track-glass group flex w-full cursor-pointer items-center gap-2 sm:gap-3 rounded-lg p-2 sm:p-3 transition-colors hover:brightness-110 focus:ring-2 focus:ring-white/35 focus:outline-none overflow-hidden {activeMenuId ===
 						track.id
 							? 'relative z-20'
 							: ''}"
@@ -1073,7 +1073,7 @@
 								class="h-10 w-10 sm:h-12 sm:w-12 flex-shrink-0 rounded object-cover"
 							/>
 							<div class="min-w-0 flex-1">
-								<h3 class="font-semibold text-sm leading-tight break-words whitespace-normal sm:text-base sm:truncate text-white group-hover:text-blue-400">
+								<h3 class="font-semibold text-sm leading-tight break-words whitespace-normal sm:text-base sm:truncate text-white group-hover:text-gray-100">
 									{track.title}
 								</h3>
 								<p class="truncate text-xs sm:text-sm text-gray-400">
@@ -1170,7 +1170,7 @@
 								/>
 							{/if}
 							<div class="min-w-0 flex-1">
-								<h3 class="font-semibold text-sm leading-tight break-words whitespace-normal sm:text-base sm:truncate text-white group-hover:text-blue-400">
+								<h3 class="font-semibold text-sm leading-tight break-words whitespace-normal sm:text-base sm:truncate text-white group-hover:text-gray-100">
 									{track.title}{asTrack(track).version ? ` (${asTrack(track).version})` : ''}
 									{#if asTrack(track).explicit}
 										<svg
@@ -1190,7 +1190,7 @@
 								</h3>
 								<a
 									href={`/artist/${asTrack(track).artist.id}`}
-									class="inline-block truncate text-sm text-gray-400 hover:text-blue-400 hover:underline"
+									class="inline-block truncate text-sm text-gray-400 hover:text-white hover:underline"
 									data-sveltekit-preload-data
 								>
 									{formatArtists(asTrack(track).artists)}
@@ -1198,7 +1198,7 @@
 								<p class="text-xs text-gray-500">
 									<a
 										href={`/album/${asTrack(track).album.id}`}
-										class="hover:text-blue-400 hover:underline"
+										class="hover:text-white hover:underline"
 										data-sveltekit-preload-data
 									>
 										{asTrack(track).album.title}
@@ -1572,7 +1572,7 @@
 						>
 							<div class="flex items-center gap-3">
 								<div
-									class="flex h-10 w-10 items-center justify-center rounded-full bg-blue-900/40 text-blue-300"
+									class="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/6 text-gray-200"
 								>
 									<Newspaper size={20} />
 								</div>
@@ -1586,7 +1586,7 @@
 		{:else if isQueryATidalUrl && !$searchStore.isLoading}
 			<div class="py-12 text-center text-gray-400">
 				<div class="flex flex-col items-center gap-4">
-					<Link2 size={48} class="text-blue-400" />
+					<Link2 size={48} class="text-white/85" />
 					<p class="text-lg text-white">Tidal URL detected</p>
 					<p class="text-sm">Press Enter or click Import to load this content</p>
 				</div>
@@ -1633,15 +1633,23 @@
 		height: 2rem;
 		border-radius: 999px;
 		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: rgba(10, 10, 10, 0.64);
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 		color: rgba(236, 236, 236, 0.92);
 		cursor: pointer;
-		transition: border-color 140ms ease, background 140ms ease;
+		transition:
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 	}
 
 	.search-media-card__action-btn:hover:not(:disabled) {
 		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		background: rgba(255, 255, 255, 0.12);
+		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+		transform: translateY(var(--ui-lift-y, -1px));
+	}
+
+	.search-media-card__action-btn:active:not(:disabled) {
+		transform: translateY(var(--ui-press-y, 0px));
 	}
 
 	.search-media-card__action-btn:disabled {
@@ -1653,11 +1661,11 @@
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
-		transition: transform 220ms ease;
+		transition: transform var(--ui-motion-medium, 200ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 	}
 
 	.search-media-card:hover .search-media-card__image {
-		transform: scale(1.03);
+		transform: scale(1.01);
 	}
 
 	.search-media-card__placeholder {
@@ -1710,78 +1718,60 @@
 	}
 
 	.search-glass {
-		background: transparent;
-		border-color: rgba(255, 255, 255, 0.2);
-		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
-		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
-		box-shadow:
-			0 10px 30px rgba(0, 0, 0, 0.4),
-			0 2px 8px rgba(0, 0, 0, 0.35),
-			inset 0 1px 0 rgba(255, 255, 255, 0.06);
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		border-color: var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		backdrop-filter: none;
+		-webkit-backdrop-filter: none;
+		box-shadow: none;
 		transition:
-			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
-			box-shadow 0.3s ease;
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
 	}
 
 	.track-glass {
-		background: transparent;
-		border: 1px solid rgba(255, 255, 255, 0.15);
-		backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
-		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 28px))
-			saturate(var(--perf-saturate, 160%));
-		box-shadow:
-			0 4px 12px rgba(0, 0, 0, 0.3),
-			inset 0 1px 0 rgba(255, 255, 255, 0.04);
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		backdrop-filter: none;
+		-webkit-backdrop-filter: none;
+		box-shadow: none;
 		transition:
-			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
-			box-shadow 0.3s ease,
-			filter 0.2s ease;
-	}
-
-	/* Tab buttons dynamic styling */
-	button.border-blue-500 {
-		border-color: rgba(235, 235, 235, 0.72) !important;
-		color: rgba(235, 235, 235, 0.94);
-		transition:
-			border-color 0.2s ease,
-			color 0.2s ease;
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
 	}
 
 	/* News container acrylic styling */
 	.news-container {
-		background: transparent;
-		border-color: rgba(255, 255, 255, 0.2);
-		backdrop-filter: blur(var(--perf-blur-medium, 28px)) saturate(var(--perf-saturate, 160%));
-		-webkit-backdrop-filter: blur(var(--perf-blur-medium, 28px))
-			saturate(var(--perf-saturate, 160%));
-		box-shadow:
-			0 8px 24px rgba(0, 0, 0, 0.35),
-			inset 0 1px 0 rgba(255, 255, 255, 0.05);
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		border-color: var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		backdrop-filter: none;
+		-webkit-backdrop-filter: none;
+		box-shadow: none;
 		transition:
-			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
-			box-shadow 0.3s ease;
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
 	}
 
 	/* News card acrylic styling */
 	.news-card {
-		background: transparent;
-		border-color: rgba(255, 255, 255, 0.18);
-		backdrop-filter: blur(var(--perf-blur-low, 24px)) saturate(var(--perf-saturate, 160%));
-		-webkit-backdrop-filter: blur(var(--perf-blur-low, 24px)) saturate(var(--perf-saturate, 160%));
-		box-shadow:
-			0 4px 12px rgba(0, 0, 0, 0.3),
-			inset 0 1px 0 rgba(255, 255, 255, 0.04);
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		border-color: var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		backdrop-filter: none;
+		-webkit-backdrop-filter: none;
+		box-shadow: none;
 		transition:
-			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
-			box-shadow 0.3s ease,
-			transform 0.2s ease;
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 	}
 
 	.news-card:hover {
-		border-color: rgba(255, 255, 255, 0.3);
-		box-shadow:
-			0 6px 18px rgba(0, 0, 0, 0.4),
-			inset 0 1px 0 rgba(255, 255, 255, 0.06);
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+		transform: translateY(var(--ui-lift-y, -1px));
+	}
+
+	.news-card:active {
+		transform: translateY(var(--ui-press-y, 0px));
 	}
 
 	/* Improved contrast for grey text */
@@ -1807,5 +1797,19 @@
 
 	.scrollbar-hide::-webkit-scrollbar {
 		display: none;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.search-media-card__image,
+		.search-media-card__action-btn,
+		.news-card {
+			transition: none;
+		}
+
+		.search-media-card:hover .search-media-card__image,
+		.search-media-card__action-btn:hover:not(:disabled),
+		.news-card:hover {
+			transform: none;
+		}
 	}
 </style>

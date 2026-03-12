@@ -1811,13 +1811,13 @@
 	}
 
 	.download-manager-toggle:hover {
-		transform: translateY(-1px);
+		transform: translateY(var(--ui-lift-y, -1px));
 		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
 		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
 	}
 
 	.download-manager-toggle:active {
-		transform: translateY(0);
+		transform: translateY(var(--ui-press-y, 0px));
 	}
 
 	.download-manager-badge {
@@ -2299,11 +2299,11 @@
 	.download-manager-close:hover {
 		background: var(--color-bg-secondary);
 		color: var(--color-text-primary);
-		transform: translateY(-1px);
+		transform: translateY(var(--ui-lift-y, -1px));
 	}
 
 	.download-manager-close:active {
-		transform: translateY(0);
+		transform: translateY(var(--ui-press-y, 0px));
 	}
 
 	.download-manager-error {
@@ -2414,12 +2414,8 @@
 
 	.download-status-hero__meter-fill {
 		height: 100%;
-		background: linear-gradient(
-			90deg,
-			rgba(245, 245, 245, 0.95),
-			rgba(212, 212, 212, 0.76)
-		);
-		transition: width 220ms ease;
+		background: rgba(255, 255, 255, 0.92);
+		transition: width var(--ui-motion-medium, 200ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
 	}
 
 	.download-status-hero__meter-meta {
@@ -2597,11 +2593,11 @@
 
 	.section-toggle:hover {
 		background: rgba(255, 255, 255, 0.04);
-		transform: translateY(-1px);
+		transform: translateY(var(--ui-lift-y, -1px));
 	}
 
 	.section-toggle:active {
-		transform: translateY(0);
+		transform: translateY(var(--ui-press-y, 0px));
 	}
 
 	.section-title-main {
@@ -2723,12 +2719,8 @@
 
 	.progress-fill {
 		height: 100%;
-		background: linear-gradient(
-			90deg,
-			rgba(245, 245, 245, 0.95),
-			rgba(212, 212, 212, 0.76)
-		);
-		transition: width 0.2s ease;
+		background: rgba(255, 255, 255, 0.92);
+		transition: width var(--ui-motion-medium, 200ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
 	}
 
 	.progress-text {
@@ -2827,12 +2819,12 @@
 	.queue-item-click:hover,
 	.failed-item-click:hover {
 		background: rgba(255, 255, 255, 0.08);
-		transform: translateY(-1px);
+		transform: translateY(var(--ui-lift-y, -1px));
 	}
 
 	.queue-item-click:active,
 	.failed-item-click:active {
-		transform: translateY(0);
+		transform: translateY(var(--ui-press-y, 0px));
 	}
 
 	.queue-item-main {
@@ -3022,11 +3014,11 @@
 
 	.failed-item-click:hover {
 		background: rgba(255, 255, 255, 0.12);
-		transform: translateY(-1px);
+		transform: translateY(var(--ui-lift-y, -1px));
 	}
 
 	.failed-item-click:active {
-		transform: translateY(0);
+		transform: translateY(var(--ui-press-y, 0px));
 	}
 
 	.failed-item-main {
@@ -3208,11 +3200,11 @@
 	}
 
 	.control-btn:hover:not(:disabled) {
-		transform: translateY(-1px);
+		transform: translateY(var(--ui-lift-y, -1px));
 	}
 
 	.control-btn:active:not(:disabled) {
-		transform: translateY(0);
+		transform: translateY(var(--ui-press-y, 0px));
 	}
 
 	/* Empty state */
@@ -3265,11 +3257,11 @@
 
 	.empty-cta-btn:hover {
 		background: rgba(245, 245, 245, 0.24);
-		transform: translateY(-1px);
+		transform: translateY(var(--ui-lift-y, -1px));
 	}
 
 	.empty-cta-btn:active {
-		transform: translateY(0);
+		transform: translateY(var(--ui-press-y, 0px));
 	}
 
 	.empty-steps {
@@ -3433,6 +3425,38 @@
 
 		.download-manager-footer {
 			padding: 10px 12px;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.download-manager-panel {
+			animation: none;
+		}
+
+		.rotating {
+			animation: none;
+		}
+
+		.download-status-hero__meter-fill,
+		.progress-fill,
+		.section-toggle,
+		.queue-item-click,
+		.failed-item-click,
+		.control-btn,
+		.item-action-btn,
+		.empty-cta-btn {
+			transition: none;
+		}
+
+		.download-manager-toggle,
+		.download-manager-close,
+		.section-toggle,
+		.queue-item-click,
+		.failed-item-click,
+		.control-btn,
+		.item-action-btn,
+		.empty-cta-btn {
+			transform: none !important;
 		}
 	}
 

@@ -70,6 +70,10 @@
 		line-height: 1.4;
 		background: #141414;
 		color: rgba(245, 245, 245, 0.95);
+		transition:
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 	}
 
 	.toast--success {
@@ -111,16 +115,26 @@
 		cursor: pointer;
 		margin-top: 8px;
 		padding: 4px 8px;
-		border-radius: 0;
-		background: rgba(255, 255, 255, 0.12);
+		border-radius: var(--ui-radius-sm, 9px);
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 		color: inherit;
 		font-size: 12px;
 		font-weight: 600;
-		transition: background 0.2s;
+		transition:
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 	}
 
 	.toast-action:hover {
-		background: rgba(255, 255, 255, 0.22);
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+		transform: translateY(var(--ui-lift-y, -1px));
+	}
+
+	.toast-action:active {
+		transform: translateY(var(--ui-press-y, 0px));
 	}
 
 	.toast-close {
@@ -129,10 +143,30 @@
 		flex-shrink: 0;
 		padding: 2px;
 		border-radius: 4px;
-		transition: background 0.2s;
+		transition:
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 	}
 
 	.toast-close:hover {
 		background: rgba(255, 255, 255, 0.16);
+		transform: translateY(var(--ui-lift-y, -1px));
+	}
+
+	.toast-close:active {
+		transform: translateY(var(--ui-press-y, 0px));
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.toast,
+		.toast-action,
+		.toast-close {
+			transition: none;
+		}
+
+		.toast-action:hover,
+		.toast-close:hover {
+			transform: none;
+		}
 	}
 </style>

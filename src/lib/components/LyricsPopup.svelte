@@ -578,9 +578,7 @@
 		justify-content: center;
 		padding: 1rem;
 		padding-bottom: 0.5rem;
-		background: transparent;
-		backdrop-filter: blur(var(--perf-blur-low, 12px)) saturate(120%);
-		-webkit-backdrop-filter: blur(var(--perf-blur-low, 12px)) saturate(120%);
+		background: rgba(8, 8, 8, 0.58);
 		z-index: 60;
 		pointer-events: none;
 	}
@@ -590,20 +588,14 @@
 		height: clamp(380px, 72vh, 780px);
 		display: flex;
 		flex-direction: column;
-		border-radius: 1.25rem;
-		background: transparent;
-		border: 1px solid rgba(255, 255, 255, 0.18);
-		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
-		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
-		box-shadow:
-			0 30px 80px rgba(0, 0, 0, 0.6),
-			0 4px 18px rgba(0, 0, 0, 0.45),
-			inset 0 1px 0 rgba(255, 255, 255, 0.06);
+		border-radius: var(--ui-radius-lg, 16px);
+		background: rgba(8, 8, 8, 0.96);
+		border: 1px solid rgba(255, 255, 255, 0.16);
 		overflow: hidden;
 		pointer-events: auto;
 		transition:
-			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
-			box-shadow 0.3s ease;
+			border-color var(--ui-motion-medium, 200ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			background var(--ui-motion-medium, 200ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
 	}
 
 	.lyrics-header {
@@ -650,16 +642,13 @@
 		justify-content: center;
 		padding: 0.4rem;
 		border-radius: 9999px;
-		border: 1px solid rgba(255, 255, 255, 0.22);
-		background: transparent;
-		backdrop-filter: blur(16px) saturate(140%);
-		-webkit-backdrop-filter: blur(16px) saturate(140%);
+		border: 1px solid rgba(255, 255, 255, 0.18);
+		background: rgba(255, 255, 255, 0.04);
 		color: rgba(224, 224, 224, 0.9);
 		transition:
-			background 160ms ease,
-			border-color 160ms ease,
-			transform 160ms ease,
-			box-shadow 160ms ease;
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 	}
 
 	.lyrics-icon-button[disabled] {
@@ -668,9 +657,9 @@
 	}
 
 	.lyrics-icon-button:not([disabled]):hover {
-		border-color: var(--bloom-accent, rgba(255, 255, 255, 0.6));
-		box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.1);
-		transform: translateY(-1px);
+		border-color: rgba(255, 255, 255, 0.32);
+		background: rgba(255, 255, 255, 0.1);
+		transform: translateY(var(--ui-lift-y, -1px));
 	}
 
 	.animate-spin {
@@ -698,9 +687,9 @@
 		display: flex;
 		align-items: stretch;
 		justify-content: stretch;
-		border-radius: 1rem;
-		background: rgba(18, 18, 18, 0.68);
-		border: 1px solid rgba(255, 255, 255, 0.14);
+		border-radius: var(--ui-radius-md, 12px);
+		background: rgba(255, 255, 255, 0.03);
+		border: 1px solid rgba(255, 255, 255, 0.12);
 		overflow: hidden;
 	}
 
@@ -756,24 +745,23 @@
 	}
 
 	.lyrics-retry {
-		border: 1px solid var(--bloom-accent, rgba(255, 255, 255, 0.55));
-		background: transparent;
-		backdrop-filter: blur(16px) saturate(140%);
-		-webkit-backdrop-filter: blur(16px) saturate(140%);
+		border: 1px solid rgba(255, 255, 255, 0.24);
+		background: rgba(255, 255, 255, 0.05);
 		color: rgba(240, 240, 240, 0.94);
 		border-radius: 9999px;
 		padding: 0.45rem 1.25rem;
 		font-size: 0.85rem;
 		font-weight: 500;
-		box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.08);
 		transition:
-			border-color 160ms ease,
-			box-shadow 160ms ease;
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 	}
 
 	.lyrics-retry:hover {
-		border-color: var(--bloom-accent, rgba(255, 255, 255, 0.72));
-		box-shadow: inset 0 0 30px rgba(255, 255, 255, 0.14);
+		border-color: rgba(255, 255, 255, 0.35);
+		background: rgba(255, 255, 255, 0.11);
+		transform: translateY(var(--ui-lift-y, -1px));
 	}
 
 	.spinner {
@@ -795,7 +783,7 @@
 
 		.lyrics-panel {
 			border-radius: 0;
-			border: none;
+			border: 1px solid rgba(255, 255, 255, 0.12);
 			width: 100vw;
 			height: 100vh;
 			max-height: 100vh;
@@ -826,6 +814,18 @@
 		.am-lyrics-element::part(line) {
 			scroll-margin-block-start: min(40vh, 9rem);
 			scroll-margin-block-end: min(28vh, 6.5rem);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.lyrics-overlay,
+		.lyrics-panel,
+		.lyrics-panel *,
+		.spinner,
+		.animate-spin {
+			animation: none !important;
+			transition: none !important;
+			transform: none !important;
 		}
 	}
 </style>

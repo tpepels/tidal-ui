@@ -129,20 +129,20 @@
 							handleRowActivation(event, track, index);
 						}
 					}}
-					class="track-glass group flex w-full items-center gap-2 sm:gap-3 rounded-lg p-2 sm:p-3 text-left transition-colors overflow-hidden cursor-pointer focus:ring-2 focus:ring-blue-500 focus:outline-none {activeMenuId === track.id ? 'relative z-20' : ''} {isCurrentTrack(
+					class="track-glass group flex w-full items-center gap-2 sm:gap-3 rounded-lg p-2 sm:p-3 text-left transition-colors overflow-hidden cursor-pointer {activeMenuId === track.id ? 'relative z-20' : ''} {isCurrentTrack(
 						track
 					)
-						? 'bg-blue-900/20 border-blue-500/30'
-						: 'hover:brightness-110'}"
+						? 'bg-white/10 border-white/35'
+						: 'hover:bg-white/5'}"
 				>
 					<!-- Track Number / Play Button -->
 					<button
 						onclick={() => isPlaying(track) ? playbackFacade.pause() : handlePlayTrack(track, index)}
-						class="group flex w-6 sm:w-8 flex-shrink-0 items-center justify-center transition-transform hover:scale-110"
+							class="group flex w-6 sm:w-8 flex-shrink-0 items-center justify-center transition-colors hover:text-white"
 						aria-label={isPlaying(track) ? 'Pause' : 'Play'}
 					>
 						{#if isPlaying(track)}
-							<Pause size={14} class="sm:w-4 sm:h-4 text-blue-500" />
+								<Pause size={14} class="sm:w-4 sm:h-4 text-white" />
 						{:else}
 							<span class="text-xs sm:text-sm text-gray-400 group-hover:hidden">{formatTrackNumber(track)}</span>
 							<Play size={14} class="sm:w-4 sm:h-4 hidden text-white group-hover:block" />
@@ -162,9 +162,9 @@
 					<div class="min-w-0 flex-1">
 						<button
 							onclick={() => handlePlayTrack(track, index)}
-							class="w-full text-left text-sm font-medium leading-tight break-words whitespace-normal sm:text-base sm:truncate {isCurrentTrack(track)
-								? 'text-blue-500'
-								: 'text-white hover:text-blue-400'}"
+								class="w-full text-left text-sm font-medium leading-tight break-words whitespace-normal sm:text-base sm:truncate {isCurrentTrack(track)
+									? 'text-white'
+									: 'text-white hover:text-gray-200'}"
 							title="Play track"
 						>
 							{track.title}
@@ -218,14 +218,14 @@
 							</button>
 							{#if activeMenuId === track.id}
 								<div
-									class="track-menu-container absolute top-full right-0 z-10 mt-1 w-48 rounded-lg border border-gray-700 bg-gray-800 shadow-lg"
+										class="track-menu-container absolute top-full right-0 z-10 mt-1 w-48 rounded-lg border border-white/20 bg-black/90 shadow-none"
 								>
 									<button
 										onclick={(event) => {
 											handlePlayNext(track, event);
 											activeMenuId = null;
 										}}
-										class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+											class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-white/10"
 									>
 										<ListVideo size={16} />
 										Play Next
@@ -235,7 +235,7 @@
 											handleAddToQueue(track, event);
 											activeMenuId = null;
 										}}
-										class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+											class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-white/10"
 									>
 										<ListPlus size={16} />
 										Add to Queue
@@ -273,17 +273,19 @@
 
 <style>
 	.track-glass {
-		background: var(--surface-color, rgba(16, 16, 16, 0.55));
-		border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.12));
-		backdrop-filter: blur(24px) saturate(150%);
-		-webkit-backdrop-filter: blur(24px) saturate(150%);
-		box-shadow:
-			0 4px 12px rgba(0, 0, 0, 0.25),
-			inset 0 1px 0 rgba(255, 255, 255, 0.03);
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		backdrop-filter: none;
+		-webkit-backdrop-filter: none;
+		box-shadow: none;
 		transition:
-			background 1.2s cubic-bezier(0.4, 0, 0.2, 1),
-			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
-			box-shadow 0.3s ease,
-			filter 0.2s ease;
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.track-glass {
+			transition: none;
+		}
 	}
 </style>

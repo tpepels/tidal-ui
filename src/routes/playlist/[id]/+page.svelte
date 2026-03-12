@@ -80,39 +80,39 @@
 </svelte:head>
 
 {#if isLoading}
-	<div class="flex items-center justify-center py-24">
-		<LoaderCircle class="h-16 w-16 animate-spin text-blue-500" />
+	<div class="ui-page flex items-center justify-center py-24">
+		<LoaderCircle class="h-16 w-16 animate-spin text-white/80" />
 	</div>
 {:else if error}
-	<div class="mx-auto max-w-2xl py-12">
-		<div class="rounded-lg border border-red-900 bg-red-900/20 p-6">
-			<h2 class="mb-2 text-xl font-semibold text-red-400">Error Loading Playlist</h2>
-			<p class="text-red-300">{error}</p>
+	<div class="ui-page py-12">
+		<div class="ui-surface-card border-red-500/40 bg-red-950/20 p-6">
+			<h2 class="mb-2 text-xl font-semibold text-red-200">Error Loading Playlist</h2>
+			<p class="text-red-100/85">{error}</p>
 			<a
 				href="/"
-				class="mt-4 inline-flex rounded-lg bg-red-600 px-4 py-2 transition-colors hover:bg-red-700"
+				class="ui-action-button mt-4 inline-flex"
 			>
 				Go Home
 			</a>
 		</div>
 	</div>
 {:else if playlist}
-	<div class="space-y-6">
+	<div class="ui-page space-y-6 pb-32 pt-4 lg:pb-40">
 		<!-- Back Button -->
 		<button
 			onclick={handleBackNavigation}
-			class="flex items-center gap-2 text-gray-400 transition-colors hover:text-white"
+			class="ui-chip-button ui-chip-button--compact ui-detail-back"
 		>
 			<ArrowLeft size={20} />
 			Back
 		</button>
 
 		<!-- Playlist Header -->
-		<div class="flex flex-col gap-8 md:flex-row">
+		<div class="ui-surface-card flex flex-col gap-8 p-5 md:flex-row">
 			<!-- Playlist Cover -->
 			{#if playlist.squareImage || playlist.image}
 				<div
-					class="aspect-square w-full flex-shrink-0 overflow-hidden rounded-lg shadow-2xl md:w-80"
+					class="aspect-square w-full flex-shrink-0 overflow-hidden rounded-xl border border-white/12 bg-white/5 md:w-80"
 				>
 					<img
 						src={losslessAPI.getCoverUrl(playlist.squareImage || playlist.image, '640')}
@@ -155,20 +155,20 @@
 						</div>
 					{/if}
 					{#if playlist.type}
-						<div class="rounded bg-purple-900/30 px-2 py-1 text-xs font-semibold text-purple-400">
+						<div class="ui-meta-pill">
 							{playlist.type}
 						</div>
 					{/if}
 				</div>
 
 				{#if tracks.length > 0}
-					<div class="flex items-center gap-3">
+					<div class="ui-action-row ui-action-row--progressive">
 						<button
 							onclick={handlePlayAll}
-							class="flex w-fit items-center gap-2 rounded-full bg-blue-600 px-8 py-3 font-semibold transition-colors hover:bg-blue-700"
+							class="ui-action-button ui-action-button--primary"
 							aria-label="Play playlist"
 						>
-							<Play size={20} fill="currentColor" />
+							<Play size={16} fill="currentColor" />
 							Play Playlist
 						</button>
 						<ShareButton type="playlist" id={playlist.uuid} variant="secondary" />
@@ -204,13 +204,13 @@
 				<TrackList {tracks} />
 			</div>
 		{:else}
-			<div class="rounded-lg bg-gray-800 p-6 text-gray-400">
+			<div class="ui-surface-card p-6 text-gray-400">
 				<p>No tracks in this playlist.</p>
 			</div>
 		{/if}
 
 		<!-- Metadata -->
-		<div class="space-y-1 text-xs text-gray-500">
+		<div class="ui-surface-card space-y-1 p-3 text-xs text-gray-500">
 			{#if playlist.created}
 				<p>Created: {new Date(playlist.created).toLocaleDateString()}</p>
 			{/if}

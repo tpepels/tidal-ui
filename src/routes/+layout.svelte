@@ -1693,10 +1693,7 @@
 		margin: 0;
 		min-height: 100vh;
 		font-family: var(--ui-font-sans, 'Figtree', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif);
-		background:
-			radial-gradient(920px 520px at -10% -8%, rgba(255, 255, 255, 0.06), transparent 60%),
-			radial-gradient(860px 500px at 110% -10%, rgba(255, 255, 255, 0.05), transparent 62%),
-			linear-gradient(180deg, #080808 0%, #101010 48%, #060606 100%);
+		background: linear-gradient(180deg, #080808 0%, #101010 48%, #060606 100%);
 		background-attachment: fixed;
 		color: #f8fbff;
 	}
@@ -1710,7 +1707,7 @@
 
 	.app-root::before,
 	.app-root::after {
-		content: '';
+		content: none;
 		position: fixed;
 		pointer-events: none;
 		filter: blur(64px);
@@ -1872,7 +1869,7 @@
 		content: '';
 		position: absolute;
 		inset: 0;
-		background: linear-gradient(90deg, rgba(255, 255, 255, 0.15), transparent 70%);
+		background: none;
 		opacity: 0;
 		transition: opacity 160ms ease;
 	}
@@ -2071,13 +2068,13 @@
 	}
 
 	.glass-option:hover {
-		transform: translateY(-1px) scale(1.002);
-		box-shadow: 0 10px 30px rgba(7, 7, 7, 0.3);
+		transform: translateY(var(--ui-lift-y, -1px));
+		box-shadow: none;
 		border-color: rgba(255, 255, 255, 0.44);
 	}
 
 	.glass-option:active {
-		transform: translateY(0);
+		transform: translateY(var(--ui-press-y, 0px));
 	}
 
 	.glass-option.is-active {
@@ -2182,13 +2179,13 @@
 	}
 
 	.glass-action:hover:not(:disabled) {
-		transform: translateY(-1px) scale(1.002);
+		transform: translateY(var(--ui-lift-y, -1px));
 		border-color: rgba(255, 255, 255, 0.44);
 		box-shadow: none;
 	}
 
 	.glass-action:active:not(:disabled) {
-		transform: translateY(0);
+		transform: translateY(var(--ui-press-y, 0px));
 	}
 
 	.glass-action__label {
@@ -2286,14 +2283,9 @@
 		bottom: 0;
 		left: -40%;
 		width: 60%;
-			background: linear-gradient(
-				90deg,
-				transparent,
-				var(--bloom-accent, rgba(255, 255, 255, 0.9)),
-				transparent
-			);
-		box-shadow: 0 0 12px var(--bloom-accent, rgba(255, 255, 255, 0.5));
-		animation: shimmer 1.2s ease-in-out infinite;
+		background: rgba(255, 255, 255, 0.7);
+		box-shadow: none;
+		animation: none;
 	}
 
 	.navigation-overlay__content {
@@ -2400,6 +2392,27 @@
 		.app-main {
 			padding: 1rem;
 			margin: 0;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.app-sidebar,
+		.app-main {
+			animation: none;
+		}
+
+		.navigation-progress {
+			animation: none;
+			left: 0;
+			width: 100%;
+		}
+
+		.sidebar-action,
+		.sidebar-icon-btn,
+		.glass-option,
+		.glass-action,
+		.diagnostics-toggle {
+			transform: none !important;
 		}
 	}
 </style>

@@ -179,16 +179,16 @@
 		border-radius: var(--ui-radius-md, 14px);
 		overflow: hidden;
 		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		box-shadow: var(--ui-shadow-soft, 0 10px 28px rgba(0, 0, 0, 0.22));
+		box-shadow: none;
 	}
 
 	.download-log-panel {
 		display: flex;
 		flex-direction: column;
 		height: 100%;
-		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
-		backdrop-filter: blur(var(--perf-blur-low, 10px)) saturate(var(--perf-saturate, 145%));
-		-webkit-backdrop-filter: blur(var(--perf-blur-low, 10px)) saturate(var(--perf-saturate, 145%));
+		background: #101010;
+		backdrop-filter: none;
+		-webkit-backdrop-filter: none;
 	}
 
 	.download-log-header {
@@ -250,22 +250,27 @@
 		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 		color: rgba(212, 212, 212, 0.82);
-		transition: border-color 140ms ease, background 140ms ease, color 140ms ease, box-shadow 140ms ease;
+		transition:
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+		box-shadow: none;
 	}
 
 	.download-log-btn:hover {
 		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
 		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
 		color: rgba(255, 255, 255, 0.96);
-		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+		transform: translateY(var(--ui-lift-y, -1px));
 	}
 
 	.download-log-btn:active {
 		background: var(--ui-surface-2, rgba(255, 255, 255, 0.09));
+		transform: translateY(var(--ui-press-y, 0px));
 	}
 
 	.download-log-content {
@@ -319,7 +324,9 @@
 		gap: 8px;
 		align-items: flex-start;
 		word-break: break-word;
-		transition: border-color 140ms ease, background 140ms ease;
+		transition:
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
 	}
 
 	.download-log-entry:hover {
@@ -456,16 +463,21 @@
 	color: rgba(245, 245, 245, 0.92);
 	font-size: 12px;
 	font-weight: 500;
-	transition: border-color 140ms ease, background 140ms ease;
+	transition:
+		border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+		background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+		transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 }
 
 .download-health-btn:hover {
 	border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
 	background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+	transform: translateY(var(--ui-lift-y, -1px));
 }
 
 .download-health-btn:active {
 	background: var(--ui-surface-2, rgba(255, 255, 255, 0.09));
+	transform: translateY(var(--ui-press-y, 0px));
 }
 
 /* Compact Progress Indicator Styles */
@@ -479,8 +491,8 @@
 	padding: 12px 16px;
 	min-width: 280px;
 	max-width: 400px;
-	backdrop-filter: blur(var(--perf-blur-low, 10px));
-	box-shadow: var(--ui-shadow-soft, 0 10px 28px rgba(0, 0, 0, 0.22));
+	backdrop-filter: none;
+	box-shadow: none;
 	z-index: 1000;
 }
 
@@ -552,9 +564,9 @@
 
 .download-progress-compact-bar-fill {
 	height: 100%;
-	background: linear-gradient(90deg, rgba(255, 255, 255, 0.9), rgba(212, 212, 212, 0.72));
+	background: rgba(255, 255, 255, 0.92);
 	border-radius: 2px;
-	transition: width 0.3s ease;
+	transition: width var(--ui-motion-medium, 200ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
 }
 
 .download-progress-compact-percent {
@@ -583,6 +595,23 @@
 		flex: 1;
 		min-width: 200px;
 		max-width: 300px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.download-log-content {
+		scroll-behavior: auto;
+	}
+
+	.download-log-btn,
+	.download-health-btn,
+	.download-progress-compact-bar-fill {
+		transition: none;
+	}
+
+	.download-log-btn:hover,
+	.download-health-btn:hover {
+		transform: none;
 	}
 }
 </style>

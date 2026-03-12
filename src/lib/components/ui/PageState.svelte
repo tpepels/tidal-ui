@@ -29,9 +29,9 @@
 		align-items: flex-start;
 		gap: 0.5rem;
 		padding: 0.8rem;
-		border-radius: 12px;
-		border: 1px solid rgba(212, 212, 212, 0.24);
-		background: linear-gradient(160deg, rgba(15, 15, 15, 0.6), rgba(8, 8, 8, 0.44));
+		border-radius: var(--ui-radius-sm, 9px);
+		border: 1px solid rgba(255, 255, 255, 0.14);
+		background: rgba(255, 255, 255, 0.03);
 	}
 
 	.page-state[data-kind='error'] {
@@ -46,18 +46,36 @@
 
 	.page-state p {
 		margin: 0;
-		font-size: 0.78rem;
+		font-size: 0.82rem;
 		opacity: 0.84;
 		line-height: 1.35;
 	}
 
 	.page-state__action {
-		border-radius: 10px;
-		border: 1px solid rgba(212, 212, 212, 0.38);
-		background: rgba(255, 255, 255, 0.08);
+		border-radius: var(--ui-radius-sm, 9px);
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		background: rgba(255, 255, 255, 0.06);
 		padding: 0.42rem 0.62rem;
-		font-size: 0.72rem;
+		font-size: 0.76rem;
 		font-weight: 600;
 		color: inherit;
+		transition:
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
+	}
+
+	.page-state__action:hover {
+		background: rgba(255, 255, 255, 0.12);
+		border-color: rgba(255, 255, 255, 0.32);
+		transform: translateY(var(--ui-lift-y, -1px));
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.page-state__action {
+			animation: none !important;
+			transition: none !important;
+			transform: none !important;
+		}
 	}
 </style>

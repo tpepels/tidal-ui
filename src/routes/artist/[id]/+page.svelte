@@ -1556,34 +1556,34 @@
 </svelte:head>
 
 {#if isLoading}
-	<div class="mx-auto flex w-full max-w-xl flex-col gap-4 py-16">
-		<div class="rounded-2xl border border-gray-800 bg-gray-900/40 p-6">
+	<div class="ui-page flex w-full flex-col gap-4 py-16">
+		<div class="ui-surface-card p-6">
 			<div class="mb-3 text-sm font-semibold text-gray-300">Loading artist data</div>
 			<div
 				class="flex items-center gap-3 text-sm text-gray-400"
 				data-testid="artist-loading-spinner"
 				role="status"
 			>
-				<LoaderCircle size={18} class="animate-spin text-blue-400" />
+				<LoaderCircle size={18} class="animate-spin text-white/80" />
 				<span>Fetching artist details…</span>
 			</div>
 		</div>
 	</div>
 {:else if error}
-	<div class="mx-auto max-w-2xl py-12">
-		<div class="rounded-lg border border-red-900 bg-red-900/20 p-6">
-			<h2 class="mb-2 text-xl font-semibold text-red-400">Error Loading Artist</h2>
-			<p class="text-red-300">{error}</p>
+	<div class="ui-page py-12">
+		<div class="ui-surface-card border-red-500/40 bg-red-950/20 p-6">
+			<h2 class="mb-2 text-xl font-semibold text-red-200">Error Loading Artist</h2>
+			<p class="text-red-100/85">{error}</p>
 			<a
 				href="/"
-				class="mt-4 inline-flex rounded-lg bg-red-600 px-4 py-2 transition-colors hover:bg-red-700"
+				class="ui-action-button mt-4 inline-flex"
 			>
 				Go Home
 			</a>
 		</div>
 	</div>
 {:else if artist}
-	<div class="space-y-6 pb-32 lg:pb-40">
+	<div class="ui-page space-y-6 pb-32 pt-4 lg:pb-40">
 		<!-- Back Button -->
 		<button
 			onclick={handleBackNavigation}
@@ -1599,7 +1599,7 @@
 		<div class="flex flex-col items-start gap-8 md:flex-row md:items-end">
 			<!-- Artist Picture -->
 			<div
-				class="aspect-square w-full flex-shrink-0 overflow-hidden rounded-full bg-gray-800 shadow-2xl md:w-80"
+				class="aspect-square w-full flex-shrink-0 overflow-hidden rounded-full border border-white/12 bg-white/5 md:w-80"
 			>
 				{#if artistImage}
 					<img src={artistImage} alt={artist.name} class="h-full w-full object-cover" />
@@ -1677,12 +1677,12 @@
 					</div>
 				</div>
 				{#if topTracks.length > 0}
-					<div class="mt-6 overflow-hidden rounded-2xl border border-gray-800 bg-gray-900/40 p-4">
+					<div class="ui-surface-card mt-6 overflow-hidden p-4">
 						<TopTracksGrid tracks={topTracks} />
 					</div>
 				{:else}
 					<div
-						class="mt-6 rounded-lg border border-gray-800 bg-gray-900/40 p-6 text-sm text-gray-400"
+						class="ui-surface-card mt-6 p-6 text-sm text-gray-400"
 					>
 						<p>No top tracks available for this artist yet.</p>
 					</div>
@@ -1709,10 +1709,10 @@
 				</div>
 				{#if recommendationsLoading}
 					<div
-						class="mt-6 rounded-lg border border-gray-800 bg-gray-900/40 p-6 text-sm text-gray-300"
+						class="ui-surface-card mt-6 p-6 text-sm text-gray-300"
 					>
 						<div class="flex items-center gap-3" role="status">
-							<LoaderCircle size={18} class="animate-spin text-blue-400" />
+							<LoaderCircle size={18} class="animate-spin text-white/80" />
 							<span>Loading recommendation mix…</span>
 						</div>
 					</div>
@@ -1912,9 +1912,7 @@
 						{/if}
 					</div>
 				{:else}
-					<div
-						class="mt-6 rounded-lg border border-gray-800 bg-gray-900/40 p-6 text-sm text-gray-400"
-					>
+					<div class="ui-surface-card mt-6 p-6 text-sm text-gray-400">
 						<p>No recommendations available for this artist yet.</p>
 					</div>
 				{/if}
@@ -2228,7 +2226,7 @@
 											</p>
 										</div>
 										<span
-											class="rounded-full border border-gray-700 bg-gray-900/70 px-2.5 py-1 text-xs text-gray-300"
+											class="ui-meta-pill"
 										>
 											{section.entries.length}
 										</span>
@@ -2270,7 +2268,7 @@
 												{/if}
 												{#if albumInLibrary}
 													<span
-														class="absolute top-9 left-3 z-20 rounded-full border border-blue-500/60 bg-blue-900/70 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-blue-100"
+														class="absolute top-9 left-3 z-20 rounded-full border border-white/35 bg-black/80 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-gray-100"
 														title="Already in local library"
 													>
 														IN LIBRARY
@@ -2282,7 +2280,7 @@
 															? cancelAlbumQueueDownload(album.id, event)
 															: handleAlbumDownload(album, event)}
 													type="button"
-													class="absolute top-3 right-3 z-40 flex items-center justify-center rounded-full bg-black/50 p-2 text-gray-200 backdrop-blur-md transition-colors hover:bg-blue-600/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+													class="absolute top-3 right-3 z-40 flex items-center justify-center rounded-full border border-white/15 bg-black/80 p-2 text-gray-200 transition-[background-color,border-color,color,transform] duration-200 ease-[cubic-bezier(0.2,0,0,1)] hover:-translate-y-px hover:border-white/35 hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
 													disabled={
 														isDownloadingDiscography ||
 														albumDownloadState.status === 'submitting'
@@ -2360,11 +2358,11 @@
 													{/if}
 												</div>
 												{#if albumDownloadState.status === 'queued'}
-													<p class="mt-3 text-xs text-blue-300">
+													<p class="mt-3 text-xs text-gray-300">
 														Queued on server…
 													</p>
 												{:else if albumDownloadState.downloading}
-													<p class="mt-3 text-xs text-blue-300">
+													<p class="mt-3 text-xs text-gray-300">
 														Downloading
 														{#if albumDownloadState.total}
 															{albumDownloadState.completed ?? 0}/{displayTrackTotal(
@@ -2413,22 +2411,18 @@
 							<button
 								type="button"
 								onclick={resetDiscographyFilters}
-								class="rounded-full border border-amber-500/60 bg-amber-700/20 px-3 py-1 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-700/30"
+								class="ui-chip-button ui-chip-button--compact"
 							>
 								Reset discography filters
 								</button>
 							</div>
 						</div>
 					{:else if waitingForCoverLoads}
-						<div
-							class="mt-6 rounded-lg border border-gray-800 bg-gray-900/40 p-6 text-sm text-gray-300"
-						>
+						<div class="ui-surface-card mt-6 p-6 text-sm text-gray-300">
 							<p>Loading discography cover art. Albums will appear as soon as covers resolve.</p>
 						</div>
 					{:else}
-						<div
-							class="mt-6 rounded-lg border border-gray-800 bg-gray-900/40 p-6 text-sm text-gray-400"
-					>
+						<div class="ui-surface-card mt-6 p-6 text-sm text-gray-400">
 						<p>Discography information isn&apos;t available right now.</p>
 					</div>
 				{/if}
@@ -2440,14 +2434,9 @@
 
 <style>
 	.recommendation-spotlight {
-		border: 1px solid rgba(255, 255, 255, 0.24);
-		background:
-			linear-gradient(
-				180deg,
-				rgba(255, 255, 255, 0.1) 0%,
-				rgba(22, 22, 22, 0.44) 55%,
-				rgba(8, 8, 8, 0.22) 100%
-			);
+		border: 1px solid rgba(255, 255, 255, 0.14);
+		background: rgba(255, 255, 255, 0.03);
+		border-radius: var(--ui-radius-md, 12px);
 		padding: 1rem;
 	}
 
@@ -2468,8 +2457,9 @@
 		width: fit-content;
 		align-items: center;
 		gap: 0.35rem;
-		border: 1px solid rgba(255, 255, 255, 0.28);
-		background: rgba(255, 255, 255, 0.12);
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		background: rgba(255, 255, 255, 0.05);
+		border-radius: var(--ui-radius-sm, 9px);
 		padding: 0.25rem 0.55rem;
 		font-size: 0.72rem;
 		font-weight: 700;
@@ -2481,8 +2471,9 @@
 	.recommendation-count-pill {
 		display: inline-flex;
 		align-items: center;
-		border: 1px solid rgba(255, 255, 255, 0.28);
-		background: rgba(255, 255, 255, 0.12);
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		background: rgba(255, 255, 255, 0.05);
+		border-radius: var(--ui-radius-sm, 9px);
 		padding: 0.2rem 0.65rem;
 		font-size: 0.74rem;
 		color: rgba(234, 234, 234, 0.95);
@@ -2498,17 +2489,23 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		border: 1px solid rgba(255, 255, 255, 0.24);
-		background: rgba(22, 22, 22, 0.52);
+		border: 1px solid rgba(255, 255, 255, 0.16);
+		background: rgba(255, 255, 255, 0.04);
+		border-radius: var(--ui-radius-sm, 9px);
 		padding: 0.38rem 0.44rem;
 		color: rgba(234, 234, 234, 0.95);
-		transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+		transition:
+			background-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 	}
 
 	.recommendation-slider__control:hover {
-		border-color: rgba(255, 255, 255, 0.45);
-		background: rgba(34, 34, 34, 0.64);
+		border-color: rgba(255, 255, 255, 0.3);
+		background: rgba(255, 255, 255, 0.11);
 		color: rgba(246, 246, 246, 0.98);
+		transform: translateY(var(--ui-lift-y, -1px));
 	}
 
 	.recommendation-slider {
@@ -2543,14 +2540,9 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.85rem;
-		border: 1px solid rgba(255, 255, 255, 0.24);
-		background:
-			linear-gradient(
-				180deg,
-				rgba(255, 255, 255, 0.1) 0%,
-				rgba(22, 22, 22, 0.42) 60%,
-				rgba(8, 8, 8, 0.18) 100%
-			);
+		border: 1px solid rgba(255, 255, 255, 0.14);
+		background: rgba(255, 255, 255, 0.03);
+		border-radius: var(--ui-radius-md, 12px);
 		padding: 1rem;
 	}
 
@@ -2567,8 +2559,8 @@
 	}
 
 	.discography-featured__item {
-		border-color: rgba(255, 255, 255, 0.22);
-		background: rgba(20, 20, 20, 0.44);
+		border-color: rgba(255, 255, 255, 0.16);
+		background: rgba(255, 255, 255, 0.03);
 	}
 
 	.discography-featured__badge {
@@ -2578,8 +2570,9 @@
 		z-index: 20;
 		display: inline-flex;
 		align-items: center;
-		border: 1px solid rgba(255, 255, 255, 0.32);
-		background: rgba(255, 255, 255, 0.14);
+		border: 1px solid rgba(255, 255, 255, 0.26);
+		background: rgba(255, 255, 255, 0.08);
+		border-radius: var(--ui-radius-sm, 9px);
 		padding: 0.18rem 0.5rem;
 		font-size: 0.68rem;
 		font-weight: 700;
@@ -2591,6 +2584,17 @@
 	@media (max-width: 900px) {
 		.recommendation-slider {
 			grid-auto-columns: minmax(230px, 76vw);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.recommendation-spotlight,
+		.recommendation-slider__control,
+		.discography-featured,
+		.discography-featured * {
+			animation: none !important;
+			transition: none !important;
+			transform: none !important;
 		}
 	}
 </style>

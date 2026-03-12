@@ -177,7 +177,8 @@
         display: flex;
         flex-direction: column;
         color: white;
-        font-family: 'Figtree', system-ui, -apple-system, sans-serif;
+        font-family: var(--ui-font-sans, 'Figtree', system-ui, -apple-system, sans-serif);
+        background: #090909;
     }
 
     .background {
@@ -185,9 +186,8 @@
         inset: 0;
         background-size: cover;
         background-position: center;
-        filter: blur(20px) brightness(0.4);
+        opacity: 0.18;
         z-index: -1;
-        transform: scale(1.1);
     }
 
     .progress-container {
@@ -195,14 +195,14 @@
         bottom: 0;
         left: 0;
         right: 0;
-        height: 3px;
-        background: rgba(255, 255, 255, 0.1);
+        height: 2px;
+        background: rgba(255, 255, 255, 0.12);
     }
 
     .progress-bar {
         height: 100%;
-        background: #f2f2f2;
-        transition: width 0.1s linear;
+        background: rgba(255, 255, 255, 0.92);
+        transition: width var(--ui-motion-fast, 140ms) linear;
     }
 
     .loading, .error {
@@ -218,15 +218,19 @@
         padding: 1rem;
         gap: 1rem;
         height: 100%;
+        background: rgba(8, 8, 8, 0.74);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 0.75rem;
+        margin: 0.75rem;
     }
 
     .cover-art {
         position: relative;
         width: 80px;
         height: 80px;
-        border-radius: 8px;
+        border-radius: 0.55rem;
         overflow: hidden;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        border: 1px solid rgba(255, 255, 255, 0.12);
         flex-shrink: 0;
     }
 
@@ -239,19 +243,19 @@
     .play-button {
         position: absolute;
         inset: 0;
-        background: rgba(0,0,0,0.3);
+        background: rgba(0, 0, 0, 0.42);
         display: flex;
         align-items: center;
         justify-content: center;
         color: white;
         opacity: 1; /* Always visible for better UX on embeds */
-        transition: background 0.2s;
+        transition: background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
         border: none;
         cursor: pointer;
     }
 
     .play-button:hover {
-        background: rgba(0,0,0,0.5);
+        background: rgba(0, 0, 0, 0.62);
     }
 
     .details {
@@ -263,7 +267,7 @@
     }
 
     .title {
-        font-size: 1rem;
+        font-size: 1.05rem;
         font-weight: 700;
         margin: 0 0 0.25rem 0;
         white-space: nowrap;
@@ -283,10 +287,11 @@
     .quality-badge {
         display: inline-block;
         font-size: 0.75rem;
-        color: #d8d8d8;
-        background: rgba(255, 255, 255, 0.1);
+        color: rgba(234, 234, 234, 0.9);
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.16);
         padding: 0.125rem 0.375rem;
-        border-radius: 0.25rem;
+        border-radius: 0.35rem;
         margin-bottom: 0.5rem;
         font-weight: 500;
         width: fit-content;
@@ -299,10 +304,20 @@
         font-size: 0.75rem;
         color: rgba(255,255,255,0.6);
         text-decoration: none;
-        transition: color 0.2s;
+        transition: color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
     }
 
     .open-link:hover {
         color: white;
     }
+
+	@media (prefers-reduced-motion: reduce) {
+		.embed-card,
+		.embed-card *,
+		.progress-bar {
+			animation: none !important;
+			transition: none !important;
+			transform: none !important;
+		}
+	}
 </style>

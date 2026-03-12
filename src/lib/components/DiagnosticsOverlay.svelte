@@ -221,22 +221,24 @@
 	.diagnostics-overlay {
 		position: fixed;
 		inset: 0;
-		background: rgba(10, 10, 10, 0.76);
+		background: rgba(8, 8, 8, 0.82);
 		display: flex;
 		align-items: flex-start;
-		justify-content: center;
-		padding: 6vh 1.5rem;
+		justify-content: stretch;
+		padding: 4vh 1rem;
 		z-index: 120;
 	}
 
 	.diagnostics-card {
-		width: min(680px, 92vw);
-		background: rgba(12, 12, 12, 0.95);
-		border: 1px solid rgba(255, 255, 255, 0.2);
-		border-radius: 18px;
+		width: min(980px, 100%);
+		margin: 0 auto;
+		background: rgba(10, 10, 10, 0.96);
+		border: 1px solid rgba(255, 255, 255, 0.15);
+		border-radius: var(--ui-radius-lg, 16px);
 		padding: 1.5rem;
-		box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
 		color: rgba(226, 226, 226, 0.94);
+		max-height: 92vh;
+		overflow: auto;
 	}
 
 	.diagnostics-header {
@@ -259,16 +261,30 @@
 	}
 
 	.diagnostics-close {
-		background: rgba(255, 255, 255, 0.12);
-		border: 1px solid rgba(255, 255, 255, 0.24);
+		background: rgba(255, 255, 255, 0.04);
+		border: 1px solid rgba(255, 255, 255, 0.16);
 		border-radius: 999px;
 		padding: 0.35rem 0.9rem;
 		color: inherit;
 		cursor: pointer;
+		transition:
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
+	}
+
+	.diagnostics-close:hover {
+		background: rgba(255, 255, 255, 0.1);
+		border-color: rgba(255, 255, 255, 0.28);
+		transform: translateY(var(--ui-lift-y, -1px));
 	}
 
 	.diagnostics-section {
 		margin-top: 1.25rem;
+		padding: 0.95rem;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: var(--ui-radius-md, 12px);
+		background: rgba(255, 255, 255, 0.02);
 	}
 
 	.diagnostics-section h3 {
@@ -284,8 +300,9 @@
 	}
 
 	.diagnostics-grid div {
-		background: rgba(18, 18, 18, 0.7);
-		border-radius: 12px;
+		background: rgba(255, 255, 255, 0.03);
+		border-radius: var(--ui-radius-sm, 9px);
+		border: 1px solid rgba(255, 255, 255, 0.1);
 		padding: 0.6rem 0.75rem;
 		display: flex;
 		flex-direction: column;
@@ -334,8 +351,8 @@
 	}
 
 	.diagnostics-filter select {
-		background: rgba(18, 18, 18, 0.7);
-		border: 1px solid rgba(255, 255, 255, 0.22);
+		background: rgba(255, 255, 255, 0.03);
+		border: 1px solid rgba(255, 255, 255, 0.16);
 		color: inherit;
 		border-radius: 8px;
 		padding: 0.35rem 0.6rem;
@@ -354,10 +371,10 @@
 	}
 
 	.diagnostics-error-list li {
-		background: rgba(18, 18, 18, 0.7);
-		border-radius: 12px;
+		background: rgba(255, 255, 255, 0.03);
+		border-radius: var(--ui-radius-sm, 9px);
 		padding: 0.6rem 0.75rem;
-		border: 1px solid rgba(255, 255, 255, 0.16);
+		border: 1px solid rgba(255, 255, 255, 0.12);
 	}
 
 	.diagnostics-error-header {
@@ -393,5 +410,15 @@
 		gap: 0.75rem;
 		font-size: 0.75rem;
 		color: rgba(186, 186, 186, 0.8);
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.diagnostics-card,
+		.diagnostics-card *,
+		.diagnostics-close {
+			animation: none !important;
+			transition: none !important;
+			transform: none !important;
+		}
 	}
 </style>

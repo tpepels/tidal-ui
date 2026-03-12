@@ -11,7 +11,7 @@
 {#if album?.id}
 	<a
 		href={`/album/${album.id}`}
-		class="hover:text-blue-400 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-400 {truncate ? 'truncate' : ''} {className}"
+		class="transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/40 {truncate ? 'truncate' : ''} {className}"
 		data-sveltekit-preload-data
 		title="View album page"
 	>

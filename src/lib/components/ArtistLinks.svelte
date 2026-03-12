@@ -13,7 +13,7 @@
 		{#if artist?.id}
 			<a
 				href={`/artist/${artist.id}`}
-				class="hover:text-blue-400 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-400"
+				class="transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/40"
 				data-sveltekit-preload-data
 				title="View artist page"
 			>

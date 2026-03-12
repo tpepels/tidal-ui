@@ -124,7 +124,7 @@
 
 <div class={`grid gap-4 ${columnClass}`}>
 	{#if displayedTracks.length === 0}
-		<div class="col-span-full py-12 text-center text-gray-400">
+		<div class="col-span-full py-12 text-center text-gray-500">
 			<p>No tracks available</p>
 		</div>
 	{:else}
@@ -134,7 +134,7 @@
 				tabindex="0"
 				onclick={(event) => handleCardActivation(event, track, index)}
 				onkeydown={(event) => handleCardKeydown(event, track, index)}
-				class="group flex h-full cursor-pointer flex-col gap-4 rounded-xl border border-gray-800 bg-gray-900/50 p-4 transition-colors hover:border-blue-700 hover:bg-gray-900/70 focus:ring-2 focus:ring-blue-500 focus:outline-none {activeMenuId === track.id ? 'relative z-20' : ''}"
+				class="top-tracks-card group flex h-full cursor-pointer flex-col gap-4 rounded-xl border border-white/10 bg-white/[0.03] p-4 transition-[background-color,border-color,transform] duration-200 ease-[cubic-bezier(0.2,0,0,1)] hover:-translate-y-px hover:border-white/25 hover:bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-white/35 {activeMenuId === track.id ? 'relative z-20' : ''}"
 			>
 				<div class="flex items-start gap-4">
 					<button
@@ -142,13 +142,13 @@
 							event.stopPropagation();
 							handlePlayTrack(track, index);
 						}}
-						class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gray-800 transition-transform hover:scale-110"
+						class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-gray-300 transition-[color,background-color,transform] duration-200 ease-[cubic-bezier(0.2,0,0,1)] hover:-translate-y-px hover:bg-white/12 hover:text-white"
 						aria-label={isPlaying(track) ? 'Pause' : 'Play'}
 					>
 						{#if isPlaying(track)}
-							<Pause size={18} class="text-blue-500" />
+							<Pause size={18} class="text-white" />
 						{:else if isCurrentTrack(track)}
-							<Play size={18} class="text-blue-500" />
+							<Play size={18} class="text-white" />
 						{:else}
 							<span class="text-sm font-semibold text-gray-300">{index + 1}</span>
 						{/if}
@@ -158,15 +158,15 @@
 						<LazyImage
 							src={losslessAPI.getCoverUrl(track.album.cover, '320')}
 							alt={track.title}
-							class="h-20 w-20 flex-shrink-0 rounded-lg object-cover shadow-lg"
+							class="h-20 w-20 flex-shrink-0 rounded-lg border border-white/12 object-cover"
 						/>
 					{/if}
 
 					<div class="min-w-0 flex-1">
 						<h3
 							class="text-base font-semibold leading-tight break-words whitespace-normal sm:text-lg sm:truncate {isCurrentTrack(track)
-								? 'text-blue-500'
-								: 'text-white group-hover:text-blue-400'}"
+								? 'text-white'
+								: 'text-gray-100 group-hover:text-white'}"
 						>
 							{track.title}
 							{#if track.explicit}
@@ -201,7 +201,7 @@
 									event.stopPropagation();
 									activeMenuId = activeMenuId === track.id ? null : track.id;
 								}}
-								class="rounded-full p-2 transition-colors hover:bg-gray-800 hover:text-white"
+								class="rounded-full border border-transparent p-2 text-gray-400 transition-[color,background-color,border-color,transform] duration-200 ease-[cubic-bezier(0.2,0,0,1)] hover:-translate-y-px hover:border-white/15 hover:bg-white/10 hover:text-white"
 								title="Queue actions"
 								aria-label={`Queue actions for ${track.title}`}
 							>
@@ -209,14 +209,14 @@
 							</button>
 							{#if activeMenuId === track.id}
 								<div
-									class="track-menu-container absolute top-full right-0 z-10 mt-1 w-48 rounded-lg border border-gray-700 bg-gray-800 shadow-lg"
+									class="track-menu-container absolute top-full right-0 z-10 mt-1 w-48 rounded-lg border border-white/15 bg-black/95 shadow-none"
 								>
 									<button
 										onclick={(event) => {
 											handlePlayNext(track, event);
 											activeMenuId = null;
 										}}
-										class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+										class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
 									>
 										<ListVideo size={16} />
 										Play Next
@@ -226,7 +226,7 @@
 											handleAddToQueue(track, event);
 											activeMenuId = null;
 										}}
-										class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+										class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
 									>
 										<ListPlus size={16} />
 										Add to Queue
@@ -255,3 +255,15 @@
 		{/each}
 	{/if}
 </div>
+
+<style>
+	@media (prefers-reduced-motion: reduce) {
+		.top-tracks-card,
+		.top-tracks-card *,
+		.track-menu-container {
+			animation: none !important;
+			transition: none !important;
+			transform: none !important;
+		}
+	}
+</style>

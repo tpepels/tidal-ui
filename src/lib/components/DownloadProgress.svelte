@@ -74,28 +74,25 @@
 	.download-progress-standalone {
 		position: fixed;
 		bottom: calc(20px + var(--player-height, 0px) + env(safe-area-inset-bottom, 0px));
-		left: 50%;
-		transform: translateX(-50%);
-		background: rgba(12, 12, 12, 0.96);
-		border: 1px solid rgba(255, 255, 255, 0.18);
+		left: 1rem;
+		right: 1rem;
+		background: rgba(8, 8, 8, 0.96);
+		border: 1px solid rgba(255, 255, 255, 0.16);
 		border-radius: var(--ui-radius-md, 10px);
 		padding: 16px;
-		min-width: 320px;
-		max-width: 600px;
-		backdrop-filter: blur(10px);
-		box-shadow: none;
+		max-width: none;
 		z-index: 1000;
-		animation: slideUp 0.3s ease-out;
+		animation: slideUp var(--ui-motion-medium, 200ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 	}
 
 	@keyframes slideUp {
 		from {
 			opacity: 0;
-			transform: translateX(-50%) translateY(20px);
+			transform: translateY(12px);
 		}
 		to {
 			opacity: 1;
-			transform: translateX(-50%) translateY(0);
+			transform: translateY(0);
 		}
 	}
 
@@ -112,7 +109,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
-		font-size: 14px;
+		font-size: 15px;
 		font-weight: 600;
 		color: #fff;
 		white-space: nowrap;
@@ -124,7 +121,7 @@
 
 	.download-progress-standalone-list {
 		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
+		grid-template-columns: repeat(3, minmax(0, 1fr));
 		gap: 8px;
 	}
 
@@ -133,12 +130,18 @@
 		align-items: center;
 		gap: 12px;
 		padding: 8px 12px;
-		background: rgba(255, 255, 255, 0.05);
+		background: rgba(255, 255, 255, 0.04);
 		border-radius: var(--ui-radius-sm, 8px);
-		border: 1px solid rgba(255, 255, 255, 0.14);
+		border: 1px solid rgba(255, 255, 255, 0.12);
 	}
 
-	@media (max-width: 520px) {
+	@media (max-width: 1100px) {
+		.download-progress-standalone-list {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+
+	@media (max-width: 620px) {
 		.download-progress-standalone-list {
 			grid-template-columns: 1fr;
 		}
@@ -153,7 +156,7 @@
 	}
 
 	.download-progress-item-title {
-		font-size: 13px;
+		font-size: 14px;
 		font-weight: 500;
 		color: #fff;
 		white-space: nowrap;
@@ -162,7 +165,7 @@
 	}
 
 	.download-progress-item-subtitle {
-		font-size: 11px;
+		font-size: 12px;
 		color: rgba(212, 212, 212, 0.78);
 		white-space: nowrap;
 		overflow: hidden;
@@ -170,7 +173,7 @@
 	}
 
 	.download-progress-item-phase {
-		font-size: 10px;
+		font-size: 11px;
 		color: rgba(212, 212, 212, 0.68);
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
@@ -184,7 +187,7 @@
 	}
 
 	.download-progress-bar {
-		width: 80px;
+		width: 84px;
 		height: 4px;
 		background: rgba(255, 255, 255, 0.18);
 		border-radius: 2px;
@@ -193,16 +196,16 @@
 
 	.download-progress-bar-fill {
 		height: 100%;
-		background: linear-gradient(90deg, rgba(245, 245, 245, 0.95), rgba(210, 210, 210, 0.72));
+		background: rgba(255, 255, 255, 0.92);
 		border-radius: 2px;
-		transition: width 0.3s ease;
+		transition: width var(--ui-motion-medium, 200ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
 	}
 
 	.download-progress-percent {
-		font-size: 11px;
+		font-size: 12px;
 		font-weight: 500;
 		color: rgba(224, 224, 224, 0.9);
-		min-width: 32px;
+		min-width: 36px;
 		text-align: right;
 	}
 
@@ -214,14 +217,10 @@
 		font-style: italic;
 	}
 
-	/* Responsive: stack items on smaller screens */
 	@media (max-width: 480px) {
 		.download-progress-standalone {
-			left: 10px;
-			right: 10px;
-			transform: none;
-			min-width: auto;
-			max-width: none;
+			left: 0.75rem;
+			right: 0.75rem;
 		}
 
 		.download-progress-item {
@@ -240,10 +239,19 @@
 		}
 	}
 
-	/* Hide on very small screens */
 	@media (max-width: 320px) {
 		.download-progress-standalone {
 			display: none;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.download-progress-standalone,
+		.download-progress-standalone *,
+		.download-progress-bar-fill {
+			animation: none !important;
+			transition: none !important;
+			transform: none !important;
 		}
 	}
 </style>

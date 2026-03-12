@@ -29,7 +29,7 @@
 
 <button
 	onclick={(event) => (isDownloading ? onCancel(event) : onDownload(event))}
-	class={`p-2 text-gray-400 transition-colors hover:text-white ${className}`.trim()}
+	class={`p-2 text-gray-400 transition-[color,background-color,transform] duration-200 ease-[cubic-bezier(0.2,0,0,1)] hover:-translate-y-px hover:text-white ${className}`.trim()}
 	title={resolvedTitle}
 	aria-label={resolvedLabel}
 	aria-busy={isDownloading}
@@ -49,3 +49,13 @@
 		<Download size={size} />
 	{/if}
 </button>
+
+<style>
+	@media (prefers-reduced-motion: reduce) {
+		button {
+			animation: none !important;
+			transition: none !important;
+			transform: none !important;
+		}
+	}
+</style>

@@ -85,17 +85,17 @@
 	}
 
 	.section-heading {
-		font-size: 0.62rem;
+		font-size: 0.68rem;
 		text-transform: uppercase;
-		letter-spacing: 0.2em;
+		letter-spacing: 0.16em;
 		font-weight: 700;
 		margin: 0;
-		color: rgba(212, 212, 212, 0.7);
+		color: rgba(224, 224, 224, 0.76);
 	}
 
 	.section-footnote {
 		margin: 0;
-		font-size: 0.68rem;
+		font-size: 0.78rem;
 		color: rgba(212, 212, 212, 0.7);
 		line-height: 1.4;
 	}
@@ -109,14 +109,24 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 0.85rem;
-		border-radius: var(--ui-radius-md, 14px);
-		border: 1px solid rgba(212, 212, 212, 0.24);
-		background: linear-gradient(155deg, rgba(15, 15, 15, 0.62), rgba(8, 8, 8, 0.44));
-		padding: 0.4rem 0.65rem;
-		font-size: 0.74rem;
+		border-radius: var(--ui-radius-sm, 9px);
+		border: 1px solid rgba(255, 255, 255, 0.16);
+		background: rgba(255, 255, 255, 0.04);
+		padding: 0.42rem 0.7rem;
+		font-size: 0.78rem;
 		font-weight: 600;
 		color: inherit;
 		cursor: pointer;
+		transition:
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
+	}
+
+	.glass-action:hover:not(:disabled) {
+		border-color: rgba(255, 255, 255, 0.28);
+		background: rgba(255, 255, 255, 0.1);
+		transform: translateY(var(--ui-lift-y, -1px));
 	}
 
 	.glass-action:disabled {
@@ -128,5 +138,13 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.55rem;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.glass-action {
+			animation: none !important;
+			transition: none !important;
+			transform: none !important;
+		}
 	}
 </style>
