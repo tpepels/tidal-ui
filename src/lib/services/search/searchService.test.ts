@@ -70,7 +70,12 @@ describe('searchService', () => {
 		});
 
 		expect(mockSearchAlbums).toHaveBeenCalledWith('Random Access Memories', 'us', 'Daft Punk');
-		expect(mockSearchArtists).toHaveBeenCalledWith('Daft Punk', 'us');
+		expect(
+			mockSearchArtists.mock.calls.some(
+				(call) => call[0] === 'Daft Punk' && call[1] === 'us'
+			)
+		).toBe(true);
+		expect(mockSearchTracks).toHaveBeenCalledWith('Random Access Memories', 'us');
 		expect(mockGetArtist).toHaveBeenCalledWith(artist.id);
 		expect(result.success).toBe(true);
 		if (result.success) {

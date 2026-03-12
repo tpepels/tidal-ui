@@ -127,8 +127,14 @@ export class SearchOrchestrator {
 		}
 	}
 
-	private buildSearchKey(query: string, tab: SearchTab, region?: RegionOption): string {
-		return `${tab}:${region ?? 'auto'}:${query.toLowerCase()}`;
+	private buildSearchKey(
+		query: string,
+		tab: SearchTab,
+		region?: RegionOption,
+		albumArtistQuery?: string
+	): string {
+		const normalizedAlbumArtistQuery = tab === 'albums' ? (albumArtistQuery?.trim().toLowerCase() ?? '') : '';
+		return `${tab}:${region ?? 'auto'}:${query.toLowerCase()}:${normalizedAlbumArtistQuery}`;
 	}
 
 	/**
@@ -168,7 +174,7 @@ export class SearchOrchestrator {
 		tab: SearchTab,
 		options: SearchOrchestratorOptions | undefined
 	): Promise<SearchWorkflowResult> {
-		const searchKey = this.buildSearchKey(query, tab, options?.region);
+		const searchKey = this.buildSearchKey(query, tab, options?.region, options?.albumArtistQuery);
 		const inflight = this.inflightSearches.get(searchKey);
 		if (inflight) {
 			return inflight;

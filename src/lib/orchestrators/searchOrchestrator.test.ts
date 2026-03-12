@@ -261,6 +261,47 @@ describe('SearchOrchestrator', () => {
 			});
 		});
 
+		it('does not dedupe album in-flight searches across different artist filters', async () => {
+			let resolveFirst: (value: unknown) => void;
+			let resolveSecond: (value: unknown) => void;
+			const firstPromise = new Promise((resolve) => {
+				resolveFirst = resolve;
+			});
+			const secondPromise = new Promise((resolve) => {
+				resolveSecond = resolve;
+			});
+
+			mockExecuteTabSearch.mockReturnValueOnce(firstPromise).mockReturnValueOnce(secondPromise);
+
+			const firstSearch = orchestrator.search('greatest hits', 'albums', {
+				region: 'us',
+				albumArtistQuery: 'Artist One'
+			});
+			const secondSearch = orchestrator.search('greatest hits', 'albums', {
+				region: 'us',
+				albumArtistQuery: 'Artist Two'
+			});
+
+			resolveFirst!({
+				success: true,
+				results: { tracks: [], albums: [{ ...mockAlbum, id: 11 }], artists: [], playlists: [] }
+			});
+			resolveSecond!({
+				success: true,
+				results: { tracks: [], albums: [{ ...mockAlbum, id: 22 }], artists: [], playlists: [] }
+			});
+
+			await Promise.all([firstSearch, secondSearch]);
+
+			expect(mockExecuteTabSearch).toHaveBeenCalledTimes(2);
+			expect(mockExecuteTabSearch).toHaveBeenNthCalledWith(1, 'greatest hits', 'albums', 'us', {
+				albumArtistQuery: 'Artist One'
+			});
+			expect(mockExecuteTabSearch).toHaveBeenNthCalledWith(2, 'greatest hits', 'albums', 'us', {
+				albumArtistQuery: 'Artist Two'
+			});
+		});
+
 		it('ignores stale results when a newer search completes', async () => {
 			let resolveFirst: (value: any) => void;
 			let resolveSecond: (value: any) => void;

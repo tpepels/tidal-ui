@@ -47,6 +47,7 @@
 		MoreVertical,
 		List,
 		Play,
+		Search,
 		Shuffle,
 		Copy,
 		Code
@@ -776,7 +777,6 @@
 
 
 	async function handleSearch() {
-		console.log('handleSearch called with query:', $searchStore.query);
 		const trimmedQuery = $searchStore.query.trim();
 		if (!trimmedQuery) return;
 		const artistFilter = albumArtistFilter.trim();
@@ -836,21 +836,6 @@
 		}
 	}
 
-function handleKeyPress(event: KeyboardEvent) {
-		console.log('Key pressed:', event.key, 'query:', $searchStore.query);
-		if (event.key === 'Enter') {
-			console.log('Enter pressed, calling handleSearch');
-			handleSearch();
-		}
-	}
-
-	function handleAlbumArtistKeyPress(event: KeyboardEvent) {
-		if (event.key === 'Enter') {
-			event.preventDefault();
-			handleSearch();
-		}
-	}
-
 	function handleTabChange(tab: SearchTab) {
 		searchStoreActions.commit({ activeTab: tab });
 		// Only trigger search if we have a query and it's not a URL
@@ -903,16 +888,34 @@ function handleKeyPress(event: KeyboardEvent) {
 							searchStoreActions.setQuery(target.value);
 						}
 					}}
-					onkeypress={handleKeyPress}
 					placeholder={isQueryATidalUrl
-						? 'Tidal URL detected - press Enter to import'
+						? 'Tidal URL detected - click Search to import'
 						: isQueryASpotifyPlaylist
-							? 'Spotify playlist detected - press Enter to convert'
+							? 'Spotify playlist detected - click Search to convert'
 							: isQueryAStreamingUrl
-								? `${getPlatformName($searchStore.query)} URL detected - press Enter to convert`
+								? `${getPlatformName($searchStore.query)} URL detected - click Search to convert`
 								: 'Search for tracks, albums, artists... or paste a URL'}
 					class="search-input-panel__input"
 				/>
+				<button
+					type="button"
+					class="ui-action-button ui-action-button--primary search-input-panel__submit"
+					onclick={handleSearch}
+					disabled={
+						!$searchStore.query.trim() ||
+						$searchStore.isLoading ||
+						$searchStore.tabLoading[$searchStore.activeTab]
+					}
+					aria-busy={$searchStore.isLoading || $searchStore.tabLoading[$searchStore.activeTab]}
+				>
+					{#if $searchStore.isLoading || $searchStore.tabLoading[$searchStore.activeTab]}
+						<LoaderCircle size={16} class="animate-spin" />
+						Searching…
+					{:else}
+						<Search size={16} />
+						Search
+					{/if}
+				</button>
 			</div>
 		</div>
 
@@ -926,15 +929,14 @@ function handleKeyPress(event: KeyboardEvent) {
 						value={albumArtistFilter}
 						oninput={(event) => {
 							const target = event.currentTarget as HTMLInputElement | null;
-							if (target) {
-								albumArtistFilter = target.value;
-							}
-						}}
-						onkeypress={handleAlbumArtistKeyPress}
-						placeholder="Artist name (e.g. Daft Punk)"
-						class="search-input-panel__input"
-					/>
-				</div>
+						if (target) {
+							albumArtistFilter = target.value;
+						}
+					}}
+					placeholder="Artist name (e.g. Daft Punk)"
+					class="search-input-panel__input"
+				/>
+			</div>
 			</div>
 		{/if}
 	</div>
@@ -1685,6 +1687,11 @@ function handleKeyPress(event: KeyboardEvent) {
 		line-height: 1.4;
 		color: rgba(245, 245, 245, 0.96);
 		outline: none;
+	}
+
+	.search-input-panel__submit {
+		flex-shrink: 0;
+		min-width: 7.4rem;
 	}
 
 	.search-input-panel__input::placeholder {
