@@ -695,6 +695,31 @@ textarea {
 	box-shadow: none;
 }
 
+/* Mobile touch target normalization for operational pages */
+@media (max-width: 900px) {
+	.ui-page .ui-chip-link,
+	.ui-page .ui-chip-button,
+	.ui-page .ui-action-button,
+	.ui-page .ui-media-card__link,
+	.ui-page .ui-link-card,
+	.ui-page .ui-filter-chip,
+	.ui-page .ui-select,
+	.ui-page button,
+	.ui-page [role='button'],
+	.ui-page summary {
+		min-height: 44px;
+	}
+
+	.ui-page .ui-chip-link,
+	.ui-page .ui-chip-button,
+	.ui-page .ui-action-button,
+	.ui-page .ui-media-card__link,
+	.ui-page .ui-filter-chip {
+		padding-top: 0.56rem;
+		padding-bottom: 0.56rem;
+	}
+}
+
 .ui-chip-button--compact {
 	padding: 0.4rem 0.58rem;
 	font-size: 0.9rem;

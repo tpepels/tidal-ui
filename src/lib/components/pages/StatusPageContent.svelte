@@ -42,6 +42,47 @@
 	let statusPollInterval: ReturnType<typeof setInterval> | null = null;
 	let diagnosticsError = $state<string | null>(null);
 
+	type QueueSnapshot = {
+		queued: number;
+		processing: number;
+		paused: number;
+		completed: number;
+		failed: number;
+		total: number;
+	};
+
+	type QueueMetrics = {
+		total_jobs: number;
+		queued: number;
+		processing: number;
+		paused: number;
+		completed: number;
+		failed: number;
+		cancelled: number;
+		avg_success_rate: number;
+		avg_retry_count: number;
+		total_download_time_ms: number;
+		avg_job_duration_ms: number;
+		failure_by_code: Record<string, number>;
+	};
+
+	const queueSnapshot = $derived((statusQueueMetrics?.queue ?? null) as Partial<QueueSnapshot> | null);
+	const queueMetrics = $derived((statusQueueMetrics?.metrics ?? null) as Partial<QueueMetrics> | null);
+
+	function toMetricNumber(value: unknown, fallback = 0): number {
+		return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+	}
+
+	function formatDurationFromMs(value: unknown): string {
+		const ms = toMetricNumber(value, 0);
+		if (ms <= 0) return '0s';
+		const seconds = Math.round(ms / 1000);
+		if (seconds < 60) return `${seconds}s`;
+		const minutes = Math.floor(seconds / 60);
+		const remainingSeconds = seconds % 60;
+		return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+	}
+
 	async function refreshDiagnostics(): Promise<void> {
 		diagnosticsLoading = true;
 		diagnosticsError = null;
@@ -156,12 +197,77 @@
 
 		<section class="ui-tool-panel status-page__panel">
 			<p class="section-heading">Queue</p>
-			<pre class="status-page__json">{JSON.stringify(statusQueueMetrics?.queue ?? {}, null, 2)}</pre>
+			<div class="status-page__metric-grid">
+				<div class="status-page__metric">
+					<p class="status-page__metric-label">Queued</p>
+					<p class="status-page__metric-value">{toMetricNumber(queueSnapshot?.queued)}</p>
+				</div>
+				<div class="status-page__metric">
+					<p class="status-page__metric-label">Processing</p>
+					<p class="status-page__metric-value">{toMetricNumber(queueSnapshot?.processing)}</p>
+				</div>
+				<div class="status-page__metric">
+					<p class="status-page__metric-label">Paused</p>
+					<p class="status-page__metric-value">{toMetricNumber(queueSnapshot?.paused)}</p>
+				</div>
+				<div class="status-page__metric">
+					<p class="status-page__metric-label">Completed</p>
+					<p class="status-page__metric-value">{toMetricNumber(queueSnapshot?.completed)}</p>
+				</div>
+				<div class="status-page__metric">
+					<p class="status-page__metric-label">Failed</p>
+					<p class="status-page__metric-value">{toMetricNumber(queueSnapshot?.failed)}</p>
+				</div>
+				<div class="status-page__metric">
+					<p class="status-page__metric-label">Total</p>
+					<p class="status-page__metric-value">{toMetricNumber(queueSnapshot?.total)}</p>
+				</div>
+			</div>
+			<details class="status-page__details">
+				<summary>Show raw queue snapshot</summary>
+				<pre class="status-page__json">{JSON.stringify(statusQueueMetrics?.queue ?? {}, null, 2)}</pre>
+			</details>
 		</section>
 
 		<section class="ui-tool-panel status-page__panel">
 			<p class="section-heading">Queue Metrics</p>
-			<pre class="status-page__json">{JSON.stringify(statusQueueMetrics?.metrics ?? {}, null, 2)}</pre>
+			<div class="status-page__metric-grid">
+				<div class="status-page__metric">
+					<p class="status-page__metric-label">Success Rate</p>
+					<p class="status-page__metric-value">{toMetricNumber(queueMetrics?.avg_success_rate)}%</p>
+				</div>
+				<div class="status-page__metric">
+					<p class="status-page__metric-label">Avg Retry Count</p>
+					<p class="status-page__metric-value">{toMetricNumber(queueMetrics?.avg_retry_count)}</p>
+				</div>
+				<div class="status-page__metric">
+					<p class="status-page__metric-label">Avg Job Duration</p>
+					<p class="status-page__metric-value">{formatDurationFromMs(queueMetrics?.avg_job_duration_ms)}</p>
+				</div>
+				<div class="status-page__metric">
+					<p class="status-page__metric-label">Total Download Time</p>
+					<p class="status-page__metric-value">{formatDurationFromMs(queueMetrics?.total_download_time_ms)}</p>
+				</div>
+				<div class="status-page__metric">
+					<p class="status-page__metric-label">Cancelled</p>
+					<p class="status-page__metric-value">{toMetricNumber(queueMetrics?.cancelled)}</p>
+				</div>
+				<div class="status-page__metric">
+					<p class="status-page__metric-label">Jobs Tracked</p>
+					<p class="status-page__metric-value">{toMetricNumber(queueMetrics?.total_jobs)}</p>
+				</div>
+			</div>
+			{#if queueMetrics?.failure_by_code && Object.keys(queueMetrics.failure_by_code).length > 0}
+				<ul class="status-page__issues">
+					{#each Object.entries(queueMetrics.failure_by_code) as [code, count] (code)}
+						<li>{code}: {count}</li>
+					{/each}
+				</ul>
+			{/if}
+			<details class="status-page__details">
+				<summary>Show raw metrics snapshot</summary>
+				<pre class="status-page__json">{JSON.stringify(statusQueueMetrics?.metrics ?? {}, null, 2)}</pre>
+			</details>
 		</section>
 
 		<section class="ui-tool-panel status-page__panel">
@@ -220,7 +326,35 @@
 
 		<section class="ui-tool-panel status-page__panel">
 			<p class="section-heading">Persisted Summary</p>
-			<pre class="status-page__json">{JSON.stringify(diagnosticsPersisted ?? {}, null, 2)}</pre>
+			{#if diagnosticsPersisted}
+				<p class="section-footnote">
+					Captured {new Date(diagnosticsPersisted.capturedAt).toLocaleTimeString()}
+				</p>
+				<div class="status-page__metric-grid">
+					<div class="status-page__metric">
+						<p class="status-page__metric-label">Total Errors</p>
+						<p class="status-page__metric-value">{diagnosticsPersisted.summary.totalErrors}</p>
+					</div>
+					<div class="status-page__metric">
+						<p class="status-page__metric-label">Unique Errors</p>
+						<p class="status-page__metric-value">{diagnosticsPersisted.summary.uniqueErrors}</p>
+					</div>
+					<div class="status-page__metric">
+						<p class="status-page__metric-label">Critical Errors</p>
+						<p class="status-page__metric-value">{diagnosticsPersisted.summary.criticalErrors}</p>
+					</div>
+					<div class="status-page__metric">
+						<p class="status-page__metric-label">Error Rate</p>
+						<p class="status-page__metric-value">{diagnosticsPersisted.summary.errorRate}/min</p>
+					</div>
+				</div>
+				<details class="status-page__details">
+					<summary>Show raw persisted snapshot</summary>
+					<pre class="status-page__json">{JSON.stringify(diagnosticsPersisted, null, 2)}</pre>
+				</details>
+			{:else}
+				<PageState kind="empty" title="No persisted summary" message="A persisted snapshot will appear after errors are tracked." />
+			{/if}
 		</section>
 
 		<section class="ui-tool-panel status-page__panel">
@@ -249,9 +383,9 @@
 	}
 
 	.section-heading {
-		font-size: 0.7rem;
+		font-size: 0.78rem;
 		text-transform: uppercase;
-		letter-spacing: 0.18em;
+		letter-spacing: 0.14em;
 		font-weight: 700;
 		margin: 0;
 		color: rgba(212, 212, 212, 0.7);
@@ -259,7 +393,7 @@
 
 	.section-footnote {
 		margin: 0;
-		font-size: 0.8rem;
+		font-size: 0.9rem;
 		color: rgba(212, 212, 212, 0.7);
 		line-height: 1.4;
 	}
@@ -271,7 +405,64 @@
 	}
 
 	.status-page__refresh-btn {
-		padding-inline: 0.7rem;
+		padding-inline: 0.84rem;
+	}
+
+	.status-page__metric-grid {
+		display: grid;
+		gap: 0.54rem;
+		grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+	}
+
+	.status-page__metric {
+		margin: 0;
+		padding: 0.6rem 0.66rem;
+		border-radius: var(--ui-radius-sm, 9px);
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		display: flex;
+		flex-direction: column;
+		gap: 0.16rem;
+	}
+
+	.status-page__metric-label {
+		margin: 0;
+		font-size: 0.74rem;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: rgba(163, 163, 163, 0.86);
+	}
+
+	.status-page__metric-value {
+		margin: 0;
+		font-size: 1.02rem;
+		font-weight: 650;
+		color: rgba(245, 245, 245, 0.96);
+	}
+
+	.status-page__details {
+		border-radius: var(--ui-radius-sm, 9px);
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: rgba(18, 18, 18, 0.8);
+		overflow: hidden;
+	}
+
+	.status-page__details summary {
+		list-style: none;
+		cursor: pointer;
+		padding: 0.56rem 0.68rem;
+		font-size: 0.82rem;
+		font-weight: 600;
+		color: rgba(220, 220, 220, 0.88);
+	}
+
+	.status-page__details summary::-webkit-details-marker {
+		display: none;
+	}
+
+	.status-page__details[open] summary {
+		border-bottom: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: rgba(255, 255, 255, 0.03);
 	}
 
 	.status-page__json {
@@ -280,7 +471,7 @@
 		border-radius: var(--ui-radius-sm, 9px);
 		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
-		font-size: 0.76rem;
+		font-size: 0.84rem;
 		line-height: 1.45;
 		overflow-x: auto;
 		white-space: pre-wrap;

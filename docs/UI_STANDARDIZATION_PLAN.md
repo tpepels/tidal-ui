@@ -137,3 +137,7 @@ Legend:
 - Audio player surfaces + reduced-motion handling
 - Download log surfaces/actions
 - Toast + breadcrumb control polish
+
+## 4) Follow-up Unification
+- Detailed next-pass TODO and execution tracking lives in:
+  - `docs/UI_UNIFICATION_FURTHER_TODO.md`

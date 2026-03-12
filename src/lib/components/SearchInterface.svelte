@@ -11,6 +11,7 @@
 	import TrackDownloadButton from '$lib/components/TrackDownloadButton.svelte';
 	import { fetchAlbumLibraryStatus } from '$lib/utils/mediaLibraryClient';
 	import CoverArt from '$lib/components/CoverArt.svelte';
+	import EntityMediaCard from '$lib/components/ui/EntityMediaCard.svelte';
 	import {
 		getCoverCacheKey,
 		getUnifiedCoverCandidates,
@@ -1307,243 +1308,182 @@
 						createDefaultAlbumDownloadState(album.numberOfTracks ?? 0)}
 					{@const canCancelAlbumDownload = isAlbumQueueDownloadCancellable(albumDownloadState)}
 					{@const albumInLibrary = albumLibraryPresence[album.id]?.exists === true}
-					<article class="ui-media-card search-media-card group">
-						{#if albumInLibrary}
-							<span
-								class="search-media-card__badge"
-								title="Already in local library"
-							>
-								In Library
-							</span>
-						{/if}
-						<button
-							onclick={(event) =>
-								canCancelAlbumDownload
-									? cancelAlbumQueueDownload(album.id, event)
-									: handleAlbumDownloadClick(album, event)}
-							type="button"
-							class="search-media-card__action-btn"
-							disabled={albumDownloadState.status === 'submitting'}
-							aria-label={
-								canCancelAlbumDownload
-									? `Stop download ${album.title}`
-									: albumDownloadState.status === 'paused'
-										? `Resume download ${album.title}`
-										: `Download ${album.title}`
-							}
-							aria-busy={albumDownloadState.status === 'submitting' || albumDownloadState.status === 'queued' || albumDownloadState.downloading}
-						>
-							{#if canCancelAlbumDownload}
-								<X size={16} />
-							{:else if albumDownloadState.status === 'submitting' || albumDownloadState.downloading}
-								<LoaderCircle size={16} class="animate-spin" />
-							{:else if albumDownloadState.status === 'paused'}
-								<RotateCcw size={16} />
-							{:else}
-								<Download size={16} />
+					<EntityMediaCard
+						type="album"
+						href={`/album/${album.id}`}
+						title={album.title}
+						subtitle={album.artist?.name}
+						meta={`${album.releaseDate ? `${album.releaseDate.split('-')[0]} • ` : ''}${displayTrackTotal(album.numberOfTracks)} track${displayTrackTotal(album.numberOfTracks) === 1 ? '' : 's'}`}
+						class="search-media-card group"
+					>
+						{#snippet badge()}
+							{#if albumInLibrary}
+								<span class="search-media-card__badge" title="Already in local library">In Library</span>
 							{/if}
-						</button>
-						<a
-							href={`/album/${album.id}`}
-							class="ui-media-card__primary-link"
-							data-sveltekit-preload-data
-						>
-							<div class="ui-media-card__artwork">
-								{#if album.videoCover}
-									<video
-										src={losslessAPI.getVideoCoverUrl(album.videoCover, '640')}
-										poster={album.cover ? losslessAPI.getCoverUrl(album.cover, '640') : undefined}
-										aria-label={album.title}
-										class="search-media-card__image"
-										autoplay
-										loop
-										muted
-										playsinline
-										preload="metadata"
-									></video>
-								{:else if album.cover}
-									{@const coverCacheKey = getCoverCacheKey({
-										coverId: album.cover,
-										size: '640',
-										proxy: false,
-										overrideKey: `search:${album.id}`
-									})}
-									{@const coverCandidates = getUnifiedCoverCandidates({
-										coverId: album.cover,
-										size: '640',
-										proxy: false,
-										includeLowerSizes: true
-									})}
-									<CoverArt
-										cacheKey={coverCacheKey}
-										candidates={coverCandidates}
-										alt={album.title}
-										class="search-media-card__image"
-									/>
+						{/snippet}
+						{#snippet action()}
+							<button
+								onclick={(event) =>
+									canCancelAlbumDownload
+										? cancelAlbumQueueDownload(album.id, event)
+										: handleAlbumDownloadClick(album, event)}
+								type="button"
+								class="search-media-card__action-btn"
+								disabled={albumDownloadState.status === 'submitting'}
+								aria-label={
+									canCancelAlbumDownload
+										? `Stop download ${album.title}`
+										: albumDownloadState.status === 'paused'
+											? `Resume download ${album.title}`
+											: `Download ${album.title}`
+								}
+								aria-busy={albumDownloadState.status === 'submitting' || albumDownloadState.status === 'queued' || albumDownloadState.downloading}
+							>
+								{#if canCancelAlbumDownload}
+									<X size={16} />
+								{:else if albumDownloadState.status === 'submitting' || albumDownloadState.downloading}
+									<LoaderCircle size={16} class="animate-spin" />
+								{:else if albumDownloadState.status === 'paused'}
+									<RotateCcw size={16} />
 								{:else}
-									<div class="search-media-card__placeholder">
-										<Disc size={24} />
-									</div>
+									<Download size={16} />
 								{/if}
-							</div>
-							<div class="ui-media-card__body">
-								<h3 class="ui-media-card__title ui-media-card__title--truncate">
-									{album.title}
-									{#if album.explicit}
-										<span class="search-media-card__explicit-tag">Explicit</span>
+							</button>
+						{/snippet}
+						{#snippet artwork()}
+							{#if album.videoCover}
+								<video
+									src={losslessAPI.getVideoCoverUrl(album.videoCover, '640')}
+									poster={album.cover ? losslessAPI.getCoverUrl(album.cover, '640') : undefined}
+									aria-label={album.title}
+									class="search-media-card__image"
+									autoplay
+									loop
+									muted
+									playsinline
+									preload="metadata"
+								></video>
+							{:else if album.cover}
+								{@const coverCacheKey = getCoverCacheKey({
+									coverId: album.cover,
+									size: '640',
+									proxy: false,
+									overrideKey: `search:${album.id}`
+								})}
+								{@const coverCandidates = getUnifiedCoverCandidates({
+									coverId: album.cover,
+									size: '640',
+									proxy: false,
+									includeLowerSizes: true
+								})}
+								<CoverArt
+									cacheKey={coverCacheKey}
+									candidates={coverCandidates}
+									alt={album.title}
+									class="search-media-card__image"
+								/>
+							{:else}
+								<div class="search-media-card__placeholder">
+									<Disc size={24} />
+								</div>
+							{/if}
+						{/snippet}
+						{#snippet footer()}
+							{#if albumDownloadState.status === 'queued'}
+								<p class="search-media-status">Queued on server…</p>
+							{:else if albumDownloadState.downloading}
+								<p class="search-media-status">
+									Downloading
+									{#if albumDownloadState.total}
+										{albumDownloadState.completed ?? 0}/{displayTrackTotal(
+											albumDownloadState.total ?? 0
+										)}
+									{:else}
+										{albumDownloadState.completed ?? 0}
 									{/if}
-								</h3>
-								{#if album.artist}
-									<p class="ui-media-card__subtitle ui-media-card__title--truncate">
-										{album.artist.name}
-									</p>
-								{/if}
-								<p class="ui-media-card__meta">
-									{#if album.releaseDate}
-										{album.releaseDate.split('-')[0]} •
-									{/if}
-									{displayTrackTotal(album.numberOfTracks)} track{displayTrackTotal(album.numberOfTracks) ===
-									1
-										? ''
-										: 's'}
+									tracks…
 								</p>
-							</div>
-						</a>
-						{#if albumDownloadState.status === 'queued'}
-							<p class="search-media-status">Queued on server…</p>
-						{:else if albumDownloadState.downloading}
-							<p class="search-media-status">
-								Downloading
-								{#if albumDownloadState.total}
-									{albumDownloadState.completed ?? 0}/{displayTrackTotal(
-										albumDownloadState.total ?? 0
-									)}
-								{:else}
-									{albumDownloadState.completed ?? 0}
-								{/if}
-								tracks…
-							</p>
-						{:else if albumDownloadState.status === 'completed'}
-							<p class="search-media-status search-media-status--success">Download completed.</p>
-						{:else if albumDownloadState.status === 'cancelled'}
-							<p class="search-media-status search-media-status--warning">Download stopped.</p>
-						{:else if albumDownloadState.status === 'paused'}
-							<p class="search-media-status search-media-status--warning">Download paused.</p>
-						{:else if albumDownloadState.error}
-							<p class="search-media-status search-media-status--error" role="alert">
-								{albumDownloadState.error}
-							</p>
-						{:else if albumInLibrary}
-							<p class="search-media-status search-media-status--success">
-								{#if $downloadPreferencesStore.storage === 'server'}
-									Already in local library. Redownload will overwrite.
-								{:else}
-									Already in local library. Browser redownloads may append (2).
-								{/if}
-							</p>
-						{/if}
-					</article>
+							{:else if albumDownloadState.status === 'completed'}
+								<p class="search-media-status search-media-status--success">Download completed.</p>
+							{:else if albumDownloadState.status === 'cancelled'}
+								<p class="search-media-status search-media-status--warning">Download stopped.</p>
+							{:else if albumDownloadState.status === 'paused'}
+								<p class="search-media-status search-media-status--warning">Download paused.</p>
+							{:else if albumDownloadState.error}
+								<p class="search-media-status search-media-status--error" role="alert">
+									{albumDownloadState.error}
+								</p>
+							{:else if albumInLibrary}
+								<p class="search-media-status search-media-status--success">
+									{#if $downloadPreferencesStore.storage === 'server'}
+										Already in local library. Redownload will overwrite.
+									{:else}
+										Already in local library. Browser redownloads may append (2).
+									{/if}
+								</p>
+							{/if}
+						{/snippet}
+					</EntityMediaCard>
 				{/each}
 			</div>
 		{:else if $searchStore.activeTab === 'artists' && ($searchStore.results?.artists ?? []).length > 0}
 			<div class="ui-media-grid ui-media-grid--artists">
 				{#each ($searchStore.results?.artists ?? []) as artist (artist.id)}
-					<article class="ui-media-card search-media-card search-media-card--artist">
-						<a
-							href={`/artist/${artist.id}`}
-							class="ui-media-card__primary-link"
-							data-sveltekit-preload-data
-						>
-							<div class="ui-media-card__artwork ui-media-card__artwork--circle">
-								{#if artist.picture}
-									<img
-										src={losslessAPI.getArtistPictureUrl(artist.picture)}
-										alt={artist.name}
-										class="search-media-card__image"
-									/>
-								{:else}
-									<div class="search-media-card__placeholder">
-										<User size={40} />
-									</div>
-								{/if}
-							</div>
-							<div class="ui-media-card__body">
-								<h3 class="ui-media-card__title ui-media-card__title--truncate">{artist.name}</h3>
-								<p class="ui-media-card__subtitle">
-									{artist.type && artist.type.trim().length > 0 ? artist.type : 'Artist'}
-								</p>
-								<p class="ui-media-card__intent">Open artist profile and discography</p>
-							</div>
-						</a>
-						<div class="ui-media-card__links">
-							<a href={`/artist/${artist.id}`} class="ui-media-card__link" data-sveltekit-preload-data>
-								Open Artist
-							</a>
-						</div>
-					</article>
+					<EntityMediaCard
+						type="artist"
+						href={`/artist/${artist.id}`}
+						title={artist.name}
+						subtitle={artist.type && artist.type.trim().length > 0 ? artist.type : 'Artist'}
+						links={[{ href: `/artist/${artist.id}`, label: 'Open Artist' }]}
+						class="search-media-card search-media-card--artist"
+					>
+						{#snippet artwork()}
+							{#if artist.picture}
+								<img
+									src={losslessAPI.getArtistPictureUrl(artist.picture)}
+									alt={artist.name}
+									class="search-media-card__image"
+								/>
+							{:else}
+								<div class="search-media-card__placeholder">
+									<User size={40} />
+								</div>
+							{/if}
+						{/snippet}
+					</EntityMediaCard>
 				{/each}
 			</div>
 		{:else if $searchStore.activeTab === 'playlists' && ($searchStore.results?.playlists ?? []).length > 0}
 			<div class="ui-media-grid ui-media-grid--playlists">
 				{#each ($searchStore.results?.playlists ?? []) as playlist (playlist.uuid)}
-					<article class="ui-media-card search-media-card search-media-card--playlist">
-						<a
-							href={`/playlist/${playlist.uuid}`}
-							class="ui-media-card__primary-link"
-							data-sveltekit-preload-data
-						>
-							<div class="ui-media-card__artwork">
-								{#if playlist.squareImage || playlist.image}
-									<img
-										src={losslessAPI.getCoverUrl(playlist.squareImage || playlist.image, '640')}
-										alt={playlist.title}
-										class="search-media-card__image"
-									/>
-								{:else}
-									<div class="search-media-card__placeholder">
-										<List size={24} />
-									</div>
-								{/if}
-							</div>
-							<div class="ui-media-card__body">
-								<h3 class="ui-media-card__title ui-media-card__title--truncate">
-									{playlist.title}
-								</h3>
-								<p class="ui-media-card__subtitle ui-media-card__title--truncate">
-									{playlist.creator.name}
-								</p>
-								<p class="ui-media-card__meta">
-									{displayTrackTotal(playlist.numberOfTracks)} track{displayTrackTotal(
-										playlist.numberOfTracks
-									) === 1
-										? ''
-										: 's'}
-									{#if playlist.duration}
-										• {losslessAPI.formatDuration(playlist.duration)}
-									{/if}
-								</p>
-								<p class="ui-media-card__intent">Open playlist details and featured artists</p>
-							</div>
-						</a>
-						<div class="ui-media-card__links">
-							<a
-								href={`/playlist/${playlist.uuid}`}
-								class="ui-media-card__link"
-								data-sveltekit-preload-data
-							>
-								Open Playlist
-							</a>
-							{#if playlist.promotedArtists?.[0]}
-								<a
-									href={`/artist/${playlist.promotedArtists[0].id}`}
-									class="ui-media-card__link"
-									data-sveltekit-preload-data
-								>
-									View Featured Artist
-								</a>
+					<EntityMediaCard
+						type="playlist"
+						href={`/playlist/${playlist.uuid}`}
+						title={playlist.title}
+						subtitle={playlist.creator.name}
+						meta={`${displayTrackTotal(playlist.numberOfTracks)} track${displayTrackTotal(playlist.numberOfTracks) === 1 ? '' : 's'}${playlist.duration ? ` • ${losslessAPI.formatDuration(playlist.duration)}` : ''}`}
+						links={[
+							{ href: `/playlist/${playlist.uuid}`, label: 'Open Playlist' },
+							...(playlist.promotedArtists?.[0]
+								? [{ href: `/artist/${playlist.promotedArtists[0].id}`, label: 'View Featured Artist' }]
+								: [])
+						]}
+						class="search-media-card search-media-card--playlist"
+					>
+						{#snippet artwork()}
+							{#if playlist.squareImage || playlist.image}
+								<img
+									src={losslessAPI.getCoverUrl(playlist.squareImage || playlist.image, '640')}
+									alt={playlist.title}
+									class="search-media-card__image"
+								/>
+							{:else}
+								<div class="search-media-card__placeholder">
+									<List size={24} />
+								</div>
 							{/if}
-						</div>
-					</article>
+						{/snippet}
+					</EntityMediaCard>
 				{/each}
 			</div>
 			<!-- News Section -->
@@ -1586,7 +1526,7 @@
 </div>
 
 <style>
-	.search-media-card {
+	:global(.search-media-card) {
 		gap: 0.58rem;
 	}
 
@@ -1649,7 +1589,7 @@
 		transition: transform var(--ui-motion-medium, 200ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 	}
 
-	.search-media-card:hover .search-media-card__image {
+	:global(.search-media-card:hover .search-media-card__image) {
 		transform: scale(1.01);
 	}
 
@@ -1661,20 +1601,6 @@
 		justify-content: center;
 		color: rgba(163, 163, 163, 0.78);
 		background: rgba(255, 255, 255, 0.05);
-	}
-
-	.search-media-card__explicit-tag {
-		display: inline-flex;
-		align-items: center;
-		padding: 0.07rem 0.32rem;
-		margin-left: 0.28rem;
-		border-radius: 999px;
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		font-size: 0.56rem;
-		font-weight: 600;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
-		vertical-align: text-top;
 	}
 
 	.search-media-status {
@@ -1696,8 +1622,8 @@
 		color: rgba(206, 206, 206, 0.9);
 	}
 
-	.search-media-card--artist .ui-media-card__body,
-	.search-media-card--artist .ui-media-card__links {
+	:global(.search-media-card--artist .ui-media-card__body),
+	:global(.search-media-card--artist .ui-media-card__links) {
 		align-items: center;
 		text-align: center;
 	}
@@ -1791,7 +1717,7 @@
 			transition: none;
 		}
 
-		.search-media-card:hover .search-media-card__image,
+		:global(.search-media-card:hover .search-media-card__image),
 		.search-media-card__action-btn:hover:not(:disabled),
 		.news-card:hover {
 			transform: none;

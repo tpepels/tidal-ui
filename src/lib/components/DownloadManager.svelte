@@ -135,6 +135,9 @@
 	let queuedPreviewJobs = $derived(queuedJobs.slice(0, 4));
 	let attentionPreviewJobs = $derived(resumableJobs.slice(0, 4));
 	let completedPreviewJobs = $derived(completedJobs.slice(0, 4));
+	let activeSectionOpen = $derived(pageMode || sectionExpanded.active);
+	let queueSectionOpen = $derived(pageMode || sectionExpanded.queue);
+	let failedSectionOpen = $derived(pageMode || sectionExpanded.failed);
 	let completedAlbums = $derived(
 		completedJobs.filter(j => j.job.type === 'album').length
 	);
@@ -1437,8 +1440,10 @@
 						<button
 							type="button"
 							class="section-toggle"
-							onclick={() => toggleSection('active')}
-							aria-expanded={sectionExpanded.active}
+							onclick={() => {
+								if (!pageMode) toggleSection('active');
+							}}
+							aria-expanded={activeSectionOpen}
 						>
 							<span class="section-title-main section-title">
 								<span class="section-title-icon rotating"><RefreshCw size={14} strokeWidth={2} /></span>
@@ -1446,16 +1451,18 @@
 							</span>
 							<span class="section-title-actions">
 								<span class="section-count">{stats.running}</span>
-								<span class="section-chevron">
-									{#if sectionExpanded.active}
-										<ChevronUp size={16} />
-									{:else}
-										<ChevronDown size={16} />
-									{/if}
-								</span>
+								{#if !pageMode}
+									<span class="section-chevron">
+										{#if activeSectionOpen}
+											<ChevronUp size={16} />
+										{:else}
+											<ChevronDown size={16} />
+										{/if}
+									</span>
+								{/if}
 							</span>
 						</button>
-						{#if sectionExpanded.active}
+						{#if activeSectionOpen}
 							<div class="current-items">
 								{#each processingJobs as job (job.id)}
 								{@const jobPending = isJobActionPending(job.id)}
@@ -1524,24 +1531,28 @@
 						<button
 							type="button"
 							class="section-toggle"
-							onclick={() => toggleSection('queue')}
-							aria-expanded={sectionExpanded.queue}
+							onclick={() => {
+								if (!pageMode) toggleSection('queue');
+							}}
+							aria-expanded={queueSectionOpen}
 						>
 							<span class="section-title-main section-title">
 								<span>Queue</span>
 							</span>
 							<span class="section-title-actions">
 								<span class="section-count">{stats.queued}</span>
-								<span class="section-chevron">
-									{#if sectionExpanded.queue}
-										<ChevronUp size={16} />
-									{:else}
-										<ChevronDown size={16} />
-									{/if}
-								</span>
+								{#if !pageMode}
+									<span class="section-chevron">
+										{#if queueSectionOpen}
+											<ChevronUp size={16} />
+										{:else}
+											<ChevronDown size={16} />
+										{/if}
+									</span>
+								{/if}
 							</span>
 						</button>
-						{#if sectionExpanded.queue}
+						{#if queueSectionOpen}
 							<div class="section-filter-row">
 								<div class="section-filter-label">Show</div>
 								<div class="filter-pills" role="tablist" aria-label="Queue filters">
@@ -1579,109 +1590,109 @@
 								{:else}
 									{#each filteredQueuedJobs.slice(0, 5) as job (job.id)}
 										{@const jobPending = isJobActionPending(job.id)}
+										{@const queueItemExpanded = pageMode || expandedJobId === job.id}
 										<div class="queue-item-card">
-											<button
-												type="button"
-												class="queue-item-click"
-												onclick={() => expandedJobId = expandedJobId === job.id ? null : job.id}
-												aria-expanded={expandedJobId === job.id}
-											>
-												<div class="queue-item-main">
-													<div class="queue-item-info">
-														<div class="queue-item-title">{job.job.trackTitle || job.job.albumTitle || 'Unknown'}</div>
-														<div class="queue-item-artist">{job.job.artistName || 'Unknown Artist'}</div>
-														{#if job.job.albumTitle && job.job.trackTitle}
-															<div class="queue-item-album">{job.job.albumTitle}</div>
-														{/if}
+											{#if pageMode}
+												<div class="queue-item-click">
+													<div class="queue-item-main">
+														<div class="queue-item-info">
+															<div class="queue-item-title">{job.job.trackTitle || job.job.albumTitle || 'Unknown'}</div>
+															<div class="queue-item-artist">{job.job.artistName || 'Unknown Artist'}</div>
+															{#if job.job.albumTitle && job.job.trackTitle}
+																<div class="queue-item-album">{job.job.albumTitle}</div>
+															{/if}
+														</div>
 													</div>
-													<span class="expand-icon">
-														{#if expandedJobId === job.id}
-															<ChevronUp size={16} />
-														{:else}
-															<ChevronDown size={16} />
-														{/if}
-													</span>
-												</div>
-
-												{#if expandedJobId === job.id}
-													<div class="queue-item-details">
-														<div class="detail-row">
-															<span class="detail-label">Type:</span>
-															<span class="detail-value">{job.job.type === 'track' ? 'Single Track' : 'Album'}</span>
-														</div>
-														<div class="detail-row">
-															<span class="detail-label">Quality:</span>
-															<span class="detail-value">{job.job.quality || 'Lossless'}</span>
-														</div>
+													<div class="queue-item-summary">
+														<span>{job.job.type === 'track' ? 'Track' : 'Album'}</span>
+														<span class="meta-separator">•</span>
+														<span>{job.job.quality || 'Lossless'}</span>
 														{#if job.job.type === 'album' && job.trackCount}
-															<div class="detail-row">
-																<span class="detail-label">Progress:</span>
-																<span class="detail-value">{job.completedTracks || 0}/{job.trackCount} tracks</span>
-															</div>
+															<span class="meta-separator">•</span>
+															<span>{job.completedTracks || 0}/{job.trackCount} tracks</span>
 														{/if}
-														<div class="detail-row">
-															<span class="detail-label">Status:</span>
-															<span class="detail-value">{job.status}</span>
-														</div>
-														{#if job.createdAt}
-															<div class="detail-row">
-																<span class="detail-label">Added:</span>
-																<span class="detail-value">{new Date(job.createdAt).toLocaleTimeString()}</span>
-															</div>
-														{/if}
-														{#if job.startedAt}
-															<div class="detail-row">
-																<span class="detail-label">Duration:</span>
-																<span class="detail-value">{Math.round((job.completedAt || Date.now()) - job.startedAt) / 1000}s</span>
-															</div>
-														{/if}
-														<div class="detail-actions">
-															<span
-																role="button"
-																tabindex={jobPending ? -1 : 0}
-																class="item-action-btn"
-																onclick={(event) => {
-																	event.stopPropagation();
-																	void handlePauseJob(job);
-																}}
-																onkeydown={(event) => {
-																	if (jobPending) return;
-																	if (event.key === 'Enter' || event.key === ' ') {
-																		event.preventDefault();
-																		event.stopPropagation();
-																		void handlePauseJob(job);
-																	}
-																}}
-																aria-disabled={jobPending}
-															>
-																<Square size={12} />
-																<span>{jobPending ? 'Pausing…' : 'Pause'}</span>
-															</span>
-															<span
-																role="button"
-																tabindex={jobPending ? -1 : 0}
-																class="item-action-btn item-action-btn--warning"
-																onclick={(event) => {
-																	event.stopPropagation();
-																	void handleCancelJob(job);
-																}}
-																onkeydown={(event) => {
-																	if (jobPending) return;
-																	if (event.key === 'Enter' || event.key === ' ') {
-																		event.preventDefault();
-																		event.stopPropagation();
-																		void handleCancelJob(job);
-																	}
-																}}
-																aria-disabled={jobPending}
-															>
-																<Square size={12} />
-																<span>{jobPending ? 'Stopping…' : 'Stop'}</span>
-															</span>
-														</div>
 													</div>
-												{/if}
-											</button>
+												</div>
+											{:else}
+												<button
+													type="button"
+													class="queue-item-click"
+													onclick={() => {
+														expandedJobId = expandedJobId === job.id ? null : job.id;
+													}}
+													aria-expanded={queueItemExpanded}
+												>
+													<div class="queue-item-main">
+														<div class="queue-item-info">
+															<div class="queue-item-title">{job.job.trackTitle || job.job.albumTitle || 'Unknown'}</div>
+															<div class="queue-item-artist">{job.job.artistName || 'Unknown Artist'}</div>
+															{#if job.job.albumTitle && job.job.trackTitle}
+																<div class="queue-item-album">{job.job.albumTitle}</div>
+															{/if}
+														</div>
+														<span class="expand-icon">
+															{#if queueItemExpanded}
+																<ChevronUp size={16} />
+															{:else}
+																<ChevronDown size={16} />
+															{/if}
+														</span>
+													</div>
+													<div class="queue-item-summary">
+														<span>{job.job.type === 'track' ? 'Track' : 'Album'}</span>
+														<span class="meta-separator">•</span>
+														<span>{job.job.quality || 'Lossless'}</span>
+														{#if job.job.type === 'album' && job.trackCount}
+															<span class="meta-separator">•</span>
+															<span>{job.completedTracks || 0}/{job.trackCount} tracks</span>
+														{/if}
+													</div>
+												</button>
+											{/if}
+											{#if queueItemExpanded}
+												<div class="queue-item-details">
+													<div class="detail-row">
+														<span class="detail-label">Status:</span>
+														<span class="detail-value">{job.status}</span>
+													</div>
+													{#if job.createdAt}
+														<div class="detail-row">
+															<span class="detail-label">Added:</span>
+															<span class="detail-value">{new Date(job.createdAt).toLocaleTimeString()}</span>
+														</div>
+													{/if}
+													{#if job.startedAt}
+														<div class="detail-row">
+															<span class="detail-label">Duration:</span>
+															<span class="detail-value">{Math.round((job.completedAt || Date.now()) - job.startedAt) / 1000}s</span>
+														</div>
+													{/if}
+													<div class="detail-actions">
+														<button
+															type="button"
+															class="item-action-btn"
+															onclick={() => {
+																void handlePauseJob(job);
+															}}
+															disabled={jobPending}
+														>
+															<Square size={12} />
+															<span>{jobPending ? 'Pausing…' : 'Pause'}</span>
+														</button>
+														<button
+															type="button"
+															class="item-action-btn item-action-btn--warning"
+															onclick={() => {
+																void handleCancelJob(job);
+															}}
+															disabled={jobPending}
+														>
+															<Square size={12} />
+															<span>{jobPending ? 'Stopping…' : 'Stop'}</span>
+														</button>
+													</div>
+												</div>
+											{/if}
 										</div>
 									{/each}
 								{/if}
@@ -1793,151 +1804,145 @@
 						<button
 							type="button"
 							class="section-toggle"
-							onclick={() => toggleSection('failed')}
-							aria-expanded={sectionExpanded.failed}
+							onclick={() => {
+								if (!pageMode) toggleSection('failed');
+							}}
+							aria-expanded={failedSectionOpen}
 						>
 							<span class="section-title-main section-title error-title">
 								<span>Needs Attention</span>
 							</span>
 							<span class="section-title-actions">
 								<span class="section-count">{resumableJobs.length}</span>
-								<span class="section-chevron">
-									{#if sectionExpanded.failed}
-										<ChevronUp size={16} />
-									{:else}
-										<ChevronDown size={16} />
-									{/if}
-								</span>
+								{#if !pageMode}
+									<span class="section-chevron">
+										{#if failedSectionOpen}
+											<ChevronUp size={16} />
+										{:else}
+											<ChevronDown size={16} />
+										{/if}
+									</span>
+								{/if}
 							</span>
 						</button>
-						{#if sectionExpanded.failed}
+						{#if failedSectionOpen}
 							<div class="failed-list">
 								{#each resumableJobs.slice(0, 4) as job (job.id)}
 									{@const jobPending = isJobActionPending(job.id)}
+									{@const failedItemExpanded = pageMode || expandedJobId === job.id}
 									<div class="failed-item-card">
-										<button
-											type="button"
-											class="failed-item-click"
-											onclick={() => expandedJobId = expandedJobId === job.id ? null : job.id}
-											aria-expanded={expandedJobId === job.id}
-										>
-											<div class="failed-item-main">
-												<div class="failed-item-info">
-													<div class="failed-item-title">
-														{job.job.type === 'track' ? job.job.trackTitle : job.job.albumTitle || 'Unknown'}
-													</div>
-													<div class="failed-item-artist">{job.job.artistName || 'Unknown'}</div>
-													<div class="failed-item-error-text">
-														{job.status === 'paused'
-															? 'Paused by user'
-															: job.status === 'cancelled'
-																? 'Cancelled by user'
-																: job.error || 'Unknown error'}
+										{#if pageMode}
+											<div class="failed-item-click">
+												<div class="failed-item-main">
+													<div class="failed-item-info">
+														<div class="failed-item-title">
+															{job.job.type === 'track' ? job.job.trackTitle : job.job.albumTitle || 'Unknown'}
+														</div>
+														<div class="failed-item-artist">{job.job.artistName || 'Unknown'}</div>
+														<div class="failed-item-error-text">
+															{job.status === 'paused'
+																? 'Paused by user'
+																: job.status === 'cancelled'
+																	? 'Cancelled by user'
+																	: job.error || 'Unknown error'}
+														</div>
 													</div>
 												</div>
-												<span class="expand-icon">
-													{#if expandedJobId === job.id}
-														<ChevronUp size={16} />
-													{:else}
-														<ChevronDown size={16} />
-													{/if}
-												</span>
+												<div class="failed-item-summary">
+													<span>{job.job.type === 'track' ? 'Track' : 'Album'}</span>
+													<span class="meta-separator">•</span>
+													<span>{job.job.quality || 'Lossless'}</span>
+												</div>
 											</div>
-
-											{#if expandedJobId === job.id}
-												<div class="failed-item-details">
-													<div class="detail-row">
-														<span class="detail-label">Job ID:</span>
-														<span class="detail-value detail-value--mono">{job.id}</span>
+										{:else}
+											<button
+												type="button"
+												class="failed-item-click"
+												onclick={() => {
+													expandedJobId = expandedJobId === job.id ? null : job.id;
+												}}
+												aria-expanded={failedItemExpanded}
+											>
+												<div class="failed-item-main">
+													<div class="failed-item-info">
+														<div class="failed-item-title">
+															{job.job.type === 'track' ? job.job.trackTitle : job.job.albumTitle || 'Unknown'}
+														</div>
+														<div class="failed-item-artist">{job.job.artistName || 'Unknown'}</div>
+														<div class="failed-item-error-text">
+															{job.status === 'paused'
+																? 'Paused by user'
+																: job.status === 'cancelled'
+																	? 'Cancelled by user'
+																	: job.error || 'Unknown error'}
+														</div>
 													</div>
-													<div class="detail-row">
-														<span class="detail-label">Status:</span>
-														<span class="detail-value">{job.status}</span>
-													</div>
-													<div class="detail-row">
-														<span class="detail-label">Type:</span>
-														<span class="detail-value">{job.job.type === 'track' ? 'Single Track' : 'Album'}</span>
-													</div>
-													<div class="detail-row">
-														<span class="detail-label">Artist:</span>
-														<span class="detail-value">{job.job.artistName || 'Unknown'}</span>
-													</div>
-													<div class="detail-actions">
-														<span
-															role="button"
-															tabindex={jobPending ? -1 : 0}
-															class="item-action-btn item-action-btn--primary"
-															onclick={(event) => {
-																event.stopPropagation();
-																if (job.status === 'paused') {
-																	void handleResumePausedJob(job);
-																	return;
-																}
-																void handleRetryJob(job);
-															}}
-															onkeydown={(event) => {
-																if (jobPending) return;
-																if (event.key === 'Enter' || event.key === ' ') {
-																	event.preventDefault();
-																	event.stopPropagation();
-																	if (job.status === 'paused') {
-																		void handleResumePausedJob(job);
-																		return;
-																	}
-																	void handleRetryJob(job);
-																}
-															}}
-															aria-disabled={jobPending}
-														>
-															<RotateCcw size={12} />
-															<span>{jobPending ? 'Resuming…' : job.status === 'paused' ? 'Resume' : 'Retry'}</span>
-														</span>
-														<span
-															role="button"
-															tabindex={jobPending ? -1 : 0}
-															class="item-action-btn"
-															onclick={(event) => {
-																event.stopPropagation();
-																void handleCopyFailureReport(job);
-															}}
-															onkeydown={(event) => {
-																if (jobPending) return;
-																if (event.key === 'Enter' || event.key === ' ') {
-																	event.preventDefault();
-																	event.stopPropagation();
-																	void handleCopyFailureReport(job);
-																}
-															}}
-															aria-disabled={jobPending}
-														>
-															<ClipboardCopy size={12} />
-															<span>{jobPending ? 'Copying…' : 'Report'}</span>
-														</span>
-														<span
-															role="button"
-															tabindex={jobPending ? -1 : 0}
-															class="item-action-btn item-action-btn--danger"
-															onclick={(event) => {
-																event.stopPropagation();
-																void handleRemoveJob(job);
-															}}
-															onkeydown={(event) => {
-																if (jobPending) return;
-																if (event.key === 'Enter' || event.key === ' ') {
-																	event.preventDefault();
-																	event.stopPropagation();
-																	void handleRemoveJob(job);
-																}
-															}}
-															aria-disabled={jobPending}
-														>
-															<Trash2 size={12} />
-															<span>{jobPending ? 'Removing…' : 'Dismiss'}</span>
-														</span>
-													</div>
+													<span class="expand-icon">
+														{#if failedItemExpanded}
+															<ChevronUp size={16} />
+														{:else}
+															<ChevronDown size={16} />
+														{/if}
+													</span>
 												</div>
-											{/if}
-										</button>
+												<div class="failed-item-summary">
+													<span>{job.job.type === 'track' ? 'Track' : 'Album'}</span>
+													<span class="meta-separator">•</span>
+													<span>{job.job.quality || 'Lossless'}</span>
+												</div>
+											</button>
+										{/if}
+										{#if failedItemExpanded}
+											<div class="failed-item-details">
+												<div class="detail-row">
+													<span class="detail-label">Status:</span>
+													<span class="detail-value">{job.status}</span>
+												</div>
+												<div class="detail-row">
+													<span class="detail-label">Job ID:</span>
+													<span class="detail-value detail-value--mono">{job.id}</span>
+												</div>
+												<div class="detail-actions">
+													<button
+														type="button"
+														class="item-action-btn item-action-btn--primary"
+														onclick={() => {
+															if (job.status === 'paused') {
+																void handleResumePausedJob(job);
+																return;
+															}
+															void handleRetryJob(job);
+														}}
+														disabled={jobPending}
+													>
+														<RotateCcw size={12} />
+														<span>{jobPending ? 'Resuming…' : job.status === 'paused' ? 'Resume' : 'Retry'}</span>
+													</button>
+													<button
+														type="button"
+														class="item-action-btn"
+														onclick={() => {
+															void handleCopyFailureReport(job);
+														}}
+														disabled={jobPending}
+													>
+														<ClipboardCopy size={12} />
+														<span>{jobPending ? 'Copying…' : 'Report'}</span>
+													</button>
+													<button
+														type="button"
+														class="item-action-btn item-action-btn--danger"
+														onclick={() => {
+															void handleRemoveJob(job);
+														}}
+														disabled={jobPending}
+													>
+														<Trash2 size={12} />
+														<span>{jobPending ? 'Removing…' : 'Dismiss'}</span>
+													</button>
+												</div>
+											</div>
+										{/if}
 									</div>
 								{/each}
 
@@ -2446,13 +2451,14 @@
 	}
 
 	.download-manager-panel--page .section-title {
-		font-size: 0.74rem;
-		letter-spacing: 0.16em;
+		font-size: 0.95rem;
+		letter-spacing: 0.08em;
 	}
 
 	.download-manager-panel--page .section-toggle {
-		padding: 0;
-		min-height: 0;
+		padding: 0.18rem 0.1rem;
+		min-height: 44px;
+		cursor: default;
 	}
 
 	.download-manager-panel--page .section-toggle:hover {
@@ -2462,8 +2468,8 @@
 	.download-manager-panel--page .section-count {
 		background: var(--dm-surface-1);
 		border: 1px solid var(--color-border);
-		padding: 0.2rem 0.5rem;
-		font-size: 0.74rem;
+		padding: 0.24rem 0.58rem;
+		font-size: 0.84rem;
 	}
 
 	.download-manager-panel--page .current-item,
@@ -2485,12 +2491,12 @@
 	}
 
 	.download-manager-panel--page .section-filter-label {
-		font-size: 0.66rem;
+		font-size: 0.84rem;
 	}
 
 	.download-manager-panel--page .filter-pill {
-		font-size: 0.78rem;
-		padding: 0.34rem 0.7rem;
+		font-size: 0.92rem;
+		padding: 0.46rem 0.84rem;
 	}
 
 	.download-manager-panel--page .queue-list,
@@ -2504,34 +2510,36 @@
 
 	.download-manager-panel--page .queue-item-click,
 	.download-manager-panel--page .failed-item-click {
-		padding: 0.72rem 0.76rem;
+		padding: 0.92rem 0.98rem;
+		cursor: default;
 	}
 
 	.download-manager-panel--page .queue-item-click:hover,
 	.download-manager-panel--page .failed-item-click:hover {
-		background: var(--dm-surface-1);
+		background: transparent;
+		transform: none;
 	}
 
 	.download-manager-panel--page .queue-item-title,
 	.download-manager-panel--page .failed-item-title,
 	.download-manager-panel--page .completed-item-title,
 	.download-manager-panel--page .current-item-title {
-		font-size: 0.9rem;
+		font-size: 1.02rem;
 	}
 
 	.download-manager-panel--page .queue-item-artist,
 	.download-manager-panel--page .failed-item-artist,
 	.download-manager-panel--page .completed-item-meta,
 	.download-manager-panel--page .current-item-meta {
-		font-size: 0.8rem;
+		font-size: 0.92rem;
 	}
 
 	.download-manager-panel--page .detail-row {
-		font-size: 0.78rem;
+		font-size: 0.9rem;
 	}
 
 	.download-manager-panel--page .detail-value--mono {
-		font-size: 0.78rem;
+		font-size: 0.84rem;
 	}
 
 	.download-manager-panel--page .item-action-btn {
@@ -3125,9 +3133,9 @@
 	}
 
 	.section-filter-label {
-		font-size: 10px;
+		font-size: 12px;
 		text-transform: uppercase;
-		letter-spacing: 0.3px;
+		letter-spacing: 0.06em;
 		color: var(--color-text-secondary);
 		font-weight: 600;
 	}
@@ -3141,13 +3149,13 @@
 	.filter-pill {
 		all: unset;
 		cursor: pointer;
-		padding: 4px 10px;
+		padding: 6px 12px;
 		border-radius: var(--ui-radius-sm, 9px);
-		font-size: 11px;
+		font-size: 13px;
 		color: var(--color-text-secondary);
 		border: 1px solid var(--color-border);
 		background: rgba(255, 255, 255, 0.02);
-		min-height: 34px;
+		min-height: 36px;
 		display: inline-flex;
 		align-items: center;
 	}
@@ -3177,7 +3185,7 @@
 	.queue-list {
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
+		gap: 10px;
 		max-height: 300px;
 		overflow-y: auto;
 	}
@@ -3192,7 +3200,10 @@
 	.queue-item-click,
 	.failed-item-click {
 		cursor: pointer;
-		padding: 12px;
+		padding: 14px;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
 		transition:
 			background var(--dm-motion-fast) var(--dm-ease-standard),
 			transform var(--dm-motion-fast) var(--dm-ease-emphasis);
@@ -3201,7 +3212,7 @@
 		text-align: left;
 		width: 100%;
 		color: inherit;
-		min-height: 44px;
+		min-height: 52px;
 	}
 
 	.queue-item-click:hover,
@@ -3227,12 +3238,12 @@
 		min-width: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 2px;
+		gap: 4px;
 	}
 
 	.queue-item-title {
 		font-weight: 600;
-		font-size: 12px;
+		font-size: 15px;
 		color: var(--color-text-primary);
 		white-space: nowrap;
 		overflow: hidden;
@@ -3240,7 +3251,7 @@
 	}
 
 	.queue-item-artist {
-		font-size: 11px;
+		font-size: 13px;
 		color: var(--color-text-secondary);
 		white-space: nowrap;
 		overflow: hidden;
@@ -3248,12 +3259,21 @@
 	}
 
 	.queue-item-album {
-		font-size: 10px;
+		font-size: 12px;
 		color: var(--color-text-secondary);
 		opacity: 0.8;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+
+	.queue-item-summary,
+	.failed-item-summary {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		font-size: 12px;
+		color: var(--color-text-secondary);
 	}
 
 	.meta-album-progress {
@@ -3283,13 +3303,13 @@
 		display: flex;
 		justify-content: space-between;
 		gap: 8px;
-		font-size: 11px;
+		font-size: 13px;
 	}
 
 	.detail-label {
 		color: var(--color-text-secondary);
 		font-weight: 600;
-		min-width: 70px;
+		min-width: 88px;
 	}
 
 	.detail-value {
@@ -3302,7 +3322,7 @@
 
 	.detail-value--mono {
 		font-family: ui-monospace, 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
-		font-size: 0.72rem;
+		font-size: 0.82rem;
 	}
 
 	.detail-actions {
@@ -3317,7 +3337,7 @@
 	.queue-more-hint {
 		text-align: center;
 		padding: 8px 10px;
-		font-size: 11px;
+		font-size: 12px;
 		color: var(--color-text-secondary);
 		background: rgba(255, 255, 255, 0.02);
 		border-top: 1px solid var(--color-border);
@@ -3329,7 +3349,7 @@
 		border: 1px solid var(--color-border);
 		border-radius: var(--ui-radius-sm, 9px);
 		padding: 10px;
-		font-size: 12px;
+		font-size: 13px;
 		color: var(--color-text-primary);
 	}
 
@@ -3358,7 +3378,7 @@
 	}
 
 	.completed-item-title {
-		font-size: 12px;
+		font-size: 14px;
 		font-weight: 600;
 		color: var(--color-text-primary);
 		white-space: nowrap;
@@ -3368,7 +3388,7 @@
 
 	.completed-item-meta {
 		margin-top: 4px;
-		font-size: 11px;
+		font-size: 12px;
 		color: var(--color-text-secondary);
 		display: flex;
 		align-items: center;
@@ -3426,7 +3446,7 @@
 
 	.failed-item-title {
 		font-weight: 600;
-		font-size: 12px;
+		font-size: 14px;
 		color: var(--color-text-primary);
 		white-space: nowrap;
 		overflow: hidden;
@@ -3435,13 +3455,13 @@
 	}
 
 	.failed-item-artist {
-		font-size: 11px;
+		font-size: 12px;
 		color: var(--color-text-secondary);
 		margin-bottom: 3px;
 	}
 
 	.failed-item-error-text {
-		font-size: 10px;
+		font-size: 12px;
 		color: rgba(208, 208, 208, 0.9);
 		white-space: normal;
 		word-break: break-word;
@@ -3474,7 +3494,7 @@
 		align-items: center;
 		justify-content: center;
 		gap: 6px;
-		font-size: 12px;
+		font-size: 13px;
 		font-weight: 600;
 		transition:
 			border-color var(--dm-motion-fast) var(--dm-ease-standard),
@@ -3483,16 +3503,16 @@
 			transform var(--dm-motion-fast) var(--dm-ease-emphasis);
 		white-space: nowrap;
 		border: 1px solid transparent;
-		min-height: 40px;
+		min-height: 42px;
 		box-sizing: border-box;
 	}
 
 	.item-action-btn {
 		all: unset;
 		cursor: pointer;
-		padding: 4px 8px;
+		padding: 6px 10px;
 		border-radius: var(--ui-radius-sm, 9px);
-		font-size: 11px;
+		font-size: 12px;
 		font-weight: 600;
 		display: inline-flex;
 		align-items: center;
@@ -3500,7 +3520,7 @@
 		border: 1px solid var(--color-border);
 		color: var(--color-text-primary);
 		background: rgba(255, 255, 255, 0.04);
-		min-height: 28px;
+		min-height: 32px;
 		box-sizing: border-box;
 		transition:
 			border-color var(--dm-motion-fast) var(--dm-ease-standard),
@@ -3517,8 +3537,7 @@
 		transform: translateY(0);
 	}
 
-	.item-action-btn:disabled,
-	.item-action-btn[aria-disabled='true'] {
+	.item-action-btn:disabled {
 		opacity: 0.45;
 		cursor: not-allowed;
 		pointer-events: none;

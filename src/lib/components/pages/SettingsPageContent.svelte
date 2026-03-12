@@ -1363,7 +1363,7 @@
 
 			<div class="settings-block settings-block--full">
 				<p class="settings-block__label">Library maintenance actions</p>
-				<div class="settings-action-stack">
+				<div class="settings-action-stack settings-action-stack--maintenance">
 					<button
 						type="button"
 						onclick={handleFullLibraryRepair}
@@ -1467,7 +1467,7 @@
 	.settings-block {
 		display: flex;
 		flex-direction: column;
-		gap: 0.54rem;
+		gap: 0.62rem;
 	}
 
 	.settings-block--full {
@@ -1476,16 +1476,16 @@
 
 	.settings-block__label {
 		margin: 0;
-		font-size: 0.72rem;
+		font-size: 0.8rem;
 		font-weight: 700;
 		text-transform: uppercase;
-		letter-spacing: 0.12em;
+		letter-spacing: 0.1em;
 		color: rgba(212, 212, 212, 0.78);
 	}
 
 	.settings-block__note {
 		margin: 0;
-		font-size: 0.8rem;
+		font-size: 0.9rem;
 		line-height: 1.4;
 		color: rgba(212, 212, 212, 0.72);
 	}
@@ -1509,8 +1509,8 @@
 		justify-content: space-between;
 		gap: 0.62rem;
 		width: 100%;
-		min-height: 4.25rem;
-		padding: 0.7rem 0.82rem;
+		min-height: 4.5rem;
+		padding: 0.8rem 0.92rem;
 		border-radius: 12px;
 		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
@@ -1526,7 +1526,7 @@
 	}
 
 	.settings-choice--compact {
-		min-height: 3.2rem;
+		min-height: 3.45rem;
 	}
 
 	.settings-choice:hover:not(:disabled) {
@@ -1567,7 +1567,7 @@
 	}
 
 	.settings-choice__description {
-		font-size: 0.78rem;
+		font-size: 0.86rem;
 		line-height: 1.35;
 		color: rgba(212, 212, 212, 0.78);
 	}
@@ -1590,8 +1590,8 @@
 		justify-content: space-between;
 		gap: 0.8rem;
 		width: 100%;
-		min-height: 4.55rem;
-		padding: 0.74rem 0.84rem;
+		min-height: 4.8rem;
+		padding: 0.82rem 0.94rem;
 		border-radius: 12px;
 		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
@@ -1639,7 +1639,7 @@
 	}
 
 	.settings-toggle__description {
-		font-size: 0.78rem;
+		font-size: 0.86rem;
 		line-height: 1.35;
 		color: rgba(212, 212, 212, 0.78);
 	}
@@ -1654,7 +1654,7 @@
 	.settings-toggle__state {
 		min-width: 1.9rem;
 		text-align: right;
-		font-size: 0.72rem;
+		font-size: 0.78rem;
 		font-weight: 700;
 		letter-spacing: 0.11em;
 		text-transform: uppercase;
@@ -1697,7 +1697,13 @@
 	.settings-action-stack {
 		display: flex;
 		flex-direction: column;
-		gap: 0.52rem;
+		gap: 0.58rem;
+	}
+
+	.settings-action-stack--maintenance {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+		gap: 0.58rem;
 	}
 
 	.settings-action {
@@ -1706,13 +1712,14 @@
 		justify-content: space-between;
 		gap: 0.74rem;
 		width: 100%;
-		padding: 0.78rem 0.9rem;
+		padding: 0.9rem 1rem;
+		min-height: 52px;
 		border-radius: 12px;
 		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 		color: inherit;
 		text-align: left;
-		font-size: 0.88rem;
+		font-size: 0.94rem;
 		font-weight: 620;
 		cursor: pointer;
 		transition:
@@ -1765,7 +1772,7 @@
 
 	.settings-feedback p {
 		margin: 0;
-		font-size: 0.78rem;
+		font-size: 0.88rem;
 		line-height: 1.4;
 		color: rgba(212, 212, 212, 0.74);
 	}

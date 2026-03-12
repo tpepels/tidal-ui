@@ -175,7 +175,7 @@
 
 <style>
 	.download-log-container {
-		height: clamp(360px, 65vh, 780px);
+		height: clamp(420px, 68vh, 820px);
 		border-radius: var(--ui-radius-md, 14px);
 		overflow: hidden;
 		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
@@ -195,7 +195,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 12px 16px;
+		padding: 14px 18px;
 		border-bottom: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 		flex-shrink: 0;
 	}
@@ -208,16 +208,15 @@
 
 	.download-log-title {
 		margin: 0;
-		font-size: 0.78rem;
+		font-size: 1rem;
 		font-weight: 600;
 		color: rgba(245, 245, 245, 0.96);
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
+		letter-spacing: 0.02em;
 	}
 
 	.download-log-subtitle {
 		margin: 0;
-		font-size: 0.68rem;
+		font-size: 0.84rem;
 		color: rgba(163, 163, 163, 0.84);
 	}
 
@@ -231,13 +230,13 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		min-width: 2rem;
-		height: 1.7rem;
-		padding: 0 0.5rem;
+		min-width: 2.2rem;
+		height: 2rem;
+		padding: 0 0.6rem;
 		border-radius: 999px;
 		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
-		font-size: 0.68rem;
+		font-size: 0.84rem;
 		font-weight: 600;
 		color: rgba(212, 212, 212, 0.82);
 	}
@@ -245,7 +244,9 @@
 	.download-log-btn {
 		all: unset;
 		cursor: pointer;
-		padding: 0.34rem;
+		padding: 0.46rem;
+		min-width: 2rem;
+		min-height: 2rem;
 		border-radius: 8px;
 		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
@@ -283,8 +284,8 @@
 		overflow-x: hidden;
 
 		font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-		font-size: 12px;
-		padding: 8px 12px;
+		font-size: 13px;
+		padding: 10px 14px;
 		color: rgba(212, 212, 212, 0.88);
 		line-height: 1.4;
 
@@ -317,7 +318,7 @@
 
 	.download-log-entry {
 		margin: 0;
-		padding: 0.34rem 0.48rem;
+		padding: 0.48rem 0.62rem;
 		border-radius: 8px;
 		border: 1px solid transparent;
 		display: flex;
@@ -338,17 +339,20 @@
 		color: rgba(163, 163, 163, 0.82);
 		flex-shrink: 0;
 		min-width: 12ch;
+		font-size: 0.82rem;
 	}
 
 	.download-log-level {
 		flex-shrink: 0;
 		min-width: 8ch;
 		font-weight: 500;
+		font-size: 0.82rem;
 	}
 
 	.download-log-message {
 		flex: 1;
 		word-break: break-word;
+		font-size: 0.9rem;
 	}
 
 	.download-log-entry--info {
@@ -404,11 +408,10 @@
 
 .download-health-title {
 	margin: 0 0 12px 0;
-	font-size: 0.74rem;
+	font-size: 0.9rem;
 	font-weight: 600;
 	color: rgba(245, 245, 245, 0.96);
-	letter-spacing: 0.16em;
-	text-transform: uppercase;
+	letter-spacing: 0.04em;
 }
 
 .download-health-stats {
@@ -436,15 +439,17 @@
 
 .download-health-label {
 	color: rgba(212, 212, 212, 0.8);
+	font-size: 0.84rem;
 }
 
 .download-health-value {
 	color: rgba(245, 245, 245, 0.96);
 	font-weight: 500;
+	font-size: 0.94rem;
 }
 
 .download-health-stat--wide .download-health-value {
-	font-size: 12px;
+	font-size: 13px;
 	color: rgba(212, 212, 212, 0.82);
 	word-break: break-all;
 }
@@ -456,12 +461,12 @@
 .download-health-btn {
 	all: unset;
 	cursor: pointer;
-	padding: 6px 12px;
+	padding: 8px 14px;
 	border-radius: 8px;
 	border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 	background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 	color: rgba(245, 245, 245, 0.92);
-	font-size: 12px;
+	font-size: 13px;
 	font-weight: 500;
 	transition:
 		border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),

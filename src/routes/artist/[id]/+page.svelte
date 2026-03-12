@@ -7,7 +7,7 @@
 	import { isAlbumDownloadQueueActive, type AlbumDownloadStatus } from '$lib/controllers/albumDownloadUi';
 	import type { Album, ArtistDetails, ArtistRecommendations, AudioQuality } from '$lib/types';
 	import TopTracksGrid from '$lib/components/TopTracksGrid.svelte';
-	import CoverArt from '$lib/components/CoverArt.svelte';
+	import EntityMediaCard from '$lib/components/ui/EntityMediaCard.svelte';
 	import ShareButton from '$lib/components/ShareButton.svelte';
 	import {
 		groupDiscography,
@@ -1769,42 +1769,29 @@
 									bind:this={recommendedArtistsRail}
 								>
 									{#each recommendedArtists as recommendationArtist (recommendationArtist.id)}
-										<article class="ui-media-card recommendation-slider__item" data-recommendation-card="true">
-											<a
-												href={`/artist/${recommendationArtist.id}`}
-												class="ui-media-card__primary-link"
-											>
-												<div class="ui-media-card__artwork ui-media-card__artwork--circle">
-													{#if recommendationArtist.picture}
-														<img
-															src={losslessAPI.getArtistPictureUrl(recommendationArtist.picture)}
-															alt={recommendationArtist.name}
-															loading="lazy"
-														/>
-													{:else}
-														<div class="flex h-full w-full items-center justify-center text-gray-500">
-															<User size={34} />
-														</div>
-													{/if}
-												</div>
-												<div class="ui-media-card__body">
-													<h3 class="ui-media-card__title ui-media-card__title--truncate">
-														{recommendationArtist.name}
-													</h3>
-													<p class="ui-media-card__subtitle">
-														{recommendationArtist.type || 'Artist'}
-													</p>
-												</div>
-											</a>
-											<div class="ui-media-card__links">
-												<a
-													href={`/artist/${recommendationArtist.id}`}
-													class="ui-media-card__link"
-												>
-													Artist Page
-												</a>
-											</div>
-										</article>
+										<EntityMediaCard
+											type="artist"
+											href={`/artist/${recommendationArtist.id}`}
+											title={recommendationArtist.name}
+											subtitle={recommendationArtist.type || 'Artist'}
+											links={[{ href: `/artist/${recommendationArtist.id}`, label: 'Artist Page' }]}
+											class="recommendation-slider__item"
+											data-recommendation-card="true"
+										>
+											{#snippet artwork()}
+												{#if recommendationArtist.picture}
+													<img
+														src={losslessAPI.getArtistPictureUrl(recommendationArtist.picture)}
+														alt={recommendationArtist.name}
+														loading="lazy"
+													/>
+												{:else}
+													<div class="flex h-full w-full items-center justify-center text-gray-500">
+														<User size={34} />
+													</div>
+												{/if}
+											{/snippet}
+										</EntityMediaCard>
 									{/each}
 								</div>
 							</div>
@@ -1841,56 +1828,31 @@
 									aria-label="Recommended albums"
 									bind:this={recommendedAlbumsRail}
 								>
-										{#each recommendedAlbums as recommendationAlbum (recommendationAlbum.id)}
-											<article class="ui-media-card recommendation-slider__item" data-recommendation-card="true">
-												<a
-													href={`/album/${recommendationAlbum.id}`}
-													class="ui-media-card__primary-link"
-												>
-													<div class="ui-media-card__artwork">
-														{#if recommendationAlbum.cover}
-															{@const recommendationCoverCacheKey = getCoverCacheKey({
-																coverId: recommendationAlbum.cover,
-																size: '640',
-																proxy: true,
-																overrideKey: `artist:${artist.id}:recommendation:${recommendationAlbum.id}`
-															})}
-															{@const recommendationCoverCandidates = getUnifiedCoverCandidates({
-																coverId: recommendationAlbum.cover,
-																size: '640',
-																proxy: true,
-																includeLowerSizes: true
-															})}
-															<CoverArt
-																cacheKey={recommendationCoverCacheKey}
-																candidates={recommendationCoverCandidates}
-																alt={recommendationAlbum.title}
-																class="h-full w-full object-cover"
-															/>
-														{:else}
-															<div class="flex h-full w-full items-center justify-center text-gray-500">
-																No artwork
-															</div>
-														{/if}
-													</div>
-													<div class="ui-media-card__body">
-														<h3 class="ui-media-card__title ui-media-card__title--truncate">
-															{recommendationAlbum.title}
-														</h3>
-														{#if recommendationAlbum.artist}
-															<p class="ui-media-card__subtitle ui-media-card__title--truncate">
-																{recommendationAlbum.artist.name}
-															</p>
-														{/if}
-														{#if formatAlbumMeta(recommendationAlbum)}
-															<p class="ui-media-card__meta">
-																{formatAlbumMeta(recommendationAlbum)}
-															</p>
-														{/if}
-													</div>
-												</a>
-											</article>
-										{/each}
+									{#each recommendedAlbums as recommendationAlbum (recommendationAlbum.id)}
+										{@const recommendationCoverCacheKey = getCoverCacheKey({
+											coverId: recommendationAlbum.cover,
+											size: '640',
+											proxy: true,
+											overrideKey: `artist:${artist.id}:recommendation:${recommendationAlbum.id}`
+										})}
+										{@const recommendationCoverCandidates = getUnifiedCoverCandidates({
+											coverId: recommendationAlbum.cover,
+											size: '640',
+											proxy: true,
+											includeLowerSizes: true
+										})}
+										<EntityMediaCard
+											type="album"
+											href={`/album/${recommendationAlbum.id}`}
+											title={recommendationAlbum.title}
+											subtitle={recommendationAlbum.artist?.name}
+											meta={formatAlbumMeta(recommendationAlbum)}
+											coverCacheKey={recommendationAlbum.cover ? recommendationCoverCacheKey : null}
+											coverCandidates={recommendationAlbum.cover ? recommendationCoverCandidates : []}
+											class="recommendation-slider__item"
+											data-recommendation-card="true"
+										/>
+									{/each}
 								</div>
 							</div>
 						{/if}
@@ -1957,45 +1919,39 @@
 								})}
 								{@const resolvedCoverUrl = getResolvedCoverUrl(coverCacheKey)}
 								{@const coverImageUrl = resolvedCoverUrl ?? ''}
-								<article class="ui-media-card recommendation-slider__item discography-featured__item" data-recommendation-card="true">
-									<a
-										href={`/album/${album.id}`}
-										class="ui-media-card__primary-link"
-									>
-										<div class="ui-media-card__artwork">
-											{#if coverImageUrl && !albumCoverFailures[album.id]}
-												<img
-													src={coverImageUrl}
-													data-album-id={album.id}
-													data-cover-use-proxy={hasOfficialTidalSource ? '1' : '0'}
-													data-cover-candidates={serializeCoverCandidates(coverImageCandidates)}
-													data-cover-index="0"
-													data-cover-generation={coverHydrationGeneration}
-													data-cover-recovery-tried="0"
-													data-cover-cache-key={coverCacheKey}
-													onerror={handleAlbumCoverError}
-													onload={handleAlbumCoverLoad}
-													alt={album.title}
-													class="h-full w-full object-cover"
-													loading="lazy"
-													decoding="async"
-												/>
-											{:else}
-												<div class="flex h-full w-full items-center justify-center text-sm text-gray-500">
-													No artwork
-												</div>
-											{/if}
-										</div>
-										<div class="ui-media-card__body">
-											<h3 class="ui-media-card__title ui-media-card__title--truncate">
-												{album.title}
-											</h3>
-											{#if formatAlbumMeta(album)}
-												<p class="ui-media-card__subtitle">{formatAlbumMeta(album)}</p>
-											{/if}
-										</div>
-									</a>
-								</article>
+								<EntityMediaCard
+									type="album"
+									href={`/album/${album.id}`}
+									title={album.title}
+									subtitle={formatAlbumMeta(album)}
+									class="recommendation-slider__item discography-featured__item"
+									data-recommendation-card="true"
+								>
+									{#snippet artwork()}
+										{#if coverImageUrl && !albumCoverFailures[album.id]}
+											<img
+												src={coverImageUrl}
+												data-album-id={album.id}
+												data-cover-use-proxy={hasOfficialTidalSource ? '1' : '0'}
+												data-cover-candidates={serializeCoverCandidates(coverImageCandidates)}
+												data-cover-index="0"
+												data-cover-generation={coverHydrationGeneration}
+												data-cover-recovery-tried="0"
+												data-cover-cache-key={coverCacheKey}
+												onerror={handleAlbumCoverError}
+												onload={handleAlbumCoverLoad}
+												alt={album.title}
+												class="h-full w-full object-cover"
+												loading="lazy"
+												decoding="async"
+											/>
+										{:else}
+											<div class="flex h-full w-full items-center justify-center text-sm text-gray-500">
+												No artwork
+											</div>
+										{/if}
+									{/snippet}
+								</EntityMediaCard>
 							{/each}
 						</div>
 					</div>
@@ -2221,97 +2177,92 @@
 													albumDownloadState
 												)}
 												{@const albumInLibrary = albumLibraryPresence[album.id]?.exists === true}
-												<article class="ui-media-card group">
-												<button
-													onclick={(event) =>
-														canCancelAlbumDownload
-															? cancelAlbumQueueDownload(album.id, event)
-															: handleAlbumDownload(album, event)}
-													type="button"
-													class="absolute top-3 right-3 z-40 flex items-center justify-center rounded-full border border-white/15 bg-black/80 p-2 text-gray-200 transition-[background-color,border-color,color,transform] duration-200 ease-[cubic-bezier(0.2,0,0,1)] hover:-translate-y-px hover:border-white/35 hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-													disabled={
-														isDownloadingDiscography ||
-														albumDownloadState.status === 'submitting'
-													}
-													aria-label={
-														canCancelAlbumDownload
-															? `Stop download ${album.title}`
-															: albumDownloadState.status === 'paused'
-																? `Resume download ${album.title}`
-																: `Download ${album.title}`
-													}
-													aria-busy={albumDownloadState.status === 'submitting' || albumDownloadState.status === 'queued' || albumDownloadState.downloading}
-												>
-													{#if canCancelAlbumDownload}
-														<X size={16} />
-													{:else if albumDownloadState.status === 'submitting' || albumDownloadState.downloading}
-														<LoaderCircle size={16} class="animate-spin" />
-													{:else if albumDownloadState.status === 'paused'}
-														<RotateCcw size={16} />
-													{:else}
-														<Download size={16} />
-													{/if}
-												</button>
-												<a
+												<EntityMediaCard
+													type="album"
 													href={`/album/${album.id}`}
-													class="ui-media-card__primary-link"
-													>
-														<div class="ui-media-card__artwork">
-															{#if coverImageUrl && !albumCoverFailures[album.id]}
-																<img
-																	src={coverImageUrl}
-																	data-album-id={album.id}
-																	data-cover-use-proxy={hasOfficialTidalSource ? '1' : '0'}
-																	data-cover-candidates={serializeCoverCandidates(coverImageCandidates)}
-																	data-cover-index="0"
-																	data-cover-generation={coverHydrationGeneration}
-																	data-cover-recovery-tried="0"
-																	data-cover-cache-key={coverCacheKey}
-																	onerror={handleAlbumCoverError}
-																	onload={handleAlbumCoverLoad}
-																	alt={album.title}
-																	class="h-full w-full object-cover"
-																	loading="lazy"
-																	decoding="async"
-																/>
+													title={album.title}
+													subtitle={formatAlbumMeta(album)}
+													meta={`Quality: ${formatQualityLabel(downloadQuality)}`}
+													class="group"
+												>
+													{#snippet action()}
+														<button
+															onclick={(event) =>
+																canCancelAlbumDownload
+																	? cancelAlbumQueueDownload(album.id, event)
+																	: handleAlbumDownload(album, event)}
+															type="button"
+															class="absolute top-3 right-3 z-40 flex items-center justify-center rounded-full border border-white/15 bg-black/80 p-2 text-gray-200 transition-[background-color,border-color,color,transform] duration-200 ease-[cubic-bezier(0.2,0,0,1)] hover:-translate-y-px hover:border-white/35 hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+															disabled={
+																isDownloadingDiscography ||
+																albumDownloadState.status === 'submitting'
+															}
+															aria-label={
+																canCancelAlbumDownload
+																	? `Stop download ${album.title}`
+																	: albumDownloadState.status === 'paused'
+																		? `Resume download ${album.title}`
+																		: `Download ${album.title}`
+															}
+															aria-busy={albumDownloadState.status === 'submitting' || albumDownloadState.status === 'queued' || albumDownloadState.downloading}
+														>
+															{#if canCancelAlbumDownload}
+																<X size={16} />
+															{:else if albumDownloadState.status === 'submitting' || albumDownloadState.downloading}
+																<LoaderCircle size={16} class="animate-spin" />
+															{:else if albumDownloadState.status === 'paused'}
+																<RotateCcw size={16} />
+															{:else}
+																<Download size={16} />
+															{/if}
+														</button>
+													{/snippet}
+													{#snippet artwork()}
+														{#if coverImageUrl && !albumCoverFailures[album.id]}
+															<img
+																src={coverImageUrl}
+																data-album-id={album.id}
+																data-cover-use-proxy={hasOfficialTidalSource ? '1' : '0'}
+																data-cover-candidates={serializeCoverCandidates(coverImageCandidates)}
+																data-cover-index="0"
+																data-cover-generation={coverHydrationGeneration}
+																data-cover-recovery-tried="0"
+																data-cover-cache-key={coverCacheKey}
+																onerror={handleAlbumCoverError}
+																onload={handleAlbumCoverLoad}
+																alt={album.title}
+																class="h-full w-full object-cover"
+																loading="lazy"
+																decoding="async"
+															/>
 														{:else}
 															<div class="flex h-full w-full items-center justify-center text-sm text-gray-500">
 																No artwork
 															</div>
 														{/if}
-													</div>
-													<div class="ui-media-card__body">
-														<h3 class="ui-media-card__title ui-media-card__title--truncate">
-															{album.title}
-														</h3>
-														{#if formatAlbumMeta(album)}
-															<p class="ui-media-card__subtitle">{formatAlbumMeta(album)}</p>
+													{/snippet}
+													{#snippet footer()}
+														{#if albumDownloadState.status === 'queued'}
+															<p class="album-card-status">Queued</p>
+														{:else if albumDownloadState.downloading}
+															<p class="album-card-status">
+																Downloading {albumDownloadState.completed ?? 0}/{displayTrackTotal(
+																	albumDownloadState.total ?? 0
+																)}
+															</p>
+														{:else if albumDownloadState.status === 'completed'}
+															<p class="album-card-status">Downloaded</p>
+														{:else if albumDownloadState.status === 'cancelled'}
+															<p class="album-card-status">Stopped</p>
+														{:else if albumDownloadState.status === 'paused'}
+															<p class="album-card-status">Paused</p>
+														{:else if albumDownloadState.error}
+															<p class="album-card-status" role="alert">Download error</p>
+														{:else if albumInLibrary}
+															<p class="album-card-status">In library</p>
 														{/if}
-														<p class="ui-media-card__meta">
-															Quality: {formatQualityLabel(downloadQuality)}
-														</p>
-													</div>
-												</a>
-												{#if albumDownloadState.status === 'queued'}
-													<p class="album-card-status">Queued</p>
-												{:else if albumDownloadState.downloading}
-													<p class="album-card-status">
-														Downloading {albumDownloadState.completed ?? 0}/{displayTrackTotal(
-															albumDownloadState.total ?? 0
-														)}
-													</p>
-												{:else if albumDownloadState.status === 'completed'}
-													<p class="album-card-status">Downloaded</p>
-												{:else if albumDownloadState.status === 'cancelled'}
-													<p class="album-card-status">Stopped</p>
-												{:else if albumDownloadState.status === 'paused'}
-													<p class="album-card-status">Paused</p>
-												{:else if albumDownloadState.error}
-													<p class="album-card-status" role="alert">Download error</p>
-												{:else if albumInLibrary}
-													<p class="album-card-status">In library</p>
-												{/if}
-											</article>
+													{/snippet}
+												</EntityMediaCard>
 											{/each}
 									</div>
 								</div>
@@ -2451,7 +2402,7 @@
 		background: rgba(255, 255, 255, 0.28);
 	}
 
-	.recommendation-slider__item {
+	:global(.recommendation-slider__item) {
 		scroll-snap-align: start;
 	}
 
@@ -2477,7 +2428,7 @@
 		padding-top: 0.15rem;
 	}
 
-	.discography-featured__item {
+	:global(.discography-featured__item) {
 		border-color: rgba(255, 255, 255, 0.16);
 		background: rgba(255, 255, 255, 0.03);
 	}

@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { Disc, User } from 'lucide-svelte';
+	import type { HTMLAttributes } from 'svelte/elements';
+	import type { Snippet } from 'svelte';
+	import { Disc, ListMusic, User } from 'lucide-svelte';
 	import CoverArt from '$lib/components/CoverArt.svelte';
 
 	export type EntityCardLink = {
@@ -8,8 +10,8 @@
 		preload?: boolean;
 	};
 
-	interface Props {
-		type: 'album' | 'artist';
+	interface Props extends HTMLAttributes<HTMLElement> {
+		type: 'album' | 'artist' | 'playlist';
 		href: string;
 		title: string;
 		subtitle?: string | null;
@@ -22,6 +24,12 @@
 		coverCandidates?: string[];
 		links?: EntityCardLink[];
 		preload?: boolean;
+		badge?: Snippet;
+		action?: Snippet;
+		artwork?: Snippet;
+		bodyExtra?: Snippet;
+		linksContent?: Snippet;
+		footer?: Snippet;
 	}
 
 	let {
@@ -37,7 +45,15 @@
 		coverCacheKey = null,
 		coverCandidates = [],
 		links = [],
-		preload = true
+		preload = true,
+		badge,
+		action,
+		artwork,
+		bodyExtra,
+		linksContent,
+		footer,
+		class: className = '',
+		...restProps
 	}: Props = $props();
 
 	function normalizeLinkLabel(value: string): string {
@@ -50,14 +66,22 @@
 	}
 </script>
 
-<article class="ui-media-card ui-entity-card">
+<article {...restProps} class={`ui-media-card ui-entity-card ${className}`.trim()}>
+	{#if badge}
+		{@render badge()}
+	{/if}
+	{#if action}
+		{@render action()}
+	{/if}
 	<a
 		href={href}
 		class="ui-media-card__primary-link"
 		data-sveltekit-preload-data={preload ? '' : undefined}
 	>
 		<div class="ui-media-card__artwork" class:ui-media-card__artwork--circle={type === 'artist'}>
-			{#if type === 'album' && coverCacheKey && coverCandidates.length > 0}
+			{#if artwork}
+				{@render artwork()}
+			{:else if type === 'album' && coverCacheKey && coverCandidates.length > 0}
 				<CoverArt
 					cacheKey={coverCacheKey}
 					candidates={coverCandidates}
@@ -70,6 +94,8 @@
 				<div class="ui-entity-card__placeholder">
 					{#if type === 'artist'}
 						<User size={36} />
+					{:else if type === 'playlist'}
+						<ListMusic size={30} />
 					{:else}
 						<Disc size={30} />
 					{/if}
@@ -90,9 +116,14 @@
 			{#if intent}
 				<p class="ui-media-card__intent">{intent}</p>
 			{/if}
+			{#if bodyExtra}
+				{@render bodyExtra()}
+			{/if}
 		</div>
 	</a>
-	{#if links.length > 0}
+	{#if linksContent}
+		{@render linksContent()}
+	{:else if links.length > 0}
 		<div class="ui-media-card__links" class:ui-media-card__links--paired={links.length === 2}>
 			{#each links as link (`${link.href}:${link.label}`)}
 				<a
@@ -104,6 +135,9 @@
 				</a>
 			{/each}
 		</div>
+	{/if}
+	{#if footer}
+		{@render footer()}
 	{/if}
 </article>
 
