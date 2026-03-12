@@ -35,6 +35,9 @@ export interface SearchOrchestratorOptions {
 
 	/** Optional artist filter for album searches */
 	albumArtistQuery?: string;
+
+	/** Enforce exact artist-name matching for album searches */
+	strictAlbumArtistMatch?: boolean;
 }
 
 /**
@@ -131,10 +134,12 @@ export class SearchOrchestrator {
 		query: string,
 		tab: SearchTab,
 		region?: RegionOption,
-		albumArtistQuery?: string
+		albumArtistQuery?: string,
+		strictAlbumArtistMatch?: boolean
 	): string {
 		const normalizedAlbumArtistQuery = tab === 'albums' ? (albumArtistQuery?.trim().toLowerCase() ?? '') : '';
-		return `${tab}:${region ?? 'auto'}:${query.toLowerCase()}:${normalizedAlbumArtistQuery}`;
+		const strictFlag = tab === 'albums' && strictAlbumArtistMatch ? 'strict' : 'relaxed';
+		return `${tab}:${region ?? 'auto'}:${query.toLowerCase()}:${normalizedAlbumArtistQuery}:${strictFlag}`;
 	}
 
 	/**
@@ -174,7 +179,13 @@ export class SearchOrchestrator {
 		tab: SearchTab,
 		options: SearchOrchestratorOptions | undefined
 	): Promise<SearchWorkflowResult> {
-		const searchKey = this.buildSearchKey(query, tab, options?.region, options?.albumArtistQuery);
+		const searchKey = this.buildSearchKey(
+			query,
+			tab,
+			options?.region,
+			options?.albumArtistQuery,
+			options?.strictAlbumArtistMatch
+		);
 		const inflight = this.inflightSearches.get(searchKey);
 		if (inflight) {
 			return inflight;
@@ -190,12 +201,20 @@ export class SearchOrchestrator {
 		try {
 			// Execute search via service
 			const trimmedAlbumArtistQuery = options?.albumArtistQuery?.trim() ?? '';
-			const result =
-				tab === 'albums' && trimmedAlbumArtistQuery.length > 0
-					? await executeTabSearch(query, tab, options?.region, {
-							albumArtistQuery: trimmedAlbumArtistQuery
-						})
-					: await executeTabSearch(query, tab, options?.region);
+			const strictAlbumArtistMatch = options?.strictAlbumArtistMatch === true;
+			let result;
+			if (tab === 'albums' && (trimmedAlbumArtistQuery.length > 0 || strictAlbumArtistMatch)) {
+				const albumSearchOptions: { albumArtistQuery?: string; strictAlbumArtistMatch?: boolean } = {};
+				if (trimmedAlbumArtistQuery.length > 0) {
+					albumSearchOptions.albumArtistQuery = trimmedAlbumArtistQuery;
+				}
+				if (strictAlbumArtistMatch) {
+					albumSearchOptions.strictAlbumArtistMatch = true;
+				}
+				result = await executeTabSearch(query, tab, options?.region, albumSearchOptions);
+			} else {
+				result = await executeTabSearch(query, tab, options?.region);
+			}
 
 			// Check if this request has been superseded by a newer search
 			if (requestToken !== this.currentSearchToken) {

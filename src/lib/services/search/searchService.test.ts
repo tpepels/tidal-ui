@@ -33,6 +33,13 @@ describe('searchService', () => {
 		discographySource: 'official_tidal'
 	};
 	const artist: Artist = { id: 10, name: 'Daft Punk', type: 'MAIN' };
+	const partialArtistAlbum: Album = {
+		id: 102,
+		title: 'Random Access Memories',
+		cover: '',
+		videoCover: null,
+		artist: { id: 10, name: 'Daft Punk', type: 'MAIN' }
+	};
 
 	beforeEach(() => {
 		clearSearchCache();
@@ -80,6 +87,49 @@ describe('searchService', () => {
 		expect(result.success).toBe(true);
 		if (result.success) {
 			expect(result.results.albums.some((album) => album.id === officialAlbum.id)).toBe(true);
+		}
+	});
+
+	it('supports strict album artist matching (exact artist only)', async () => {
+		mockSearchAlbums.mockResolvedValue({ items: [partialArtistAlbum] });
+		mockSearchArtists.mockResolvedValue({ items: [artist] });
+		mockGetArtist.mockResolvedValue({
+			...artist,
+			albums: [officialAlbum],
+			tracks: []
+		});
+
+		const result = await executeTabSearch('Random Access Memories', 'albums', 'us', {
+			albumArtistQuery: 'Daft',
+			strictAlbumArtistMatch: true
+		});
+
+		expect(result.success).toBe(true);
+		if (result.success) {
+			expect(result.results.albums).toHaveLength(0);
+		}
+	});
+
+	it('expands album API queries to fetch broader base results', async () => {
+		mockSearchAlbums
+			.mockResolvedValueOnce({ items: [] })
+			.mockResolvedValueOnce({ items: [baseAlbum] })
+			.mockResolvedValue({ items: [] });
+		mockSearchArtists.mockResolvedValue({ items: [] });
+		mockGetArtist.mockResolvedValue({
+			...artist,
+			albums: [],
+			tracks: []
+		});
+
+		const result = await executeTabSearch('Random Access Memories', 'albums', 'us', {
+			albumArtistQuery: 'Daft Punk'
+		});
+
+		expect(mockSearchAlbums.mock.calls.length).toBeGreaterThan(1);
+		expect(result.success).toBe(true);
+		if (result.success) {
+			expect(result.results.albums.some((album) => album.id === baseAlbum.id)).toBe(true);
 		}
 	});
 });

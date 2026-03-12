@@ -12,6 +12,8 @@
 	import { fetchAlbumLibraryStatus } from '$lib/utils/mediaLibraryClient';
 	import CoverArt from '$lib/components/CoverArt.svelte';
 	import EntityMediaCard from '$lib/components/ui/EntityMediaCard.svelte';
+	import ToolPanel from '$lib/components/ui/ToolPanel.svelte';
+	import StateBlock from '$lib/components/ui/StateBlock.svelte';
 	import {
 		getCoverCacheKey,
 		getUnifiedCoverCandidates,
@@ -135,6 +137,7 @@
 	let selectedRegion = $state<RegionOption>('us');
 	let lastUrlSearchKey = $state('');
 	let albumArtistFilter = $state('');
+	let strictAlbumArtistMatch = $state(false);
 
 
 
@@ -184,8 +187,14 @@
 		const queryParam = ($page.url.searchParams.get('q') ?? '').trim();
 		const tabParam = $page.url.searchParams.get('tab');
 		const artistParam = ($page.url.searchParams.get('artist') ?? '').trim();
+		const strictArtistParam = ($page.url.searchParams.get('strictArtist') ?? '').trim().toLowerCase();
+		const strictFromUrl =
+			strictArtistParam === '1' ||
+			strictArtistParam === 'true' ||
+			strictArtistParam === 'yes' ||
+			strictArtistParam === 'on';
 		const resolvedTab = isSearchTab(tabParam) ? tabParam : null;
-		const lookupKey = `${queryParam}::${resolvedTab ?? ''}`;
+		const lookupKey = `${queryParam}::${resolvedTab ?? ''}::${artistParam}::${strictFromUrl ? 'strict' : 'relaxed'}`;
 		if (lookupKey === lastUrlSearchKey) {
 			return;
 		}
@@ -205,10 +214,14 @@
 		if (targetTab === 'albums' && artistParam.length > 0 && artistParam !== albumArtistFilter) {
 			albumArtistFilter = artistParam;
 		}
+		if (targetTab === 'albums') {
+			strictAlbumArtistMatch = strictFromUrl;
+		}
 		void searchOrchestrator.search(queryParam, targetTab, {
 			region: selectedRegion,
 			showErrorToasts: false,
-			albumArtistQuery: targetTab === 'albums' ? albumArtistFilter.trim() : undefined
+			albumArtistQuery: targetTab === 'albums' ? albumArtistFilter.trim() : undefined,
+			strictAlbumArtistMatch: targetTab === 'albums' ? strictAlbumArtistMatch : undefined
 		});
 	});
 
@@ -785,7 +798,9 @@
 		await searchOrchestrator.search(trimmedQuery, $searchStore.activeTab as SearchTab, {
 			region: selectedRegion,
 			showErrorToasts: true,
-			albumArtistQuery: $searchStore.activeTab === 'albums' ? artistFilter : undefined
+			albumArtistQuery: $searchStore.activeTab === 'albums' ? artistFilter : undefined,
+			strictAlbumArtistMatch:
+				$searchStore.activeTab === 'albums' ? strictAlbumArtistMatch : undefined
 		});
 	}
 
@@ -838,10 +853,6 @@
 
 	function handleTabChange(tab: SearchTab) {
 		searchStoreActions.commit({ activeTab: tab });
-		// Only trigger search if we have a query and it's not a URL
-		if ($searchStore.query.trim() && !isQueryAUrl) {
-			handleSearch();
-		}
 	}
 
 	function displayTrackTotal(total?: number | null): number {
@@ -934,9 +945,23 @@
 						}
 					}}
 					placeholder="Artist name (e.g. Daft Punk)"
-					class="search-input-panel__input"
-				/>
-			</div>
+						class="search-input-panel__input"
+					/>
+				</div>
+				<label class="search-input-panel__toggle">
+					<input
+						type="checkbox"
+						checked={strictAlbumArtistMatch}
+						onchange={(event) => {
+							const target = event.currentTarget as HTMLInputElement | null;
+							if (target) {
+								strictAlbumArtistMatch = target.checked;
+							}
+						}}
+						disabled={!albumArtistFilter.trim()}
+					/>
+					<span>Strict artist match (exact artist name only)</span>
+				</label>
 			</div>
 		{/if}
 	</div>
@@ -1024,16 +1049,12 @@
 
 	<!-- Error State -->
 	{#if $searchStore.error}
-		<div class="rounded-lg border border-red-900 bg-red-900/20 p-4 text-red-400">
-			{$searchStore.error}
-		</div>
+		<StateBlock kind="error" title="Search failed" message={$searchStore.error} />
 	{/if}
 
 	<!-- Playlist Loading Progress -->
 	{#if $searchStore.playlistLoadingMessage}
-		<div
-			class="mb-4 flex items-center gap-3 rounded-lg border border-white/18 bg-white/6 p-4 text-white/85"
-		>
+		<div class="ui-action-panel mb-4 flex items-center gap-3 p-4 text-white/85">
 			<LoaderCircle class="animate-spin" size={20} />
 			<span>{$searchStore.playlistLoadingMessage}</span>
 		</div>
@@ -1090,7 +1111,7 @@
 							handleTrackActivation(track);
 						}}
 						onkeydown={(event) => handleTrackKeydown(event, track)}
-						class="track-glass group flex w-full cursor-pointer items-center gap-2 sm:gap-3 rounded-lg p-2 sm:p-3 transition-colors hover:brightness-110 focus:ring-2 focus:ring-white/35 focus:outline-none overflow-hidden {activeMenuId ===
+						class="search-track-row ui-surface-card group flex w-full cursor-pointer items-center gap-2 overflow-hidden p-2 sm:gap-3 sm:p-3 {activeMenuId ===
 						track.id
 							? 'relative z-20'
 							: ''}"
@@ -1121,7 +1142,7 @@
 											event.stopPropagation();
 											activeMenuId = activeMenuId === track.id ? null : track.id;
 										}}
-										class="rounded-full p-2 text-gray-400 transition-colors hover:text-white"
+										class="search-track-menu__trigger"
 										title="Queue actions"
 										aria-label="Queue actions for {track.title}"
 									>
@@ -1130,14 +1151,14 @@
 									<!-- Dropdown menu for queue actions -->
 									{#if activeMenuId === track.id}
 										<div
-											class="track-menu-container absolute top-full right-0 z-10 mt-1 w-48 rounded-lg border border-gray-700 bg-gray-800 shadow-lg"
+											class="search-track-menu track-menu-container absolute top-full right-0 z-10 mt-1 w-48"
 										>
 											<button
 												onclick={(event) => {
 													handlePlayNext(track, event);
 													activeMenuId = null;
 												}}
-												class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+												class="search-track-menu__item"
 											>
 												<ListVideo size={16} />
 												Play Next
@@ -1147,19 +1168,19 @@
 													handleAddToQueue(track, event);
 													activeMenuId = null;
 												}}
-												class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+												class="search-track-menu__item"
 											>
 												<ListPlus size={16} />
 												Add to Queue
 											</button>
-											<div class="my-1 border-t border-gray-700"></div>
+											<div class="search-track-menu__divider"></div>
 											<button
 												onclick={(event) => {
 													event.stopPropagation();
 													copyToClipboard(getLongLink('track', track.id));
 													activeMenuId = null;
 												}}
-												class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+												class="search-track-menu__item"
 											>
 												<Link2 size={16} />
 												Share Link
@@ -1170,7 +1191,7 @@
 													copyToClipboard(getShortLink('track', track.id));
 													activeMenuId = null;
 												}}
-												class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+												class="search-track-menu__item"
 											>
 												<Copy size={16} />
 												Share Short Link
@@ -1181,7 +1202,7 @@
 													copyToClipboard(getEmbedCode('track', track.id));
 													activeMenuId = null;
 												}}
-												class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+												class="search-track-menu__item"
 											>
 												<Code size={16} />
 												Copy Embed Code
@@ -1254,7 +1275,7 @@
 											event.stopPropagation();
 											activeMenuId = activeMenuId === track.id ? null : track.id;
 										}}
-										class="rounded-full p-2 text-gray-400 transition-colors hover:text-white"
+										class="search-track-menu__trigger"
 										title="Queue actions"
 										aria-label="Queue actions for {track.title}"
 									>
@@ -1262,14 +1283,14 @@
 									</button>
 									{#if activeMenuId === track.id}
 										<div
-											class="track-menu-container absolute top-full right-0 z-10 mt-1 w-48 rounded-lg border border-gray-700 bg-gray-800 shadow-lg"
+											class="search-track-menu track-menu-container absolute top-full right-0 z-10 mt-1 w-48"
 										>
 											<button
 												onclick={(event) => {
 													handlePlayNext(track, event);
 													activeMenuId = null;
 												}}
-												class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+												class="search-track-menu__item"
 											>
 												<ListVideo size={16} />
 												Play Next
@@ -1279,19 +1300,19 @@
 													handleAddToQueue(track, event);
 													activeMenuId = null;
 												}}
-												class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+												class="search-track-menu__item"
 											>
 												<ListPlus size={16} />
 												Add to Queue
 											</button>
-											<div class="my-1 border-t border-gray-700"></div>
+											<div class="search-track-menu__divider"></div>
 											<button
 												onclick={(event) => {
 													event.stopPropagation();
 													copyToClipboard(getLongLink('track', track.id));
 													activeMenuId = null;
 												}}
-												class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+												class="search-track-menu__item"
 											>
 												<Link2 size={16} />
 												Share Link
@@ -1302,7 +1323,7 @@
 													copyToClipboard(getShortLink('track', track.id));
 													activeMenuId = null;
 												}}
-												class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+												class="search-track-menu__item"
 											>
 												<Copy size={16} />
 												Share Short Link
@@ -1313,7 +1334,7 @@
 													copyToClipboard(getEmbedCode('track', track.id));
 													activeMenuId = null;
 												}}
-												class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700"
+												class="search-track-menu__item"
 											>
 												<Code size={16} />
 												Copy Embed Code
@@ -1324,7 +1345,7 @@
 							</div>
 						{/if}
 						{#if !('isSonglinkTrack' in track && track.isSonglinkTrack)}
-							<span>{losslessAPI.formatDuration(track.duration)}</span>
+							<span class="search-track-row__duration">{losslessAPI.formatDuration(track.duration)}</span>
 						{/if}
 					</div>
 				{/each}
@@ -1517,32 +1538,32 @@
 			</div>
 			<!-- News Section -->
 		{:else if !$searchStore.query.trim()}
-			<div class="news-container rounded-lg border p-4">
-				<h2 class="mb-4 text-3xl font-bold">News</h2>
-				<section class="grid gap-4 text-left shadow-lg sm:grid-cols-2">
+			<ToolPanel
+				eyebrow="Updates"
+				title="News"
+				subtitle="Recent changes to search, streaming, and downloads."
+				panelRole="search-news"
+			>
+				<section class="search-news-grid">
 					{#each newsItems as item, i (i)}
-						<article
-							class="news-card flex flex-col gap-3 rounded-lg border p-4 transition-transform hover:-translate-y-0.5"
-						>
-							<div class="flex items-center gap-3">
-								<div
-									class="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/6 text-gray-200"
-								>
-									<Newspaper size={20} />
+						<article class="search-news-card ui-surface-card">
+							<div class="search-news-card__header">
+								<div class="search-news-card__icon">
+									<Newspaper size={18} />
 								</div>
-								<h3 class="text-lg font-semibold text-white">{item.title}</h3>
+								<h3 class="search-news-card__title">{item.title}</h3>
 							</div>
-							<p class="text-sm text-gray-300">{item.description}</p>
+							<p class="search-news-card__body">{item.description}</p>
 						</article>
 					{/each}
 				</section>
-			</div>
+			</ToolPanel>
 		{:else if isQueryATidalUrl && !$searchStore.isLoading}
 			<div class="py-12 text-center text-gray-400">
 				<div class="flex flex-col items-center gap-4">
 					<Link2 size={48} class="text-white/85" />
 					<p class="text-lg text-white">Tidal URL detected</p>
-					<p class="text-sm">Press Enter or click Import to load this content</p>
+					<p class="text-sm">Click Search to load this content</p>
 				</div>
 			</div>
 		{:else if $searchStore.query.trim() && !$searchStore.isLoading && !isQueryATidalUrl}
@@ -1694,6 +1715,26 @@
 		min-width: 7.4rem;
 	}
 
+	.search-input-panel__toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.44rem;
+		font-size: 0.86rem;
+		color: rgba(212, 212, 212, 0.82);
+	}
+
+	.search-input-panel__toggle input[type='checkbox'] {
+		width: 1rem;
+		height: 1rem;
+		border-radius: 0.2rem;
+		accent-color: #f3f3f3;
+	}
+
+	.search-input-panel__toggle input[type='checkbox']:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
 	.search-input-panel__input::placeholder {
 		color: rgb(156, 163, 175);
 		opacity: 1;
@@ -1713,71 +1754,153 @@
 		padding-inline: 0.75rem;
 	}
 
-	.track-glass {
-		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+	.search-track-row {
+		padding: 0.58rem 0.66rem;
+		gap: 0.6rem;
+		box-shadow: none;
+		transition:
+			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
+	}
+
+	.search-track-row:hover,
+	.search-track-row:focus-within {
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+		background: var(--ui-surface-interactive, #171717);
+	}
+
+	.search-track-row:focus-visible {
+		outline: 2px solid rgba(255, 255, 255, 0.34);
+		outline-offset: 2px;
+	}
+
+	.search-track-row__duration {
+		font-size: 0.8rem;
+		font-weight: 600;
+		color: rgba(196, 196, 196, 0.86);
+		white-space: nowrap;
+	}
+
+	.search-track-menu {
+		border-radius: var(--ui-radius-sm, 8px);
 		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		backdrop-filter: none;
-		-webkit-backdrop-filter: none;
-		box-shadow: none;
-		transition:
-			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
+		background: var(--ui-surface-raised, #121212);
+		box-shadow: var(--ui-shadow-soft, 0 10px 28px rgba(0, 0, 0, 0.22));
+		overflow: hidden;
 	}
 
-	/* News container acrylic styling */
-	.news-container {
+	.search-track-menu__trigger {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2rem;
+		height: 2rem;
+		border-radius: 999px;
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
-		border-color: var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		backdrop-filter: none;
-		-webkit-backdrop-filter: none;
-		box-shadow: none;
-		transition:
-			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
-	}
-
-	/* News card acrylic styling */
-	.news-card {
-		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
-		border-color: var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		backdrop-filter: none;
-		-webkit-backdrop-filter: none;
-		box-shadow: none;
+		color: rgba(214, 214, 214, 0.84);
+		cursor: pointer;
 		transition:
 			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
 			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
 			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 	}
 
-	.news-card:hover {
+	.search-track-menu__trigger:hover {
 		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
 		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
 		transform: translateY(var(--ui-lift-y, -1px));
+		color: rgba(244, 244, 244, 0.95);
 	}
 
-	.news-card:active {
-		transform: translateY(var(--ui-press-y, 0px));
+	.search-track-menu__item {
+		display: flex;
+		width: 100%;
+		align-items: center;
+		gap: 0.5rem;
+		border: 0;
+		background: transparent;
+		padding: 0.52rem 0.72rem;
+		text-align: left;
+		font-size: 0.84rem;
+		color: rgba(214, 214, 214, 0.86);
+		transition:
+			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
+			color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
 	}
 
-	/* Improved contrast for grey text */
-	:global(.text-gray-400) {
-		color: rgb(156, 163, 175) !important;
+	.search-track-menu__item:hover {
+		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+		color: rgba(246, 246, 246, 0.96);
 	}
 
-	:global(.text-gray-500) {
-		color: rgb(115, 125, 140) !important;
+	.search-track-menu__divider {
+		margin: 0.24rem 0;
+		border-top: 1px solid rgba(255, 255, 255, 0.1);
+	}
+
+	.search-news-grid {
+		display: grid;
+		gap: 0.75rem;
+	}
+
+	@media (min-width: 700px) {
+		.search-news-grid {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+
+	.search-news-card {
+		display: flex;
+		flex-direction: column;
+		gap: 0.58rem;
+		padding: 0.9rem;
+		box-shadow: none;
+	}
+
+	.search-news-card__header {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.6rem;
+	}
+
+	.search-news-card__icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.95rem;
+		height: 1.95rem;
+		border-radius: var(--ui-radius-sm, 8px);
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		color: rgba(228, 228, 228, 0.9);
+	}
+
+	.search-news-card__title {
+		margin: 0;
+		font-size: 1.01rem;
+		line-height: 1.3;
+		color: rgba(242, 242, 242, 0.96);
+	}
+
+	.search-news-card__body {
+		margin: 0;
+		font-size: 0.9rem;
+		line-height: 1.45;
+		color: rgba(206, 206, 206, 0.84);
 	}
 
 	@media (prefers-reduced-motion: reduce) {
 		.search-media-card__image,
 		.search-media-card__action-btn,
-		.news-card {
+		.search-track-menu__trigger,
+		.search-news-card {
 			transition: none;
 		}
 
 		:global(.search-media-card:hover .search-media-card__image),
 		.search-media-card__action-btn:hover:not(:disabled),
-		.news-card:hover {
+		.search-track-menu__trigger:hover {
 			transform: none;
 		}
 	}
