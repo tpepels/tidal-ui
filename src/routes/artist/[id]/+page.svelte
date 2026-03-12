@@ -9,6 +9,8 @@
 	import TopTracksGrid from '$lib/components/TopTracksGrid.svelte';
 	import EntityMediaCard from '$lib/components/ui/EntityMediaCard.svelte';
 	import ShareButton from '$lib/components/ShareButton.svelte';
+	import ActionPanel from '$lib/components/ui/ActionPanel.svelte';
+	import DataGrid from '$lib/components/ui/DataGrid.svelte';
 	import {
 		groupDiscography,
 		getDiscographyTraits,
@@ -1664,7 +1666,7 @@
 </svelte:head>
 
 {#if isLoading}
-	<div class="ui-page flex w-full flex-col gap-4 py-16">
+	<div class="ui-page flex w-full flex-col gap-4 py-16" data-ui-archetype="detail" data-ui-route="artist">
 		<div class="ui-surface-card p-6">
 			<div class="mb-3 text-sm font-semibold text-gray-300">Loading artist data</div>
 			<div
@@ -1678,7 +1680,7 @@
 		</div>
 	</div>
 {:else if error}
-	<div class="ui-page py-12">
+	<div class="ui-page py-12" data-ui-archetype="detail" data-ui-route="artist">
 		<div class="ui-surface-card border-red-500/40 bg-red-950/20 p-6">
 			<h2 class="mb-2 text-xl font-semibold text-red-200">Error Loading Artist</h2>
 			<p class="text-red-100/85">{error}</p>
@@ -1691,11 +1693,17 @@
 		</div>
 	</div>
 {:else if artist}
-	<div class="ui-page space-y-6 pb-32 pt-4 lg:pb-40">
+	<div
+		class="ui-page space-y-6 pb-32 pt-4 lg:pb-40"
+		data-ui-archetype="detail"
+		data-ui-route="artist"
+		data-ui-block="main-content"
+	>
 		<!-- Back Button -->
 		<button
 			onclick={handleBackNavigation}
 			class="ui-chip-button ui-chip-button--compact ui-detail-back"
+			data-ui-block="back-nav"
 		>
 			<ArrowLeft size={20} />
 			Back
@@ -1704,7 +1712,7 @@
 
 
 		<!-- Artist Header -->
-		<div class="flex flex-col items-start gap-8 md:flex-row md:items-end">
+		<div class="flex flex-col items-start gap-8 md:flex-row md:items-end" data-ui-block="entity-hero">
 			<!-- Artist Picture -->
 			<div
 				class="aspect-square w-full flex-shrink-0 overflow-hidden rounded-full border border-white/12 bg-white/5 md:w-80"
@@ -1723,48 +1731,52 @@
 				<p class="mb-2 text-sm text-gray-400">ARTIST</p>
 				<h1 class="mb-4 text-4xl font-bold md:text-6xl">{artist.name}</h1>
 
-				<div class="mb-6 ui-action-panel ui-action-panel--intentful">
-					<div class="ui-action-panel__header">
-						<p class="ui-action-panel__intent">Artist Actions</p>
-						<p class="ui-action-panel__summary">
-							Share this artist or open the official profile.
-						</p>
-					</div>
-					<div class="ui-action-row ui-action-row--progressive">
-						<ShareButton type="artist" id={artist.id} variant="secondary" />
-						{#if artist.url}
-							<a
-								href={artist.url}
-								target="_blank"
-								rel="noopener noreferrer"
-								class="ui-action-button"
-							>
-								Open Artist Profile
-							</a>
-						{/if}
-					</div>
+				<div class="mb-6" data-ui-block="primary-actions">
+					<ActionPanel
+						intent="Artist Actions"
+						summary="Share this artist or open the official profile."
+						intentful={true}
+						panelRole="artist-actions"
+					>
+						<div class="ui-action-row ui-action-row--progressive">
+							<ShareButton type="artist" id={artist.id} variant="secondary" />
+							{#if artist.url}
+								<a
+									href={artist.url}
+									target="_blank"
+									rel="noopener noreferrer"
+									class="ui-action-button"
+								>
+									Open Artist Profile
+								</a>
+							{/if}
+						</div>
+					</ActionPanel>
 				</div>
 
-				<div class="mb-6 ui-action-panel">
-					<div class="ui-action-subpanel__header">
-						<p class="ui-action-panel__intent">MusicBrainz Artist Metadata</p>
-						<button
-							type="button"
-							onclick={() =>
-								lookupMusicBrainzArtists({
-									id: artist!.id,
-									name: artist!.name
-								})}
-							class="ui-chip-button ui-chip-button--compact"
-							disabled={isMusicBrainzArtistLookupLoading}
-						>
-							{#if isMusicBrainzArtistLookupLoading}
-								Refreshing…
-							{:else}
-								Refresh Match
-							{/if}
-						</button>
-					</div>
+				<div class="mb-6" data-ui-block="context-metadata">
+					<ActionPanel panelRole="musicbrainz-artist">
+						<svelte:fragment slot="header">
+							<div class="ui-action-subpanel__header">
+								<p class="ui-action-panel__intent">MusicBrainz Artist Metadata</p>
+								<button
+									type="button"
+									onclick={() =>
+										lookupMusicBrainzArtists({
+											id: artist!.id,
+											name: artist!.name
+										})}
+									class="ui-chip-button ui-chip-button--compact"
+									disabled={isMusicBrainzArtistLookupLoading}
+								>
+									{#if isMusicBrainzArtistLookupLoading}
+										Refreshing…
+									{:else}
+										Refresh Match
+									{/if}
+								</button>
+							</div>
+						</svelte:fragment>
 					{#if isMusicBrainzArtistLookupLoading && musicBrainzArtistOptions.length === 0}
 						<p class="ui-action-status">Searching MusicBrainz artists…</p>
 					{:else if musicBrainzArtistOptions.length > 0}
@@ -1789,7 +1801,7 @@
 							{/each}
 						</select>
 						{#if selectedMusicBrainzArtist}
-							<div class="ui-data-grid">
+							<DataGrid gridRole="artist-musicbrainz-facts">
 								{#if selectedMusicBrainzArtist.type}
 									<div class="ui-data-point">
 										<p class="ui-data-point__label">Type</p>
@@ -1822,7 +1834,7 @@
 										<p class="ui-data-point__value">{selectedMusicBrainzArtist.score}/100</p>
 									</div>
 								{/if}
-							</div>
+							</DataGrid>
 							{#if selectedMusicBrainzArtist.disambiguation}
 								<p class="ui-action-status">{selectedMusicBrainzArtist.disambiguation}</p>
 							{/if}
@@ -1843,6 +1855,7 @@
 					{#if musicBrainzArtistLookupError}
 						<p class="ui-action-status" data-tone="error">{musicBrainzArtistLookupError}</p>
 					{/if}
+					</ActionPanel>
 				</div>
 
 				<div class="mb-6 flex flex-wrap items-center gap-2">
@@ -1877,7 +1890,7 @@
 
 		<!-- Music Overview -->
 		<div class="space-y-12">
-			<section>
+			<section data-ui-block="main-content">
 				<div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
 					<div>
 						<h2 class="text-2xl font-semibold text-white">Top Tracks</h2>
@@ -1897,7 +1910,7 @@
 				{/if}
 			</section>
 
-			<section class="artist-secondary-zone">
+			<section class="artist-secondary-zone" data-ui-block="secondary-content">
 				<div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
 					<div>
 						<h2 class="text-xl font-semibold text-gray-100">Discovery Suggestions</h2>
@@ -2073,7 +2086,10 @@
 			</section>
 
 			{#if featuredDiscographyAlbums.length > 0}
-				<section class="artist-secondary-zone artist-secondary-zone--featured">
+				<section
+					class="artist-secondary-zone artist-secondary-zone--featured"
+					data-ui-block="secondary-content"
+				>
 					<div class="discography-featured">
 						<div class="discography-featured__header">
 							<div>
@@ -2166,7 +2182,7 @@
 				</section>
 			{/if}
 
-				<section class="artist-discography-primary">
+				<section class="artist-discography-primary" data-ui-block="main-content">
 					<div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
 						<div>
 							<h2 class="text-2xl font-semibold text-white">Discography</h2>
@@ -2198,13 +2214,13 @@
 							</button>
 						</div>
 					</div>
-					<div class="mt-4 ui-action-panel ui-action-panel--intentful">
-						<div class="ui-action-panel__header">
-							<p class="ui-action-panel__intent">Discography Selection</p>
-							<p class="ui-action-panel__summary">
-								Refine which releases are shown and which edition is preferred.
-							</p>
-						</div>
+					<ActionPanel
+						className="mt-4"
+						intent="Discography Selection"
+						summary="Refine which releases are shown and which edition is preferred."
+						intentful={true}
+						panelRole="discography-selection"
+					>
 						<div class="ui-action-row ui-action-row--progressive md:justify-between">
 							<label class="flex items-center gap-2 text-xs text-gray-400">
 								<span>Best edition</span>
@@ -2261,7 +2277,7 @@
 						<p class="ui-action-status">
 							Content filters use release metadata. “Non-explicit” is what some catalogs label as “clean”.
 						</p>
-					</div>
+					</ActionPanel>
 				{#if discographyInfo?.mayBeIncomplete}
 					<div class="mt-3 rounded-lg border border-amber-700/40 bg-amber-900/20 p-3 text-sm text-amber-200">
 						<p class="font-semibold">Discography may be incomplete from source data.</p>

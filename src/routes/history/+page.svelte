@@ -54,14 +54,14 @@
 	<title>{meta?.title ?? 'History'} | BiniLossless</title>
 </svelte:head>
 
-<section class="ui-page history-page">
-	<header class="ui-page__header">
+<section class="ui-page history-page" data-ui-archetype="collection" data-ui-route="history">
+	<header class="ui-page__header" data-ui-block="page-header">
 		<div class="ui-page__title-group">
 			<p class="ui-page__eyebrow">Navigation</p>
 			<h1 class="ui-page__title">{meta?.title ?? 'History'}</h1>
 			<p class="ui-page__subtitle">{meta?.subtitle ?? 'Recently visited artists and albums'}</p>
 		</div>
-		<div class="ui-page__actions">
+		<div class="ui-page__actions" data-ui-block="filters-actions">
 			<button type="button" class="ui-chip-button" onclick={clearHistory} disabled={!hasHistory}>
 				<Trash2 size={14} />
 				<span>Clear all history</span>
@@ -69,7 +69,7 @@
 		</div>
 	</header>
 
-	<div class="ui-surface-grid history-page__overview">
+	<div class="ui-surface-grid history-page__overview" data-ui-block="results">
 		<article class="ui-surface-card history-overview-card">
 			<div class="history-overview-card__heading">
 				<Clock3 size={16} />
@@ -122,7 +122,7 @@
 		</article>
 	</div>
 
-	<div class="history-page__columns">
+	<div class="history-page__columns" data-ui-block="results">
 		<section class="ui-surface-card history-list-card">
 			<div class="history-list-card__header">
 				<div class="history-list-card__title">

@@ -111,7 +111,12 @@
     }
 </script>
 
-<div class="embed-card">
+<div
+	class="embed-card"
+	data-ui-archetype="embed"
+	data-ui-route="embed-track"
+	data-ui-block="main-sections"
+>
     {#if isLoading}
         <div class="loading">
             <LoaderCircle class="animate-spin" size={32} />
@@ -121,7 +126,7 @@
             <p>{error}</p>
         </div>
     {:else if track}
-        <div class="track-info">
+        <div class="track-info" data-ui-block="entity-hero">
             <div class="cover-art">
                 <img src={losslessAPI.getCoverUrl(track.album.cover, '320')} alt={track.album.title} />
                 <button class="play-button" onclick={togglePlay} aria-label={isPlaying ? "Pause" : "Play"}>
@@ -132,7 +137,7 @@
                     {/if}
                 </button>
             </div>
-            <div class="details">
+            <div class="details" data-ui-block="primary-actions">
                 <h1 class="title" title={track.title}>{track.title}</h1>
                 <p class="artist" title={formatArtists(track.artists)}>{formatArtists(track.artists)}</p>
                 

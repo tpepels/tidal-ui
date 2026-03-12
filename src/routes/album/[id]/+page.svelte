@@ -10,6 +10,8 @@
 	import CoverArt from '$lib/components/CoverArt.svelte';
 	import TrackList from '$lib/components/TrackList.svelte';
 	import ShareButton from '$lib/components/ShareButton.svelte';
+	import ActionPanel from '$lib/components/ui/ActionPanel.svelte';
+	import DataGrid from '$lib/components/ui/DataGrid.svelte';
 	import type { Album, Track } from '$lib/types';
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
 	import {
@@ -791,11 +793,11 @@
 </svelte:head>
 
 {#if isLoading}
-	<div class="ui-page flex items-center justify-center py-24">
+	<div class="ui-page flex items-center justify-center py-24" data-ui-archetype="detail" data-ui-route="album">
 		<LoaderCircle size={16} class="h-16 w-16 animate-spin text-white/80" />
 	</div>
 {:else if error}
-	<div class="ui-page py-12">
+	<div class="ui-page py-12" data-ui-archetype="detail" data-ui-route="album">
 		<div class="ui-surface-card border-red-500/40 bg-red-950/20 p-6">
 			<h2 class="mb-2 text-xl font-semibold text-red-200">Error Loading Album</h2>
 			<p class="text-red-100/85">{error}</p>
@@ -808,18 +810,24 @@
 		</div>
 	</div>
 {:else if album}
-	<div class="ui-page space-y-6 pb-32 pt-4 lg:pb-40">
+	<div
+		class="ui-page space-y-6 pb-32 pt-4 lg:pb-40"
+		data-ui-archetype="detail"
+		data-ui-route="album"
+		data-ui-block="main-content"
+	>
 		<!-- Back Button -->
 		<button
 			onclick={handleBackNavigation}
 			class="ui-chip-button ui-chip-button--compact ui-detail-back"
+			data-ui-block="back-nav"
 		>
 			<ArrowLeft size={20} />
 			Back
 		</button>
 
 		<!-- Album Header -->
-		<div class="flex flex-col gap-8 md:flex-row">
+		<div class="flex flex-col gap-8 md:flex-row" data-ui-block="entity-hero">
 			<!-- Album Cover -->
 			{#if album.videoCover || album.cover}
 				<div
@@ -921,8 +929,10 @@
 						tracks{#if missingTrackLabel} (missing {missingTrackLabel}){/if}.
 					</p>
 				{/if}
-				<div class="mb-6 ui-action-panel">
-					<div class="ui-action-subpanel__header">
+				<div data-ui-block="context-metadata">
+					<ActionPanel className="mb-6" panelRole="musicbrainz-release">
+					<svelte:fragment slot="header">
+						<div class="ui-action-subpanel__header">
 						<p class="ui-action-panel__intent">MusicBrainz Release Metadata</p>
 						<button
 							type="button"
@@ -936,7 +946,8 @@
 								Refresh Matches
 							{/if}
 						</button>
-					</div>
+						</div>
+					</svelte:fragment>
 					{#if isMusicBrainzReleaseLookupLoading && musicBrainzReleaseOptions.length === 0}
 						<p class="ui-action-status">Searching MusicBrainz releases…</p>
 					{:else if musicBrainzReleaseOptions.length > 0}
@@ -959,7 +970,7 @@
 							{/each}
 						</select>
 						{#if selectedMusicBrainzRelease}
-							<div class="ui-data-grid">
+							<DataGrid>
 								{#if selectedMusicBrainzRelease.trackCount}
 									<div class="ui-data-point">
 										<p class="ui-data-point__label">Track Count</p>
@@ -994,7 +1005,7 @@
 									<p class="ui-data-point__label">Release MBID</p>
 									<p class="ui-data-point__value">{selectedMusicBrainzRelease.id}</p>
 								</div>
-							</div>
+							</DataGrid>
 							<p class="ui-action-status">
 								<a
 									href={`https://musicbrainz.org/release/${selectedMusicBrainzRelease.id}`}
@@ -1019,16 +1030,17 @@
 							Enable experimental MusicBrainz tagging in Settings to apply this release when downloading.
 						{/if}
 					</p>
+					</ActionPanel>
 				</div>
 
 				{#if tracks.length > 0}
-					<div class="ui-action-panel ui-action-panel--intentful">
-						<div class="ui-action-panel__header">
-							<p class="ui-action-panel__intent">Album Actions</p>
-							<p class="ui-action-panel__summary">
-								Play, shuffle, download, and maintain this album from one action surface.
-							</p>
-						</div>
+					<div data-ui-block="primary-actions">
+					<ActionPanel
+						intent="Album Actions"
+						summary="Play, shuffle, download, and maintain this album from one action surface."
+						intentful={true}
+						panelRole="album-actions"
+					>
 						<div class="ui-action-row ui-action-row--progressive">
 							<button
 								onclick={handleAlbumPlaybackToggle}
@@ -1131,13 +1143,14 @@
 						{#if downloadError}
 							<p class="ui-action-status" data-tone="error">{downloadError}</p>
 						{/if}
+					</ActionPanel>
 					</div>
 				{/if}
 			</div>
 		</div>
 
 		<!-- Tracks -->
-		<div class="mt-8 space-y-4">
+		<div class="mt-8 space-y-4" data-ui-block="secondary-content">
 			<h2 class="text-2xl font-bold">Tracks</h2>
 			<TrackList {tracks} showAlbum={false} />
 			{#if tracks.length === 0}

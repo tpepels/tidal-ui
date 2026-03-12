@@ -111,7 +111,7 @@
     }
 </script>
 
-<div class="embed-card">
+<div class="embed-card" data-ui-archetype="embed" data-ui-route="embed-playlist">
     {#if isLoading}
         <div class="loading">
             <LoaderCircle class="animate-spin" size={32} />
@@ -121,7 +121,7 @@
             <p>{error}</p>
         </div>
     {:else if playlist}
-        <div class="header">
+        <div class="header" data-ui-block="entity-hero">
             <div class="cover-art">
                 {#if playlist.image}
                     <img src={losslessAPI.getCoverUrl(playlist.image, '320')} alt={playlist.title} />
@@ -136,7 +136,7 @@
                     {/if}
                 </button>
             </div>
-            <div class="details">
+            <div class="details" data-ui-block="primary-actions">
                 <h1 class="title" title={playlist.title}>{playlist.title}</h1>
                 <p class="subtitle" title={playlist.description}>{playlist.description || 'Playlist'}</p>
                 <a href="/playlist/{playlist.uuid}" target="_blank" class="open-link">
@@ -146,7 +146,7 @@
             </div>
         </div>
 
-        <div class="track-list">
+        <div class="track-list" data-ui-block="main-sections">
             {#each tracks as track, i (track.id)}
                 <button class="track-item" onclick={() => playTrack(track, i)} class:active={$machineCurrentTrack?.id === track.id}>
                     <span class="track-number">{i + 1}</span>

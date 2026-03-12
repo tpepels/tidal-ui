@@ -42,21 +42,14 @@ a[aria-disabled='true'] {
 }
 
 :root[data-performance='low'] .glass-panel,
+:root[data-performance='low'] .ui-shell-surface,
 :root[data-performance='low'] .glass-toolbar,
-:root[data-performance='low'] .glass-option,
-:root[data-performance='low'] .glass-action,
-:root[data-performance='low'] .glass-option__chip,
 :root[data-performance='low'] .glass-panel__footer,
 :root[data-performance='low'] .navigation-overlay,
 :root[data-performance='low'] .navigation-overlay__progress {
 	background-color: rgba(12, 12, 12, 0.92) !important;
 	border-color: rgba(212, 212, 212, 0.2) !important;
 	box-shadow: none !important;
-}
-
-:root[data-performance='low'] .glass-option,
-:root[data-performance='low'] .glass-action {
-	transition: none;
 }
 
 :root:not([data-performance='medium']):not([data-performance='low']) {
@@ -99,6 +92,27 @@ a[aria-disabled='true'] {
 	--ui-reveal-distance: 8px;
 	--ui-reveal-duration: 460ms;
 	--ui-stagger-step: 45ms;
+
+	/* Semantic typography contract */
+	--ui-text-primary: #ffffff;
+	--ui-text-secondary: #d8d8d8;
+	--ui-text-muted: #a6a6a6;
+
+	/* Semantic surface contract */
+	--ui-surface-base: #0d0d0d;
+	--ui-surface-raised: #121212;
+	--ui-surface-interactive: #171717;
+
+	/* Semantic border contract */
+	--ui-border-subtle-semantic: rgba(255, 255, 255, 0.1);
+	--ui-border-strong-semantic: rgba(255, 255, 255, 0.22);
+
+	/* Semantic status tones */
+	--ui-status-success: rgba(210, 210, 210, 0.94);
+	--ui-status-warning: rgba(224, 224, 224, 0.9);
+	--ui-status-error: rgba(233, 233, 233, 0.9);
+	--ui-status-info: rgba(212, 212, 212, 0.82);
+
 	--mono-ink-0: #ffffff;
 	--mono-ink-1: #f2f2f2;
 	--mono-ink-2: #d8d8d8;
@@ -580,13 +594,15 @@ textarea {
 	margin: 0;
 	font-size: clamp(1.72rem, 1.3rem + 1vw, 2.28rem);
 	line-height: 1.14;
+	color: var(--ui-text-primary, #ffffff);
 }
 
 .ui-page__subtitle {
 	margin: 0;
 	font-size: 1.02rem;
-	color: rgba(212, 212, 212, 0.74);
+	color: var(--ui-text-secondary, #d8d8d8);
 	line-height: 1.35;
+	opacity: 0.86;
 }
 
 .ui-page__actions {
@@ -603,7 +619,7 @@ textarea {
 	padding: 1rem;
 	border-radius: var(--ui-radius-md, 14px);
 	border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-	background: var(--mono-surface-card);
+	background: var(--ui-surface-raised, #121212);
 	box-shadow: var(--ui-shadow-soft, 0 10px 28px rgba(0, 0, 0, 0.22));
 }
 
@@ -754,7 +770,7 @@ textarea {
 	padding: 0.92rem 1rem;
 	border-radius: var(--ui-radius-md, 14px);
 	border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-	background: #121212;
+	background: var(--ui-surface-raised, #121212);
 	box-shadow: var(--ui-shadow-soft, 0 10px 28px rgba(0, 0, 0, 0.22));
 	backdrop-filter: none;
 	-webkit-backdrop-filter: none;
@@ -767,7 +783,7 @@ textarea {
 .ui-action-panel:hover,
 .ui-action-panel:focus-within {
 	border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-	background: #161616;
+	background: var(--ui-surface-interactive, #171717);
 	transform: translateY(var(--ui-lift-y));
 }
 
@@ -915,19 +931,19 @@ textarea {
 	margin: 0;
 	font-size: 0.94rem;
 	line-height: 1.38;
-	color: rgba(212, 212, 212, 0.82);
+	color: var(--ui-status-info, rgba(212, 212, 212, 0.82));
 }
 
 .ui-action-status[data-tone='success'] {
-	color: rgba(210, 210, 210, 0.94);
+	color: var(--ui-status-success, rgba(210, 210, 210, 0.94));
 }
 
 .ui-action-status[data-tone='warning'] {
-	color: rgba(224, 224, 224, 0.9);
+	color: var(--ui-status-warning, rgba(224, 224, 224, 0.9));
 }
 
 .ui-action-status[data-tone='error'] {
-	color: rgba(233, 233, 233, 0.9);
+	color: var(--ui-status-error, rgba(233, 233, 233, 0.9));
 }
 
 .ui-action-subpanel {
@@ -996,7 +1012,7 @@ textarea {
 .ui-surface-card {
 	border-radius: var(--ui-radius-md, 14px);
 	border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-	background: #121212;
+	background: var(--ui-surface-raised, #121212);
 	box-shadow: var(--ui-shadow-soft, 0 10px 28px rgba(0, 0, 0, 0.22));
 	backdrop-filter: none;
 	-webkit-backdrop-filter: none;
@@ -1121,7 +1137,7 @@ textarea {
 	padding: 0.78rem;
 	border-radius: var(--ui-radius-md, 14px);
 	border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-	background: #121212;
+	background: var(--ui-surface-raised, #121212);
 	box-shadow: var(--ui-shadow-soft, 0 10px 28px rgba(0, 0, 0, 0.22));
 	backdrop-filter: none;
 	-webkit-backdrop-filter: none;
@@ -1134,7 +1150,7 @@ textarea {
 .ui-media-card:hover,
 .ui-media-card:focus-within {
 	border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-	background: #161616;
+	background: var(--ui-surface-interactive, #171717);
 	transform: translateY(var(--ui-lift-y));
 }
 

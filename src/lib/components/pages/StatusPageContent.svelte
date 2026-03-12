@@ -9,7 +9,8 @@
 	import { getRetrySummary, type RetrySummary } from '$lib/core/retryTracker';
 	import { Activity, Gauge } from 'lucide-svelte';
 	import ApiTargetsStatusCard from '$lib/components/status/ApiTargetsStatusCard.svelte';
-	import PageState from '$lib/components/ui/PageState.svelte';
+	import StateBlock from '$lib/components/ui/StateBlock.svelte';
+	import ToolPanel from '$lib/components/ui/ToolPanel.svelte';
 
 	let diagnosticsLoading = $state(false);
 	let diagnosticsSummary = $state<ReturnType<typeof getErrorSummary> | null>(null);
@@ -136,8 +137,8 @@
 	});
 </script>
 
-<section class="status-page ui-page">
-	<div class="ui-page__header">
+<section class="status-page ui-page" data-ui-archetype="tool" data-ui-route="status">
+	<div class="ui-page__header" data-ui-block="page-header">
 		<div class="ui-page__title-group">
 			<p class="ui-page__eyebrow">Tools</p>
 			<h1 class="ui-page__title">Status</h1>
@@ -149,7 +150,7 @@
 				{/if}
 			</p>
 		</div>
-		<div class="ui-page__actions">
+		<div class="ui-page__actions" data-ui-block="primary-actions">
 			<button
 				type="button"
 				class="ui-chip-button status-page__refresh-btn"
@@ -165,26 +166,34 @@
 	</div>
 
 	{#if diagnosticsError}
-		<PageState kind="error" title="Diagnostics unavailable" message={diagnosticsError} actionLabel="Retry" onAction={() => void refreshDiagnostics()} />
+		<StateBlock
+			kind="error"
+			title="Diagnostics unavailable"
+			message={diagnosticsError}
+			actionLabel="Retry"
+			onAction={() => void refreshDiagnostics()}
+		/>
 	{/if}
 
-	<div class="status-page__grid">
-		<section class="ui-tool-panel status-page__panel">
-			<p class="section-heading">Health</p>
-			<p class="section-footnote">
-				Status: <strong>{diagnosticsHealth?.status ?? 'unknown'}</strong>
-			</p>
-			<p class="section-footnote">Response: {diagnosticsHealth?.responseTime ?? '—'} ms</p>
-			{#if diagnosticsHealth?.issues?.length}
-				<ul class="status-page__issues">
-					{#each diagnosticsHealth.issues as issue (issue)}
-						<li>{issue}</li>
-					{/each}
-				</ul>
-			{/if}
-		</section>
+	<div class="status-page__grid" data-ui-block="main-sections">
+		<div data-ui-block="key-summary">
+			<ToolPanel>
+				<p class="section-heading">Health</p>
+				<p class="section-footnote">
+					Status: <strong>{diagnosticsHealth?.status ?? 'unknown'}</strong>
+				</p>
+				<p class="section-footnote">Response: {diagnosticsHealth?.responseTime ?? '—'} ms</p>
+				{#if diagnosticsHealth?.issues?.length}
+					<ul class="status-page__issues">
+						{#each diagnosticsHealth.issues as issue (issue)}
+							<li>{issue}</li>
+						{/each}
+					</ul>
+				{/if}
+			</ToolPanel>
+		</div>
 
-		<section class="ui-tool-panel status-page__panel">
+		<ToolPanel>
 			<ApiTargetsStatusCard
 				title="API Targets"
 				status={statusTargets}
@@ -193,9 +202,9 @@
 				onRefresh={() => void refreshDiagnostics()}
 				compact={true}
 			/>
-		</section>
+		</ToolPanel>
 
-		<section class="ui-tool-panel status-page__panel">
+		<ToolPanel>
 			<p class="section-heading">Queue</p>
 			<div class="status-page__metric-grid">
 				<div class="status-page__metric">
@@ -227,9 +236,9 @@
 				<summary>Show raw queue snapshot</summary>
 				<pre class="status-page__json">{JSON.stringify(statusQueueMetrics?.queue ?? {}, null, 2)}</pre>
 			</details>
-		</section>
+		</ToolPanel>
 
-		<section class="ui-tool-panel status-page__panel">
+		<ToolPanel>
 			<p class="section-heading">Queue Metrics</p>
 			<div class="status-page__metric-grid">
 				<div class="status-page__metric">
@@ -268,9 +277,9 @@
 				<summary>Show raw metrics snapshot</summary>
 				<pre class="status-page__json">{JSON.stringify(statusQueueMetrics?.metrics ?? {}, null, 2)}</pre>
 			</details>
-		</section>
+		</ToolPanel>
 
-		<section class="ui-tool-panel status-page__panel">
+		<ToolPanel>
 			<p class="section-heading">Errors (Last Hour)</p>
 			<p class="section-footnote">
 				Total: {diagnosticsSummary?.totalErrors ?? 0} ·
@@ -284,16 +293,16 @@
 					{/each}
 				</ul>
 			{:else}
-				<PageState
+				<StateBlock
 					kind="empty"
 					title="No domain spikes"
 					message="No domain-specific error concentration detected."
 					embedded={true}
 				/>
 			{/if}
-		</section>
+		</ToolPanel>
 
-		<section class="ui-tool-panel status-page__panel">
+		<ToolPanel>
 			<p class="section-heading">Retry Health</p>
 			<p class="section-footnote">Total retries (last hour): {diagnosticsRetries?.total ?? 0}</p>
 			<p class="section-footnote">Recent retry events: {diagnosticsRetries?.recent?.length ?? 0}</p>
@@ -308,9 +317,9 @@
 					{/each}
 				</ul>
 			{/if}
-		</section>
+		</ToolPanel>
 
-		<section class="ui-tool-panel ui-tool-panel--wide status-page__panel">
+		<ToolPanel wide={true}>
 			<p class="section-heading">Recent Errors</p>
 			{#if diagnosticsErrors && diagnosticsErrors.length > 0}
 				<ul class="status-page__errors">
@@ -323,13 +332,23 @@
 					{/each}
 				</ul>
 			{:else if diagnosticsLoading}
-				<PageState kind="loading" title="Loading errors" message="Fetching latest error telemetry." embedded={true} />
+				<StateBlock
+					kind="loading"
+					title="Loading errors"
+					message="Fetching latest error telemetry."
+					embedded={true}
+				/>
 			{:else}
-				<PageState kind="empty" title="No errors recorded" message="No recent errors are currently tracked." embedded={true} />
+				<StateBlock
+					kind="empty"
+					title="No errors recorded"
+					message="No recent errors are currently tracked."
+					embedded={true}
+				/>
 			{/if}
-		</section>
+		</ToolPanel>
 
-		<section class="ui-tool-panel status-page__panel">
+		<ToolPanel>
 			<p class="section-heading">Persisted Summary</p>
 			{#if diagnosticsPersisted}
 				<p class="section-footnote">
@@ -358,22 +377,22 @@
 					<pre class="status-page__json">{JSON.stringify(diagnosticsPersisted, null, 2)}</pre>
 				</details>
 			{:else}
-				<PageState
+				<StateBlock
 					kind="empty"
 					title="No persisted summary"
 					message="A persisted snapshot will appear after errors are tracked."
 					embedded={true}
 				/>
 			{/if}
-		</section>
+		</ToolPanel>
 
-		<section class="ui-tool-panel status-page__panel">
+		<ToolPanel>
 			<p class="section-heading">Tracker Snapshot</p>
 			<div class="status-page__tracker-snapshot">
 				<Gauge size={14} />
 				<span class="section-footnote">Realtime tracker reflects client-side observability state.</span>
 			</div>
-		</section>
+		</ToolPanel>
 	</div>
 </section>
 
@@ -386,10 +405,6 @@
 		display: grid;
 		gap: 0.92rem;
 		grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-	}
-
-	.status-page__panel {
-		gap: 0.66rem;
 	}
 
 	.section-heading {

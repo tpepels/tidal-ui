@@ -9,8 +9,8 @@
 	<title>{meta?.title ?? 'Settings'} | BiniLossless</title>
 </svelte:head>
 
-<section class="ui-page">
-	<header class="ui-page__header">
+<section class="ui-page" data-ui-archetype="tool" data-ui-route="settings">
+	<header class="ui-page__header" data-ui-block="page-header">
 		<div class="ui-page__title-group">
 			<p class="ui-page__eyebrow">Tools</p>
 			<h1 class="ui-page__title">{meta?.title ?? 'Settings'}</h1>

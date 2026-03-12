@@ -50,3 +50,17 @@ Goal: keep all user-visible screens on one shared element grammar that is clear,
 - [x] Status page: flatten metric/detail/error blocks and avoid card-in-card states for in-panel empties/loading.
 - [x] Settings page: simplify inner control surfaces and add cleaner section dividers per block.
 - [ ] Manual pass on remaining non-operational routes for nested-surface cleanup (`artist`, `album`, `playlist`, `search`).
+
+## Current Pass (vNext Contract Enforcement)
+- [x] Route metadata extended with archetype and section priority contract.
+- [x] Shared UI contracts added: `ToolPanel`, `ActionPanel`, `DataGrid`, `StateBlock`.
+- [x] Detail routes aligned to explicit `back-nav`, `entity-hero`, `primary-actions`, `context-metadata`, `main-content`, `secondary-content` blocks.
+- [x] Embed routes aligned to compact archetype block markers.
+- [x] Tool routes aligned to `page-header`, `key-summary`, `primary-actions`, `main-sections` blocks.
+- [x] Added automated route compliance test for archetype/block markers.
+
+## Next Unification TODO
+- [ ] Replace remaining compatibility `glass-*` class usage with semantic `ui-*` aliases and remove dead legacy style paths.
+- [ ] Run manual visual declutter pass on secondary cards in artist/album/playlist.
+- [ ] Add visual regression snapshots per archetype (tool/detail/collection/embed).
+- [ ] Run full accessibility/manual QA matrix and log findings in a signoff report.

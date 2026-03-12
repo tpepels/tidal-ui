@@ -1517,7 +1517,7 @@
 		<div class="app-shell">
 					<div class={`app-workspace ${isSidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}>
 					<aside
-						class="app-sidebar glass-panel"
+						class="app-sidebar ui-shell-surface"
 						aria-label="Primary navigation"
 						bind:this={sidebarNavContainer}
 					>
@@ -1649,7 +1649,7 @@
 					</aside>
 
 					<main
-						class="app-main app-main--workspace glass-panel !sm:mb-40 !mb-56"
+						class="app-main app-main--workspace ui-shell-surface !sm:mb-40 !mb-56"
 						style={`min-height: ${mainMinHeight}px; margin-bottom: ${mainMarginBottom}px;`}
 					>
 						<div class="app-main__inner">
@@ -1978,6 +1978,7 @@
 		transform: translateY(0);
 	}
 
+	.ui-shell-surface,
 	.glass-panel {
 		background: var(--surface-color);
 		border: 1px solid var(--surface-border, rgba(212, 212, 212, 0.2));
@@ -1988,222 +1989,6 @@
 		transition:
 			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
 			box-shadow 0.3s ease;
-	}
-
-	.settings-grid {
-		display: grid;
-		gap: 0.85rem;
-	}
-
-	.settings-grid--page {
-		padding-top: 0.25rem;
-	}
-
-	.settings-section {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-
-	.settings-section--wide {
-		grid-column: span 1;
-	}
-
-	.section-heading {
-		font-size: 0.78rem;
-		text-transform: uppercase;
-		letter-spacing: 0.2em;
-		font-weight: 700;
-		margin: 0;
-		color: rgba(212, 212, 212, 0.7);
-	}
-
-	.option-grid {
-		display: grid;
-		gap: 0.45rem;
-	}
-
-	.option-grid--compact {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-		gap: 0.4rem;
-	}
-
-	.glass-option {
-		position: relative;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.6rem;
-		border-radius: var(--ui-radius-md, 14px);
-		border: 1px solid rgba(212, 212, 212, 0.22);
-		background: #161616;
-		backdrop-filter: none;
-		-webkit-backdrop-filter: none;
-		padding: 0.56rem 0.7rem;
-		color: inherit;
-		text-decoration: none;
-		font-size: 0.92rem;
-		cursor: pointer;
-		text-align: left;
-		transition:
-			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1)),
-			box-shadow var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
-	}
-
-	.glass-option--compact {
-		padding: 0.45rem 0.6rem;
-		gap: 0.5rem;
-		border-radius: var(--ui-radius-sm, 9px);
-	}
-
-	.glass-option--compact .glass-option__label {
-		font-size: 0.86rem;
-		font-weight: 600;
-	}
-
-	.glass-option--compact .glass-option__description {
-		display: none;
-	}
-
-	.glass-option:hover {
-		transform: translateY(var(--ui-lift-y, -1px));
-		box-shadow: none;
-		border-color: rgba(255, 255, 255, 0.44);
-	}
-
-	.glass-option:active {
-		transform: translateY(var(--ui-press-y, 0px));
-	}
-
-	.glass-option.is-active {
-		border-color: var(--bloom-accent, #f2f2f2);
-		background: rgba(255, 255, 255, 0.12);
-		box-shadow: none;
-	}
-
-	.glass-option__content {
-		display: flex;
-		flex-direction: column;
-		gap: 0.2rem;
-	}
-
-	.glass-option__label {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.45rem;
-		font-weight: 600;
-		font-size: 0.94rem;
-	}
-
-	.glass-option__description {
-		font-size: 0.82rem;
-		opacity: 0.66;
-		line-height: 1.3;
-	}
-
-	.glass-option__check {
-		color: rgba(245, 245, 245, 0.95);
-		flex-shrink: 0;
-	}
-
-	.glass-option__chip {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 0.76rem;
-		letter-spacing: 0.16em;
-		text-transform: uppercase;
-		padding: 0.2rem 0.55rem;
-		border-radius: var(--ui-radius-sm, 9px);
-		background: rgba(11, 11, 11, 0.52);
-		backdrop-filter: blur(16px) saturate(140%);
-		-webkit-backdrop-filter: blur(16px) saturate(140%);
-		border: 1px solid rgba(212, 212, 212, 0.45);
-		color: rgba(236, 236, 236, 0.9);
-		flex-shrink: 0;
-	}
-
-	.glass-option__chip.is-active {
-		border-color: var(--bloom-accent, rgba(255, 255, 255, 0.75));
-		color: rgba(245, 245, 245, 0.98);
-		box-shadow: none;
-	}
-
-	.settings-section--bordered {
-		padding-top: 0.65rem;
-		border-top: 1px solid rgba(212, 212, 212, 0.12);
-	}
-
-	@media (min-width: 960px) {
-		.settings-grid {
-			grid-template-columns: repeat(2, minmax(260px, 1fr));
-		}
-
-		.settings-section--bordered {
-			grid-column: span 2;
-		}
-	}
-
-	.actions-column {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-
-	.glass-action {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.85rem;
-		border-radius: var(--ui-radius-md, 14px);
-		border: 1px solid rgba(212, 212, 212, 0.24);
-		background: #171717;
-		backdrop-filter: none;
-		-webkit-backdrop-filter: none;
-		padding: 0.74rem 0.95rem;
-		font-size: 0.92rem;
-		font-weight: 600;
-		color: inherit;
-		cursor: pointer;
-		transition:
-			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			box-shadow var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
-	}
-
-	.glass-action:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-	}
-
-	.glass-action:hover:not(:disabled) {
-		transform: translateY(var(--ui-lift-y, -1px));
-		border-color: rgba(255, 255, 255, 0.44);
-		box-shadow: none;
-	}
-
-	.glass-action:active:not(:disabled) {
-		transform: translateY(var(--ui-press-y, 0px));
-	}
-
-	.glass-action__label {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.55rem;
-	}
-
-	.glass-action__spinner {
-		animation: spin 1s linear infinite;
-		color: rgba(212, 212, 212, 0.85);
-	}
-
-	.section-footnote {
-		margin: 0;
-		font-size: 0.82rem;
-		color: rgba(212, 212, 212, 0.7);
-		line-height: 1.4;
 	}
 
 	.app-main {
@@ -2352,27 +2137,6 @@
 		}
 	}
 
-	@media (min-width: 768px) {
-		.settings-grid {
-			display: grid;
-			grid-template-columns: repeat(2, minmax(0, 1fr));
-			gap: 1.2rem;
-		}
-
-		.settings-section--wide {
-			grid-column: span 2;
-		}
-
-		.option-grid--compact {
-			grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-		}
-
-		.settings-section--bordered {
-			border-top: none;
-			padding-top: 0;
-		}
-	}
-
 	@media (max-width: 1023px) {
 		.app-workspace {
 			display: block;
@@ -2409,8 +2173,6 @@
 
 		.sidebar-action,
 		.sidebar-icon-btn,
-		.glass-option,
-		.glass-action,
 		.diagnostics-toggle {
 			transform: none !important;
 		}

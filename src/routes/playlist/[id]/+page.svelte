@@ -80,11 +80,15 @@
 </svelte:head>
 
 {#if isLoading}
-	<div class="ui-page flex items-center justify-center py-24">
+	<div
+		class="ui-page flex items-center justify-center py-24"
+		data-ui-archetype="detail"
+		data-ui-route="playlist"
+	>
 		<LoaderCircle class="h-16 w-16 animate-spin text-white/80" />
 	</div>
 {:else if error}
-	<div class="ui-page py-12">
+	<div class="ui-page py-12" data-ui-archetype="detail" data-ui-route="playlist">
 		<div class="ui-surface-card border-red-500/40 bg-red-950/20 p-6">
 			<h2 class="mb-2 text-xl font-semibold text-red-200">Error Loading Playlist</h2>
 			<p class="text-red-100/85">{error}</p>
@@ -97,18 +101,24 @@
 		</div>
 	</div>
 {:else if playlist}
-	<div class="ui-page space-y-6 pb-32 pt-4 lg:pb-40">
+	<div
+		class="ui-page space-y-6 pb-32 pt-4 lg:pb-40"
+		data-ui-archetype="detail"
+		data-ui-route="playlist"
+		data-ui-block="main-content"
+	>
 		<!-- Back Button -->
 		<button
 			onclick={handleBackNavigation}
 			class="ui-chip-button ui-chip-button--compact ui-detail-back"
+			data-ui-block="back-nav"
 		>
 			<ArrowLeft size={20} />
 			Back
 		</button>
 
 		<!-- Playlist Header -->
-		<div class="ui-surface-card flex flex-col gap-8 p-5 md:flex-row">
+		<div class="ui-surface-card flex flex-col gap-8 p-5 md:flex-row" data-ui-block="entity-hero">
 			<!-- Playlist Cover -->
 			{#if playlist.squareImage || playlist.image}
 				<div
@@ -162,7 +172,7 @@
 				</div>
 
 				{#if tracks.length > 0}
-					<div class="ui-action-row ui-action-row--progressive">
+					<div class="ui-action-row ui-action-row--progressive" data-ui-block="primary-actions">
 						<button
 							onclick={handlePlayAll}
 							class="ui-action-button ui-action-button--primary"
@@ -179,7 +189,7 @@
 
 		<!-- Promoted Artists -->
 		{#if playlist.promotedArtists && playlist.promotedArtists.length > 0}
-			<div>
+			<div data-ui-block="secondary-content">
 				<h3 class="mb-3 text-base font-semibold text-gray-400">Featured Artists</h3>
 				<div class="ui-media-grid ui-media-grid--artists">
 					{#each playlist.promotedArtists as artist (artist.id)}
@@ -199,18 +209,18 @@
 
 		<!-- Tracks -->
 		{#if tracks.length > 0}
-			<div class="mt-8">
+			<div class="mt-8" data-ui-block="main-content">
 				<h2 class="mb-4 text-2xl font-bold">Tracks</h2>
 				<TrackList {tracks} />
 			</div>
 		{:else}
-			<div class="ui-surface-card p-6 text-gray-400">
+			<div class="ui-surface-card p-6 text-gray-400" data-ui-block="main-content">
 				<p>No tracks in this playlist.</p>
 			</div>
 		{/if}
 
 		<!-- Metadata -->
-		<div class="ui-surface-card space-y-1 p-3 text-sm text-gray-500">
+		<div class="ui-surface-card space-y-1 p-3 text-sm text-gray-500" data-ui-block="context-metadata">
 			{#if playlist.created}
 				<p>Created: {new Date(playlist.created).toLocaleDateString()}</p>
 			{/if}

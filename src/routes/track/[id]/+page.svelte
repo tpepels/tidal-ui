@@ -11,6 +11,8 @@
 	import { artistCacheStore } from '$lib/stores/artistCache';
 	import ShareButton from '$lib/components/ShareButton.svelte';
 	import EntityMediaCard from '$lib/components/ui/EntityMediaCard.svelte';
+	import ActionPanel from '$lib/components/ui/ActionPanel.svelte';
+	import DataGrid from '$lib/components/ui/DataGrid.svelte';
 	import { LoaderCircle, Play, ArrowLeft, Disc, Clock, Download, X } from 'lucide-svelte';
 	import { formatArtists } from '$lib/utils/formatters';
 
@@ -190,11 +192,11 @@
 </svelte:head>
 
 {#if isLoading}
-	<div class="ui-page flex items-center justify-center py-24">
+	<div class="ui-page flex items-center justify-center py-24" data-ui-archetype="detail" data-ui-route="track">
 		<LoaderCircle class="h-16 w-16 animate-spin text-white/80" />
 	</div>
 {:else if error}
-	<div class="ui-page py-12">
+	<div class="ui-page py-12" data-ui-archetype="detail" data-ui-route="track">
 		<div class="ui-surface-card border-red-500/40 bg-red-950/20 p-6">
 			<h2 class="mb-2 text-xl font-semibold text-red-200">Error Loading Track</h2>
 			<p class="text-red-100/85">{error}</p>
@@ -207,17 +209,23 @@
 		</div>
 	</div>
 {:else if track}
-	<div class="ui-page space-y-8 pb-32 pt-4 lg:pb-40">
+	<div
+		class="ui-page space-y-8 pb-32 pt-4 lg:pb-40"
+		data-ui-archetype="detail"
+		data-ui-route="track"
+		data-ui-block="main-content"
+	>
 		<!-- Back Button -->
 		<button
 			onclick={handleBackNavigation}
 			class="ui-chip-button ui-chip-button--compact ui-detail-back"
+			data-ui-block="back-nav"
 		>
 			<ArrowLeft size={20} />
 			Back
 		</button>
 
-		<div class="ui-surface-card flex flex-col gap-8 p-5 md:flex-row">
+		<div class="ui-surface-card flex flex-col gap-8 p-5 md:flex-row" data-ui-block="entity-hero">
 			<!-- Album Art -->
 			<div class="aspect-square w-full flex-shrink-0 overflow-hidden rounded-xl border border-white/12 bg-white/5 md:w-96">
 				{#if track.album.cover}
@@ -280,12 +288,14 @@
 					</div>
 				</div>
 
-				<div class="ui-action-panel ui-action-panel--intentful">
-					<div class="ui-action-panel__header">
-						<p class="ui-action-panel__intent">Track Actions</p>
-						<p class="ui-action-panel__summary">Play, download, or share this track.</p>
-					</div>
-					<div class="ui-action-row ui-action-row--progressive">
+				<div data-ui-block="primary-actions">
+					<ActionPanel
+						intent="Track Actions"
+						summary="Play, download, or share this track."
+						intentful={true}
+						panelRole="track-actions"
+					>
+						<div class="ui-action-row ui-action-row--progressive">
 						<button
 							onclick={() => {
 								if (track) {
@@ -325,11 +335,14 @@
 						{/if}
 
 						<ShareButton type="track" id={track.id} variant="secondary" />
-					</div>
+						</div>
+					</ActionPanel>
 				</div>
 
-				<div class="ui-action-panel">
-					<div class="ui-action-subpanel__header">
+				<div data-ui-block="context-metadata">
+					<ActionPanel panelRole="musicbrainz-track">
+					<svelte:fragment slot="header">
+						<div class="ui-action-subpanel__header">
 						<p class="ui-action-panel__intent">MusicBrainz Track Metadata</p>
 						<button
 							type="button"
@@ -343,11 +356,12 @@
 								Refresh Metadata
 							{/if}
 						</button>
-					</div>
+						</div>
+					</svelte:fragment>
 					{#if isMusicBrainzLookupLoading && Object.keys(musicBrainzTags).length === 0}
 						<p class="ui-action-status">Resolving MusicBrainz metadata…</p>
 					{:else if Object.keys(musicBrainzTags).length > 0}
-						<div class="ui-data-grid">
+						<DataGrid>
 							{#if musicBrainzTrackId}
 								<div class="ui-data-point">
 									<p class="ui-data-point__label">Track MBID</p>
@@ -396,7 +410,7 @@
 									<p class="ui-data-point__value">{musicBrainzArtistIds.length}</p>
 								</div>
 							{/if}
-						</div>
+						</DataGrid>
 						<div class="ui-action-row">
 							{#if musicBrainzTrackId}
 								<a
@@ -435,6 +449,7 @@
 					{#if musicBrainzLookupError}
 						<p class="ui-action-status" data-tone="error">{musicBrainzLookupError}</p>
 					{/if}
+					</ActionPanel>
 				</div>
 			</div>
 		</div>

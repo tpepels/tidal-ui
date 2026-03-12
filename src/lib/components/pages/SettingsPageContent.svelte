@@ -40,6 +40,7 @@
 		Activity
 	} from 'lucide-svelte';
 	import ApiTargetsStatusCard from '$lib/components/status/ApiTargetsStatusCard.svelte';
+	import ToolPanel from '$lib/components/ui/ToolPanel.svelte';
 	import { onDestroy } from 'svelte';
 
 	const MAX_QUEUE_ZIP_TRACKS = 75;
@@ -155,6 +156,14 @@
 			description: 'Minimal effects for better performance'
 		}
 	];
+	const activeQualityLabel = $derived(
+		QUALITY_OPTIONS.find((option) => option.value === $downloadPreferencesStore.downloadQuality)?.label ??
+			$downloadPreferencesStore.downloadQuality
+	);
+	const activePerformanceLabel = $derived(
+		PERFORMANCE_OPTIONS.find((option) => option.value === $userPreferencesStore.performanceMode)?.label ??
+			$userPreferencesStore.performanceMode
+	);
 
 	$effect(() => {
 		if (isServerStorage && downloadMode !== 'individual') {
@@ -995,15 +1004,39 @@
 	}
 </script>
 
-<div class="settings-layout">
-	<section class="ui-tool-panel ui-tool-panel--wide">
-		<header class="ui-tool-panel__header">
-			<p class="ui-tool-panel__eyebrow">Audio</p>
-			<h2 class="ui-tool-panel__title">Playback & Metadata</h2>
-			<p class="ui-tool-panel__subtitle">
-				Set quality, conversion, and tagging behavior for new downloads.
+<div class="settings-layout" data-ui-block="main-sections">
+	<div class="settings-summary" data-ui-block="key-summary">
+		<div class="settings-summary__item">
+			<p class="settings-summary__label">Quality</p>
+			<p class="settings-summary__value">{activeQualityLabel}</p>
+		</div>
+		<div class="settings-summary__item">
+			<p class="settings-summary__label">Storage</p>
+			<p class="settings-summary__value">{isServerStorage ? 'Server-side' : 'Client-side'}</p>
+		</div>
+		<div class="settings-summary__item">
+			<p class="settings-summary__label">Queue Format</p>
+			<p class="settings-summary__value">
+				{downloadMode === 'zip'
+					? 'ZIP'
+					: downloadMode === 'csv'
+						? 'CSV links'
+						: 'Individual files'}
 			</p>
-		</header>
+		</div>
+		<div class="settings-summary__item">
+			<p class="settings-summary__label">Performance</p>
+			<p class="settings-summary__value">{activePerformanceLabel}</p>
+		</div>
+	</div>
+
+	<ToolPanel
+		wide={true}
+		panelRole="audio-metadata"
+		eyebrow="Audio"
+		title="Playback & Metadata"
+		subtitle="Set quality, conversion, and tagging behavior for new downloads."
+	>
 
 		<div class="settings-block">
 			<p class="settings-block__label">Preferred download quality</p>
@@ -1121,16 +1154,14 @@
 				</button>
 			</div>
 		</div>
-	</section>
+	</ToolPanel>
 
-	<section class="ui-tool-panel">
-		<header class="ui-tool-panel__header">
-			<p class="ui-tool-panel__eyebrow">Downloads</p>
-			<h2 class="ui-tool-panel__title">Download Behavior</h2>
-			<p class="ui-tool-panel__subtitle">
-				Choose where files are stored and how queue exports are packaged.
-			</p>
-		</header>
+	<ToolPanel
+		panelRole="download-behavior"
+		eyebrow="Downloads"
+		title="Download Behavior"
+		subtitle="Choose where files are stored and how queue exports are packaged."
+	>
 
 		<div class="settings-block">
 			<p class="settings-block__label">Download target</p>
@@ -1240,14 +1271,15 @@
 				</p>
 			{/if}
 		</div>
-	</section>
+	</ToolPanel>
 
-	<section class="ui-tool-panel">
-		<header class="ui-tool-panel__header">
-			<p class="ui-tool-panel__eyebrow">Queue</p>
-			<h2 class="ui-tool-panel__title">Queue Actions</h2>
-			<p class="ui-tool-panel__subtitle">Run queue downloads or export queue links.</p>
-		</header>
+	<div data-ui-block="primary-actions">
+		<ToolPanel
+			panelRole="queue-actions"
+			eyebrow="Queue"
+			title="Queue Actions"
+			subtitle="Run queue downloads or export queue links."
+		>
 
 		<div class="settings-action-stack">
 			<button
@@ -1297,14 +1329,16 @@
 				? 'Server saves run in the background and avoid browser download prompts.'
 				: 'Queue actions follow your selected format. ZIP bundles need at least two tracks.'}
 		</p>
-	</section>
+		</ToolPanel>
+	</div>
 
-	<section class="ui-tool-panel ui-tool-panel--wide">
-		<header class="ui-tool-panel__header">
-			<p class="ui-tool-panel__eyebrow">System</p>
-			<h2 class="ui-tool-panel__title">System & Maintenance</h2>
-			<p class="ui-tool-panel__subtitle">Performance, cache hygiene, API health, and library repair tools.</p>
-		</header>
+	<ToolPanel
+		wide={true}
+		panelRole="system-maintenance"
+		eyebrow="System"
+		title="System & Maintenance"
+		subtitle="Performance, cache hygiene, API health, and library repair tools."
+	>
 
 		<div class="settings-system-grid">
 			<div class="settings-block">
@@ -1454,7 +1488,7 @@
 				</div>
 			</div>
 		</div>
-	</section>
+	</ToolPanel>
 </div>
 
 <style>
@@ -1462,6 +1496,37 @@
 		display: grid;
 		gap: 0.88rem;
 		padding-top: 0.25rem;
+	}
+
+	.settings-summary {
+		display: grid;
+		gap: 0.5rem;
+		grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+		padding: 0.7rem 0.8rem;
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		border-radius: var(--ui-radius-md, 12px);
+		background: var(--ui-surface-base, #0d0d0d);
+	}
+
+	.settings-summary__item {
+		display: flex;
+		flex-direction: column;
+		gap: 0.14rem;
+	}
+
+	.settings-summary__label {
+		margin: 0;
+		font-size: 0.7rem;
+		text-transform: uppercase;
+		letter-spacing: 0.12em;
+		color: rgba(163, 163, 163, 0.8);
+	}
+
+	.settings-summary__value {
+		margin: 0;
+		font-size: 0.96rem;
+		font-weight: 640;
+		color: rgba(245, 245, 245, 0.97);
 	}
 
 	.settings-block {

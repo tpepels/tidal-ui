@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { downloadLogStore } from '$lib/stores/downloadLog';
 	import { getSessionHeaders } from '$lib/core/session';
+	import ToolPanel from '$lib/components/ui/ToolPanel.svelte';
 	import { Copy, Trash2, Heart } from 'lucide-svelte';
 	import { tick } from 'svelte';
 
@@ -86,9 +87,10 @@
 	}
 </script>
 
-<section class="download-log-container">
-	<div class="download-log-panel">
-		<div class="download-log-header">
+<section class="download-log-container" data-ui-block="main-sections">
+	<ToolPanel flush={true} panelRole="download-log">
+		<div class="download-log-panel">
+		<div class="download-log-header" data-ui-block="primary-actions">
 			<div class="download-log-heading">
 				<h3 class="download-log-title">Event Stream</h3>
 				<p class="download-log-subtitle">Realtime queue, metadata, and file-system logs.</p>
@@ -114,7 +116,7 @@
 
 		<!-- Health Status -->
 		{#if healthData}
-			<div class="download-health-summary">
+			<div class="download-health-summary" data-ui-block="key-summary">
 				<h4 class="download-health-title">Server Health</h4>
 				<div class="download-health-stats">
 					<div class="download-health-stat">
@@ -170,16 +172,13 @@
 				</div>
 			{/each}
 		</div>
-	</div>
+		</div>
+	</ToolPanel>
 </section>
 
 <style>
 	.download-log-container {
 		height: clamp(420px, 68vh, 820px);
-		border-radius: var(--ui-radius-md, 14px);
-		overflow: hidden;
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		box-shadow: none;
 	}
 
 	.download-log-panel {

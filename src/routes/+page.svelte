@@ -5,8 +5,10 @@
 	import { onMount } from 'svelte';
 	import { APP_VERSION } from '$lib/version';
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
+	import { getRouteMeta } from '$lib/config/routeMeta';
 
 	let { data } = $props();
+	const meta = getRouteMeta('/');
 
 	onMount(() => {
 		// Clear breadcrumbs on home page
@@ -42,7 +44,15 @@
 	<meta name="description" content="Cool music streaming haha" />
 </svelte:head>
 
-<div class="space-y-8">
-	<!-- Search Interface -->
+<section class="ui-page" data-ui-archetype="collection" data-ui-route="browse-search">
+	<header class="ui-page__header" data-ui-block="page-header">
+		<div class="ui-page__title-group">
+			<p class="ui-page__eyebrow">Navigation</p>
+			<h1 class="ui-page__title">{meta?.title ?? 'Browse & Search'}</h1>
+			<p class="ui-page__subtitle">{meta?.subtitle ?? 'Browse and search music'}</p>
+		</div>
+	</header>
+	<div data-ui-block="results">
 	<SearchInterface onTrackSelect={handleTrackSelect} />
-</div>
+	</div>
+</section>

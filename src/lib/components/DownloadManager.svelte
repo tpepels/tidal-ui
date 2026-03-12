@@ -1082,7 +1082,7 @@
 				</div>
 			{/if}
 
-			<div class="download-status-hero" data-active={stats.running > 0}>
+			<div class="download-status-hero" data-active={stats.running > 0} data-ui-block="key-summary">
 				<div class="download-status-hero__main">
 					<p class="download-status-hero__eyebrow">Live Session</p>
 					<h4>{statusHeadline}</h4>
@@ -1146,7 +1146,7 @@
 			{/if}
 
 			{#if !pageMode || showDetailedSections}
-			<div class="download-manager-quick-actions">
+			<div class="download-manager-quick-actions" data-ui-block="primary-actions">
 				<button
 					onclick={handlePauseAllActive}
 					class="control-btn control-btn--secondary"
@@ -1200,7 +1200,7 @@
 			</div>
 			{/if}
 
-			<div class="download-manager-content">
+			<div class="download-manager-content" data-ui-block="main-sections">
 				{#if pageMode}
 					<div class="section section--priority">
 						<div class="section-title section-title-main">

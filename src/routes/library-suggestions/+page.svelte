@@ -361,8 +361,12 @@
 	<title>{meta?.title ?? 'Library Suggestions'} | BiniLossless</title>
 </svelte:head>
 
-<section class="ui-page library-suggestions-page">
-	<header class="ui-page__header">
+<section
+	class="ui-page library-suggestions-page"
+	data-ui-archetype="collection"
+	data-ui-route="library-suggestions"
+>
+	<header class="ui-page__header" data-ui-block="page-header">
 		<div class="ui-page__title-group">
 			<p class="ui-page__eyebrow">Navigation</p>
 			<h1 class="ui-page__title">{meta?.title ?? 'Library Suggestions'}</h1>
@@ -370,7 +374,7 @@
 				{meta?.subtitle ?? 'API recommendation picks, seeded from your local library.'}
 			</p>
 		</div>
-		<div class="ui-page__actions">
+		<div class="ui-page__actions" data-ui-block="filters-actions">
 			<button
 				type="button"
 				class="ui-chip-button"
@@ -389,7 +393,7 @@
 		</div>
 	</header>
 
-	<section class="ui-surface-card library-suggestions-section">
+	<section class="ui-surface-card library-suggestions-section" data-ui-block="results">
 		<div class="library-suggestions-section__header">
 			<div>
 				<p class="library-suggestions-section__eyebrow">Intelligent Picks</p>
@@ -508,7 +512,7 @@
 		{/if}
 	</section>
 
-	<div class="ui-surface-grid library-suggestions-overview">
+	<div class="ui-surface-grid library-suggestions-overview" data-ui-block="results">
 		<article class="ui-surface-card library-suggestions-overview__card">
 			<div class="library-suggestions-overview__heading">
 				<Library size={16} />
