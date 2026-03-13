@@ -68,12 +68,25 @@
 		if (key === 'search album' || key === 'search artist') return 'Search';
 		return value;
 	}
+
+	function resolveCardTone(): Exclude<Tone, 'default'> | undefined {
+		if (tone !== 'default') {
+			return tone;
+		}
+		if (type === 'album') {
+			return 'secondary';
+		}
+		if (type === 'artist') {
+			return 'tertiary';
+		}
+		return undefined;
+	}
 </script>
 
 <article
 	{...restProps}
 	class={`ui-media-card ui-entity-card ${className}`.trim()}
-	data-tone={tone === 'default' ? undefined : tone}
+	data-tone={resolveCardTone()}
 >
 	{#if badge}
 		{@render badge()}

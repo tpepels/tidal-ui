@@ -70,7 +70,7 @@
 	</header>
 
 	<div class="ui-surface-grid history-page__overview" data-ui-block="results">
-		<article class="ui-surface-card history-overview-card">
+		<article class="ui-surface-card history-overview-card" data-tone="secondary">
 			<div class="history-overview-card__heading">
 				<Clock3 size={16} />
 				<p>Resume last album</p>
@@ -85,6 +85,7 @@
 					meta={formatVisitedAt(latestAlbum.visitedAt)}
 					imageSrc={latestAlbumCoverSrc}
 					imageAlt={`Cover for ${latestAlbum.title}`}
+					class="history-overview-entity"
 					links={[{ href: latestAlbum.href, label: 'Open Album' }]}
 				/>
 			{:else}
@@ -96,7 +97,7 @@
 			{/if}
 		</article>
 
-		<article class="ui-surface-card history-overview-card">
+		<article class="ui-surface-card history-overview-card" data-tone="tertiary">
 			<div class="history-overview-card__heading">
 				<Clock3 size={16} />
 				<p>Resume last artist</p>
@@ -110,6 +111,7 @@
 					meta={formatVisitedAt(latestArtist.visitedAt)}
 					imageSrc={latestArtistPortraitSrc}
 					imageAlt={`Portrait of ${latestArtist.name}`}
+					class="history-overview-entity"
 					links={[{ href: latestArtist.href, label: 'Open Artist' }]}
 				/>
 			{:else}
@@ -123,7 +125,7 @@
 	</div>
 
 	<div class="history-page__columns" data-ui-block="results">
-		<section class="ui-surface-card history-list-card">
+		<section class="ui-surface-card history-list-card" data-tone="secondary">
 			<div class="history-list-card__header">
 				<div class="history-list-card__title">
 					<Library size={16} />
@@ -163,7 +165,7 @@
 			{/if}
 		</section>
 
-		<section class="ui-surface-card history-list-card">
+		<section class="ui-surface-card history-list-card" data-tone="tertiary">
 			<div class="history-list-card__header">
 				<div class="history-list-card__title">
 					<User size={16} />
@@ -219,6 +221,14 @@
 		gap: 0.72rem;
 	}
 
+	.history-overview-card[data-tone='secondary'] .history-overview-card__heading {
+		color: var(--ui-tone-secondary-text, rgba(224, 234, 255, 0.96));
+	}
+
+	.history-overview-card[data-tone='tertiary'] .history-overview-card__heading {
+		color: var(--ui-tone-tertiary-text, rgba(220, 244, 233, 0.96));
+	}
+
 	.history-overview-card__heading {
 		display: inline-flex;
 		align-items: center;
@@ -230,6 +240,42 @@
 
 	.history-overview-card__heading p {
 		margin: 0;
+	}
+
+	:global(.history-overview-entity) {
+		padding: 0.68rem;
+		gap: 0.42rem;
+	}
+
+	:global(.history-overview-entity .ui-media-card__primary-link) {
+		display: grid;
+		grid-template-columns: 86px minmax(0, 1fr);
+		gap: 0.62rem;
+		align-items: center;
+	}
+
+	:global(.history-overview-entity .ui-media-card__artwork) {
+		width: 86px;
+		height: 86px;
+		aspect-ratio: 1 / 1;
+		margin: 0;
+	}
+
+	:global(.history-overview-entity .ui-media-card__body) {
+		gap: 0.16rem;
+	}
+
+	:global(.history-overview-entity .ui-media-card__title) {
+		font-size: 0.98rem;
+	}
+
+	:global(.history-overview-entity .ui-media-card__meta) {
+		font-size: 0.8rem;
+		line-height: 1.3;
+	}
+
+	:global(.history-overview-entity .ui-media-card__links) {
+		margin-top: 0.2rem;
 	}
 
 	.history-page__columns {
@@ -255,6 +301,14 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.45rem;
+	}
+
+	.history-list-card[data-tone='secondary'] .history-list-card__title {
+		color: var(--ui-tone-secondary-text, rgba(224, 234, 255, 0.96));
+	}
+
+	.history-list-card[data-tone='tertiary'] .history-list-card__title {
+		color: var(--ui-tone-tertiary-text, rgba(220, 244, 233, 0.96));
 	}
 
 	.history-list-card__title h2 {
