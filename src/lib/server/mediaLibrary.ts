@@ -12,10 +12,7 @@ export type {
 	MediaLibraryTransientSweepSummary
 } from './mediaLibraryShared';
 
-export {
-	clearMediaLibraryScanCache,
-	scanLocalMediaLibrary
-} from './mediaLibraryCache';
+export { scanLocalMediaLibrary } from './mediaLibraryScan';
 export {
 	batchAlbumLibraryStatus,
 	checkAlbumInLibrary,
@@ -25,6 +22,7 @@ export {
 export { inspectAlbumIntegrity } from './mediaLibraryIntegrity';
 export { sweepTransientAlbumArtifacts } from './mediaLibraryTransient';
 export { deduplicateMediaLibrary } from './mediaLibraryDedupe';
+export { clearMediaLibraryScanCache } from './mediaLibraryCache';
 export {
 	isTransientAlbumArtifactDirName,
 	parseTransientAlbumArtifactJobId

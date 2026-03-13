@@ -28,6 +28,7 @@ import {
 import { warnIfAlbumTrackListIncomplete } from './downloadQueueWorkerAlbumResponse';
 import type { AudioQuality } from '$lib/types';
 import { sweepTransientAlbumArtifacts } from './mediaLibrary';
+import { clearMediaLibraryScanCache } from './mediaLibrary';
 import { acquireMediaMaintenanceLock } from './mediaMaintenanceLock';
 import { fetchAlbumWithTargetRotation } from './downloadQueueWorkerAlbumFetch';
 import {
@@ -572,6 +573,7 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 					});
 					return;
 				}
+				clearMediaLibraryScanCache();
 				await updateJobStatus(job.id, {
 					status: 'completed',
 					completedAt: Date.now(),

@@ -28,9 +28,11 @@ This plan breaks them into focused modules without changing user-facing behavior
 - `src/lib/server/downloadQueueManager.ts`: 1133 -> 547 LOC
 - `src/lib/server/downloadQueueWorker.ts`: 1873 -> 831 LOC
 - `src/lib/server/musicBrainzLookup.ts`: 1196 -> 313 LOC
-- `src/lib/server/mediaLibrary.ts`: 1921 -> 31 LOC (facade only)
-- `src/routes/library-suggestions/+page.svelte`: 956 -> 657 LOC
-- `src/routes/album/[id]/+page.svelte`: 1175 -> 1005 LOC
+- `src/lib/server/mediaLibrary.ts`: 1921 -> 29 LOC (facade only)
+- `src/routes/library-suggestions/+page.svelte`: 956 -> 5 LOC (route shell)
+- `src/lib/components/pages/LibrarySuggestionsPageContent.svelte`: 672 LOC
+- `src/routes/album/[id]/+page.svelte`: 1175 -> 5 LOC (route shell)
+- `src/lib/components/pages/AlbumPageContent.svelte`: 766 LOC
 
 ## Refactor Objectives
 1. Reduce cognitive load by splitting files by responsibility (UI rendering vs orchestration vs IO).
@@ -87,7 +89,7 @@ This plan breaks them into focused modules without changing user-facing behavior
   - [x] `ArtistDiscographySection.svelte`
   - [x] `ArtistTopTracksSection.svelte`
 - Exit criteria: route file < 1200 LOC and no direct polling maps/timers in page shell.
-  - Follow-up: album detail route still needs one more controller split to move under the tighter v2 route-shell target.
+  - [x] Follow-up: album detail route controller split completed to move under the tighter v2 route-shell target.
 
 ### Phase 4: Layout + Settings Split
 - [x] Move maintenance/repair/dedupe workflows from `+layout.svelte` into:
@@ -125,9 +127,12 @@ This plan breaks them into focused modules without changing user-facing behavior
   - [x] Extracted worker policy/album parsing into `downloadQueueWorkerPolicy.ts` and `downloadQueueWorkerAlbumResponse.ts`.
   - [x] Extracted worker startup/control/track/album-fetch concerns into `downloadQueueWorkerControl.ts`, `downloadQueueWorkerStaging.ts`, `downloadQueueWorkerTrack.ts`, and `downloadQueueWorkerAlbumFetch.ts`.
   - [x] Extracted MusicBrainz types/helpers/cache/http/scoring concerns into `musicBrainzTypes.ts`, `musicBrainzHelpers.ts`, `musicBrainzCache.ts`, `musicBrainzHttp.ts`, and `musicBrainzScoring.ts`.
-  - [x] Extracted media-library shared/cache/lookup/integrity/transient/dedupe concerns into `mediaLibraryShared.ts`, `mediaLibraryCache.ts`, `mediaLibraryLookup.ts`, `mediaLibraryIntegrity.ts`, `mediaLibraryTransient.ts`, and `mediaLibraryDedupe.ts`.
+  - [x] Extracted media-library shared/scan/index/lookup/integrity/transient/dedupe concerns into `mediaLibraryShared.ts`, `mediaLibraryScan.ts`, `mediaLibraryIndex.ts`, `mediaLibraryCache.ts` (compat shim), `mediaLibraryLookup.ts`, `mediaLibraryIntegrity.ts`, `mediaLibraryTransient.ts`, and `mediaLibraryDedupe.ts`.
   - [x] Extracted library-suggestions recommendation/cache model into `src/lib/features/library-suggestions/librarySuggestionsModel.ts`.
   - [x] Extracted album detail MusicBrainz/queue/playback/track-list helpers into `src/lib/features/album/*`.
+  - [x] Extracted album detail load orchestration into `src/lib/features/album/albumLoadController.ts`.
+  - [x] Extracted album detail download/repair orchestration into `src/lib/features/album/albumDownloadController.ts`.
+  - [x] Converted `src/routes/album/[id]/+page.svelte` and `src/routes/library-suggestions/+page.svelte` into route shells backed by page-content components.
 
 ## Work Order (Recommended)
 1. Phase 1 (safety net)
@@ -152,9 +157,8 @@ This plan breaks them into focused modules without changing user-facing behavior
    **Mitigation:** Merge per phase in small PRs; do not batch all phases in one commit.
 
 ## First Execution TODO (Next Actionable Slice)
-1. Finish `src/routes/album/[id]/+page.svelte` by extracting album load + download/repair orchestration into feature controllers.
-2. Add focused tests for:
+1. Add focused tests for:
    - album page stale-request guards and queue polling
    - album MusicBrainz default-selection behavior
    - library suggestions cache restore/regenerate flow
-3. Revisit `src/routes/playlist/[id]/+page.svelte` for the next route-shell reduction pass.
+2. Revisit `src/routes/playlist/[id]/+page.svelte` for the next route-shell reduction pass.

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { losslessAPI } from '$lib/api';
+	import WindowedList from '$lib/components/ui/WindowedList.svelte';
 	import type { Artist } from '$lib/types';
 
 	interface Props {
@@ -26,13 +27,22 @@
 		<h2 class="search-section__title">Artists</h2>
 		<span class="search-section__count" data-tone="secondary">{artists.length}</span>
 	</header>
-	<div class="search-list" data-tone="secondary">
-		{#each artists as artist (artist.id)}
+	<WindowedList
+		items={artists}
+		itemHeight={74}
+		overscan={6}
+		threshold={28}
+		className="search-list"
+		dataTone="secondary"
+	>
+		{#snippet row(item)}
+			{@const artist = item as Artist}
 			{@const artistPortraitSrc = getArtistPortraitSrc(artist)}
 			<a
 				href={`/artist/${artist.id}`}
 				class="search-row search-row--link ui-perf-row"
 				data-tone="secondary"
+				data-window-item
 				aria-label={`Open artist ${artist.name}`}
 				data-sveltekit-preload-data
 			>
@@ -52,8 +62,8 @@
 					</p>
 				</div>
 			</a>
-		{/each}
-	</div>
+		{/snippet}
+	</WindowedList>
 </section>
 
 <style>
@@ -97,7 +107,7 @@
 		color: var(--ui-tone-secondary-text, rgba(224, 234, 255, 0.96));
 	}
 
-	.search-list {
+	.search-section :global(.search-list) {
 		display: flex;
 		flex-direction: column;
 		border: 1px solid var(--ui-tone-secondary-border, rgba(159, 185, 246, 0.42));
@@ -120,7 +130,7 @@
 		text-decoration: none;
 	}
 
-	.search-list > :last-child {
+	.search-section :global(.search-list > :last-child) {
 		border-bottom: 0;
 	}
 

@@ -196,6 +196,19 @@ textarea {
 	background: rgba(255, 255, 255, 0.34);
 }
 
+:global(.animate-spin) {
+	animation: ui-spin 0.9s linear infinite;
+}
+
+@keyframes ui-spin {
+	0% {
+		transform: rotate(0deg);
+	}
+	100% {
+		transform: rotate(360deg);
+	}
+}
+
 @media (prefers-reduced-motion: reduce) {
 	:root {
 		--ui-motion-fast: 1ms;

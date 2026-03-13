@@ -4,7 +4,8 @@ import * as path from 'node:path';
 import { parseFile } from 'music-metadata';
 import { getTempDir, moveFile } from '../../routes/api/download-track/_shared';
 import { validateAudioFileIntegrity } from './download/audioIntegrity';
-import { clearMediaLibraryScanCache, scanLocalMediaLibrary } from './mediaLibraryCache';
+import { clearMediaLibraryScanCache } from './mediaLibraryCache';
+import { scanLocalMediaLibrary } from './mediaLibraryScan';
 import {
 	AUDIO_EXTENSIONS,
 	type AlbumDirGroup,

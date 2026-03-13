@@ -33,7 +33,8 @@ export const POST: RequestHandler = async ({ request }) => {
 				artistName: album.artistName,
 				albumTitle: album.albumTitle,
 				expectedTrackCount: album.expectedTrackCount
-			}))
+			})),
+			{ force: body.force === true }
 		);
 
 		return json({

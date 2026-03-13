@@ -1,5 +1,5 @@
 import { validateAudioFileIntegrity } from './download/audioIntegrity';
-import { getEmbeddedTags, getLibraryAlbumLookupIndex } from './mediaLibraryCache';
+import { getEmbeddedTags, getLibraryAlbumLookupIndex } from './mediaLibraryIndex';
 import { resolveAlbumMatches } from './mediaLibraryLookup';
 import {
 	type AlbumIntegrityReport,

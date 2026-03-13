@@ -303,7 +303,10 @@ export type MediaLibraryCorrectAndDeduplicateStatusResult = {
 };
 
 export async function fetchAlbumLibraryStatus(
-	albums: AlbumLibraryStatusInput[]
+	albums: AlbumLibraryStatusInput[],
+	options?: {
+		force?: boolean;
+	}
 ): Promise<AlbumLibraryStatusMap> {
 	if (!Array.isArray(albums) || albums.length === 0) {
 		return {};
@@ -315,7 +318,10 @@ export async function fetchAlbumLibraryStatus(
 			headers: {
 				'Content-Type': 'application/json'
 			},
-			body: JSON.stringify({ albums })
+			body: JSON.stringify({
+				albums,
+				force: options?.force === true
+			})
 		});
 		if (!response.ok) {
 			return {};

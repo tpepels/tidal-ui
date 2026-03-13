@@ -1,5 +1,6 @@
 import { sanitizeDirName } from '../../routes/api/download-track/_shared';
-import { getEmbeddedTags, getLibraryAlbumLookupIndex, scanLocalMediaLibrary } from './mediaLibraryCache';
+import { getEmbeddedTags, getLibraryAlbumLookupIndex } from './mediaLibraryIndex';
+import { scanLocalMediaLibrary } from './mediaLibraryScan';
 import {
 	type LibraryAlbumLookupIndex,
 	type LocalMediaFile,
@@ -267,9 +268,12 @@ export async function batchAlbumLibraryStatus(
 		artistName?: string;
 		albumTitle?: string;
 		expectedTrackCount?: number;
-	}>
+	}>,
+	options?: {
+		force?: boolean;
+	}
 ): Promise<Record<number, { exists: boolean; matchedTracks: number }>> {
-	const index = await getLibraryAlbumLookupIndex();
+	const index = await getLibraryAlbumLookupIndex({ force: options?.force });
 	const response: Record<number, { exists: boolean; matchedTracks: number }> = {};
 
 	for (const album of albums) {

@@ -2,6 +2,7 @@
 	import { losslessAPI } from '$lib/api';
 	import { formatArtists } from '$lib/utils/formatters';
 	import TrackDownloadButton from '$lib/components/TrackDownloadButton.svelte';
+	import WindowedList from '$lib/components/ui/WindowedList.svelte';
 	import type { PlayableTrack, Track } from '$lib/types';
 	import { isSonglinkTrack } from '$lib/types';
 
@@ -75,8 +76,16 @@
 		<h2 class="search-section__title">Songs</h2>
 		<span class="search-section__count">{tracks.length}</span>
 	</header>
-	<div class="search-list">
-		{#each tracks as track (track.id)}
+	<WindowedList
+		items={tracks}
+		itemHeight={82}
+		overscan={6}
+		threshold={30}
+		className="search-list"
+		dataTone="tertiary"
+	>
+		{#snippet row(item)}
+			{@const track = item as PlayableTrack}
 			{@const trackCoverSrc = getTrackCoverSrc(track)}
 			<div
 				role="button"
@@ -91,6 +100,7 @@
 				}}
 				onkeydown={(event) => handleTrackKeydown(event, track)}
 				class="search-row ui-perf-row"
+				data-window-item
 			>
 				<div class="search-row__media" aria-hidden="true">
 					{#if trackCoverSrc}
@@ -131,8 +141,8 @@
 						: `${downloadActionLabel} ${track.title}`}
 				/>
 			</div>
-		{/each}
-	</div>
+		{/snippet}
+	</WindowedList>
 </section>
 
 <style>
@@ -176,7 +186,7 @@
 		color: var(--ui-tone-tertiary-text, rgba(220, 244, 233, 0.96));
 	}
 
-	.search-list {
+	.search-section :global(.search-list) {
 		display: flex;
 		flex-direction: column;
 		border: 1px solid var(--ui-tone-tertiary-border, rgba(159, 215, 190, 0.42));
@@ -200,7 +210,7 @@
 		cursor: pointer;
 	}
 
-	.search-list > :last-child {
+	.search-section :global(.search-list > :last-child) {
 		border-bottom: 0;
 	}
 

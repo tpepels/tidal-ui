@@ -6,6 +6,7 @@
 		isAlbumQueueDownloadCancellable,
 		type AlbumDownloadState
 	} from '$lib/features/search/albumQueueController';
+	import WindowedList from '$lib/components/ui/WindowedList.svelte';
 	import type { Album } from '$lib/types';
 
 	interface Props {
@@ -93,13 +94,21 @@
 		</div>
 		<span class="search-section__count">{albums.length}</span>
 	</header>
-	<div class="search-list">
-		{#each albums as album (album.id)}
+	<WindowedList
+		items={albums}
+		itemHeight={82}
+		overscan={6}
+		threshold={30}
+		className="search-list"
+		dataTone="album"
+	>
+		{#snippet row(item)}
+			{@const album = item as Album}
 			{@const albumDownloadState =
 				albumDownloadStates[album.id] ?? createDefaultAlbumDownloadState(album.numberOfTracks ?? 0)}
 			{@const canCancelAlbumDownload = isAlbumQueueDownloadCancellable(albumDownloadState)}
 			{@const albumCoverSrc = getAlbumCoverSrc(album)}
-			<div class="search-row search-row--album ui-perf-row">
+			<div class="search-row search-row--album ui-perf-row" data-window-item>
 				<a
 					href={`/album/${album.id}`}
 					class="search-row__content search-row__content--link search-row__content--with-media"
@@ -176,8 +185,8 @@
 					{/if}
 				</button>
 			</div>
-		{/each}
-	</div>
+		{/snippet}
+	</WindowedList>
 </section>
 
 <style>
@@ -238,7 +247,7 @@
 		color: rgba(255, 213, 165, 0.86);
 	}
 
-	.search-list {
+	.search-section :global(.search-list) {
 		display: flex;
 		flex-direction: column;
 		border: 1px solid rgba(236, 187, 136, 0.42);
@@ -261,7 +270,7 @@
 		text-decoration: none;
 	}
 
-	.search-list > :last-child {
+	.search-section :global(.search-list > :last-child) {
 		border-bottom: 0;
 	}
 

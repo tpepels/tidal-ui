@@ -24,6 +24,9 @@
 	import SearchPlaylistsSection from '$lib/components/search/SearchPlaylistsSection.svelte';
 	import SearchTracksSection from '$lib/components/search/SearchTracksSection.svelte';
 	import SearchToolbar from '$lib/components/search/SearchToolbar.svelte';
+	import PageSectionNav, {
+		type PageSectionNavItem
+	} from '$lib/components/ui/PageSectionNav.svelte';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { regionStore, type RegionOption } from '$lib/stores/region';
@@ -198,6 +201,28 @@
 			artistResults.length > 0 ||
 			playlistResults.length > 0
 	);
+	const sectionNavItems = $derived.by<PageSectionNavItem[]>(() => [
+		{ id: 'search-controls', label: 'Search' },
+		{ id: 'search-section-albums', label: 'Albums', hidden: albumResults.length === 0 },
+		{
+			id: 'search-section-artists',
+			label: 'Artists',
+			tone: 'secondary',
+			hidden: artistResults.length === 0
+		},
+		{
+			id: 'search-section-tracks',
+			label: 'Songs',
+			tone: 'tertiary',
+			hidden: trackResults.length === 0
+		},
+		{
+			id: 'search-section-playlists',
+			label: 'Playlists',
+			tone: 'secondary',
+			hidden: playlistResults.length === 0
+		}
+	]);
 
 	interface Props {
 		onTrackSelect?: (track: PlayableTrack) => void;
@@ -489,30 +514,34 @@
 </script>
 
 <div class="search-root" data-ui-block="main-sections">
-	<SearchToolbar
-		query={$searchStore.query}
-		isLoading={$searchStore.isLoading}
-		isActiveTabLoading={$searchStore.tabLoading[$searchStore.activeTab]}
-		isQueryATidalUrl={isQueryATidalUrl}
-		isQueryASpotifyPlaylist={isQueryASpotifyPlaylist}
-		isQueryAStreamingUrl={isQueryAStreamingUrl}
-		isQueryAUrl={isQueryAUrl}
-		selectedSearchScopes={selectedSearchScopes}
-		searchScopeOptions={SEARCH_SCOPE_OPTIONS}
-		albumArtistFilter={albumArtistFilter}
-		strictAlbumArtistMatch={strictAlbumArtistMatch}
-		onSubmit={() => void handleSearchSubmit()}
-		onQueryInput={(value) => {
-			searchStoreActions.setQuery(value);
-		}}
-		onToggleScope={toggleScope}
-		onAlbumArtistFilterInput={(value) => {
-			albumArtistFilter = value;
-		}}
-		onStrictAlbumArtistMatchChange={(strict) => {
-			strictAlbumArtistMatch = strict;
-		}}
-	/>
+	<section id="search-controls" class="ui-section-anchor">
+		<SearchToolbar
+			query={$searchStore.query}
+			isLoading={$searchStore.isLoading}
+			isActiveTabLoading={$searchStore.tabLoading[$searchStore.activeTab]}
+			isQueryATidalUrl={isQueryATidalUrl}
+			isQueryASpotifyPlaylist={isQueryASpotifyPlaylist}
+			isQueryAStreamingUrl={isQueryAStreamingUrl}
+			isQueryAUrl={isQueryAUrl}
+			selectedSearchScopes={selectedSearchScopes}
+			searchScopeOptions={SEARCH_SCOPE_OPTIONS}
+			albumArtistFilter={albumArtistFilter}
+			strictAlbumArtistMatch={strictAlbumArtistMatch}
+			onSubmit={() => void handleSearchSubmit()}
+			onQueryInput={(value) => {
+				searchStoreActions.setQuery(value);
+			}}
+			onToggleScope={toggleScope}
+			onAlbumArtistFilterInput={(value) => {
+				albumArtistFilter = value;
+			}}
+			onStrictAlbumArtistMatchChange={(strict) => {
+				strictAlbumArtistMatch = strict;
+			}}
+		/>
+	</section>
+
+	<PageSectionNav items={sectionNavItems} sticky={true} />
 
 	{#if $searchStore.error}
 		<StateBlock kind="error" title="Search failed" message={$searchStore.error} />

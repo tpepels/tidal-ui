@@ -1,12 +1,14 @@
 <script lang="ts">
+	import type { DownloadLogEntry } from '$lib/stores/downloadLog';
 	import { downloadLogStore } from '$lib/stores/downloadLog';
 	import { getSessionHeaders } from '$lib/core/session';
 	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
 	import ToolPanel from '$lib/components/ui/ToolPanel.svelte';
+	import WindowedList from '$lib/components/ui/WindowedList.svelte';
 	import { Copy, Trash2, Heart } from 'lucide-svelte';
 	import { onMount, tick } from 'svelte';
 
-	let scrollContainer: HTMLDivElement | null = null;
+	let scrollContainer = $state<HTMLDivElement | null>(null);
 	let healthData = $state<{
 		activeUploads: number;
 		maxConcurrent: number;
@@ -47,26 +49,35 @@
 		});
 	});
 
+	function updateTailFollowState() {
+		if (!scrollContainer) {
+			return;
+		}
+		const remaining =
+			scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
+		shouldFollowLogTail = remaining <= 40;
+	}
+
 	onMount(() => {
-		const updateTailFollowState = () => {
-			if (!scrollContainer) {
-				return;
-			}
-			const remaining =
-				scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
-			shouldFollowLogTail = remaining <= 40;
-		};
 		const updateDocumentVisibility = () => {
 			isDocumentVisible = document.visibilityState !== 'hidden';
 		};
 
 		updateDocumentVisibility();
-		updateTailFollowState();
 		document.addEventListener('visibilitychange', updateDocumentVisibility);
-		scrollContainer?.addEventListener('scroll', updateTailFollowState, { passive: true });
 
 		return () => {
 			document.removeEventListener('visibilitychange', updateDocumentVisibility);
+		};
+	});
+
+	$effect(() => {
+		if (!scrollContainer) {
+			return;
+		}
+		updateTailFollowState();
+		scrollContainer.addEventListener('scroll', updateTailFollowState, { passive: true });
+		return () => {
 			scrollContainer?.removeEventListener('scroll', updateTailFollowState);
 		};
 	});
@@ -212,19 +223,25 @@
 		{/if}
 
 		<!-- Log Content -->
-		<div
+		<WindowedList
 			id="download-log-stream"
-			class="ui-section-anchor download-log-content"
-			bind:this={scrollContainer}
+			className="ui-section-anchor download-log-content"
+			items={$downloadLogStore.entries}
+			itemHeight={42}
+			overscan={24}
+			threshold={160}
+			useContainerScroll={true}
+			bind:containerElement={scrollContainer}
 		>
-			{#each $downloadLogStore.entries as entry (entry.id)}
-				<div class="download-log-entry ui-perf-log-entry download-log-entry--{entry.level}">
+			{#snippet row(item)}
+				{@const entry = item as DownloadLogEntry}
+				<div class="download-log-entry ui-perf-log-entry download-log-entry--{entry.level}" data-window-item>
 					<span class="download-log-time">{entry.timestamp.toLocaleTimeString()}</span>
 					<span class="download-log-level">[{entry.level.toUpperCase()}]</span>
 					<span class="download-log-message">{entry.message}</span>
 				</div>
-			{/each}
-		</div>
+			{/snippet}
+		</WindowedList>
 		</div>
 	</ToolPanel>
 </section>
@@ -326,7 +343,7 @@
 		transform: translateY(var(--ui-press-y, 0px));
 	}
 
-	.download-log-content {
+	.download-log-panel :global(.download-log-content) {
 		flex: 1;
 
 		/* IMPORTANT: allow a flex child to actually shrink and become scrollable */
@@ -347,23 +364,23 @@
 		scroll-behavior: smooth;
 	}
 
-	.download-log-content::-webkit-scrollbar {
+	.download-log-panel :global(.download-log-content::-webkit-scrollbar) {
 		width: 12px;
 	}
 
-	.download-log-content::-webkit-scrollbar-track {
+	.download-log-panel :global(.download-log-content::-webkit-scrollbar-track) {
 		background: rgba(255, 255, 255, 0.02);
 		border-radius: 6px;
 	}
 
-	.download-log-content::-webkit-scrollbar-thumb {
+	.download-log-panel :global(.download-log-content::-webkit-scrollbar-thumb) {
 		background: rgba(255, 255, 255, 0.22);
 		border-radius: 6px;
 		border: 2px solid transparent;
 		background-clip: padding-box;
 	}
 
-	.download-log-content::-webkit-scrollbar-thumb:hover {
+	.download-log-panel :global(.download-log-content::-webkit-scrollbar-thumb:hover) {
 		background: rgba(255, 255, 255, 0.34);
 		background-clip: padding-box;
 	}
@@ -656,7 +673,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.download-log-content {
+	.download-log-panel :global(.download-log-content) {
 		scroll-behavior: auto;
 	}
 

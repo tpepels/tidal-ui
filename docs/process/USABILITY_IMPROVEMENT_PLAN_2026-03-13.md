@@ -50,12 +50,9 @@ This pass shipped the following user-facing usability changes:
 3. Standardized the structure of `album`, `artist`, `track`, and `playlist` detail pages so actions and metadata are no longer embedded inside hero blocks.
 4. Added stable section anchors for actions, metadata, main content, and secondary content zones.
 5. Extended the same section-navigation pattern to key collection/tool surfaces:
-   `history`, `library-suggestions`, `settings`, `status`, `download-log`, and `download-center`.
+   `history`, `library-suggestions`, `Browse & Search`, `settings`, `status`, `download-log`, and `download-center`.
 6. Added active-section hash persistence in the shared section nav so the current section is written back into the current history entry without spamming new history items.
 7. Existing section hashes are now restored on mount/hash navigation so back/forward returns users to the same section context more reliably.
-
-## Remaining backlog
-1. Evaluate whether `Browse & Search` should expose a higher-level results rail above the existing search-section anchors.
 
 ## Success criteria
 1. Detail pages expose clear jump targets for the user-visible sections.
