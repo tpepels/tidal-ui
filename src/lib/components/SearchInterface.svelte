@@ -548,7 +548,7 @@
 	{/if}
 
 	{#if $searchStore.playlistLoadingMessage}
-		<div class="search-status" aria-live="polite">
+		<div class="ui-inline-status search-status" aria-live="polite">
 			<LoaderCircle class="animate-spin" size={18} />
 			<span>{$searchStore.playlistLoadingMessage}</span>
 		</div>
@@ -592,32 +592,32 @@
 			</div>
 
 			{#if $searchStore.isLoading}
-				<div class="search-status" aria-live="polite">
+				<div class="ui-inline-status search-status" aria-live="polite">
 					<LoaderCircle class="animate-spin" size={18} />
 					<span>Refining results…</span>
 				</div>
 			{/if}
 		{:else if !$searchStore.query.trim()}
-				<section class="ui-surface-card search-empty">
+				<section class="search-empty">
 					<h2 class="search-empty__title">Minimal Search</h2>
 					<p class="search-empty__text">
 						Choose sections, enter a query, optionally add an album artist filter, then run search.
 					</p>
 				</section>
 		{:else if isQueryATidalUrl}
-			<section class="ui-surface-card search-empty">
+			<section class="search-empty">
 				<p class="search-empty__text">TIDAL URL detected. Press Search to load it.</p>
 			</section>
 		{:else if isQueryASpotifyPlaylist}
-			<section class="ui-surface-card search-empty">
+			<section class="search-empty">
 				<p class="search-empty__text">Spotify playlist detected. Press Search to convert it.</p>
 			</section>
 		{:else if isQueryAStreamingUrl}
-			<section class="ui-surface-card search-empty">
+			<section class="search-empty">
 				<p class="search-empty__text">Streaming URL detected. Press Search to convert it.</p>
 			</section>
 		{:else if $searchStore.isLoading}
-			<div class="search-status" aria-live="polite">
+			<div class="ui-inline-status search-status" aria-live="polite">
 				<LoaderCircle class="animate-spin" size={18} />
 				<span>Searching…</span>
 			</div>
@@ -635,51 +635,45 @@
 	.search-root {
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
+		gap: 1.2rem;
 	}
 
 	.search-status {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.55rem 0.7rem;
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		border-radius: var(--ui-radius-sm, 9px);
-		background: var(--ui-surface-0, #0d0d0d);
-		color: rgba(228, 228, 228, 0.9);
-		font-size: 0.9rem;
+		padding-top: 0.15rem;
 	}
 
 	.search-sections {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
-		gap: 1rem;
+		gap: 1.4rem;
 	}
 
 	.search-empty {
 		display: flex;
 		flex-direction: column;
-		gap: 0.25rem;
-		padding: 1rem;
+		gap: 0.32rem;
+		padding: 1rem 0 0;
+		border-top: 1px solid rgba(255, 255, 255, 0.08);
 	}
 
 	.search-empty__title {
 		margin: 0;
-		font-size: 1.05rem;
+		font-size: 1.12rem;
 		color: rgba(243, 243, 243, 0.97);
 	}
 
 	.search-empty__text {
 		margin: 0;
-		font-size: 0.92rem;
-		color: rgba(204, 204, 204, 0.84);
+		font-size: 0.94rem;
+		color: rgba(204, 204, 204, 0.78);
 	}
 
 	@media (min-width: 1080px) {
 		.search-sections {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 			align-items: start;
-			gap: 1.05rem;
+			column-gap: 2rem;
+			row-gap: 1.65rem;
 		}
 
 		.search-sections.search-sections--single {

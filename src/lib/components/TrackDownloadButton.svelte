@@ -29,7 +29,7 @@
 
 <button
 	onclick={(event) => (isDownloading ? onCancel(event) : onDownload(event))}
-	class={`p-2 text-gray-400 transition-[color,background-color,transform] duration-200 ease-[cubic-bezier(0.2,0,0,1)] hover:-translate-y-px hover:text-white ${className}`.trim()}
+	class={`inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.02] p-2 text-gray-300 transition-[color,background-color,border-color] duration-200 ease-[cubic-bezier(0.2,0,0,1)] hover:border-white/15 hover:bg-white/[0.05] hover:text-white ${className}`.trim()}
 	title={resolvedTitle}
 	aria-label={resolvedLabel}
 	aria-busy={isDownloading}

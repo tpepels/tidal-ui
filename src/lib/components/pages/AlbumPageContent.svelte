@@ -10,9 +10,9 @@
 	import CoverArt from '$lib/components/CoverArt.svelte';
 	import TrackList from '$lib/components/TrackList.svelte';
 	import ShareButton from '$lib/components/ShareButton.svelte';
-	import ActionPanel from '$lib/components/ui/ActionPanel.svelte';
 	import DataGrid from '$lib/components/ui/DataGrid.svelte';
 	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
+	import SectionBlock from '$lib/components/ui/SectionBlock.svelte';
 	import StateBlock from '$lib/components/ui/StateBlock.svelte';
 	import type { Album, Track } from '$lib/types';
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
@@ -440,123 +440,123 @@
 			Back
 		</button>
 
-		<!-- Album Header -->
-		<div class="flex flex-col gap-8 md:flex-row" data-ui-block="entity-hero">
-			<!-- Album Cover -->
-			{#if album.videoCover || album.cover}
-				<div
-					class="aspect-square w-full flex-shrink-0 overflow-hidden rounded-xl border border-white/12 bg-white/5 md:w-80"
-				>
-					{#if album.videoCover}
-						<video
-							src={losslessAPI.getVideoCoverUrl(album.videoCover, '640')}
-							poster={album.cover ? losslessAPI.getCoverUrl(album.cover, '640') : undefined}
-							aria-label={album.title}
-							class="h-full w-full object-cover"
-							autoplay
-							loop
-							muted
-							playsinline
-							preload="metadata"
-						></video>
-					{:else}
-						{@const coverCacheKey = getCoverCacheKey({
-							coverId: album.cover,
-							size: '640',
-							proxy: false,
-							overrideKey: `album:${album.id}`
-						})}
-						{@const coverCandidates = getUnifiedCoverCandidates({
-							coverId: album.cover,
-							size: '640',
-							proxy: false,
-							includeLowerSizes: true
-						})}
-						<CoverArt
-							cacheKey={coverCacheKey}
-							candidates={coverCandidates}
-							alt={album.title}
-							class="h-full w-full object-cover"
-							loading="eager"
-						/>
-					{/if}
-				</div>
-			{/if}
+		<section class="ui-detail-hero" data-ui-block="entity-hero">
+			<div class="ui-detail-hero__layout">
+				{#if album.videoCover || album.cover}
+					<div class="ui-detail-hero__art">
+						{#if album.videoCover}
+							<video
+								src={losslessAPI.getVideoCoverUrl(album.videoCover, '640')}
+								poster={album.cover ? losslessAPI.getCoverUrl(album.cover, '640') : undefined}
+								aria-label={album.title}
+								autoplay
+								loop
+								muted
+								playsinline
+								preload="metadata"
+							></video>
+						{:else}
+							{@const coverCacheKey = getCoverCacheKey({
+								coverId: album.cover,
+								size: '640',
+								proxy: false,
+								overrideKey: `album:${album.id}`
+							})}
+							{@const coverCandidates = getUnifiedCoverCandidates({
+								coverId: album.cover,
+								size: '640',
+								proxy: false,
+								includeLowerSizes: true
+							})}
+							<CoverArt
+								cacheKey={coverCacheKey}
+								candidates={coverCandidates}
+								alt={album.title}
+								class="h-full w-full object-cover"
+								loading="eager"
+							/>
+						{/if}
+					</div>
+				{/if}
 
-			<!-- Album Info -->
-			<div class="flex flex-1 flex-col justify-end">
-				<p class="mb-2 text-base text-gray-400">ALBUM</p>
-				<h1 class="mb-4 text-4xl font-bold md:text-6xl">{album.title}</h1>
-				<div class="mb-4 flex items-center gap-1">
-					{#if album.explicit}
-						<svg
-							class="inline h-4 w-4 flex-shrink-0 align-middle"
-							xmlns="http://www.w3.org/2000/svg"
-							fill="currentColor"
-							height="24"
-							viewBox="0 0 24 24"
-							width="24"
-							focusable="false"
-							aria-hidden="true"
-							><path
-								d="M20 2H4a2 2 0 00-2 2v16a2 2 0 002 2h16a2 2 0 002-2V4a2 2 0 00-2-2ZM8 6h8a1 1 0 110 2H9v3h5a1 1 0 010 2H9v3h7a1 1 0 010 2H8a1 1 0 01-1-1V7a1 1 0 011-1Z"
-							></path></svg
-						>
-					{/if}
+				<div class="ui-detail-hero__body">
+					<p class="ui-detail-hero__eyebrow">Album</p>
+					<h1 class="ui-detail-hero__title">{album.title}</h1>
 					{#if album.artist}
 						<div class="text-left text-xl text-gray-300">
 							<ArtistLinks artists={[album.artist]} />
 						</div>
 					{/if}
-				</div>
 
-				<div class="mb-6 flex flex-wrap items-center gap-4 text-base text-gray-400">
-					{#if album.releaseDate}
-						<div class="flex items-center gap-1">
-							<Calendar size={16} />
-							{new Date(album.releaseDate).getFullYear()}
-						</div>
-					{/if}
-					{#if tracks.length > 0 || album.numberOfTracks}
-						<div class="flex items-center gap-1">
-							<Disc size={16} />
-							{tracks.length || album.numberOfTracks} tracks
-						</div>
-					{/if}
-					{#if totalDuration > 0}
-						<div class="flex items-center gap-1">
-							<Clock size={16} />
-							{losslessAPI.formatDuration(totalDuration)} total
-						</div>
-					{/if}
-					{#if album.mediaMetadata?.tags}
-						{#each album.mediaMetadata.tags as tag (tag)}
-							<div class="ui-meta-pill">
-								{tag}
+					<div class="ui-detail-meta-strip">
+						{#if album.explicit}
+							<span class="ui-inline-tag">Explicit</span>
+						{/if}
+						{#if album.releaseDate}
+							<div class="ui-detail-meta-item">
+								<Calendar size={16} />
+								{new Date(album.releaseDate).getFullYear()}
 							</div>
-						{/each}
+						{/if}
+						{#if tracks.length > 0 || album.numberOfTracks}
+							<div class="ui-detail-meta-item">
+								<Disc size={16} />
+								{tracks.length || album.numberOfTracks} tracks
+							</div>
+						{/if}
+						{#if totalDuration > 0}
+							<div class="ui-detail-meta-item">
+								<Clock size={16} />
+								{losslessAPI.formatDuration(totalDuration)} total
+							</div>
+						{/if}
+						{#if album.mediaMetadata?.tags}
+							{#each album.mediaMetadata.tags as tag (tag)}
+								<span class="ui-inline-tag">{tag}</span>
+							{/each}
+						{/if}
+					</div>
+
+					{#if hasIncompleteTrackList}
+						<p class="ui-action-status" data-tone="warning">
+							Tracklist may be incomplete from source metadata: showing {tracks.length}/{expectedTrackCount}
+							tracks{#if missingTrackLabel} (missing {missingTrackLabel}){/if}.
+						</p>
 					{/if}
 				</div>
-				{#if hasIncompleteTrackList}
-					<p class="mb-4 ui-action-status" data-tone="warning">
-						Tracklist may be incomplete from source metadata: showing {tracks.length}/{expectedTrackCount}
-						tracks{#if missingTrackLabel} (missing {missingTrackLabel}){/if}.
-					</p>
-				{/if}
 			</div>
-		</div>
+		</section>
 
 		<PageSectionNav items={sectionNavItems} sticky={true} />
 
-		<div class="flex flex-col gap-10 lg:grid lg:grid-cols-[minmax(0,1.45fr)_minmax(21rem,0.95fr)] lg:items-start lg:gap-8">
-			<div class="space-y-6 lg:col-start-2 lg:row-start-1 lg:sticky lg:top-24">
+		<div class="ui-detail-columns">
+			<div class="ui-detail-main">
+				<section
+					id="album-tracks"
+					class="ui-section-anchor"
+					data-ui-block="main-content"
+				>
+					<SectionBlock title="Tracks" count={tracks.length}>
+						{#if tracks.length === 0}
+							<StateBlock
+								kind="empty"
+								title="No tracks available"
+								message="Try refreshing this album or search for individual songs."
+							/>
+						{:else}
+							<TrackList {tracks} showAlbum={false} />
+						{/if}
+					</SectionBlock>
+				</section>
+			</div>
+
+			<div class="ui-detail-sidebar">
 				{#if tracks.length > 0}
 					<section id="album-actions" class="ui-section-anchor" data-ui-block="primary-actions">
-						<ActionPanel
-							intent="Album Actions"
-							summary="Play, shuffle, download, and maintain this album from one action surface."
-							intentful={true}
-							panelRole="album-actions"
+						<SectionBlock
+							title="Actions"
+							subtitle="Play, download, and maintain this album."
+							tone="secondary"
 						>
 							<div class="ui-action-row ui-action-row--progressive">
 								<button
@@ -662,15 +662,17 @@
 									MusicBrainz release data is still loading. Waiting briefly can improve metadata quality.
 								</p>
 							{/if}
-						</ActionPanel>
+						</SectionBlock>
 					</section>
 				{/if}
 
 				<section id="album-metadata" class="ui-section-anchor" data-ui-block="context-metadata">
-					<ActionPanel panelRole="musicbrainz-release">
-						<svelte:fragment slot="header">
-							<div class="ui-action-subpanel__header">
-								<p class="ui-action-panel__intent">MusicBrainz Release Metadata</p>
+					<SectionBlock
+						title="MusicBrainz"
+						subtitle="Preferred release metadata for downloads."
+						tone="tertiary"
+					>
+						<svelte:fragment slot="actions">
 								<button
 									type="button"
 									onclick={() => lookupMusicBrainzReleases({ manual: true })}
@@ -683,14 +685,13 @@
 										Refresh Matches
 									{/if}
 								</button>
-							</div>
 						</svelte:fragment>
 						{#if isMusicBrainzReleaseLookupLoading && musicBrainzReleaseOptions.length === 0}
 							<p class="ui-action-status">Searching MusicBrainz releases…</p>
 						{:else if isMusicBrainzReleaseLookupLoading}
 							<p class="ui-action-status" data-tone="info">Refreshing MusicBrainz releases…</p>
 						{:else if musicBrainzReleaseOptions.length > 0}
-							<label class="ui-action-panel__intent" for="musicbrainz-release-select">
+							<label class="ui-section-block__eyebrow" for="musicbrainz-release-select">
 								Selected Release
 							</label>
 							<select
@@ -769,32 +770,16 @@
 								Enable experimental MusicBrainz tagging in Settings to apply this release when downloading.
 							{/if}
 						</p>
-					</ActionPanel>
+					</SectionBlock>
 				</section>
 
 				{#if album.copyright}
 					<section id="album-notes" class="ui-section-anchor" data-ui-block="secondary-content">
-						<div class="ui-surface-card p-4">
-							<p class="text-xs font-medium uppercase tracking-[0.16em] text-gray-500">Notes</p>
-							<p class="mt-2 text-sm text-gray-400">{album.copyright}</p>
-						</div>
+						<SectionBlock title="Notes" subtitle="Rights and release notes.">
+							<p class="ui-detail-note">{album.copyright}</p>
+						</SectionBlock>
 					</section>
 				{/if}
-			</div>
-
-			<div class="space-y-8 lg:col-start-1 lg:row-start-1">
-				<section id="album-tracks" class="ui-section-anchor space-y-4" data-ui-block="main-content">
-					<h2 class="text-2xl font-bold">Tracks</h2>
-					{#if tracks.length === 0}
-						<StateBlock
-							kind="empty"
-							title="No tracks available"
-							message="Try refreshing this album or search for individual songs."
-						/>
-					{:else}
-						<TrackList {tracks} showAlbum={false} />
-					{/if}
-				</section>
 			</div>
 		</div>
 	</div>

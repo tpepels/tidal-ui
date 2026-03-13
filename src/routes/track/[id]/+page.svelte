@@ -10,10 +10,9 @@
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 	import { artistCacheStore } from '$lib/stores/artistCache';
 	import ShareButton from '$lib/components/ShareButton.svelte';
-	import EntityMediaCard from '$lib/components/ui/EntityMediaCard.svelte';
-	import ActionPanel from '$lib/components/ui/ActionPanel.svelte';
 	import DataGrid from '$lib/components/ui/DataGrid.svelte';
 	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
+	import SectionBlock from '$lib/components/ui/SectionBlock.svelte';
 	import { LoaderCircle, Play, ArrowLeft, Disc, Clock, Download, X } from 'lucide-svelte';
 	import { formatArtists } from '$lib/utils/formatters';
 
@@ -243,141 +242,162 @@
 			Back
 		</button>
 
-		<div class="ui-surface-card flex flex-col gap-8 p-5 md:flex-row" data-ui-block="entity-hero">
-			<!-- Album Art -->
-			<div class="aspect-square w-full flex-shrink-0 overflow-hidden rounded-xl border border-white/12 bg-white/5 md:w-96">
-				{#if track.album.cover}
-					<img
-						src={losslessAPI.getCoverUrl(track.album.cover, '1280')}
-						alt={track.album.title}
-						class="h-full w-full object-cover"
-					/>
-				{:else}
-					<div class="flex h-full w-full items-center justify-center bg-gray-800">
-						<Disc size={64} class="text-gray-600" />
-					</div>
-				{/if}
-			</div>
-
-			<!-- Track Info -->
-			<div class="flex flex-1 flex-col justify-end">
-				<h1 class="mb-2 text-4xl font-bold md:text-5xl">{track.title}</h1>
-				{#if track.version}
-					<span class="ui-meta-pill mb-4 inline-flex">
-						{track.version}
-					</span>
-				{/if}
-
-				<div class="mb-6 space-y-4">
-					<div class="flex items-center gap-2 text-gray-500">
-						<Clock size={18} />
-						<span>{formatDuration(track.duration)}</span>
-					</div>
-					<div class="grid gap-4 sm:grid-cols-2">
-						<EntityMediaCard
-							type="artist"
-							href={`/artist/${track.artist.id}`}
-							title={track.artist.name}
-							subtitle={
-								track.artists.length > 1
-									? `${track.artists.length} credited artists`
-									: track.artist.type || 'Artist'
-							}
-							meta={formatArtists(track.artists)}
-							imageSrc={
-								track.artist.picture ? losslessAPI.getArtistPictureUrl(track.artist.picture) : null
-							}
-							imageAlt={`Portrait of ${track.artist.name}`}
-							links={[{ href: `/artist/${track.artist.id}`, label: 'Artist Page' }]}
+		<section class="ui-detail-hero" data-ui-block="entity-hero">
+			<div class="ui-detail-hero__layout">
+				<div class="ui-detail-hero__art">
+					{#if track.album.cover}
+						<img
+							src={losslessAPI.getCoverUrl(track.album.cover, '1280')}
+							alt={track.album.title}
 						/>
-						<EntityMediaCard
-							type="album"
-							href={`/album/${track.album.id}`}
-							title={track.album.title}
-							subtitle={track.album.artist?.name ?? track.artist.name}
-							meta={track.album.releaseDate ? track.album.releaseDate.split('-')[0] : null}
-							imageSrc={track.album.cover ? losslessAPI.getCoverUrl(track.album.cover, '640') : null}
-							imageAlt={`Cover for ${track.album.title}`}
-							links={[
-								{ href: `/album/${track.album.id}`, label: 'Album Page' },
-								{ href: `/artist/${track.artist.id}`, label: 'Artist Page' }
-							]}
-						/>
+					{:else}
+						<div class="flex h-full w-full items-center justify-center bg-white/3">
+							<Disc size={64} class="text-gray-600" />
+						</div>
+					{/if}
+				</div>
+
+				<div class="ui-detail-hero__body">
+					<p class="ui-detail-hero__eyebrow">Track</p>
+					<h1 class="ui-detail-hero__title">{track.title}</h1>
+					{#if track.version}
+						<div class="ui-detail-meta-strip">
+							<span class="ui-inline-tag">{track.version}</span>
+						</div>
+					{/if}
+					<div class="ui-detail-meta-strip">
+						<div class="ui-detail-meta-item">
+							<Clock size={16} />
+							{formatDuration(track.duration)}
+						</div>
+						{#if track.audioQuality}
+							<span class="ui-inline-tag">{track.audioQuality.replaceAll('_', ' ')}</span>
+						{/if}
+					</div>
+					<div class="ui-list-surface ui-link-row-list">
+						<a href={`/artist/${track.artist.id}`} class="ui-link-row" data-sveltekit-preload-data>
+							<div class="ui-link-row__media ui-link-row__media--circle">
+								{#if track.artist.picture}
+									<img
+										src={losslessAPI.getArtistPictureUrl(track.artist.picture)}
+										alt={track.artist.name}
+									/>
+								{:else}
+									<span class="ui-list-row__media-fallback">
+										{(track.artist.name?.slice(0, 1) ?? 'A').toUpperCase()}
+									</span>
+								{/if}
+							</div>
+							<div class="ui-link-row__body">
+								<p class="ui-link-row__title">{track.artist.name}</p>
+								<p class="ui-link-row__subtitle">
+									{track.artists.length > 1
+										? `${track.artists.length} credited artists • ${formatArtists(track.artists)}`
+										: track.artist.type || 'Artist'}
+								</p>
+							</div>
+						</a>
+						<a href={`/album/${track.album.id}`} class="ui-link-row" data-sveltekit-preload-data>
+							<div class="ui-link-row__media">
+								{#if track.album.cover}
+									<img
+										src={losslessAPI.getCoverUrl(track.album.cover, '320')}
+										alt={track.album.title}
+									/>
+								{:else}
+									<span class="ui-list-row__media-fallback">
+										{(track.album.title?.slice(0, 1) ?? 'A').toUpperCase()}
+									</span>
+								{/if}
+							</div>
+							<div class="ui-link-row__body">
+								<p class="ui-link-row__title">{track.album.title}</p>
+								<p class="ui-link-row__subtitle">
+									{track.album.artist?.name ?? track.artist.name}
+									{#if track.album.releaseDate}
+										• {track.album.releaseDate.split('-')[0]}
+									{/if}
+								</p>
+							</div>
+						</a>
 					</div>
 				</div>
 			</div>
-		</div>
+		</section>
 
 		<PageSectionNav items={sectionNavItems} sticky={true} />
 
-		<section id="track-actions" class="ui-section-anchor" data-ui-block="primary-actions">
-			<ActionPanel
-				intent="Track Actions"
-				summary="Play, download, or share this track."
-				intentful={true}
-				sticky={true}
-				panelRole="track-actions"
-			>
-				<div class="ui-action-row ui-action-row--progressive">
-					<button
-						onclick={() => {
-							if (track) {
-								playbackFacade.loadQueue([track], 0, { autoPlay: true });
-							}
-						}}
-						class="ui-action-button ui-action-button--primary"
+		<div class="ui-detail-columns">
+			<div class="ui-detail-main">
+				<section id="track-actions" class="ui-section-anchor" data-ui-block="primary-actions">
+					<SectionBlock
+						title="Actions"
+						subtitle="Play, download, or share this track."
+						tone="secondary"
 					>
-						<Play size={16} fill="currentColor" />
-						Play
-					</button>
+						<div class="ui-action-row ui-action-row--progressive">
+							<button
+								onclick={() => {
+									if (track) {
+										playbackFacade.loadQueue([track], 0, { autoPlay: true });
+									}
+								}}
+								class="ui-action-button ui-action-button--primary"
+							>
+								<Play size={16} fill="currentColor" />
+								Play
+							</button>
 
-					{#if isDownloading}
-						<button
-							onclick={(event) => handleCancelDownload(track!.id, event)}
-							class="ui-action-button"
-						>
-							<X size={16} />
-							Cancel
-						</button>
-					{:else if isCancelled}
-						<button disabled class="ui-action-button">
-							<X size={16} />
-							Cancelled
-						</button>
-					{:else}
-						<button
-							onclick={(event) => handleDownload(track!, event)}
-							class="ui-action-button"
-						>
-							<Download size={16} />
-							{downloadActionLabel}
-						</button>
-					{/if}
-
-					<ShareButton type="track" id={track.id} variant="secondary" />
-				</div>
-			</ActionPanel>
-		</section>
-
-		<section id="track-metadata" class="ui-section-anchor" data-ui-block="context-metadata">
-			<ActionPanel panelRole="musicbrainz-track">
-				<svelte:fragment slot="header">
-					<div class="ui-action-subpanel__header">
-						<p class="ui-action-panel__intent">MusicBrainz Track Metadata</p>
-						<button
-							type="button"
-							onclick={() => lookupTrackMusicBrainzMetadata(track!)}
-							class="ui-chip-button ui-chip-button--compact"
-							disabled={isMusicBrainzLookupLoading}
-						>
-							{#if isMusicBrainzLookupLoading}
-								Refreshing…
+							{#if isDownloading}
+								<button
+									onclick={(event) => handleCancelDownload(track!.id, event)}
+									class="ui-action-button"
+								>
+									<X size={16} />
+									Cancel
+								</button>
+							{:else if isCancelled}
+								<button disabled class="ui-action-button">
+									<X size={16} />
+									Cancelled
+								</button>
 							{:else}
-								Refresh Metadata
+								<button
+									onclick={(event) => handleDownload(track!, event)}
+									class="ui-action-button"
+								>
+									<Download size={16} />
+									{downloadActionLabel}
+								</button>
 							{/if}
-						</button>
-					</div>
-				</svelte:fragment>
+
+							<ShareButton type="track" id={track.id} variant="secondary" />
+						</div>
+					</SectionBlock>
+				</section>
+			</div>
+
+			<div class="ui-detail-sidebar">
+				<section id="track-metadata" class="ui-section-anchor" data-ui-block="context-metadata">
+					<SectionBlock
+						title="MusicBrainz"
+						subtitle="Resolved track metadata."
+						tone="tertiary"
+					>
+						<svelte:fragment slot="actions">
+							<button
+								type="button"
+								onclick={() => lookupTrackMusicBrainzMetadata(track!)}
+								class="ui-chip-button ui-chip-button--compact"
+								disabled={isMusicBrainzLookupLoading}
+							>
+								{#if isMusicBrainzLookupLoading}
+									Refreshing…
+								{:else}
+									Refresh Metadata
+								{/if}
+							</button>
+						</svelte:fragment>
 				{#if isMusicBrainzLookupLoading && Object.keys(musicBrainzTags).length === 0}
 					<p class="ui-action-status">Resolving MusicBrainz metadata…</p>
 				{:else if Object.keys(musicBrainzTags).length > 0}
@@ -469,7 +489,9 @@
 				{#if musicBrainzLookupError}
 					<p class="ui-action-status" data-tone="error">{musicBrainzLookupError}</p>
 				{/if}
-			</ActionPanel>
-		</section>
+					</SectionBlock>
+				</section>
+			</div>
+		</div>
 	</div>
 {/if}

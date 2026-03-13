@@ -4,12 +4,10 @@
 	import { losslessAPI } from '$lib/api';
 	import TrackList from '$lib/components/TrackList.svelte';
 	import ShareButton from '$lib/components/ShareButton.svelte';
-	import EntityMediaCard from '$lib/components/ui/EntityMediaCard.svelte';
-	import ActionPanel from '$lib/components/ui/ActionPanel.svelte';
-	import ToolPanel from '$lib/components/ui/ToolPanel.svelte';
 	import DataGrid from '$lib/components/ui/DataGrid.svelte';
 	import StateBlock from '$lib/components/ui/StateBlock.svelte';
 	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
+	import SectionBlock from '$lib/components/ui/SectionBlock.svelte';
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 	import type { Playlist, Track } from '$lib/types';
 	import { ArrowLeft, Play, User, Clock, LoaderCircle } from 'lucide-svelte';
@@ -138,148 +136,159 @@
 			Back
 		</button>
 
-		<!-- Playlist Header -->
-		<div class="ui-surface-card flex flex-col gap-8 p-5 md:flex-row" data-ui-block="entity-hero">
-			<!-- Playlist Cover -->
-			{#if playlist.squareImage || playlist.image}
-				<div
-					class="aspect-square w-full flex-shrink-0 overflow-hidden rounded-xl border border-white/12 bg-white/5 md:w-80"
-				>
-					<img
-						src={losslessAPI.getCoverUrl(playlist.squareImage || playlist.image, '640')}
-						alt={playlist.title}
-						class="h-full w-full object-cover"
-					/>
-				</div>
-			{/if}
-
-			<!-- Playlist Info -->
-			<div class="flex flex-1 flex-col justify-end">
-				<p class="mb-2 text-base text-gray-400">PLAYLIST</p>
-				<h1 class="mb-4 text-4xl font-bold md:text-6xl">{playlist.title}</h1>
-
-				{#if playlist.description}
-					<p class="mb-4 text-gray-300">{playlist.description}</p>
+		<section class="ui-detail-hero" data-ui-block="entity-hero">
+			<div class="ui-detail-hero__layout">
+				{#if playlist.squareImage || playlist.image}
+					<div class="ui-detail-hero__art">
+						<img
+							src={losslessAPI.getCoverUrl(playlist.squareImage || playlist.image, '640')}
+							alt={playlist.title}
+						/>
+					</div>
 				{/if}
 
-				<div class="mb-4 flex items-center gap-2">
-					{#if playlist.creator.picture}
-						<img
-							src={losslessAPI.getCoverUrl(playlist.creator.picture, '80')}
-							alt={playlist.creator.name}
-							class="h-8 w-8 rounded-full"
-						/>
-					{:else}
-						<div class="flex h-8 w-8 items-center justify-center rounded-full bg-gray-700">
-							<User size={16} class="text-gray-400" />
-						</div>
-					{/if}
-					<span class="text-base text-gray-300">{playlist.creator.name}</span>
-				</div>
+				<div class="ui-detail-hero__body">
+					<p class="ui-detail-hero__eyebrow">Playlist</p>
+					<h1 class="ui-detail-hero__title">{playlist.title}</h1>
 
-				<div class="mb-6 flex flex-wrap items-center gap-4 text-base text-gray-400">
-					<div>{playlist.numberOfTracks} tracks</div>
-					{#if playlist.duration}
-						<div class="flex items-center gap-1">
-							<Clock size={16} />
-							{formatDuration(playlist.duration)}
-						</div>
+					{#if playlist.description}
+						<p class="ui-detail-hero__description">{playlist.description}</p>
 					{/if}
-					{#if playlist.type}
-						<div class="ui-meta-pill">
-							{playlist.type}
+
+					<div class="ui-detail-meta-strip">
+						<div class="ui-detail-meta-item">
+							{#if playlist.creator.picture}
+								<img
+									src={losslessAPI.getCoverUrl(playlist.creator.picture, '80')}
+									alt={playlist.creator.name}
+									class="h-8 w-8 rounded-full"
+								/>
+							{:else}
+								<span class="ui-link-row__media ui-link-row__media--circle h-8 w-8">
+									<User size={14} class="text-gray-400" />
+								</span>
+							{/if}
+							{playlist.creator.name}
 						</div>
-					{/if}
+						<div class="ui-detail-meta-item">{playlist.numberOfTracks} tracks</div>
+						{#if playlist.duration}
+							<div class="ui-detail-meta-item">
+								<Clock size={16} />
+								{formatDuration(playlist.duration)}
+							</div>
+						{/if}
+						{#if playlist.type}
+							<span class="ui-inline-tag">{playlist.type}</span>
+						{/if}
+					</div>
 				</div>
 			</div>
-		</div>
+		</section>
 
 		<PageSectionNav items={sectionNavItems} sticky={true} />
 
-		{#if tracks.length > 0}
-			<section id="playlist-actions" class="ui-section-anchor" data-ui-block="primary-actions">
-				<ActionPanel
-					intent="Playlist Actions"
-					summary="Play this playlist or share it."
-					intentful={true}
-					sticky={true}
-					panelRole="playlist-actions"
-				>
-					<div class="ui-action-row ui-action-row--progressive">
-						<button
-							onclick={handlePlayAll}
-							class="ui-action-button ui-action-button--primary"
-							aria-label="Play playlist"
-						>
-							<Play size={16} fill="currentColor" />
-							Play Playlist
-						</button>
-						<ShareButton type="playlist" id={playlist.uuid} variant="secondary" />
-					</div>
-				</ActionPanel>
-			</section>
-		{/if}
-
-		<section id="playlist-metadata" class="ui-section-anchor" data-ui-block="context-metadata">
-			<ActionPanel intent="Playlist Metadata" summary="Creation and update dates." intentful={true}>
-				<DataGrid>
-					{#if playlist.created}
-						<div class="ui-data-point">
-							<p class="ui-data-point__label">Created</p>
-							<p class="ui-data-point__value">{new Date(playlist.created).toLocaleDateString()}</p>
-						</div>
-					{/if}
-					{#if playlist.lastUpdated}
-						<div class="ui-data-point">
-							<p class="ui-data-point__label">Last Updated</p>
-							<p class="ui-data-point__value">
-								{new Date(playlist.lastUpdated).toLocaleDateString()}
-							</p>
-						</div>
-					{/if}
-				</DataGrid>
-			</ActionPanel>
-		</section>
-
-		<!-- Tracks -->
-		{#if tracks.length > 0}
-			<section id="playlist-tracks" class="ui-section-anchor mt-8" data-ui-block="main-content">
-				<h2 class="mb-4 text-2xl font-bold">Tracks</h2>
-				<TrackList {tracks} />
-			</section>
-		{:else}
-			<section id="playlist-tracks" class="ui-section-anchor" data-ui-block="main-content">
-				<StateBlock
-					kind="empty"
-					title="No tracks in this playlist"
-					message="The playlist currently has no playable tracks."
-				/>
-			</section>
-		{/if}
-
-		<!-- Promoted Artists -->
-		{#if playlist.promotedArtists && playlist.promotedArtists.length > 0}
-			<section id="playlist-artists" class="ui-section-anchor" data-ui-block="secondary-content">
-				<ToolPanel
-					eyebrow="Secondary"
-					title="Featured Artists"
-					subtitle="Artists promoted in this playlist."
-					panelRole="playlist-featured-artists"
-				>
-					<div class="ui-media-grid ui-media-grid--artists">
-						{#each playlist.promotedArtists as artist (artist.id)}
-							<EntityMediaCard
-								type="artist"
-								href={`/artist/${artist.id}`}
-								title={artist.name}
-								subtitle={artist.type || 'Artist'}
-								imageSrc={artist.picture ? losslessAPI.getArtistPictureUrl(artist.picture) : null}
-								imageAlt={`Portrait of ${artist.name}`}
+		<div class="ui-detail-columns">
+			<div class="ui-detail-main">
+				{#if tracks.length > 0}
+					<section id="playlist-tracks" class="ui-section-anchor" data-ui-block="main-content">
+						<SectionBlock title="Tracks" count={tracks.length}>
+							<TrackList {tracks} />
+						</SectionBlock>
+					</section>
+				{:else}
+					<section id="playlist-tracks" class="ui-section-anchor" data-ui-block="main-content">
+						<SectionBlock title="Tracks" count={0}>
+							<StateBlock
+								kind="empty"
+								title="No tracks in this playlist"
+								message="The playlist currently has no playable tracks."
 							/>
-						{/each}
-					</div>
-				</ToolPanel>
-			</section>
-		{/if}
+						</SectionBlock>
+					</section>
+				{/if}
+			</div>
+
+			<div class="ui-detail-sidebar">
+				{#if tracks.length > 0}
+					<section id="playlist-actions" class="ui-section-anchor" data-ui-block="primary-actions">
+						<SectionBlock
+							title="Actions"
+							subtitle="Play or share this playlist."
+							tone="secondary"
+						>
+							<div class="ui-action-row ui-action-row--progressive">
+								<button
+									onclick={handlePlayAll}
+									class="ui-action-button ui-action-button--primary"
+									aria-label="Play playlist"
+								>
+									<Play size={16} fill="currentColor" />
+									Play Playlist
+								</button>
+								<ShareButton type="playlist" id={playlist.uuid} variant="secondary" />
+							</div>
+						</SectionBlock>
+					</section>
+				{/if}
+
+				<section id="playlist-metadata" class="ui-section-anchor" data-ui-block="context-metadata">
+					<SectionBlock title="Metadata" subtitle="Creation and update dates.">
+						<DataGrid>
+							{#if playlist.created}
+								<div class="ui-data-point">
+									<p class="ui-data-point__label">Created</p>
+									<p class="ui-data-point__value">{new Date(playlist.created).toLocaleDateString()}</p>
+								</div>
+							{/if}
+							{#if playlist.lastUpdated}
+								<div class="ui-data-point">
+									<p class="ui-data-point__label">Last Updated</p>
+									<p class="ui-data-point__value">
+										{new Date(playlist.lastUpdated).toLocaleDateString()}
+									</p>
+								</div>
+							{/if}
+						</DataGrid>
+					</SectionBlock>
+				</section>
+
+				{#if playlist.promotedArtists && playlist.promotedArtists.length > 0}
+					<section id="playlist-artists" class="ui-section-anchor" data-ui-block="secondary-content">
+						<SectionBlock
+							title="Featured Artists"
+							subtitle="Artists promoted in this playlist."
+							tone="tertiary"
+						>
+							<div class="ui-list-surface ui-link-row-list">
+								{#each playlist.promotedArtists as artist (artist.id)}
+									<a
+										href={`/artist/${artist.id}`}
+										class="ui-link-row"
+										data-sveltekit-preload-data
+									>
+										<div class="ui-link-row__media ui-link-row__media--circle">
+											{#if artist.picture}
+												<img
+													src={losslessAPI.getArtistPictureUrl(artist.picture)}
+													alt={artist.name}
+												/>
+											{:else}
+												<span class="ui-list-row__media-fallback">
+													{(artist.name?.slice(0, 1) ?? 'A').toUpperCase()}
+												</span>
+											{/if}
+										</div>
+										<div class="ui-link-row__body">
+											<p class="ui-link-row__title">{artist.name}</p>
+											<p class="ui-link-row__subtitle">{artist.type || 'Artist'}</p>
+										</div>
+									</a>
+								{/each}
+							</div>
+						</SectionBlock>
+					</section>
+				{/if}
+			</div>
+		</div>
 	</div>
 {/if}

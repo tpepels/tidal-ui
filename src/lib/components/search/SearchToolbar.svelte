@@ -60,8 +60,7 @@
 	const isSearchInProgress = $derived(isLoading || isActiveTabLoading);
 </script>
 
-<section class="ui-tool-panel search-panel" data-tone="secondary" aria-label="Catalog search">
-	<p class="search-panel__label">Search</p>
+<section class="search-panel" aria-label="Catalog search">
 	<form
 		class="search-panel__form"
 		onsubmit={(event) => {
@@ -166,29 +165,24 @@
 
 <style>
 	.search-panel {
-		gap: 0.6rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.8rem;
+		padding-bottom: 0.9rem;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 	}
 
 	.search-panel__form {
 		display: flex;
 		flex-direction: column;
-		gap: 0.6rem;
+		gap: 0.75rem;
 		margin: 0;
-	}
-
-	.search-panel__label {
-		margin: 0;
-		font-size: 0.72rem;
-		font-weight: 700;
-		letter-spacing: 0.16em;
-		text-transform: uppercase;
-		color: rgba(214, 214, 214, 0.72);
 	}
 
 	.search-panel__row {
 		display: flex;
 		align-items: center;
-		gap: 0.55rem;
+		gap: 0.65rem;
 	}
 
 	.search-panel__row--secondary {
@@ -208,11 +202,11 @@
 		align-items: baseline;
 		gap: 0.42rem;
 		margin: 0;
-		font-size: 0.78rem;
+		font-size: 0.74rem;
 		font-weight: 700;
-		letter-spacing: 0.08em;
+		letter-spacing: 0.12em;
 		text-transform: uppercase;
-		color: rgba(232, 232, 232, 0.88);
+		color: rgba(198, 198, 198, 0.72);
 	}
 
 	.search-panel__field-label span {
@@ -224,41 +218,42 @@
 
 	.search-panel__field-hint {
 		margin: 0;
-		font-size: 0.8rem;
+		font-size: 0.84rem;
 		line-height: 1.3;
-		color: rgba(186, 186, 186, 0.8);
+		color: rgba(186, 186, 186, 0.72);
 	}
 
 	.search-panel__input {
 		width: 100%;
 		min-width: 0;
-		min-height: 2.7rem;
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		border-radius: var(--ui-radius-sm, 9px);
-		background: var(--ui-surface-0, #0d0d0d);
-		padding: 0.58rem 0.75rem;
+		min-height: 3rem;
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.08));
+		border-radius: 0.9rem;
+		background: rgba(255, 255, 255, 0.02);
+		padding: 0.72rem 0.9rem;
 		font-size: 1rem;
 		color: rgba(245, 245, 245, 0.96);
 		outline: none;
 	}
 
 	.search-panel__input:focus-visible {
-		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.16));
 	}
 
 	.search-panel__submit {
 		flex-shrink: 0;
-		min-width: 8.2rem;
+		min-width: 8.4rem;
+		min-height: 3rem;
 	}
 
 	.search-panel__strict {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.42rem;
-		padding: 0.6rem 0.7rem;
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		border-radius: var(--ui-radius-sm, 9px);
-		background: var(--ui-surface-0, #0d0d0d);
+		padding: 0.78rem 0.85rem;
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.08));
+		border-radius: 0.9rem;
+		background: rgba(255, 255, 255, 0.02);
 		font-size: 0.88rem;
 		color: rgba(212, 212, 212, 0.86);
 		white-space: nowrap;
@@ -325,6 +320,10 @@
 
 		.search-panel__submit {
 			width: 100%;
+		}
+
+		.search-panel__strict {
+			white-space: normal;
 		}
 	}
 </style>

@@ -105,17 +105,17 @@ let {
 
 	const variantClasses = {
 		ghost:
-			'border border-transparent text-gray-300 hover:border-white/20 hover:bg-white/10 hover:text-white',
-		primary: 'border border-white bg-white text-black hover:bg-white/90',
+			'border border-white/8 bg-white/[0.02] text-gray-300 hover:border-white/16 hover:bg-white/[0.05] hover:text-white',
+		primary: 'border border-white/16 bg-white text-black hover:border-white/22 hover:bg-white/95',
 		secondary:
-			'border border-white/15 bg-white/5 text-gray-100 hover:border-white/30 hover:bg-white/12'
+			'border border-white/8 bg-white/[0.02] text-gray-100 hover:border-white/16 hover:bg-white/[0.05]'
 	};
 </script>
 
 <div class="relative inline-block">
 	<button
 		bind:this={buttonRef}
-		class="share-trigger flex items-center gap-2 rounded-full transition-[background-color,border-color,color,transform] duration-200 ease-[cubic-bezier(0.2,0,0,1)] hover:-translate-y-px active:translate-y-0 {variantClasses[variant]} {iconOnly ? 'p-2' : 'px-4 py-2'}"
+		class="share-trigger flex items-center gap-2 rounded-full transition-[background-color,border-color,color] duration-200 ease-[cubic-bezier(0.2,0,0,1)] {variantClasses[variant]} {iconOnly ? 'p-2' : 'px-4 py-2'}"
 		onclick={(e) => {
 			e.stopPropagation();
 			showMenu = !showMenu;
@@ -139,10 +139,10 @@ let {
 		<div
 			bind:this={menuRef}
 			transition:scale={{ duration: prefersReducedMotion ? 0 : 120, start: prefersReducedMotion ? 1 : 0.97 }}
-			class="share-menu absolute right-0 top-full z-50 mt-2 w-48 origin-top-right rounded-lg border border-white/15 bg-black/95 p-1 shadow-none"
+			class="share-menu absolute right-0 top-full z-50 mt-2 w-48 origin-top-right rounded-2xl border border-white/10 bg-[#090909]/98 p-1 shadow-none"
 		>
 			<button
-				class="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
+				class="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-gray-300 transition-colors hover:bg-white/[0.06] hover:text-white"
 				onclick={(e) => {
 					e.stopPropagation();
 					copyToClipboard(getLongLink());
@@ -152,7 +152,7 @@ let {
 				Copy Link
 			</button>
 			<button
-				class="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
+				class="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-gray-300 transition-colors hover:bg-white/[0.06] hover:text-white"
 				onclick={(e) => {
 					e.stopPropagation();
 					copyToClipboard(getShortLink());
@@ -162,7 +162,7 @@ let {
 				Copy Short Link
 			</button>
 			<button
-				class="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
+				class="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-gray-300 transition-colors hover:bg-white/[0.06] hover:text-white"
 				onclick={(e) => {
 					e.stopPropagation();
 					copyToClipboard(getEmbedCode());

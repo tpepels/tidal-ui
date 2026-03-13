@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { Download, LoaderCircle, RotateCcw, X } from 'lucide-svelte';
 	import { losslessAPI } from '$lib/api';
+	import SectionBlock from '$lib/components/ui/SectionBlock.svelte';
+	import WindowedList from '$lib/components/ui/WindowedList.svelte';
 	import {
 		createDefaultAlbumDownloadState,
 		isAlbumQueueDownloadCancellable,
 		type AlbumDownloadState
 	} from '$lib/features/search/albumQueueController';
-	import WindowedList from '$lib/components/ui/WindowedList.svelte';
 	import type { Album } from '$lib/types';
 
 	interface Props {
@@ -77,30 +78,19 @@
 	}
 </script>
 
-<section
+<SectionBlock
 	id="search-section-albums"
-	class="search-section search-section--albums ui-perf-block"
-	data-tone="album"
+	title="Albums"
+	count={albums.length}
+	status={isMusicBrainzLoading ? 'Matching MusicBrainz…' : null}
+	className="ui-perf-block"
 >
-	<header class="search-section__header">
-		<div class="search-section__title-group">
-			<h2 class="search-section__title">Albums</h2>
-			{#if isMusicBrainzLoading}
-				<p class="search-section__status" aria-live="polite">
-					<LoaderCircle size={13} class="animate-spin" />
-					Matching MusicBrainz…
-				</p>
-			{/if}
-		</div>
-		<span class="search-section__count">{albums.length}</span>
-	</header>
 	<WindowedList
 		items={albums}
 		itemHeight={82}
 		overscan={6}
 		threshold={30}
-		className="search-list"
-		dataTone="album"
+		className="ui-list-surface"
 	>
 		{#snippet row(item)}
 			{@const album = item as Album}
@@ -108,28 +98,28 @@
 				albumDownloadStates[album.id] ?? createDefaultAlbumDownloadState(album.numberOfTracks ?? 0)}
 			{@const canCancelAlbumDownload = isAlbumQueueDownloadCancellable(albumDownloadState)}
 			{@const albumCoverSrc = getAlbumCoverSrc(album)}
-			<div class="search-row search-row--album ui-perf-row" data-window-item>
+			<div class="ui-list-row ui-list-row--actionable ui-perf-row" data-window-item>
 				<a
 					href={`/album/${album.id}`}
-					class="search-row__content search-row__content--link search-row__content--with-media"
+					class="ui-list-row__main"
 					aria-label={`Open album ${album.title}`}
 					data-sveltekit-preload-data
 				>
-					<div class="search-row__media" aria-hidden="true">
+					<div class="ui-list-row__media" aria-hidden="true">
 						{#if albumCoverSrc}
 							<img src={albumCoverSrc} alt="" loading="lazy" decoding="async" />
 						{:else}
-							<span class="search-row__media-fallback">
+							<span class="ui-list-row__media-fallback">
 								{(album.title?.slice(0, 1) ?? 'A').toUpperCase()}
 							</span>
 						{/if}
 					</div>
-					<div class="search-row__text">
-						<p class="search-row__title search-row__title--with-indicator">
-							<span class="search-row__title-text">{album.title}</span>
+					<div class="ui-list-row__text">
+						<p class="ui-list-row__title">
+							<span class="ui-list-row__title-text">{album.title}</span>
 							{#if albumMusicBrainzReleaseMatches[album.id]}
 								<span
-									class="search-row__musicbrainz-indicator"
+									class="ui-list-row__musicbrainz-indicator"
 									aria-label="Matched with MusicBrainz release"
 									title="Matched with MusicBrainz release"
 								>
@@ -137,7 +127,7 @@
 								</span>
 							{/if}
 						</p>
-						<p class="search-row__meta">
+						<p class="ui-list-row__meta ui-list-row__meta--wrap">
 							{album.artist?.name ?? 'Unknown artist'}
 							{#if album.releaseDate}
 								• {album.releaseDate.split('-')[0]}
@@ -161,7 +151,7 @@
 							? onCancelQueueDownload(album.id, event)
 							: onDownloadClick(album, event)}
 					type="button"
-					class="search-row__action"
+					class="ui-list-row__action"
 					disabled={albumDownloadState.status === 'submitting'}
 					aria-label={
 						canCancelAlbumDownload
@@ -187,222 +177,4 @@
 			</div>
 		{/snippet}
 	</WindowedList>
-</section>
-
-<style>
-	.search-section {
-		display: flex;
-		flex-direction: column;
-		gap: 0.55rem;
-		min-width: 0;
-	}
-
-	.search-section--albums {
-		order: 1;
-	}
-
-	.search-section__header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.5rem;
-	}
-
-	.search-section__title-group {
-		display: flex;
-		min-width: 0;
-		flex-direction: column;
-		gap: 0.12rem;
-	}
-
-	.search-section__title {
-		margin: 0;
-		font-size: 1.06rem;
-		line-height: 1.28;
-		color: rgba(255, 235, 212, 0.96);
-	}
-
-	.search-section__count {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		min-width: 1.75rem;
-		height: 1.4rem;
-		padding: 0 0.4rem;
-		border: 1px solid rgba(236, 187, 136, 0.52);
-		border-radius: 999px;
-		background: rgba(176, 122, 66, 0.18);
-		font-size: 0.8rem;
-		font-weight: 700;
-		color: rgba(255, 235, 212, 0.96);
-	}
-
-	.search-section__status {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.3rem;
-		margin: 0;
-		font-size: 0.72rem;
-		letter-spacing: 0.03em;
-		color: rgba(255, 213, 165, 0.86);
-	}
-
-	.search-section :global(.search-list) {
-		display: flex;
-		flex-direction: column;
-		border: 1px solid rgba(236, 187, 136, 0.42);
-		border-radius: var(--ui-radius-md, 12px);
-		background: linear-gradient(
-			180deg,
-			rgba(176, 122, 66, 0.16) 0%,
-			var(--ui-surface-raised, #121212) 100%
-		);
-		overflow: hidden;
-	}
-
-	.search-row {
-		display: flex;
-		align-items: center;
-		gap: 0.65rem;
-		padding: 0.66rem 0.78rem;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-		color: inherit;
-		text-decoration: none;
-	}
-
-	.search-section :global(.search-list > :last-child) {
-		border-bottom: 0;
-	}
-
-	.search-row:hover {
-		background: rgba(176, 122, 66, 0.24);
-	}
-
-	.search-row__content {
-		display: flex;
-		flex: 1;
-		min-width: 0;
-		flex-direction: column;
-		gap: 0.15rem;
-	}
-
-	.search-row__content--with-media {
-		flex-direction: row;
-		align-items: center;
-		gap: 0.68rem;
-	}
-
-	.search-row__text {
-		display: flex;
-		flex: 1;
-		min-width: 0;
-		flex-direction: column;
-		gap: 0.15rem;
-	}
-
-	.search-row__media {
-		flex-shrink: 0;
-		width: 2.8rem;
-		height: 2.8rem;
-		border-radius: var(--ui-radius-sm, 9px);
-		border: 1px solid rgba(236, 187, 136, 0.44);
-		background: rgba(176, 122, 66, 0.15);
-		overflow: hidden;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.search-row__media img {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		display: block;
-	}
-
-	.search-row__media-fallback {
-		font-size: 0.9rem;
-		font-weight: 700;
-		color: rgba(216, 216, 216, 0.84);
-	}
-
-	.search-row__content--link {
-		color: inherit;
-		text-decoration: none;
-	}
-
-	.search-row__title {
-		margin: 0;
-		font-size: 1rem;
-		line-height: 1.3;
-		font-weight: 650;
-		color: rgba(243, 243, 243, 0.98);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.search-row__title--with-indicator {
-		display: flex;
-		align-items: center;
-		gap: 0.34rem;
-	}
-
-	.search-row__title-text {
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.search-row__musicbrainz-indicator {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
-		width: 1rem;
-		height: 1rem;
-		border-radius: 999px;
-		border: 1px solid rgba(247, 165, 76, 0.62);
-		background: rgba(247, 165, 76, 0.12);
-	}
-
-	.search-row__musicbrainz-indicator img {
-		width: 0.72rem;
-		height: 0.72rem;
-		display: block;
-	}
-
-	.search-row__meta {
-		margin: 0;
-		font-size: 0.87rem;
-		line-height: 1.34;
-		color: rgba(196, 196, 196, 0.86);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.search-row__action {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 2.05rem;
-		height: 2.05rem;
-		border-radius: 999px;
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: var(--ui-surface-0, #0d0d0d);
-		color: rgba(235, 235, 235, 0.93);
-		flex-shrink: 0;
-	}
-
-	.search-row__action:hover:not(:disabled) {
-		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		background: var(--ui-surface-interactive, #171717);
-	}
-
-	.search-row__action:disabled {
-		opacity: 0.55;
-		cursor: not-allowed;
-	}
-</style>
+</SectionBlock>

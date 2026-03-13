@@ -37,9 +37,9 @@
 		type MusicBrainzArtistOption
 	} from '$lib/features/artist/artistMusicBrainzController';
 	import type { Album, ArtistDetails, ArtistRecommendations, AudioQuality } from '$lib/types';
-	import ActionPanel from '$lib/components/ui/ActionPanel.svelte';
 	import DataGrid from '$lib/components/ui/DataGrid.svelte';
 	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
+	import SectionBlock from '$lib/components/ui/SectionBlock.svelte';
 	import {
 		groupDiscography,
 		type DiscographyBestEditionRule
@@ -977,58 +977,47 @@
 
 
 
-		<!-- Artist Header -->
-		<div class="flex flex-col items-start gap-8 md:flex-row md:items-end" data-ui-block="entity-hero">
-			<div
-				class="aspect-square w-full flex-shrink-0 overflow-hidden rounded-full border border-white/12 bg-white/5 md:w-80"
-			>
-				{#if artistImage}
-					<img src={artistImage} alt={artist.name} class="h-full w-full object-cover" />
-				{:else}
-					<div class="flex h-full w-full items-center justify-center">
-						<User size={120} class="text-gray-600" />
-					</div>
-				{/if}
-			</div>
-
-			<div class="flex-1">
-				<p class="mb-2 text-sm text-gray-400">ARTIST</p>
-				<h1 class="mb-4 text-4xl font-bold md:text-6xl">{artist.name}</h1>
-
-				<div class="mb-6 flex flex-wrap items-center gap-2">
-					{#if artist.popularity}
-						<div class="ui-meta-pill">
-							Popularity: <span class="font-semibold text-white">{artist.popularity}</span>
+		<section class="ui-detail-hero" data-ui-block="entity-hero">
+			<div class="ui-detail-hero__layout">
+				<div class="ui-detail-hero__art ui-detail-hero__art--circle">
+					{#if artistImage}
+						<img src={artistImage} alt={artist.name} class="h-full w-full object-cover" />
+					{:else}
+						<div class="flex h-full w-full items-center justify-center">
+							<User size={120} class="text-gray-600" />
 						</div>
-					{/if}
-					{#if artist.artistTypes && artist.artistTypes.length > 0}
-						{#each artist.artistTypes as type (type)}
-							<div class="ui-meta-pill">
-								{type}
-							</div>
-						{/each}
 					{/if}
 				</div>
 
-				{#if artist.artistRoles && artist.artistRoles.length > 0}
-					<div class="mb-4">
-						<h3 class="mb-2 text-sm font-semibold text-gray-400">Roles</h3>
-						<div class="flex flex-wrap gap-2">
-							{#each artist.artistRoles as role (role.category)}
-								<div class="ui-meta-pill">
-									{role.category}
-								</div>
+				<div class="ui-detail-hero__body">
+					<p class="ui-detail-hero__eyebrow">Artist</p>
+					<h1 class="ui-detail-hero__title">{artist.name}</h1>
+
+					<div class="ui-detail-meta-strip">
+						{#if artist.popularity}
+							<div class="ui-detail-meta-item">
+								Popularity {artist.popularity}
+							</div>
+						{/if}
+						{#if artist.artistTypes && artist.artistTypes.length > 0}
+							{#each artist.artistTypes as type (type)}
+								<span class="ui-inline-tag">{type}</span>
 							{/each}
-						</div>
+						{/if}
+						{#if artist.artistRoles && artist.artistRoles.length > 0}
+							{#each artist.artistRoles as role (role.category)}
+								<span class="ui-inline-tag">{role.category}</span>
+							{/each}
+						{/if}
 					</div>
-				{/if}
+				</div>
 			</div>
-		</div>
+		</section>
 
 		<PageSectionNav items={sectionNavItems} sticky={true} />
 
-		<div class="flex flex-col gap-12 lg:grid lg:grid-cols-[minmax(0,1.55fr)_minmax(20rem,0.95fr)] lg:items-start lg:gap-8">
-			<div class="space-y-12">
+		<div class="ui-detail-columns">
+			<div class="ui-detail-main">
 				<section id="artist-top-tracks" class="ui-section-anchor" data-ui-block="main-content">
 					<ArtistTopTracksSection topTracks={topTracks} artistName={artist.name} />
 				</section>
@@ -1073,12 +1062,14 @@
 				</section>
 			</div>
 
-			<div class="space-y-8 lg:sticky lg:top-24">
+			<div class="ui-detail-sidebar">
 				<section id="artist-metadata" class="ui-section-anchor" data-ui-block="context-metadata">
-					<ActionPanel panelRole="musicbrainz-artist">
-						<svelte:fragment slot="header">
-							<div class="ui-action-subpanel__header">
-								<p class="ui-action-panel__intent">MusicBrainz Artist Metadata</p>
+					<SectionBlock
+						title="MusicBrainz"
+						subtitle="Resolved artist identity and facts."
+						tone="tertiary"
+					>
+						<svelte:fragment slot="actions">
 								<button
 									type="button"
 									onclick={() =>
@@ -1095,12 +1086,11 @@
 										Refresh Match
 									{/if}
 								</button>
-							</div>
 						</svelte:fragment>
 						{#if isMusicBrainzArtistLookupLoading && musicBrainzArtistOptions.length === 0}
 							<p class="ui-action-status">Searching MusicBrainz artists…</p>
 						{:else if musicBrainzArtistOptions.length > 0}
-							<label class="ui-action-panel__intent" for="musicbrainz-artist-select">
+							<label class="ui-section-block__eyebrow" for="musicbrainz-artist-select">
 								Selected Artist
 							</label>
 							<select
@@ -1175,7 +1165,7 @@
 						{#if musicBrainzArtistLookupError}
 							<p class="ui-action-status" data-tone="error">{musicBrainzArtistLookupError}</p>
 						{/if}
-					</ActionPanel>
+					</SectionBlock>
 				</section>
 
 				{#if hasRecommendationRail}

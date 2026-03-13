@@ -217,9 +217,9 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.45rem;
-		padding: 0.7rem 0;
-		border-top: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		border-bottom: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		padding: 0.55rem 0;
+		border-top: 1px solid var(--ui-divider, rgba(255, 255, 255, 0.08));
+		border-bottom: 1px solid var(--ui-divider, rgba(255, 255, 255, 0.08));
 	}
 
 	.ui-section-nav__link {
@@ -227,11 +227,11 @@
 		align-items: center;
 		justify-content: center;
 		min-height: 40px;
-		padding: 0.48rem 0.8rem;
-		border-radius: var(--ui-radius-sm, 8px);
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
-		font-size: 0.88rem;
+		padding: 0.44rem 0.72rem;
+		border-radius: 999px;
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.08));
+		background: rgba(255, 255, 255, 0.02);
+		font-size: 0.84rem;
 		font-weight: 600;
 		line-height: 1.25;
 		color: rgba(220, 220, 220, 0.84);
@@ -239,23 +239,18 @@
 		transition:
 			border-color var(--ui-motion-fast) var(--ui-ease-standard),
 			background var(--ui-motion-fast) var(--ui-ease-standard),
-			color var(--ui-motion-fast) var(--ui-ease-standard),
-			transform var(--ui-motion-fast) var(--ui-ease-emphasis);
+			color var(--ui-motion-fast) var(--ui-ease-standard);
 	}
 
 	.ui-section-nav__link:hover {
-		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.16));
+		background: rgba(255, 255, 255, 0.045);
 		color: rgba(245, 245, 245, 0.96);
-		transform: translateY(var(--ui-lift-y));
-	}
-
-	.ui-section-nav__link:active {
-		transform: translateY(var(--ui-press-y));
 	}
 
 	.ui-section-nav__link.is-active {
-		border-color: rgba(255, 255, 255, 0.32);
-		background: var(--ui-surface-2, rgba(255, 255, 255, 0.09));
+		border-color: rgba(255, 255, 255, 0.18);
+		background: rgba(255, 255, 255, 0.08);
 		color: rgba(255, 255, 255, 0.98);
 	}
 
@@ -275,7 +270,7 @@
 		.ui-section-nav--sticky {
 			position: sticky;
 			top: 0.72rem;
-			background: rgba(10, 10, 10, 0.94);
+			background: rgba(7, 7, 7, 0.94);
 		}
 	}
 

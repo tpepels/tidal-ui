@@ -368,7 +368,7 @@
 		<div class="app-shell">
 					<div class={`app-workspace ${isSidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}>
 					<aside
-						class="app-sidebar ui-shell-surface"
+						class="app-sidebar"
 						aria-label="Primary navigation"
 						bind:this={sidebarNavContainer}
 					>
@@ -500,7 +500,7 @@
 					</aside>
 
 					<main
-						class="app-main app-main--workspace ui-shell-surface !sm:mb-40 !mb-56"
+						class="app-main app-main--workspace !sm:mb-40 !mb-56"
 						style={`min-height: ${mainMinHeight}px; margin-bottom: ${mainMarginBottom}px;`}
 					>
 						<div class="app-main__inner">
@@ -544,7 +544,10 @@
 		margin: 0;
 		min-height: 100vh;
 		font-family: var(--ui-font-sans, 'Figtree', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif);
-		background: linear-gradient(180deg, #080808 0%, #101010 48%, #060606 100%);
+		background:
+			radial-gradient(circle at top left, rgba(255, 255, 255, 0.035) 0%, transparent 22%),
+			radial-gradient(circle at top right, rgba(159, 185, 246, 0.035) 0%, transparent 20%),
+			#070707;
 		background-attachment: fixed;
 		color: #f8fbff;
 	}
@@ -597,7 +600,7 @@
 		flex: 1;
 		display: grid;
 		grid-template-columns: clamp(230px, 20vw, 270px) minmax(0, 1fr);
-		gap: clamp(0.82rem, 1.5vw, 1.2rem);
+		gap: clamp(0.8rem, 1.4vw, 1.1rem);
 		padding: clamp(0.7rem, 1.4vw, 1.1rem);
 		align-items: start;
 		width: 100%;
@@ -613,14 +616,14 @@
 		display: flex;
 		flex-direction: column;
 		gap: 1rem;
-		padding: 1rem;
-		border-radius: var(--ui-radius-lg, 16px);
+		padding: 0 1rem 0 0;
+		border-radius: 0;
 		max-height: calc(100vh - clamp(1.6rem, 3.2vw, 2.8rem) - var(--player-height, 0px));
 		overflow-y: auto;
-		background: #101010;
-		border: 1px solid rgba(212, 212, 212, 0.24);
+		background: transparent;
+		border-right: 1px solid rgba(255, 255, 255, 0.08);
 		box-shadow: none;
-		animation: surface-rise 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+		animation: none;
 	}
 
 	.app-sidebar__header {
@@ -628,6 +631,7 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 0.5rem;
+		padding-right: 0.2rem;
 	}
 
 	.app-sidebar__brand {
@@ -644,10 +648,10 @@
 
 	.app-sidebar__subtitle {
 		margin: 0.15rem 0 0;
-		font-size: 0.88rem;
-		letter-spacing: 0.12em;
+		font-size: 0.8rem;
+		letter-spacing: 0.1em;
 		text-transform: uppercase;
-		color: rgba(212, 212, 212, 0.78);
+		color: rgba(212, 212, 212, 0.62);
 	}
 
 	.app-sidebar__section {
@@ -659,11 +663,11 @@
 
 	.app-sidebar__section-title {
 		margin: 0;
-		font-size: 0.82rem;
+		font-size: 0.72rem;
 		font-weight: 700;
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
-		color: rgba(161, 161, 161, 0.72);
+		color: rgba(161, 161, 161, 0.6);
 	}
 
 	.sidebar-icon-btn {
@@ -673,8 +677,8 @@
 		width: 2.2rem;
 		height: 2.2rem;
 		border-radius: var(--ui-radius-sm, 9px);
-		border: 1px solid rgba(212, 212, 212, 0.32);
-		background: rgba(17, 17, 17, 0.5);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		background: rgba(255, 255, 255, 0.02);
 		color: rgba(236, 236, 236, 0.95);
 		cursor: pointer;
 		transition:
@@ -684,9 +688,9 @@
 	}
 
 	.sidebar-icon-btn:hover {
-		transform: translateY(-1px);
-		border-color: rgba(255, 255, 255, 0.65);
-		background: rgba(24, 24, 24, 0.62);
+		transform: none;
+		border-color: rgba(255, 255, 255, 0.16);
+		background: rgba(255, 255, 255, 0.045);
 	}
 
 	.sidebar-icon-btn:active {
@@ -697,10 +701,10 @@
 		display: flex;
 		align-items: center;
 		gap: 0.55rem;
-		padding: 0.78rem 0.86rem;
+		padding: 0.74rem 0.82rem;
 		border-radius: var(--ui-radius-sm, 9px);
-		border: 1px solid rgba(212, 212, 212, 0.22);
-		background: var(--ui-surface-0, #141414);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		background: rgba(255, 255, 255, 0.02);
 		color: rgba(236, 236, 236, 0.9);
 		text-decoration: none;
 		font-size: 0.92rem;
@@ -711,9 +715,8 @@
 		overflow: hidden;
 		transition:
 			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1)),
 			background-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			box-shadow var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
+			color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
 	}
 
 	.sidebar-action::after {
@@ -726,10 +729,9 @@
 	}
 
 	.sidebar-action:hover:not(:disabled) {
-		transform: translateY(-1px);
-		border-color: rgba(255, 255, 255, 0.32);
-		background: #1a1a1a;
-		box-shadow: none;
+		transform: none;
+		border-color: rgba(255, 255, 255, 0.16);
+		background: rgba(255, 255, 255, 0.045);
 	}
 
 	.sidebar-action:hover::after {
@@ -741,8 +743,8 @@
 	}
 
 	.sidebar-action.is-active {
-		border-color: rgba(255, 255, 255, 0.6);
-		background: rgba(255, 255, 255, 0.12);
+		border-color: rgba(255, 255, 255, 0.22);
+		background: rgba(255, 255, 255, 0.08);
 		box-shadow: none;
 	}
 
@@ -769,8 +771,8 @@
 		min-width: 2.45rem;
 		padding: 0.22rem 0.45rem;
 		border-radius: var(--ui-radius-sm, 9px);
-		border: 1px solid rgba(255, 255, 255, 0.56);
-		background: rgba(255, 255, 255, 0.14);
+		border: 1px solid rgba(255, 255, 255, 0.16);
+		background: rgba(255, 255, 255, 0.08);
 		color: rgba(245, 245, 245, 0.96);
 		font-size: 0.84rem;
 		font-weight: 700;
@@ -794,12 +796,12 @@
 		justify-content: center;
 		padding: 0.25rem 0.55rem;
 		border-radius: var(--ui-radius-sm, 9px);
-		border: 1px solid rgba(212, 212, 212, 0.4);
-		background: rgba(12, 12, 12, 0.52);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		background: rgba(255, 255, 255, 0.02);
 		font-size: 0.82rem;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
-		color: rgba(235, 235, 235, 0.96);
+		color: rgba(215, 215, 215, 0.82);
 	}
 
 	.diagnostics-toggle {
@@ -830,25 +832,23 @@
 	}
 
 	.ui-shell-surface {
-		background: var(--surface-color);
-		border: 1px solid var(--surface-border, rgba(212, 212, 212, 0.2));
-		border-radius: var(--ui-radius-lg, 18px);
+		background: transparent;
+		border: 0;
+		border-radius: 0;
 		backdrop-filter: none;
 		-webkit-backdrop-filter: none;
 		box-shadow: none;
-		transition:
-			border-color 1.2s cubic-bezier(0.4, 0, 0.2, 1),
-			box-shadow 0.3s ease;
+		transition: none;
 	}
 
 	.app-main {
 		flex: 1;
-		padding: clamp(1.15rem, 1.85vw, 1.8rem);
+		padding: clamp(1rem, 1.9vw, 1.6rem);
 		margin: 0;
-		border-radius: var(--ui-radius-lg, 16px);
+		border-radius: 0;
 		position: relative;
 		z-index: 1;
-		animation: surface-rise 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+		animation: none;
 	}
 
 	.app-main--workspace {
@@ -861,7 +861,7 @@
 	}
 
 	.app-workspace.is-sidebar-collapsed .app-sidebar {
-		padding-inline: 0.5rem;
+		padding-inline: 0 0.35rem;
 	}
 
 	.app-workspace.is-sidebar-collapsed .app-sidebar__header {
@@ -893,7 +893,7 @@
 		align-items: center;
 		justify-content: center;
 		gap: 2rem;
-		background: transparent;
+		background: rgba(7, 7, 7, 0.72);
 		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
 		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
 		z-index: 50;
@@ -928,26 +928,6 @@
 		letter-spacing: 0.28em;
 		text-transform: uppercase;
 		color: rgba(236, 236, 236, 0.9);
-	}
-
-	@keyframes ambient-float {
-		0% {
-			transform: translate3d(0, 0, 0) scale(1);
-		}
-		100% {
-			transform: translate3d(24px, -20px, 0) scale(1.08);
-		}
-	}
-
-	@keyframes surface-rise {
-		0% {
-			opacity: 0;
-			transform: translateY(10px);
-		}
-		100% {
-			opacity: 1;
-			transform: translateY(0);
-		}
 	}
 
 	@keyframes shimmer {
