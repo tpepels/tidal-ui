@@ -181,16 +181,72 @@
 		return `${normalizeToken(artistName)}::${normalizeToken(albumTitle)}`;
 	}
 
+	function randomInt(maxExclusive: number): number {
+		if (maxExclusive <= 1) return 0;
+		return Math.floor(Math.random() * maxExclusive);
+	}
+
+	function pickWeightedRandomIndex(weights: number[]): number {
+		if (weights.length === 0) return -1;
+		const totalWeight = weights.reduce(
+			(total, weight) => total + (Number.isFinite(weight) && weight > 0 ? weight : 0),
+			0
+		);
+		if (!Number.isFinite(totalWeight) || totalWeight <= 0) {
+			return randomInt(weights.length);
+		}
+		let threshold = Math.random() * totalWeight;
+		for (let index = 0; index < weights.length; index += 1) {
+			const candidateWeight = weights[index];
+			const weight =
+				typeof candidateWeight === 'number' && Number.isFinite(candidateWeight) && candidateWeight > 0
+					? candidateWeight
+					: 0;
+			threshold -= weight;
+			if (threshold <= 0) {
+				return index;
+			}
+		}
+		return weights.length - 1;
+	}
+
+	function sampleSeedArtistCandidates(
+		artists: MediaLibraryArtistSuggestion[],
+		limit: number
+	): MediaLibraryArtistSuggestion[] {
+		const candidatePool = [...artists]
+			.map((candidate) => ({
+				candidate,
+				baseWeight: Math.max(1, candidate.trackCount) + Math.max(0, candidate.albumCount) * 1.5
+			}))
+			.sort((a, b) => {
+				if (b.baseWeight !== a.baseWeight) return b.baseWeight - a.baseWeight;
+				return a.candidate.artistName.localeCompare(b.candidate.artistName);
+			})
+			.slice(0, Math.max(limit * 2, SMART_SEED_LIMIT * 4));
+
+		const selected: MediaLibraryArtistSuggestion[] = [];
+		const workingPool = [...candidatePool];
+		while (selected.length < limit && workingPool.length > 0) {
+			const weights = workingPool.map((entry, index) => {
+				const rankFactor = (workingPool.length - index) / workingPool.length;
+				const randomJitter = Math.random() * Math.max(2, entry.baseWeight * 0.35);
+				return entry.baseWeight * (0.75 + rankFactor * 0.5) + randomJitter;
+			});
+			const pickedIndex = pickWeightedRandomIndex(weights);
+			if (pickedIndex < 0 || pickedIndex >= workingPool.length) {
+				break;
+			}
+			selected.push(workingPool[pickedIndex]?.candidate ?? workingPool[0].candidate);
+			workingPool.splice(pickedIndex, 1);
+		}
+		return selected;
+	}
+
 	async function resolveSeedArtists(
 		artists: MediaLibraryArtistSuggestion[]
 	): Promise<SeedArtist[]> {
-		const rankedCandidates = [...artists]
-			.sort((a, b) => {
-				if (b.trackCount !== a.trackCount) return b.trackCount - a.trackCount;
-				if (b.albumCount !== a.albumCount) return b.albumCount - a.albumCount;
-				return a.artistName.localeCompare(b.artistName);
-			})
-			.slice(0, SMART_SEED_LIMIT * 4);
+		const rankedCandidates = sampleSeedArtistCandidates(artists, SMART_SEED_LIMIT * 4);
 		const resolved: SeedArtist[] = [];
 		const seenArtistIds = new Set<number>();
 		for (const candidate of rankedCandidates) {
