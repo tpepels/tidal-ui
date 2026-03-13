@@ -186,7 +186,10 @@ export const searchStoreActions = {
 					payload.isPlaylistConversionMode ?? store.isPlaylistConversionMode,
 				playlistConversionTotal:
 					payload.playlistConversionTotal ?? store.playlistConversionTotal,
-				playlistLoadingMessage: payload.playlistLoadingMessage ?? store.playlistLoadingMessage
+				playlistLoadingMessage:
+					payload.playlistLoadingMessage !== undefined
+						? payload.playlistLoadingMessage
+						: store.playlistLoadingMessage
 			};
 		});
 	},

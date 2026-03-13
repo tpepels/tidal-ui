@@ -45,4 +45,12 @@ describe('searchStoreAdapter', () => {
 		expect(state.isLoading).toBe(false);
 		expect(state.results?.tracks.length).toBe(1);
 	});
+
+	it('allows playlist loading message to be cleared with null', () => {
+		searchStoreActions.commit({ playlistLoadingMessage: 'Scanning artist catalogs 3/10 • 22 albums' });
+		expect(get(searchStore).playlistLoadingMessage).toContain('Scanning artist catalogs');
+
+		searchStoreActions.commit({ playlistLoadingMessage: null });
+		expect(get(searchStore).playlistLoadingMessage).toBeNull();
+	});
 });

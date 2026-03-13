@@ -211,10 +211,27 @@
 		};
 	};
 
+	type MusicBrainzReleaseSearchOption = {
+		id: string;
+		title?: string;
+		trackCount?: number;
+		date?: string;
+	};
+
+	type MusicBrainzReleaseSearchResponse = {
+		success?: boolean;
+		releases?: MusicBrainzReleaseSearchOption[];
+	};
+
 	const ALBUM_QUEUE_POLL_INTERVAL_MS = 1000;
+	const ALBUM_MUSICBRAINZ_LOOKUP_CONCURRENCY = 3;
+	const ALBUM_MUSICBRAINZ_LOOKUP_LIMIT = 24;
 	let albumDownloadStates = $state<Record<number, AlbumDownloadState>>({});
+	let albumMusicBrainzReleaseMatches = $state<Record<number, string>>({});
 	const albumQueuePollTimers = new Map<number, ReturnType<typeof setInterval>>();
 	const albumQueuePollTokens = new Map<number, number>();
+	const albumMusicBrainzLookupCache = new Map<string, string | null>();
+	let albumMusicBrainzLookupToken = 0;
 
 	const trackResults = $derived($searchStore.results?.tracks ?? []);
 	const albumResults = $derived($searchStore.results?.albums ?? []);
@@ -613,6 +630,72 @@
 		if (mutated) {
 			albumDownloadStates = nextState;
 		}
+
+		const nextMusicBrainzMatches: Record<number, string> = {};
+		let mutatedMatches = false;
+		for (const [albumId, releaseId] of Object.entries(albumMusicBrainzReleaseMatches)) {
+			const numericId = Number(albumId);
+			if (activeIds.has(numericId)) {
+				nextMusicBrainzMatches[numericId] = releaseId;
+			} else {
+				mutatedMatches = true;
+			}
+		}
+		if (mutatedMatches) {
+			albumMusicBrainzReleaseMatches = nextMusicBrainzMatches;
+		}
+	});
+
+	$effect(() => {
+		if (albumResults.length === 0) {
+			albumMusicBrainzLookupToken += 1;
+			return;
+		}
+
+		const candidates = albumResults
+			.map((album) => {
+				const lookupKey = resolveAlbumMusicBrainzLookupKey(album);
+				return { album, lookupKey };
+			})
+			.filter(
+				(entry): entry is { album: Album; lookupKey: string } =>
+					typeof entry.lookupKey === 'string' &&
+					!albumMusicBrainzReleaseMatches[entry.album.id] &&
+					!albumMusicBrainzLookupCache.has(entry.lookupKey)
+			)
+			.slice(0, ALBUM_MUSICBRAINZ_LOOKUP_LIMIT);
+
+		if (candidates.length === 0) {
+			return;
+		}
+
+		const lookupToken = ++albumMusicBrainzLookupToken;
+		const queue = [...candidates];
+		const workerCount = Math.min(ALBUM_MUSICBRAINZ_LOOKUP_CONCURRENCY, queue.length);
+
+		const runLookup = async (): Promise<void> => {
+			const workers = Array.from({ length: workerCount }, async () => {
+				while (queue.length > 0) {
+					const next = queue.shift();
+					if (!next) return;
+
+					const releaseId = await resolveAlbumMusicBrainzReleaseMatch(next.album, next.lookupKey);
+					if (lookupToken !== albumMusicBrainzLookupToken) {
+						return;
+					}
+					if (!releaseId || albumMusicBrainzReleaseMatches[next.album.id]) {
+						continue;
+					}
+					albumMusicBrainzReleaseMatches = {
+						...albumMusicBrainzReleaseMatches,
+						[next.album.id]: releaseId
+					};
+				}
+			});
+			await Promise.all(workers);
+		};
+
+		void runLookup();
 	});
 
 	async function handleSearch() {
@@ -648,6 +731,153 @@
 			return null;
 		}
 		return losslessAPI.getCoverUrl(album.cover, '160');
+	}
+
+	function normalizeMusicBrainzText(value: string | undefined): string {
+		if (!value) return '';
+		return value
+			.normalize('NFKD')
+			.replace(/[\u0300-\u036f]/g, '')
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, ' ')
+			.trim();
+	}
+
+	function musicBrainzTitlesLikelyMatch(albumTitle: string, releaseTitle: string): boolean {
+		const normalizedAlbumTitle = normalizeMusicBrainzText(albumTitle);
+		const normalizedReleaseTitle = normalizeMusicBrainzText(releaseTitle);
+		if (!normalizedAlbumTitle || !normalizedReleaseTitle) {
+			return false;
+		}
+		if (
+			normalizedAlbumTitle === normalizedReleaseTitle ||
+			normalizedAlbumTitle.includes(normalizedReleaseTitle) ||
+			normalizedReleaseTitle.includes(normalizedAlbumTitle)
+		) {
+			return true;
+		}
+
+		const albumTokens = normalizedAlbumTitle.split(' ').filter((token) => token.length > 1);
+		const releaseTokens = new Set(
+			normalizedReleaseTitle.split(' ').filter((token) => token.length > 1)
+		);
+		if (albumTokens.length === 0 || releaseTokens.size === 0) {
+			return false;
+		}
+		const matchedTokens = albumTokens.filter((token) => releaseTokens.has(token)).length;
+		return matchedTokens >= Math.max(1, Math.ceil(albumTokens.length * 0.75));
+	}
+
+	function resolveMusicBrainzReleaseTrackCount(release: MusicBrainzReleaseSearchOption): number | null {
+		const trackCount = Number(release.trackCount);
+		if (!Number.isFinite(trackCount) || trackCount <= 0) {
+			return null;
+		}
+		return Math.trunc(trackCount);
+	}
+
+	function compareMusicBrainzReleaseDateDesc(
+		left: MusicBrainzReleaseSearchOption,
+		right: MusicBrainzReleaseSearchOption
+	): number {
+		const leftDate = left.date?.trim() ?? '';
+		const rightDate = right.date?.trim() ?? '';
+		if (!leftDate && !rightDate) return 0;
+		if (!leftDate) return 1;
+		if (!rightDate) return -1;
+		return rightDate.localeCompare(leftDate);
+	}
+
+	function resolveAlbumTrackCountForMusicBrainz(album: Album): number | null {
+		const value = Number(album.numberOfTracks);
+		if (!Number.isFinite(value) || value <= 0) {
+			return null;
+		}
+		return Math.trunc(value);
+	}
+
+	function resolveAlbumMusicBrainzLookupKey(album: Album): string | null {
+		const title = album.title?.trim() ?? '';
+		const artistName = album.artist?.name?.trim() ?? '';
+		const trackCount = resolveAlbumTrackCountForMusicBrainz(album);
+		if (!title || !artistName || !trackCount) {
+			return null;
+		}
+		const normalizedTitle = normalizeMusicBrainzText(title);
+		const normalizedArtist = normalizeMusicBrainzText(artistName);
+		const releaseDate = album.releaseDate?.trim() ?? '';
+		const upc = album.upc?.trim() ?? '';
+		return `${normalizedTitle}::${normalizedArtist}::${trackCount}::${releaseDate}::${upc}`;
+	}
+
+	async function resolveAlbumMusicBrainzReleaseMatch(
+		album: Album,
+		lookupKey: string
+	): Promise<string | null> {
+		if (albumMusicBrainzLookupCache.has(lookupKey)) {
+			return albumMusicBrainzLookupCache.get(lookupKey) ?? null;
+		}
+
+		const albumTitle = album.title?.trim() ?? '';
+		const artistName = album.artist?.name?.trim() ?? '';
+		const trackCount = resolveAlbumTrackCountForMusicBrainz(album);
+		if (!albumTitle || !artistName || !trackCount) {
+			albumMusicBrainzLookupCache.set(lookupKey, null);
+			return null;
+		}
+
+		try {
+			const response = await fetch('/api/metadata/musicbrainz-release-search', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					albumTitle,
+					artistName,
+					releaseDate: album.releaseDate,
+					upc: album.upc,
+					limit: 16
+				})
+			});
+			const payload = (await response.json().catch(() => null)) as
+				| MusicBrainzReleaseSearchResponse
+				| null;
+			if (!response.ok || !payload?.success || !Array.isArray(payload.releases)) {
+				albumMusicBrainzLookupCache.set(lookupKey, null);
+				return null;
+			}
+
+			const compatibleReleases = payload.releases
+				.filter(
+					(release) =>
+						typeof release?.id === 'string' &&
+						release.id.length > 0 &&
+						typeof release.title === 'string' &&
+						musicBrainzTitlesLikelyMatch(albumTitle, release.title)
+				)
+				.filter((release) => {
+					const releaseTrackCount = resolveMusicBrainzReleaseTrackCount(release);
+					return releaseTrackCount !== null && releaseTrackCount >= trackCount;
+				})
+				.sort((left, right) => {
+					const leftTrackCount =
+						resolveMusicBrainzReleaseTrackCount(left) ?? Number.MAX_SAFE_INTEGER;
+					const rightTrackCount =
+						resolveMusicBrainzReleaseTrackCount(right) ?? Number.MAX_SAFE_INTEGER;
+					const leftDistance = Math.abs(leftTrackCount - trackCount);
+					const rightDistance = Math.abs(rightTrackCount - trackCount);
+					if (leftDistance !== rightDistance) {
+						return leftDistance - rightDistance;
+					}
+					return compareMusicBrainzReleaseDateDesc(left, right);
+				});
+
+			const matchId = compatibleReleases[0]?.id ?? null;
+			albumMusicBrainzLookupCache.set(lookupKey, matchId);
+			return matchId;
+		} catch {
+			albumMusicBrainzLookupCache.set(lookupKey, null);
+			return null;
+		}
 	}
 
 	function getArtistPortraitSrc(artist: { picture?: string | undefined }): string | null {
@@ -706,6 +936,7 @@
 
 	onDestroy(unsubscribeRegion);
 	onDestroy(() => {
+		albumMusicBrainzLookupToken += 1;
 		stopAllAlbumQueuePolling();
 	});
 </script>
@@ -778,35 +1009,44 @@
 
 			{#if !isQueryAUrl && isScopeSelected('albums')}
 				<div class="search-panel__row search-panel__row--secondary">
-					<input
-						id="album-artist-filter"
-						type="text"
-						value={albumArtistFilter}
-						oninput={(event) => {
-							const target = event.currentTarget as HTMLInputElement | null;
-							if (target) {
-								albumArtistFilter = target.value;
-							}
-						}}
-						placeholder="Optional artist filter (supports * and ?)"
-						class="search-panel__input"
-					/>
-					<label class="search-panel__strict">
+					<div class="search-panel__field">
+						<label class="search-panel__field-label" for="album-artist-filter">
+							Album Artist Filter
+							<span>Album search only</span>
+						</label>
 						<input
-							type="checkbox"
-							checked={strictAlbumArtistMatch}
-							onchange={(event) => {
+							id="album-artist-filter"
+							type="text"
+							value={albumArtistFilter}
+							oninput={(event) => {
 								const target = event.currentTarget as HTMLInputElement | null;
 								if (target) {
-									strictAlbumArtistMatch = target.checked;
+									albumArtistFilter = target.value;
 								}
 							}}
-							disabled={!albumArtistFilter.trim()}
+							placeholder="Artist name or wildcard (*, ?)"
+							class="search-panel__input"
 						/>
-						<span>Strict full-name match</span>
-					</label>
-				</div>
-			{/if}
+						<p class="search-panel__field-hint">
+							Applies only to album results. Artist/track/playlist results stay unfiltered.
+						</p>
+					</div>
+						<label class="search-panel__strict">
+							<input
+								type="checkbox"
+								checked={strictAlbumArtistMatch}
+							onchange={(event) => {
+								const target = event.currentTarget as HTMLInputElement | null;
+									if (target) {
+										strictAlbumArtistMatch = target.checked;
+									}
+								}}
+								disabled={!albumArtistFilter.trim()}
+							/>
+							<span>Strict album artist match</span>
+						</label>
+					</div>
+				{/if}
 		</form>
 	</section>
 
@@ -825,7 +1065,11 @@
 		{#if hasAnySearchResults}
 			<div class="search-sections">
 				{#if trackResults.length > 0}
-					<section id="search-section-tracks" class="search-section" data-tone="tertiary">
+					<section
+						id="search-section-tracks"
+						class="search-section search-section--tracks"
+						data-tone="tertiary"
+					>
 						<header class="search-section__header">
 							<h2 class="search-section__title">Songs</h2>
 							<span class="search-section__count" data-tone="tertiary">{trackResults.length}</span>
@@ -897,7 +1141,7 @@
 				{/if}
 
 				{#if albumResults.length > 0}
-					<section id="search-section-albums" class="search-section">
+					<section id="search-section-albums" class="search-section search-section--albums">
 						<header class="search-section__header">
 							<h2 class="search-section__title">Albums</h2>
 							<span class="search-section__count">{albumResults.length}</span>
@@ -909,40 +1153,51 @@
 									createDefaultAlbumDownloadState(album.numberOfTracks ?? 0)}
 								{@const canCancelAlbumDownload = isAlbumQueueDownloadCancellable(albumDownloadState)}
 								{@const albumCoverSrc = getAlbumCoverSrc(album)}
-								<div class="search-row search-row--album">
-									<a
-										href={`/album/${album.id}`}
-										class="search-row__content search-row__content--link search-row__content--with-media"
-										aria-label={`Open album ${album.title}`}
-										data-sveltekit-preload-data
-									>
-										<div class="search-row__media search-row__media--album" aria-hidden="true">
-											{#if albumCoverSrc}
-												<img src={albumCoverSrc} alt="" loading="lazy" />
-											{:else}
-												<span class="search-row__media-fallback">
-													{(album.title?.slice(0, 1) ?? 'A').toUpperCase()}
-												</span>
-											{/if}
-										</div>
-										<div class="search-row__text">
-											<p class="search-row__title">{album.title}</p>
-											<p class="search-row__meta">
-												{album.artist?.name ?? 'Unknown artist'}
-												{#if album.releaseDate}
-													• {album.releaseDate.split('-')[0]}
+									<div class="search-row search-row--album">
+										<a
+											href={`/album/${album.id}`}
+											class="search-row__content search-row__content--link search-row__content--with-media"
+											aria-label={`Open album ${album.title}`}
+											data-sveltekit-preload-data
+										>
+											<div class="search-row__media search-row__media--album" aria-hidden="true">
+												{#if albumCoverSrc}
+													<img src={albumCoverSrc} alt="" loading="lazy" />
+												{:else}
+													<span class="search-row__media-fallback">
+														{(album.title?.slice(0, 1) ?? 'A').toUpperCase()}
+													</span>
 												{/if}
-												• {displayTrackTotal(album.numberOfTracks)} track{displayTrackTotal(
-													album.numberOfTracks
-												) === 1
-													? ''
-													: 's'}
-												{#if albumStatusText(albumDownloadState)}
-													• {albumStatusText(albumDownloadState)}
-												{/if}
-											</p>
-										</div>
-									</a>
+											</div>
+											<div class="search-row__text">
+												<p class="search-row__title search-row__title--with-indicator">
+													<span class="search-row__title-text">{album.title}</span>
+													{#if albumMusicBrainzReleaseMatches[album.id]}
+														<span
+															class="search-row__musicbrainz-indicator"
+															aria-label="Matched with MusicBrainz release"
+															title="Matched with MusicBrainz release"
+														>
+															<img src="/icons/musicbrainz-32.png" alt="" aria-hidden="true" />
+														</span>
+													{/if}
+												</p>
+												<p class="search-row__meta">
+													{album.artist?.name ?? 'Unknown artist'}
+													{#if album.releaseDate}
+														• {album.releaseDate.split('-')[0]}
+													{/if}
+													• {displayTrackTotal(album.numberOfTracks)} track{displayTrackTotal(
+														album.numberOfTracks
+													) === 1
+														? ''
+														: 's'}
+													{#if albumStatusText(albumDownloadState)}
+														• {albumStatusText(albumDownloadState)}
+													{/if}
+												</p>
+											</div>
+										</a>
 									<button
 										onclick={(event) =>
 											canCancelAlbumDownload
@@ -977,7 +1232,11 @@
 				{/if}
 
 				{#if artistResults.length > 0}
-					<section id="search-section-artists" class="search-section" data-tone="secondary">
+					<section
+						id="search-section-artists"
+						class="search-section search-section--artists"
+						data-tone="secondary"
+					>
 						<header class="search-section__header">
 							<h2 class="search-section__title">Artists</h2>
 							<span class="search-section__count" data-tone="secondary">{artistResults.length}</span>
@@ -1018,7 +1277,11 @@
 				{/if}
 
 				{#if playlistResults.length > 0}
-					<section id="search-section-playlists" class="search-section" data-tone="secondary">
+					<section
+						id="search-section-playlists"
+						class="search-section search-section--playlists"
+						data-tone="secondary"
+					>
 						<header class="search-section__header">
 							<h2 class="search-section__title">Playlists</h2>
 							<span class="search-section__count" data-tone="secondary">{playlistResults.length}</span>
@@ -1129,6 +1392,40 @@
 		align-items: stretch;
 	}
 
+	.search-panel__field {
+		display: flex;
+		flex: 1;
+		min-width: 0;
+		flex-direction: column;
+		gap: 0.34rem;
+	}
+
+	.search-panel__field-label {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 0.42rem;
+		margin: 0;
+		font-size: 0.78rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: rgba(232, 232, 232, 0.88);
+	}
+
+	.search-panel__field-label span {
+		font-size: 0.72rem;
+		letter-spacing: 0.04em;
+		text-transform: none;
+		color: rgba(186, 186, 186, 0.8);
+	}
+
+	.search-panel__field-hint {
+		margin: 0;
+		font-size: 0.8rem;
+		line-height: 1.3;
+		color: rgba(186, 186, 186, 0.8);
+	}
+
 	.search-panel__input {
 		width: 100%;
 		min-width: 0;
@@ -1200,8 +1497,8 @@
 	}
 
 	.search-sections {
-		display: flex;
-		flex-direction: column;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
 		gap: 1rem;
 	}
 
@@ -1209,6 +1506,23 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.55rem;
+		min-width: 0;
+	}
+
+	.search-section--albums {
+		order: 1;
+	}
+
+	.search-section--artists {
+		order: 2;
+	}
+
+	.search-section--tracks {
+		order: 3;
+	}
+
+	.search-section--playlists {
+		order: 4;
 	}
 
 	.search-section__header {
@@ -1397,6 +1711,37 @@
 		text-overflow: ellipsis;
 	}
 
+	.search-row__title--with-indicator {
+		display: flex;
+		align-items: center;
+		gap: 0.34rem;
+	}
+
+	.search-row__title-text {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.search-row__musicbrainz-indicator {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		width: 1rem;
+		height: 1rem;
+		border-radius: 999px;
+		border: 1px solid rgba(247, 165, 76, 0.62);
+		background: rgba(247, 165, 76, 0.12);
+	}
+
+	.search-row__musicbrainz-indicator img {
+		width: 0.72rem;
+		height: 0.72rem;
+		display: block;
+	}
+
 	.search-row__meta {
 		margin: 0;
 		font-size: 0.87rem;
@@ -1468,6 +1813,14 @@
 		.search-panel__strict {
 			width: 100%;
 			justify-content: center;
+		}
+	}
+
+	@media (min-width: 1080px) {
+		.search-sections {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			align-items: start;
+			gap: 1.05rem;
 		}
 	}
 
