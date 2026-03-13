@@ -3,6 +3,7 @@ import type {
 	MediaLibraryCorrectAndDeduplicateStatusResult,
 	MediaLibraryDeduplicateStatusResult
 } from '$lib/utils/mediaLibraryClient';
+import { createAdaptivePollingController } from '$lib/utils/adaptivePolling';
 
 type SettingsStatusPollerOptions<TStatus> = {
 	fetchStatus: () => Promise<TStatus>;
@@ -23,14 +24,18 @@ export function createSettingsStatusPoller<TStatus>(
 ): SettingsStatusPoller {
 	const intervalMs = Number.isFinite(options.intervalMs) ? Math.max(100, options.intervalMs ?? 1000) : 1000;
 	let pollToken = 0;
-	let pollInterval: ReturnType<typeof setInterval> | null = null;
+	let pollController = createAdaptivePollingController({
+		run: async () => {
+			await runPoll(pollToken);
+		},
+		visibleIntervalMs: intervalMs,
+		hiddenIntervalMs: Math.max(intervalMs * 4, intervalMs + 2_000),
+		pauseWhenHidden: true
+	});
 
 	const stop = (): void => {
 		pollToken += 1;
-		if (pollInterval) {
-			clearInterval(pollInterval);
-			pollInterval = null;
-		}
+		pollController.stop();
 	};
 
 	const runPoll = async (token: number): Promise<void> => {
@@ -51,10 +56,15 @@ export function createSettingsStatusPoller<TStatus>(
 	const start = (): void => {
 		stop();
 		const token = pollToken;
-		void runPoll(token);
-		pollInterval = setInterval(() => {
-			void runPoll(token);
-		}, intervalMs);
+		pollController = createAdaptivePollingController({
+			run: async () => {
+				await runPoll(token);
+			},
+			visibleIntervalMs: intervalMs,
+			hiddenIntervalMs: Math.max(intervalMs * 4, intervalMs + 2_000),
+			pauseWhenHidden: true
+		});
+		pollController.start();
 	};
 
 	return { start, stop };

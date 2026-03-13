@@ -17,7 +17,11 @@
 	}
 </script>
 
-<section id="search-section-artists" class="search-section search-section--artists" data-tone="secondary">
+<section
+	id="search-section-artists"
+	class="search-section search-section--artists ui-perf-block"
+	data-tone="secondary"
+>
 	<header class="search-section__header">
 		<h2 class="search-section__title">Artists</h2>
 		<span class="search-section__count" data-tone="secondary">{artists.length}</span>
@@ -27,14 +31,14 @@
 			{@const artistPortraitSrc = getArtistPortraitSrc(artist)}
 			<a
 				href={`/artist/${artist.id}`}
-				class="search-row search-row--link"
+				class="search-row search-row--link ui-perf-row"
 				data-tone="secondary"
 				aria-label={`Open artist ${artist.name}`}
 				data-sveltekit-preload-data
 			>
 				<div class="search-row__media search-row__media--artist" data-tone="secondary" aria-hidden="true">
 					{#if artistPortraitSrc}
-						<img src={artistPortraitSrc} alt="" loading="lazy" />
+						<img src={artistPortraitSrc} alt="" loading="lazy" decoding="async" />
 					{:else}
 						<span class="search-row__media-fallback">
 							{(artist.name?.slice(0, 1) ?? 'A').toUpperCase()}

@@ -854,6 +854,14 @@ textarea {
 	transform: translateY(var(--ui-lift-y));
 }
 
+@media (min-width: 960px) {
+	.ui-action-panel--sticky {
+		position: sticky;
+		top: 4.9rem;
+		z-index: 7;
+	}
+}
+
 .ui-action-panel[data-tone='secondary'] {
 	border-color: var(--ui-tone-secondary-border, rgba(159, 185, 246, 0.42));
 	background: linear-gradient(
@@ -1158,6 +1166,10 @@ textarea {
 	overflow-wrap: anywhere;
 }
 
+.ui-section-anchor {
+	scroll-margin-top: 8.6rem;
+}
+
 .ui-select {
 	border-radius: var(--ui-radius-sm, 8px);
 	border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
@@ -1199,6 +1211,32 @@ textarea {
 .ui-surface-grid {
 	display: grid;
 	gap: 0.85rem;
+}
+
+@supports (content-visibility: auto) {
+	.ui-perf-block,
+	.ui-perf-card,
+	.ui-perf-row,
+	.ui-perf-log-entry {
+		content-visibility: auto;
+		contain: layout style paint;
+	}
+
+	.ui-perf-block {
+		contain-intrinsic-size: auto 560px;
+	}
+
+	.ui-perf-card {
+		contain-intrinsic-size: auto 340px;
+	}
+
+	.ui-perf-row {
+		contain-intrinsic-size: auto 84px;
+	}
+
+	.ui-perf-log-entry {
+		contain-intrinsic-size: auto 56px;
+	}
 }
 
 @media (min-width: 940px) {
@@ -1672,5 +1710,12 @@ textarea {
 	.library-suggestions-columns > :nth-child(n + 6),
 	.download-manager-content > .section:nth-child(n + 6) {
 		animation-delay: calc(var(--ui-stagger-step) * 6);
+	}
+
+	.ui-media-grid > :nth-child(n + 9) {
+		opacity: 1;
+		transform: none;
+		animation: none;
+		will-change: auto;
 	}
 }

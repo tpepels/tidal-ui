@@ -16,13 +16,21 @@ This plan breaks them into focused modules without changing user-facing behavior
 
 ## Progress Snapshot (2026-03-13)
 - `src/lib/components/SearchInterface.svelte`: 1920 -> 599 LOC
+- `src/lib/services/search/searchService.ts`: 1163 -> 173 LOC
 - `src/routes/artist/[id]/+page.svelte`: 2617 -> 1198 LOC
 - `src/routes/+layout.svelte`: 2179 -> 1030 LOC
 - `src/lib/components/pages/SettingsPageContent.svelte`: 1927 -> 894 LOC
 - `src/lib/components/DownloadManager.svelte`: 3842 -> 918 LOC
 - `src/lib/components/AudioPlayer.svelte`: 1284 -> 986 LOC
 - `src/lib/api.ts`: 2396 -> 3 LOC (facade only)
+- `src/lib/api/catalog.ts`: 1478 -> 77 LOC (facade/orchestration only)
 - `src/lib/apiClient.ts`: 2396 -> 1199 LOC
+- `src/lib/server/downloadQueueManager.ts`: 1133 -> 547 LOC
+- `src/lib/server/downloadQueueWorker.ts`: 1873 -> 831 LOC
+- `src/lib/server/musicBrainzLookup.ts`: 1196 -> 313 LOC
+- `src/lib/server/mediaLibrary.ts`: 1921 -> 31 LOC (facade only)
+- `src/routes/library-suggestions/+page.svelte`: 956 -> 657 LOC
+- `src/routes/album/[id]/+page.svelte`: 1175 -> 1005 LOC
 
 ## Refactor Objectives
 1. Reduce cognitive load by splitting files by responsibility (UI rendering vs orchestration vs IO).
@@ -79,6 +87,7 @@ This plan breaks them into focused modules without changing user-facing behavior
   - [x] `ArtistDiscographySection.svelte`
   - [x] `ArtistTopTracksSection.svelte`
 - Exit criteria: route file < 1200 LOC and no direct polling maps/timers in page shell.
+  - Follow-up: album detail route still needs one more controller split to move under the tighter v2 route-shell target.
 
 ### Phase 4: Layout + Settings Split
 - [x] Move maintenance/repair/dedupe workflows from `+layout.svelte` into:
@@ -105,11 +114,20 @@ This plan breaks them into focused modules without changing user-facing behavior
 ### Phase 6: API Layer Segmentation
 - [ ] Split `src/lib/api.ts` into domain modules (catalog, playback, metadata, downloads, playlists).
 - [x] Keep `api.ts` as typed facade/re-export layer for compatibility.
-- [ ] Align with existing `src/lib/api/catalog.ts` pattern and remove duplicate helper logic.
+- [x] Align with existing `src/lib/api/catalog.ts` pattern and remove duplicate helper logic.
 - [x] Exit criteria: root `api.ts` < 700 LOC, consumers unchanged.
   - [x] Extracted `src/lib/api/coverDownload.ts`, `src/lib/api/metadataEmbedding.ts`, and `src/lib/api/trackBlob.ts` from `apiClient`.
   - [x] Extracted `src/lib/api/streamManifest.ts` and `src/lib/api/streamDownload.ts` from `apiClient`.
   - [x] Stream/download orchestration in `apiClient` reduced under 1200 LOC.
+  - [x] Extracted search service internals into `searchTypes.ts`, `searchCache.ts`, `searchErrors.ts`, `searchQuery.ts`, `searchRanking.ts`, and `searchAlbumEnrichment.ts`.
+  - [x] Extracted catalog internals into `catalogTypes.ts`, `catalogRequestState.ts`, `catalogAlbumResponse.ts`, `catalogAlbum.ts`, `catalogArtist.ts`, `catalogArtistTransport.ts`, and `catalogArtistRecommendations.ts`.
+  - [x] Extracted queue manager types/policy/repository into `downloadQueueTypes.ts`, `downloadQueuePolicy.ts`, and `downloadQueueRepository.ts`.
+  - [x] Extracted worker policy/album parsing into `downloadQueueWorkerPolicy.ts` and `downloadQueueWorkerAlbumResponse.ts`.
+  - [x] Extracted worker startup/control/track/album-fetch concerns into `downloadQueueWorkerControl.ts`, `downloadQueueWorkerStaging.ts`, `downloadQueueWorkerTrack.ts`, and `downloadQueueWorkerAlbumFetch.ts`.
+  - [x] Extracted MusicBrainz types/helpers/cache/http/scoring concerns into `musicBrainzTypes.ts`, `musicBrainzHelpers.ts`, `musicBrainzCache.ts`, `musicBrainzHttp.ts`, and `musicBrainzScoring.ts`.
+  - [x] Extracted media-library shared/cache/lookup/integrity/transient/dedupe concerns into `mediaLibraryShared.ts`, `mediaLibraryCache.ts`, `mediaLibraryLookup.ts`, `mediaLibraryIntegrity.ts`, `mediaLibraryTransient.ts`, and `mediaLibraryDedupe.ts`.
+  - [x] Extracted library-suggestions recommendation/cache model into `src/lib/features/library-suggestions/librarySuggestionsModel.ts`.
+  - [x] Extracted album detail MusicBrainz/queue/playback/track-list helpers into `src/lib/features/album/*`.
 
 ## Work Order (Recommended)
 1. Phase 1 (safety net)
@@ -134,9 +152,9 @@ This plan breaks them into focused modules without changing user-facing behavior
    **Mitigation:** Merge per phase in small PRs; do not batch all phases in one commit.
 
 ## First Execution TODO (Next Actionable Slice)
-1. Create `src/lib/features/search/` with controller stubs.
-2. Move album queue polling/actions out of `SearchInterface.svelte`.
-3. Add tests for:
-   - queue state transitions (`queued -> processing -> completed/failed/paused`)
-   - cancellation/resume behavior
-4. Keep markup unchanged while wiring controller API.
+1. Finish `src/routes/album/[id]/+page.svelte` by extracting album load + download/repair orchestration into feature controllers.
+2. Add focused tests for:
+   - album page stale-request guards and queue polling
+   - album MusicBrainz default-selection behavior
+   - library suggestions cache restore/regenerate flow
+3. Revisit `src/routes/playlist/[id]/+page.svelte` for the next route-shell reduction pass.

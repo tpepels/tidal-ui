@@ -9,6 +9,7 @@
 	import ToolPanel from '$lib/components/ui/ToolPanel.svelte';
 	import DataGrid from '$lib/components/ui/DataGrid.svelte';
 	import StateBlock from '$lib/components/ui/StateBlock.svelte';
+	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 	import type { Playlist, Track } from '$lib/types';
 	import { ArrowLeft, Play, User, Clock, LoaderCircle } from 'lucide-svelte';
@@ -21,6 +22,21 @@
 	let activeRequestToken = 0;
 
 	const playlistId = $derived($page.params.id);
+	const sectionNavItems = $derived.by(() => {
+		const items: Array<{
+			id: string;
+			label: string;
+			tone?: 'secondary' | 'tertiary';
+		}> = [
+			{ id: 'playlist-actions', label: 'Actions', tone: 'secondary' as const },
+			{ id: 'playlist-tracks', label: 'Tracks' }
+		];
+		if (playlist?.promotedArtists && playlist.promotedArtists.length > 0) {
+			items.push({ id: 'playlist-artists', label: 'Featured Artists', tone: 'tertiary' as const });
+		}
+		items.push({ id: 'playlist-metadata', label: 'Metadata' });
+		return items;
+	});
 
 	$effect(() => {
 		const normalizedPlaylistId = (playlistId ?? '').trim();
@@ -175,35 +191,75 @@
 						</div>
 					{/if}
 				</div>
-
-				{#if tracks.length > 0}
-					<div data-ui-block="primary-actions">
-						<ActionPanel
-							intent="Playlist Actions"
-							summary="Play this playlist or share it."
-							intentful={true}
-							panelRole="playlist-actions"
-						>
-							<div class="ui-action-row ui-action-row--progressive">
-								<button
-									onclick={handlePlayAll}
-									class="ui-action-button ui-action-button--primary"
-									aria-label="Play playlist"
-								>
-									<Play size={16} fill="currentColor" />
-									Play Playlist
-								</button>
-								<ShareButton type="playlist" id={playlist.uuid} variant="secondary" />
-							</div>
-						</ActionPanel>
-					</div>
-				{/if}
 			</div>
 		</div>
 
+		<PageSectionNav items={sectionNavItems} sticky={true} />
+
+		{#if tracks.length > 0}
+			<section id="playlist-actions" class="ui-section-anchor" data-ui-block="primary-actions">
+				<ActionPanel
+					intent="Playlist Actions"
+					summary="Play this playlist or share it."
+					intentful={true}
+					sticky={true}
+					panelRole="playlist-actions"
+				>
+					<div class="ui-action-row ui-action-row--progressive">
+						<button
+							onclick={handlePlayAll}
+							class="ui-action-button ui-action-button--primary"
+							aria-label="Play playlist"
+						>
+							<Play size={16} fill="currentColor" />
+							Play Playlist
+						</button>
+						<ShareButton type="playlist" id={playlist.uuid} variant="secondary" />
+					</div>
+				</ActionPanel>
+			</section>
+		{/if}
+
+		<section id="playlist-metadata" class="ui-section-anchor" data-ui-block="context-metadata">
+			<ActionPanel intent="Playlist Metadata" summary="Creation and update dates." intentful={true}>
+				<DataGrid>
+					{#if playlist.created}
+						<div class="ui-data-point">
+							<p class="ui-data-point__label">Created</p>
+							<p class="ui-data-point__value">{new Date(playlist.created).toLocaleDateString()}</p>
+						</div>
+					{/if}
+					{#if playlist.lastUpdated}
+						<div class="ui-data-point">
+							<p class="ui-data-point__label">Last Updated</p>
+							<p class="ui-data-point__value">
+								{new Date(playlist.lastUpdated).toLocaleDateString()}
+							</p>
+						</div>
+					{/if}
+				</DataGrid>
+			</ActionPanel>
+		</section>
+
+		<!-- Tracks -->
+		{#if tracks.length > 0}
+			<section id="playlist-tracks" class="ui-section-anchor mt-8" data-ui-block="main-content">
+				<h2 class="mb-4 text-2xl font-bold">Tracks</h2>
+				<TrackList {tracks} />
+			</section>
+		{:else}
+			<section id="playlist-tracks" class="ui-section-anchor" data-ui-block="main-content">
+				<StateBlock
+					kind="empty"
+					title="No tracks in this playlist"
+					message="The playlist currently has no playable tracks."
+				/>
+			</section>
+		{/if}
+
 		<!-- Promoted Artists -->
 		{#if playlist.promotedArtists && playlist.promotedArtists.length > 0}
-			<div data-ui-block="secondary-content">
+			<section id="playlist-artists" class="ui-section-anchor" data-ui-block="secondary-content">
 				<ToolPanel
 					eyebrow="Secondary"
 					title="Featured Artists"
@@ -223,45 +279,7 @@
 						{/each}
 					</div>
 				</ToolPanel>
-			</div>
+			</section>
 		{/if}
-
-		<!-- Tracks -->
-		{#if tracks.length > 0}
-			<div class="mt-8" data-ui-block="main-content">
-				<h2 class="mb-4 text-2xl font-bold">Tracks</h2>
-				<TrackList {tracks} />
-			</div>
-		{:else}
-			<div data-ui-block="main-content">
-				<StateBlock
-					kind="empty"
-					title="No tracks in this playlist"
-					message="The playlist currently has no playable tracks."
-				/>
-			</div>
-		{/if}
-
-		<!-- Metadata -->
-		<div data-ui-block="context-metadata">
-			<ActionPanel intent="Playlist Metadata" summary="Creation and update dates." intentful={true}>
-				<DataGrid>
-					{#if playlist.created}
-						<div class="ui-data-point">
-							<p class="ui-data-point__label">Created</p>
-							<p class="ui-data-point__value">{new Date(playlist.created).toLocaleDateString()}</p>
-						</div>
-					{/if}
-					{#if playlist.lastUpdated}
-						<div class="ui-data-point">
-							<p class="ui-data-point__label">Last Updated</p>
-							<p class="ui-data-point__value">
-								{new Date(playlist.lastUpdated).toLocaleDateString()}
-							</p>
-						</div>
-					{/if}
-				</DataGrid>
-			</ActionPanel>
-		</div>
 	</div>
 {/if}

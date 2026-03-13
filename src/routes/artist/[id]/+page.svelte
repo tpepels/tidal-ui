@@ -40,7 +40,7 @@
 	import ShareButton from '$lib/components/ShareButton.svelte';
 	import ActionPanel from '$lib/components/ui/ActionPanel.svelte';
 	import DataGrid from '$lib/components/ui/DataGrid.svelte';
-	import StateBlock from '$lib/components/ui/StateBlock.svelte';
+	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
 	import {
 		groupDiscography,
 		type DiscographyBestEditionRule
@@ -199,6 +199,28 @@
 			musicBrainzArtistOptions.find((candidate) => candidate.id === selectedMusicBrainzArtistId) ??
 			null
 	);
+	const hasRecommendationRail = $derived(
+		recommendationsLoading ||
+			Boolean(recommendationsError) ||
+			recommendedArtists.length > 0 ||
+			recommendedAlbums.length > 0
+	);
+	const hasHighlightsSection = $derived(featuredDiscographyAlbums.length > 0);
+	const sectionNavItems = $derived.by(() => {
+		const items = [
+			{ id: 'artist-actions', label: 'Actions', tone: 'secondary' as const },
+			{ id: 'artist-metadata', label: 'MusicBrainz', tone: 'tertiary' as const },
+			{ id: 'artist-top-tracks', label: 'Top Tracks' }
+		];
+		if (hasRecommendationRail) {
+			items.push({ id: 'artist-recommendations', label: 'Recommendations', tone: 'tertiary' as const });
+		}
+		if (hasHighlightsSection) {
+			items.push({ id: 'artist-highlights', label: 'Highlights' });
+		}
+		items.push({ id: 'artist-discography', label: 'Discography' });
+		return items;
+	});
 
 	$effect(() => {
 		const id = Number(artistId);
@@ -959,7 +981,6 @@
 
 		<!-- Artist Header -->
 		<div class="flex flex-col items-start gap-8 md:flex-row md:items-end" data-ui-block="entity-hero">
-			<!-- Artist Picture -->
 			<div
 				class="aspect-square w-full flex-shrink-0 overflow-hidden rounded-full border border-white/12 bg-white/5 md:w-80"
 			>
@@ -972,137 +993,9 @@
 				{/if}
 			</div>
 
-			<!-- Artist Info -->
 			<div class="flex-1">
 				<p class="mb-2 text-sm text-gray-400">ARTIST</p>
 				<h1 class="mb-4 text-4xl font-bold md:text-6xl">{artist.name}</h1>
-
-				<div class="mb-6" data-ui-block="primary-actions">
-					<ActionPanel
-						intent="Artist Actions"
-						summary="Share this artist or open the official profile."
-						intentful={true}
-						panelRole="artist-actions"
-					>
-						<div class="ui-action-row ui-action-row--progressive">
-							<ShareButton type="artist" id={artist.id} variant="secondary" />
-							{#if artist.url}
-								<a
-									href={artist.url}
-									target="_blank"
-									rel="noopener noreferrer"
-									class="ui-action-button"
-								>
-									Open Artist Profile
-								</a>
-							{/if}
-						</div>
-					</ActionPanel>
-				</div>
-
-				<div class="mb-6" data-ui-block="context-metadata">
-					<ActionPanel panelRole="musicbrainz-artist">
-						<svelte:fragment slot="header">
-							<div class="ui-action-subpanel__header">
-								<p class="ui-action-panel__intent">MusicBrainz Artist Metadata</p>
-								<button
-									type="button"
-									onclick={() =>
-										lookupMusicBrainzArtists({
-											id: artist!.id,
-											name: artist!.name
-										})}
-									class="ui-chip-button ui-chip-button--compact"
-									disabled={isMusicBrainzArtistLookupLoading}
-								>
-									{#if isMusicBrainzArtistLookupLoading}
-										Refreshing…
-									{:else}
-										Refresh Match
-									{/if}
-								</button>
-							</div>
-						</svelte:fragment>
-					{#if isMusicBrainzArtistLookupLoading && musicBrainzArtistOptions.length === 0}
-						<p class="ui-action-status">Searching MusicBrainz artists…</p>
-					{:else if musicBrainzArtistOptions.length > 0}
-						<label class="ui-action-panel__intent" for="musicbrainz-artist-select">
-							Selected Artist
-						</label>
-						<select
-							id="musicbrainz-artist-select"
-							class="ui-select w-full"
-							bind:value={selectedMusicBrainzArtistId}
-						>
-							{#each musicBrainzArtistOptions as candidate, index (candidate.id)}
-								<option value={candidate.id}>
-									{index === 0 ? 'Best Match - ' : ''}{candidate.name || 'Unnamed artist'}
-									{#if candidate.country}
-										· {candidate.country}
-									{/if}
-									{#if candidate.type}
-										· {candidate.type}
-									{/if}
-								</option>
-							{/each}
-						</select>
-						{#if selectedMusicBrainzArtist}
-							<DataGrid gridRole="artist-musicbrainz-facts">
-								{#if selectedMusicBrainzArtist.type}
-									<div class="ui-data-point">
-										<p class="ui-data-point__label">Type</p>
-										<p class="ui-data-point__value">{selectedMusicBrainzArtist.type}</p>
-									</div>
-								{/if}
-								{#if selectedMusicBrainzArtist.country}
-									<div class="ui-data-point">
-										<p class="ui-data-point__label">Country</p>
-										<p class="ui-data-point__value">{selectedMusicBrainzArtist.country}</p>
-									</div>
-								{/if}
-								{#if selectedMusicBrainzArtist.area}
-									<div class="ui-data-point">
-										<p class="ui-data-point__label">Area</p>
-										<p class="ui-data-point__value">{selectedMusicBrainzArtist.area}</p>
-									</div>
-								{/if}
-								{#if formatMusicBrainzArtistLifeSpan(selectedMusicBrainzArtist)}
-									<div class="ui-data-point">
-										<p class="ui-data-point__label">Life Span</p>
-										<p class="ui-data-point__value">
-											{formatMusicBrainzArtistLifeSpan(selectedMusicBrainzArtist)}
-										</p>
-									</div>
-								{/if}
-								{#if typeof selectedMusicBrainzArtist.score === 'number'}
-									<div class="ui-data-point">
-										<p class="ui-data-point__label">Match Score</p>
-										<p class="ui-data-point__value">{selectedMusicBrainzArtist.score}/100</p>
-									</div>
-								{/if}
-							</DataGrid>
-							{#if selectedMusicBrainzArtist.disambiguation}
-								<p class="ui-action-status">{selectedMusicBrainzArtist.disambiguation}</p>
-							{/if}
-							<p class="ui-action-status">
-								<a
-									href={`https://musicbrainz.org/artist/${selectedMusicBrainzArtist.id}`}
-									target="_blank"
-									rel="noopener noreferrer"
-									class="text-gray-300 underline decoration-dotted underline-offset-2 transition-colors hover:text-white"
-								>
-									Open artist in MusicBrainz
-								</a>
-							</p>
-						{/if}
-					{:else if hasMusicBrainzArtistLookupAttempted}
-						<p class="ui-action-status">No MusicBrainz artist match found for this artist.</p>
-					{/if}
-					{#if musicBrainzArtistLookupError}
-						<p class="ui-action-status" data-tone="error">{musicBrainzArtistLookupError}</p>
-					{/if}
-					</ActionPanel>
-				</div>
 
 				<div class="mb-6 flex flex-wrap items-center gap-2">
 					{#if artist.popularity}
@@ -1130,69 +1023,214 @@
 							{/each}
 						</div>
 					</div>
+				{/if}
+			</div>
+		</div>
+
+		<PageSectionNav items={sectionNavItems} sticky={true} />
+
+		<section id="artist-actions" class="ui-section-anchor" data-ui-block="primary-actions">
+			<ActionPanel
+				intent="Artist Actions"
+				summary="Share this artist or open the official profile."
+				intentful={true}
+				sticky={true}
+				panelRole="artist-actions"
+			>
+				<div class="ui-action-row ui-action-row--progressive">
+					<ShareButton type="artist" id={artist.id} variant="secondary" />
+					{#if artist.url}
+						<a
+							href={artist.url}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="ui-action-button"
+						>
+							Open Artist Profile
+						</a>
 					{/if}
 				</div>
-			</div>
-			<!-- Music Overview -->
-			<div class="space-y-12">
+			</ActionPanel>
+		</section>
+
+		<section id="artist-metadata" class="ui-section-anchor" data-ui-block="context-metadata">
+			<ActionPanel panelRole="musicbrainz-artist">
+				<svelte:fragment slot="header">
+					<div class="ui-action-subpanel__header">
+						<p class="ui-action-panel__intent">MusicBrainz Artist Metadata</p>
+						<button
+							type="button"
+							onclick={() =>
+								lookupMusicBrainzArtists({
+									id: artist!.id,
+									name: artist!.name
+								})}
+							class="ui-chip-button ui-chip-button--compact"
+							disabled={isMusicBrainzArtistLookupLoading}
+						>
+							{#if isMusicBrainzArtistLookupLoading}
+								Refreshing…
+							{:else}
+								Refresh Match
+							{/if}
+						</button>
+					</div>
+				</svelte:fragment>
+				{#if isMusicBrainzArtistLookupLoading && musicBrainzArtistOptions.length === 0}
+					<p class="ui-action-status">Searching MusicBrainz artists…</p>
+				{:else if musicBrainzArtistOptions.length > 0}
+					<label class="ui-action-panel__intent" for="musicbrainz-artist-select">
+						Selected Artist
+					</label>
+					<select
+						id="musicbrainz-artist-select"
+						class="ui-select w-full"
+						bind:value={selectedMusicBrainzArtistId}
+					>
+						{#each musicBrainzArtistOptions as candidate, index (candidate.id)}
+							<option value={candidate.id}>
+								{index === 0 ? 'Best Match - ' : ''}{candidate.name || 'Unnamed artist'}
+								{#if candidate.country}
+									· {candidate.country}
+								{/if}
+								{#if candidate.type}
+									· {candidate.type}
+								{/if}
+							</option>
+						{/each}
+					</select>
+					{#if selectedMusicBrainzArtist}
+						<DataGrid gridRole="artist-musicbrainz-facts">
+							{#if selectedMusicBrainzArtist.type}
+								<div class="ui-data-point">
+									<p class="ui-data-point__label">Type</p>
+									<p class="ui-data-point__value">{selectedMusicBrainzArtist.type}</p>
+								</div>
+							{/if}
+							{#if selectedMusicBrainzArtist.country}
+								<div class="ui-data-point">
+									<p class="ui-data-point__label">Country</p>
+									<p class="ui-data-point__value">{selectedMusicBrainzArtist.country}</p>
+								</div>
+							{/if}
+							{#if selectedMusicBrainzArtist.area}
+								<div class="ui-data-point">
+									<p class="ui-data-point__label">Area</p>
+									<p class="ui-data-point__value">{selectedMusicBrainzArtist.area}</p>
+								</div>
+							{/if}
+							{#if formatMusicBrainzArtistLifeSpan(selectedMusicBrainzArtist)}
+								<div class="ui-data-point">
+									<p class="ui-data-point__label">Life Span</p>
+									<p class="ui-data-point__value">
+										{formatMusicBrainzArtistLifeSpan(selectedMusicBrainzArtist)}
+									</p>
+								</div>
+							{/if}
+							{#if typeof selectedMusicBrainzArtist.score === 'number'}
+								<div class="ui-data-point">
+									<p class="ui-data-point__label">Match Score</p>
+									<p class="ui-data-point__value">{selectedMusicBrainzArtist.score}/100</p>
+								</div>
+							{/if}
+						</DataGrid>
+						{#if selectedMusicBrainzArtist.disambiguation}
+							<p class="ui-action-status">{selectedMusicBrainzArtist.disambiguation}</p>
+						{/if}
+						<p class="ui-action-status">
+							<a
+								href={`https://musicbrainz.org/artist/${selectedMusicBrainzArtist.id}`}
+								target="_blank"
+								rel="noopener noreferrer"
+								class="text-gray-300 underline decoration-dotted underline-offset-2 transition-colors hover:text-white"
+							>
+								Open artist in MusicBrainz
+							</a>
+						</p>
+					{/if}
+				{:else if hasMusicBrainzArtistLookupAttempted}
+					<p class="ui-action-status">No MusicBrainz artist match found for this artist.</p>
+				{/if}
+				{#if musicBrainzArtistLookupError}
+					<p class="ui-action-status" data-tone="error">{musicBrainzArtistLookupError}</p>
+				{/if}
+			</ActionPanel>
+		</section>
+
+		<div class="space-y-12">
+			<section id="artist-top-tracks" class="ui-section-anchor" data-ui-block="main-content">
 				<ArtistTopTracksSection topTracks={topTracks} artistName={artist.name} />
-				<ArtistRecommendationsRail
-					artistId={artist.id}
-					artistName={artist.name}
-				{recommendations}
-				{recommendationsLoading}
-				{recommendationsError}
-				{recommendedArtists}
-					{recommendedAlbums}
-					{formatAlbumMeta}
-				/>
-				<ArtistDiscographyHighlights
-					artistId={artist.id}
-					artistName={artist.name}
-				{featuredDiscographyAlbums}
-				{albumCoverOverrides}
-				{albumCoverFailures}
-				coverHydrationGeneration={coverHydrationGeneration}
-				{formatAlbumMeta}
-					onAlbumCoverError={handleAlbumCoverError}
-					onAlbumCoverLoad={handleAlbumCoverLoad}
-				/>
+			</section>
+
+			{#if hasRecommendationRail}
+				<section id="artist-recommendations" class="ui-section-anchor" data-ui-block="secondary-content">
+					<ArtistRecommendationsRail
+						artistId={artist.id}
+						artistName={artist.name}
+						{recommendations}
+						{recommendationsLoading}
+						{recommendationsError}
+						{recommendedArtists}
+						{recommendedAlbums}
+						{formatAlbumMeta}
+					/>
+				</section>
+			{/if}
+
+			{#if hasHighlightsSection}
+				<section id="artist-highlights" class="ui-section-anchor" data-ui-block="secondary-content">
+					<ArtistDiscographyHighlights
+						artistId={artist.id}
+						artistName={artist.name}
+						{featuredDiscographyAlbums}
+						{albumCoverOverrides}
+						{albumCoverFailures}
+						coverHydrationGeneration={coverHydrationGeneration}
+						{formatAlbumMeta}
+						onAlbumCoverError={handleAlbumCoverError}
+						onAlbumCoverLoad={handleAlbumCoverLoad}
+					/>
+				</section>
+			{/if}
+
+			<section id="artist-discography" class="ui-section-anchor" data-ui-block="main-content">
 				<ArtistDiscographySection
 					artistId={artist.id}
 					artistName={artist.name}
-				{discography}
-				visibleDiscography={visibleDiscography}
-				discographyAlbums={discographyAlbums}
-				discographyEps={discographyEps}
-				discographySingles={discographySingles}
-				discographyInfo={discographyInfo}
-				downloadQuality={downloadQuality}
-				bestEditionRule={bestEditionRule}
-				discographyFilterState={discographyFilterState}
-				filtersHideAllDiscography={filtersHideAllDiscography}
-				isDownloadingDiscography={isDownloadingDiscography}
-				discographyProgress={discographyProgress}
-				discographyError={discographyError}
-				discographyMissingCoverCount={discographyMissingCoverCount}
-				albumCoverOverrides={albumCoverOverrides}
-				albumCoverFailures={albumCoverFailures}
-				coverHydrationGeneration={coverHydrationGeneration}
-				albumDownloadStates={albumDownloadStates}
-				albumLibraryPresence={albumLibraryPresence}
-				{displayTrackTotal}
-				{formatAlbumMeta}
-				{formatQualityLabel}
-				onDownloadDiscography={handleDownloadDiscography}
-				onBestEditionRuleChange={(rule) => {
-					bestEditionRule = rule;
-				}}
-				onToggleDiscographyFilter={toggleDiscographyFilter}
-				onResetDiscographyFilters={resetDiscographyFilters}
-				onCancelAlbumQueueDownload={cancelAlbumQueueDownload}
-				onAlbumDownload={handleAlbumDownload}
-				onAlbumCoverError={handleAlbumCoverError}
+					{discography}
+					visibleDiscography={visibleDiscography}
+					discographyAlbums={discographyAlbums}
+					discographyEps={discographyEps}
+					discographySingles={discographySingles}
+					discographyInfo={discographyInfo}
+					downloadQuality={downloadQuality}
+					bestEditionRule={bestEditionRule}
+					discographyFilterState={discographyFilterState}
+					filtersHideAllDiscography={filtersHideAllDiscography}
+					isDownloadingDiscography={isDownloadingDiscography}
+					discographyProgress={discographyProgress}
+					discographyError={discographyError}
+					discographyMissingCoverCount={discographyMissingCoverCount}
+					albumCoverOverrides={albumCoverOverrides}
+					albumCoverFailures={albumCoverFailures}
+					coverHydrationGeneration={coverHydrationGeneration}
+					albumDownloadStates={albumDownloadStates}
+					albumLibraryPresence={albumLibraryPresence}
+					{displayTrackTotal}
+					{formatAlbumMeta}
+					{formatQualityLabel}
+					onDownloadDiscography={handleDownloadDiscography}
+					onBestEditionRuleChange={(rule) => {
+						bestEditionRule = rule;
+					}}
+					onToggleDiscographyFilter={toggleDiscographyFilter}
+					onResetDiscographyFilters={resetDiscographyFilters}
+					onCancelAlbumQueueDownload={cancelAlbumQueueDownload}
+					onAlbumDownload={handleAlbumDownload}
+					onAlbumCoverError={handleAlbumCoverError}
 					onAlbumCoverLoad={handleAlbumCoverLoad}
 				/>
-			</div>
+			</section>
 		</div>
+	</div>
 	{/if}

@@ -4,6 +4,7 @@
  */
 
 import { writable, derived } from 'svelte/store';
+import { createAdaptivePollingController } from '$lib/utils/adaptivePolling';
 
 export interface ServerQueueStatus {
 	queued: number;
@@ -61,10 +62,29 @@ const initialState: ServerQueueState = {
 function createServerQueueStore() {
 	const { subscribe, update } = writable<ServerQueueState>(initialState);
 
-	// Polling interval
-	let pollInterval: NodeJS.Timeout | null = null;
 	let pollingIntervalMs = 500;
 	let pollInFlight = false;
+	let adaptivePoller = createAdaptivePollingController({
+		run: async () => {
+			await poll();
+		},
+		visibleIntervalMs: pollingIntervalMs,
+		hiddenIntervalMs: Math.max(5_000, pollingIntervalMs * 10),
+		pauseWhenHidden: false,
+		onSchedule: (nextPollAt, intervalMs) => {
+			update((state) => ({
+				...state,
+				nextPollAt,
+				pollIntervalMs: intervalMs
+			}));
+		},
+		onPaused: () => {
+			update((state) => ({
+				...state,
+				nextPollAt: 0
+			}));
+		}
+	});
 
 	async function poll() {
 		if (pollInFlight) {
@@ -132,27 +152,38 @@ function createServerQueueStore() {
 	return {
 		subscribe,
 		startPolling: (intervalMs: number = 500) => {
-			if (pollInterval) clearInterval(pollInterval);
 			pollingIntervalMs = intervalMs;
+			adaptivePoller.stop();
+			adaptivePoller = createAdaptivePollingController({
+				run: async () => {
+					await poll();
+				},
+				visibleIntervalMs: pollingIntervalMs,
+				hiddenIntervalMs: Math.max(5_000, pollingIntervalMs * 10),
+				pauseWhenHidden: false,
+				onSchedule: (nextPollAt, effectiveIntervalMs) => {
+					update((state) => ({
+						...state,
+						pollIntervalMs: effectiveIntervalMs,
+						nextPollAt
+					}));
+				},
+				onPaused: () => {
+					update((state) => ({
+						...state,
+						nextPollAt: 0
+					}));
+				}
+			});
 			update((state) => ({
 				...state,
 				pollIntervalMs: intervalMs,
 				nextPollAt: Date.now() + intervalMs
 			}));
-			poll(); // Initial fetch
-			pollInterval = setInterval(() => {
-				update((state) => ({
-					...state,
-					nextPollAt: Date.now() + pollingIntervalMs
-				}));
-				void poll();
-			}, intervalMs);
+			adaptivePoller.start();
 		},
 		stopPolling: () => {
-			if (pollInterval) {
-				clearInterval(pollInterval);
-				pollInterval = null;
-			}
+			adaptivePoller.stop();
 			update((state) => ({
 				...state,
 				nextPollAt: 0

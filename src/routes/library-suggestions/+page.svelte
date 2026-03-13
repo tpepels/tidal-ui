@@ -4,49 +4,27 @@
 	import { fetchMediaLibrarySuggestions, type MediaLibraryAlbumSuggestion, type MediaLibraryArtistSuggestion } from '$lib/utils/mediaLibraryClient';
 	import { losslessAPI } from '$lib/api';
 	import { getCoverCacheKey, getUnifiedCoverCandidates, prefetchCoverCandidates } from '$lib/utils/coverPipeline';
+	import {
+		buildSearchHref,
+		buildSmartSuggestions,
+		createSuggestionSeed,
+		createSuggestionsSnapshot,
+		type ScoredAlbum,
+		type ScoredArtist,
+		type SeedArtist,
+		type SuggestionsCacheSnapshot,
+		LOCAL_ALBUM_LIMIT,
+		LOCAL_ARTIST_LIMIT,
+		parseSuggestionsSnapshot
+	} from '$lib/features/library-suggestions/librarySuggestionsModel';
 	import PageState from '$lib/components/ui/PageState.svelte';
+	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
 	import EntityMediaCard from '$lib/components/ui/EntityMediaCard.svelte';
 	import type { Album, Artist } from '$lib/types';
 	import { Activity, Disc, Library, LoaderCircle, RefreshCw, User } from 'lucide-svelte';
 
 	const meta = getRouteMeta('/library-suggestions');
-	const LOCAL_ARTIST_LIMIT = 25;
-	const LOCAL_ALBUM_LIMIT = 25;
-	const SMART_SEED_LIMIT = 8;
-	const SMART_ARTIST_LIMIT = 20;
-	const SMART_ALBUM_LIMIT = 20;
 	const SUGGESTIONS_CACHE_KEY = 'tidal-ui-library-suggestions-cache-v1';
-
-	type SeedArtist = {
-		artist: Artist;
-		source: MediaLibraryArtistSuggestion;
-		weight: number;
-	};
-
-	type ScoredArtist = {
-		artist: Artist;
-		score: number;
-		seedMatches: number;
-	};
-
-	type ScoredAlbum = {
-		album: Album;
-		score: number;
-		seedMatches: number;
-	};
-
-	type SuggestionsCacheSnapshot = {
-		localArtists: MediaLibraryArtistSuggestion[];
-		localAlbums: MediaLibraryAlbumSuggestion[];
-		scannedAt: number | null;
-		seedArtists: SeedArtist[];
-		smartArtists: ScoredArtist[];
-		smartAlbums: ScoredAlbum[];
-		localError: string | null;
-		smartError: string | null;
-		suggestionSeed: number | null;
-		smartGeneratedAt: number | null;
-	};
 
 	let refreshToken = 0;
 	let refreshing = $state(false);
@@ -78,6 +56,10 @@
 			? new Date(smartGeneratedAt).toLocaleString()
 			: 'not generated yet'
 	);
+	const sectionNavItems = $derived.by(() => [
+		{ id: 'library-smart-picks', label: 'Recommendations', tone: 'secondary' as const },
+		{ id: 'library-overview', label: 'Overview', tone: 'tertiary' as const }
+	]);
 
 	onMount(() => {
 		const restored = restoreSuggestionsFromCache();
@@ -87,7 +69,7 @@
 	});
 
 	function getCurrentSnapshot(): SuggestionsCacheSnapshot {
-		return {
+		return createSuggestionsSnapshot({
 			localArtists: [...localArtists],
 			localAlbums: [...localAlbums],
 			scannedAt,
@@ -98,26 +80,20 @@
 			smartError,
 			suggestionSeed,
 			smartGeneratedAt
-		};
+		});
 	}
 
 	function applySnapshot(snapshot: SuggestionsCacheSnapshot): void {
-		localArtists = Array.isArray(snapshot.localArtists) ? snapshot.localArtists : [];
-		localAlbums = Array.isArray(snapshot.localAlbums) ? snapshot.localAlbums : [];
-		scannedAt = typeof snapshot.scannedAt === 'number' && Number.isFinite(snapshot.scannedAt)
-			? snapshot.scannedAt
-			: null;
-		seedArtists = Array.isArray(snapshot.seedArtists) ? snapshot.seedArtists : [];
-		smartArtists = Array.isArray(snapshot.smartArtists) ? snapshot.smartArtists : [];
-		smartAlbums = Array.isArray(snapshot.smartAlbums) ? snapshot.smartAlbums : [];
-		localError = snapshot.localError ?? null;
-		smartError = snapshot.smartError ?? null;
-		suggestionSeed = typeof snapshot.suggestionSeed === 'number' && Number.isFinite(snapshot.suggestionSeed)
-			? snapshot.suggestionSeed
-			: null;
-		smartGeneratedAt = typeof snapshot.smartGeneratedAt === 'number' && Number.isFinite(snapshot.smartGeneratedAt)
-			? snapshot.smartGeneratedAt
-			: null;
+		localArtists = snapshot.localArtists;
+		localAlbums = snapshot.localAlbums;
+		scannedAt = snapshot.scannedAt;
+		seedArtists = snapshot.seedArtists;
+		smartArtists = snapshot.smartArtists;
+		smartAlbums = snapshot.smartAlbums;
+		localError = snapshot.localError;
+		smartError = snapshot.smartError;
+		suggestionSeed = snapshot.suggestionSeed;
+		smartGeneratedAt = snapshot.smartGeneratedAt;
 	}
 
 	function persistSuggestionsToCache(): void {
@@ -137,24 +113,8 @@
 			return false;
 		}
 		try {
-			const raw = sessionStorage.getItem(SUGGESTIONS_CACHE_KEY);
-			if (!raw) {
-				return false;
-			}
-			const parsed = JSON.parse(raw) as SuggestionsCacheSnapshot | null;
-			if (!parsed || typeof parsed !== 'object') {
-				return false;
-			}
-			const hasRenderableState =
-				(Array.isArray(parsed.localArtists) && parsed.localArtists.length > 0) ||
-				(Array.isArray(parsed.localAlbums) && parsed.localAlbums.length > 0) ||
-				(Array.isArray(parsed.smartArtists) && parsed.smartArtists.length > 0) ||
-				(Array.isArray(parsed.smartAlbums) && parsed.smartAlbums.length > 0) ||
-				(typeof parsed.scannedAt === 'number' && Number.isFinite(parsed.scannedAt)) ||
-				(typeof parsed.suggestionSeed === 'number' && Number.isFinite(parsed.suggestionSeed)) ||
-				typeof parsed.localError === 'string' ||
-				typeof parsed.smartError === 'string';
-			if (!hasRenderableState) {
+			const parsed = parseSuggestionsSnapshot(sessionStorage.getItem(SUGGESTIONS_CACHE_KEY));
+			if (!parsed) {
 				return false;
 			}
 			applySnapshot(parsed);
@@ -163,23 +123,6 @@
 			console.warn('[Library Suggestions] Failed to restore cache:', error);
 			return false;
 		}
-	}
-
-	function normalizeToken(value: string | null | undefined): string {
-		if (!value) return '';
-		return value
-			.normalize('NFKD')
-			.replace(/[\u0300-\u036f]/g, '')
-			.toLowerCase()
-			.replace(/[^a-z0-9]+/g, ' ')
-			.trim();
-	}
-
-	function buildSearchHref(query: string, tab: 'artists' | 'albums'): string {
-		const normalizedQuery = query.trim();
-		if (!normalizedQuery) return '/';
-		const params = new URLSearchParams({ q: normalizedQuery, tab });
-		return `/?${params.toString()}`;
 	}
 
 	function getAlbumCoverSrc(cover: string | null | undefined): string | null {
@@ -246,271 +189,6 @@
 		});
 	});
 
-	function scoreArtistMatch(candidate: Artist, expectedArtistName: string): number {
-		const expected = normalizeToken(expectedArtistName);
-		const candidateName = normalizeToken(candidate.name);
-		if (!candidateName) return Number.NEGATIVE_INFINITY;
-		let score = 0;
-		if (expected.length > 0) {
-			if (candidateName === expected) {
-				score += 1000;
-			} else if (
-				candidateName.startsWith(expected) ||
-				expected.startsWith(candidateName)
-			) {
-				score += 420;
-			} else if (
-				candidateName.includes(expected) ||
-				expected.includes(candidateName)
-			) {
-				score += 210;
-			}
-		}
-		score += Math.max(0, Math.trunc((candidate.popularity ?? 0) / 5));
-		return score;
-	}
-
-	function pickBestArtistMatch(items: Artist[], expectedArtistName: string): Artist | null {
-		if (!Array.isArray(items) || items.length === 0) {
-			return null;
-		}
-		let best: Artist | null = null;
-		let bestScore = Number.NEGATIVE_INFINITY;
-		for (const item of items) {
-			const score = scoreArtistMatch(item, expectedArtistName);
-			if (score > bestScore) {
-				best = item;
-				bestScore = score;
-			}
-		}
-		return best;
-	}
-
-	function getAlbumLibraryKey(artistName: string | null | undefined, albumTitle: string | null | undefined): string {
-		return `${normalizeToken(artistName)}::${normalizeToken(albumTitle)}`;
-	}
-
-	type RandomFn = () => number;
-
-	function createSuggestionSeed(): number {
-		if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
-			const seedBuffer = new Uint32Array(1);
-			crypto.getRandomValues(seedBuffer);
-			return seedBuffer[0] >>> 0;
-		}
-		return Math.floor(Math.random() * 0x1_0000_0000) >>> 0;
-	}
-
-	function createSeededRandom(seed: number): RandomFn {
-		let t = seed >>> 0;
-		return () => {
-			t += 0x6d2b79f5;
-			let result = Math.imul(t ^ (t >>> 15), 1 | t);
-			result ^= result + Math.imul(result ^ (result >>> 7), 61 | result);
-			return ((result ^ (result >>> 14)) >>> 0) / 4294967296;
-		};
-	}
-
-	function randomInt(maxExclusive: number, random: RandomFn): number {
-		if (maxExclusive <= 1) return 0;
-		return Math.floor(random() * maxExclusive);
-	}
-
-	function pickWeightedRandomIndex(weights: number[], random: RandomFn): number {
-		if (weights.length === 0) return -1;
-		const totalWeight = weights.reduce(
-			(total, weight) => total + (Number.isFinite(weight) && weight > 0 ? weight : 0),
-			0
-		);
-		if (!Number.isFinite(totalWeight) || totalWeight <= 0) {
-			return randomInt(weights.length, random);
-		}
-		let threshold = random() * totalWeight;
-		for (let index = 0; index < weights.length; index += 1) {
-			const candidateWeight = weights[index];
-			const weight =
-				typeof candidateWeight === 'number' && Number.isFinite(candidateWeight) && candidateWeight > 0
-					? candidateWeight
-					: 0;
-			threshold -= weight;
-			if (threshold <= 0) {
-				return index;
-			}
-		}
-		return weights.length - 1;
-	}
-
-	function sampleSeedArtistCandidates(
-		artists: MediaLibraryArtistSuggestion[],
-		limit: number,
-		random: RandomFn
-	): MediaLibraryArtistSuggestion[] {
-		const candidatePool = [...artists]
-			.map((candidate) => ({
-				candidate,
-				baseWeight: Math.max(1, candidate.trackCount) + Math.max(0, candidate.albumCount) * 1.5
-			}))
-			.sort((a, b) => {
-				if (b.baseWeight !== a.baseWeight) return b.baseWeight - a.baseWeight;
-				return a.candidate.artistName.localeCompare(b.candidate.artistName);
-			})
-			.slice(0, Math.max(limit * 2, SMART_SEED_LIMIT * 4));
-
-		const selected: MediaLibraryArtistSuggestion[] = [];
-		const workingPool = [...candidatePool];
-		while (selected.length < limit && workingPool.length > 0) {
-			const weights = workingPool.map((entry, index) => {
-				const rankFactor = (workingPool.length - index) / workingPool.length;
-				const randomJitter = random() * Math.max(2, entry.baseWeight * 0.35);
-				return entry.baseWeight * (0.75 + rankFactor * 0.5) + randomJitter;
-			});
-			const pickedIndex = pickWeightedRandomIndex(weights, random);
-			if (pickedIndex < 0 || pickedIndex >= workingPool.length) {
-				break;
-			}
-			selected.push(workingPool[pickedIndex]?.candidate ?? workingPool[0].candidate);
-			workingPool.splice(pickedIndex, 1);
-		}
-		return selected;
-	}
-
-	async function resolveSeedArtists(
-		artists: MediaLibraryArtistSuggestion[],
-		random: RandomFn
-	): Promise<SeedArtist[]> {
-		const rankedCandidates = sampleSeedArtistCandidates(artists, SMART_SEED_LIMIT * 4, random);
-		const resolved: SeedArtist[] = [];
-		const seenArtistIds = new Set<number>();
-		for (const candidate of rankedCandidates) {
-			if (resolved.length >= SMART_SEED_LIMIT) {
-				break;
-			}
-			const query = (candidate.searchQuery || candidate.artistName || '').trim();
-			if (!query) {
-				continue;
-			}
-			try {
-				const response = await losslessAPI.searchArtists(query);
-				const match = pickBestArtistMatch(response.items ?? [], candidate.artistName);
-				if (!match || !Number.isFinite(match.id) || seenArtistIds.has(match.id)) {
-					continue;
-				}
-				seenArtistIds.add(match.id);
-				const weight = Math.max(1, candidate.trackCount) + Math.max(0, candidate.albumCount) * 1.5;
-				resolved.push({
-					artist: match,
-					source: candidate,
-					weight
-				});
-			} catch (error) {
-				console.warn(`[Library Suggestions] Failed to resolve seed artist "${query}":`, error);
-			}
-		}
-		return resolved;
-	}
-
-	async function buildSmartSuggestions(
-		artists: MediaLibraryArtistSuggestion[],
-		albums: MediaLibraryAlbumSuggestion[],
-		token: number,
-		seed: number
-	): Promise<void> {
-		smartError = null;
-		const random = createSeededRandom(seed);
-		const resolvedSeeds = await resolveSeedArtists(artists, random);
-		if (token !== refreshToken) return;
-		suggestionSeed = seed >>> 0;
-		smartGeneratedAt = Date.now();
-		seedArtists = resolvedSeeds;
-		if (resolvedSeeds.length === 0) {
-			smartArtists = [];
-			smartAlbums = [];
-			smartError = 'No reliable seed artists found in your library yet.';
-			persistSuggestionsToCache();
-			return;
-		}
-
-		const localArtistNames = new Set(artists.map((entry) => normalizeToken(entry.artistName)));
-		const localAlbumKeys = new Set(
-			albums.map((entry) => getAlbumLibraryKey(entry.artistName, entry.albumTitle))
-		);
-		const artistScores = new Map<number, ScoredArtist>();
-		const albumScores = new Map<number, ScoredAlbum>();
-		let successfulSeeds = 0;
-
-		for (const seed of resolvedSeeds) {
-			if (token !== refreshToken) return;
-			try {
-				const recommendations = await losslessAPI.getArtistRecommendations(seed.artist.id);
-				successfulSeeds += 1;
-				const weight = Math.max(1, seed.weight);
-				for (const recommendationArtist of recommendations.artists ?? []) {
-					if (!Number.isFinite(recommendationArtist.id)) continue;
-					if (recommendationArtist.id === seed.artist.id) continue;
-					if (localArtistNames.has(normalizeToken(recommendationArtist.name))) continue;
-					const current = artistScores.get(recommendationArtist.id);
-					if (current) {
-						current.score += weight;
-						current.seedMatches += 1;
-					} else {
-						artistScores.set(recommendationArtist.id, {
-							artist: recommendationArtist,
-							score: weight,
-							seedMatches: 1
-						});
-					}
-				}
-				for (const recommendationAlbum of recommendations.albums ?? []) {
-					if (!Number.isFinite(recommendationAlbum.id)) continue;
-					const artistName = recommendationAlbum.artist?.name ?? recommendationAlbum.artists?.[0]?.name ?? '';
-					const albumKey = getAlbumLibraryKey(artistName, recommendationAlbum.title);
-					if (localAlbumKeys.has(albumKey)) continue;
-					const current = albumScores.get(recommendationAlbum.id);
-					if (current) {
-						current.score += weight;
-						current.seedMatches += 1;
-					} else {
-						albumScores.set(recommendationAlbum.id, {
-							album: recommendationAlbum,
-							score: weight,
-							seedMatches: 1
-						});
-					}
-				}
-			} catch (error) {
-				console.warn(
-					`[Library Suggestions] Failed to load recommendations for seed artist ${seed.artist.id}:`,
-					error
-				);
-			}
-		}
-
-		if (token !== refreshToken) return;
-		const rankedArtists = Array.from(artistScores.values()).sort((a, b) => {
-			if (b.score !== a.score) return b.score - a.score;
-			const popularityA = a.artist.popularity ?? 0;
-			const popularityB = b.artist.popularity ?? 0;
-			if (popularityB !== popularityA) return popularityB - popularityA;
-			return a.artist.name.localeCompare(b.artist.name);
-		});
-		const rankedAlbums = Array.from(albumScores.values()).sort((a, b) => {
-			if (b.score !== a.score) return b.score - a.score;
-			const popularityA = a.album.popularity ?? 0;
-			const popularityB = b.album.popularity ?? 0;
-			if (popularityB !== popularityA) return popularityB - popularityA;
-			return a.album.title.localeCompare(b.album.title);
-		});
-
-		smartArtists = rankedArtists.slice(0, SMART_ARTIST_LIMIT);
-		smartAlbums = rankedAlbums.slice(0, SMART_ALBUM_LIMIT);
-		if (successfulSeeds === 0) {
-			smartError = 'API recommendations are currently unavailable.';
-		} else if (smartArtists.length === 0 && smartAlbums.length === 0) {
-			smartError = 'No new recommendations available from current seed artists.';
-		}
-		persistSuggestionsToCache();
-	}
-
 	async function refreshSuggestions(force = false): Promise<void> {
 		const token = ++refreshToken;
 		refreshing = true;
@@ -530,7 +208,21 @@
 			localArtists = Array.isArray(result.artists) ? result.artists : [];
 			localAlbums = Array.isArray(result.albums) ? result.albums : [];
 			scannedAt = typeof result.scannedAt === 'number' ? result.scannedAt : null;
-			await buildSmartSuggestions(localArtists, localAlbums, token, createSuggestionSeed());
+			const smartSuggestionState = await buildSmartSuggestions({
+				artists: localArtists,
+				albums: localAlbums,
+				seed: createSuggestionSeed(),
+				searchArtists: (query) => losslessAPI.searchArtists(query),
+				getArtistRecommendations: (artistId) => losslessAPI.getArtistRecommendations(artistId)
+			});
+			if (token !== refreshToken) return;
+			seedArtists = smartSuggestionState.seedArtists;
+			smartArtists = smartSuggestionState.smartArtists;
+			smartAlbums = smartSuggestionState.smartAlbums;
+			suggestionSeed = smartSuggestionState.suggestionSeed;
+			smartGeneratedAt = smartSuggestionState.smartGeneratedAt;
+			smartError = smartSuggestionState.smartError;
+			persistSuggestionsToCache();
 		} catch (error) {
 			if (token !== refreshToken) return;
 			localArtists = [];
@@ -565,7 +257,21 @@
 		activeAction = 'generate';
 		smartError = null;
 		try {
-			await buildSmartSuggestions(localArtists, localAlbums, token, createSuggestionSeed());
+			const smartSuggestionState = await buildSmartSuggestions({
+				artists: localArtists,
+				albums: localAlbums,
+				seed: createSuggestionSeed(),
+				searchArtists: (query) => losslessAPI.searchArtists(query),
+				getArtistRecommendations: (artistId) => losslessAPI.getArtistRecommendations(artistId)
+			});
+			if (token !== refreshToken) return;
+			seedArtists = smartSuggestionState.seedArtists;
+			smartArtists = smartSuggestionState.smartArtists;
+			smartAlbums = smartSuggestionState.smartAlbums;
+			suggestionSeed = smartSuggestionState.suggestionSeed;
+			smartGeneratedAt = smartSuggestionState.smartGeneratedAt;
+			smartError = smartSuggestionState.smartError;
+			persistSuggestionsToCache();
 		} catch (error) {
 			if (token !== refreshToken) return;
 			smartError =
@@ -633,7 +339,13 @@
 		</div>
 	</header>
 
-	<section class="ui-surface-card library-suggestions-section" data-ui-block="results">
+	<PageSectionNav items={sectionNavItems} sticky={true} />
+
+	<section
+		id="library-smart-picks"
+		class="ui-section-anchor ui-surface-card library-suggestions-section ui-perf-block"
+		data-ui-block="results"
+	>
 		<div class="library-suggestions-section__header">
 			<div>
 				<p class="library-suggestions-section__eyebrow">Intelligent Picks</p>
@@ -758,7 +470,11 @@
 		{/if}
 	</section>
 
-	<div class="ui-surface-grid library-suggestions-overview" data-ui-block="results">
+	<div
+		id="library-overview"
+		class="ui-section-anchor ui-surface-grid library-suggestions-overview ui-perf-block"
+		data-ui-block="results"
+	>
 		<article class="ui-surface-card library-suggestions-overview__card">
 			<div class="library-suggestions-overview__heading">
 				<Library size={16} />

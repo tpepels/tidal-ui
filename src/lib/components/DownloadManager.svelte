@@ -26,6 +26,8 @@
 	import DownloadManagerPanelIntro from '$lib/components/download-manager/DownloadManagerPanelIntro.svelte';
 	import DownloadManagerPriorityOverview from '$lib/components/download-manager/DownloadManagerPriorityOverview.svelte';
 	import DownloadManagerDetailedSections from '$lib/components/download-manager/DownloadManagerDetailedSections.svelte';
+	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
+	import { createAdaptivePollingController } from '$lib/utils/adaptivePolling';
 	import { RefreshCw } from 'lucide-svelte';
 
 	let { pageMode = false } = $props();
@@ -47,6 +49,21 @@
 	let lastBackendErrorLogged = $state<string | null>(null);
 	let lastBackendWarningLogged = $state<string | null>(null);
 	let lastQueueFetchErrorLogged = $state<string | null>(null);
+	let countdownController = createAdaptivePollingController({
+		run: async () => {
+			nowTs = Date.now();
+		},
+		visibleIntervalMs: 1_000,
+		pauseWhenHidden: true
+	});
+	let queueRefreshController = createAdaptivePollingController({
+		run: async () => {
+			await fetchQueueJobs();
+		},
+		visibleIntervalMs: 5_000,
+		hiddenIntervalMs: 20_000,
+		pauseWhenHidden: true
+	});
 
 	const DEBUG_LOG_LIMIT = 250;
 
@@ -117,6 +134,23 @@
 		const ts = $serverQueue.lastUpdated;
 		if (!ts) return 'never';
 		return new Date(ts).toLocaleTimeString();
+	});
+	let sectionNavItems = $derived.by(() => {
+		if (!pageMode) {
+			return [];
+		}
+		const items: Array<{
+			id: string;
+			label: string;
+			tone?: 'secondary' | 'tertiary';
+		}> = [
+			{ id: 'download-center-summary', label: 'Summary', tone: 'secondary' as const },
+			{ id: 'download-center-priority', label: 'Priority', tone: 'secondary' as const }
+		];
+		if (showDetailedSections) {
+			items.push({ id: 'download-center-details', label: 'Timeline', tone: 'tertiary' as const });
+		}
+		return items;
 	});
 	let nowTs = $state(Date.now());
 	let pollCountdownSeconds = $derived.by(() => {
@@ -333,10 +367,16 @@
 
 	$effect(() => {
 		if (!pageMode && !isOpen) return;
-		const interval = setInterval(() => {
-			nowTs = Date.now();
-		}, 500);
-		return () => clearInterval(interval);
+		countdownController.stop();
+		countdownController = createAdaptivePollingController({
+			run: async () => {
+				nowTs = Date.now();
+			},
+			visibleIntervalMs: 1_000,
+			pauseWhenHidden: true
+		});
+		countdownController.start();
+		return () => countdownController.stop();
 	});
 
 	$effect(() => {
@@ -472,9 +512,17 @@
 	// Auto-refresh jobs while the panel is open
 	$effect(() => {
 		if (pageMode || isOpen) {
-			fetchQueueJobs();
-			const interval = setInterval(fetchQueueJobs, 5000);
-			return () => clearInterval(interval);
+			queueRefreshController.stop();
+			queueRefreshController = createAdaptivePollingController({
+				run: async () => {
+					await fetchQueueJobs();
+				},
+				visibleIntervalMs: 5_000,
+				hiddenIntervalMs: 20_000,
+				pauseWhenHidden: true
+			});
+			queueRefreshController.start();
+			return () => queueRefreshController.stop();
 		}
 	});
 
@@ -801,99 +849,109 @@
 				{/if}
 			</div>
 
-			<DownloadManagerPanelIntro
-				{pageMode}
-				pollingError={$serverQueue.pollingError}
-				{pollStatusLabel}
-				backendError={$serverQueue.backendError}
-				backendWarning={$serverQueue.backendWarning}
-				{workerWarning}
-				{isPollingStale}
-				{lastUpdatedLabel}
-				queueSource={$serverQueue.queueSource}
-				localMode={$serverQueue.localMode}
-				{actionNotice}
-				{stats}
-				pausedCount={pausedJobs.length}
-				resumableCount={resumableJobs.length}
-				{statusHeadline}
-				{statusSubline}
-				{activeAverageProgress}
-				workerRunning={$workerStatus.running}
-				{showDetailedSections}
-				{canPauseAny}
-				{canStopAny}
-				{canResumeAny}
-				{hasFailuresToReport}
-				{actionKeys}
-				{isActionPending}
-				{handlePauseAllActive}
-				{handleStopAllActive}
-				{handleResumeAll}
-				{handleCopyFailureReport}
-				{handleCreateDebugBundle}
-			/>
+			{#if pageMode}
+				<PageSectionNav items={sectionNavItems} sticky={true} />
+			{/if}
+
+			<div id="download-center-summary" class="ui-section-anchor">
+				<DownloadManagerPanelIntro
+					{pageMode}
+					pollingError={$serverQueue.pollingError}
+					{pollStatusLabel}
+					backendError={$serverQueue.backendError}
+					backendWarning={$serverQueue.backendWarning}
+					{workerWarning}
+					{isPollingStale}
+					{lastUpdatedLabel}
+					queueSource={$serverQueue.queueSource}
+					localMode={$serverQueue.localMode}
+					{actionNotice}
+					{stats}
+					pausedCount={pausedJobs.length}
+					resumableCount={resumableJobs.length}
+					{statusHeadline}
+					{statusSubline}
+					{activeAverageProgress}
+					workerRunning={$workerStatus.running}
+					{showDetailedSections}
+					{canPauseAny}
+					{canStopAny}
+					{canResumeAny}
+					{hasFailuresToReport}
+					{actionKeys}
+					{isActionPending}
+					{handlePauseAllActive}
+					{handleStopAllActive}
+					{handleResumeAll}
+					{handleCopyFailureReport}
+					{handleCreateDebugBundle}
+				/>
+			</div>
 
 			<div class="download-manager-content" data-ui-block="main-sections">
 				{#if pageMode}
-					<DownloadManagerPriorityOverview
+					<section id="download-center-priority" class="ui-section-anchor">
+						<DownloadManagerPriorityOverview
+							{stats}
+							{processingJobs}
+							{attentionPreviewJobs}
+							{queuedJobs}
+							{queuedPreviewJobs}
+							{isJobActionPending}
+							{handlePauseJob}
+							{handleCancelJob}
+							{handleResumePausedJob}
+							{handleRetryJob}
+							{handleCopyFailureReport}
+							{canPauseAny}
+							{canStopAny}
+							{canResumeAny}
+							{isActionPending}
+							{actionKeys}
+							{handlePauseAllActive}
+							{handleStopAllActive}
+							{handleResumeAll}
+							{handleManualRefresh}
+							{showDetailedSections}
+							toggleDetailedSections={() => {
+								showDetailedSections = !showDetailedSections;
+							}}
+						/>
+					</section>
+				{/if}
+
+				<section id="download-center-details" class="ui-section-anchor">
+					<DownloadManagerDetailedSections
+						{pageMode}
+						{showDetailedSections}
 						{stats}
 						{processingJobs}
-						{attentionPreviewJobs}
 						{queuedJobs}
-						{queuedPreviewJobs}
+						{completedJobs}
+						{resumableJobs}
+						{activeSectionOpen}
+						{queueSectionOpen}
+						{failedSectionOpen}
+						{toggleSection}
 						{isJobActionPending}
 						{handlePauseJob}
 						{handleCancelJob}
 						{handleResumePausedJob}
 						{handleRetryJob}
 						{handleCopyFailureReport}
-						{canPauseAny}
-						{canStopAny}
-						{canResumeAny}
-						{isActionPending}
-						{actionKeys}
+						{handleRemoveJob}
 						{handlePauseAllActive}
 						{handleStopAllActive}
 						{handleResumeAll}
 						{handleManualRefresh}
-						{showDetailedSections}
-						toggleDetailedSections={() => {
-							showDetailedSections = !showDetailedSections;
-						}}
+						{handleClearFailed}
+						{canPauseAny}
+						{canStopAny}
+						{canResumeAny}
+						{actionKeys}
+						{isActionPending}
 					/>
-				{/if}
-
-				<DownloadManagerDetailedSections
-					{pageMode}
-					{showDetailedSections}
-					{stats}
-					{processingJobs}
-					{queuedJobs}
-					{completedJobs}
-					{resumableJobs}
-					{activeSectionOpen}
-					{queueSectionOpen}
-					{failedSectionOpen}
-					{toggleSection}
-					{isJobActionPending}
-					{handlePauseJob}
-					{handleCancelJob}
-					{handleResumePausedJob}
-					{handleRetryJob}
-					{handleCopyFailureReport}
-					{handleRemoveJob}
-					{handlePauseAllActive}
-					{handleStopAllActive}
-					{handleResumeAll}
-					{handleManualRefresh}
-					{handleClearFailed}
-					{canPauseAny}
-					{canStopAny}
-					{canResumeAny}
-					{actionKeys}
-					{isActionPending}
-				/>
+				</section>
 			</div>
 
 			<!-- Footer with controls -->

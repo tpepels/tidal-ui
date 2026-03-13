@@ -1,4 +1,8 @@
 import { isAlbumDownloadQueueActive, type AlbumDownloadStatus } from '$lib/controllers/albumDownloadUi';
+import {
+	createAdaptivePollingController,
+	type AdaptivePollingController
+} from '$lib/utils/adaptivePolling';
 
 export type ArtistAlbumDownloadState = {
 	status: AlbumDownloadStatus;
@@ -239,7 +243,7 @@ export function createArtistAlbumQueueController(options: ArtistAlbumQueueContro
 	const fetchQueueJob = options.fetchQueueJob ?? defaultFetchQueueJob;
 	const sendQueueAction = options.sendQueueAction ?? defaultSendQueueAction;
 	const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
-	const pollTimers = new Map<number, ReturnType<typeof setInterval>>();
+	const pollControllers = new Map<number, AdaptivePollingController>();
 	const pollTokens = new Map<number, number>();
 
 	async function pollAlbumQueueJob(albumId: number, jobId: string, pollToken: number): Promise<void> {
@@ -266,19 +270,19 @@ export function createArtistAlbumQueueController(options: ArtistAlbumQueueContro
 	}
 
 	function stopPolling(albumId: number): void {
-		const timer = pollTimers.get(albumId);
-		if (timer) {
-			clearInterval(timer);
-			pollTimers.delete(albumId);
+		const controller = pollControllers.get(albumId);
+		if (controller) {
+			controller.stop();
+			pollControllers.delete(albumId);
 		}
 		pollTokens.delete(albumId);
 	}
 
 	function stopAllPolling(): void {
-		for (const timer of pollTimers.values()) {
-			clearInterval(timer);
+		for (const controller of pollControllers.values()) {
+			controller.stop();
 		}
-		pollTimers.clear();
+		pollControllers.clear();
 		pollTokens.clear();
 	}
 
@@ -286,11 +290,16 @@ export function createArtistAlbumQueueController(options: ArtistAlbumQueueContro
 		stopPolling(albumId);
 		const currentToken = (pollTokens.get(albumId) ?? 0) + 1;
 		pollTokens.set(albumId, currentToken);
-		void pollAlbumQueueJob(albumId, jobId, currentToken);
-		const timer = setInterval(() => {
-			void pollAlbumQueueJob(albumId, jobId, currentToken);
-		}, pollIntervalMs);
-		pollTimers.set(albumId, timer);
+		const controller = createAdaptivePollingController({
+			run: async () => {
+				await pollAlbumQueueJob(albumId, jobId, currentToken);
+			},
+			visibleIntervalMs: pollIntervalMs,
+			hiddenIntervalMs: Math.max(pollIntervalMs * 4, pollIntervalMs + 2_000),
+			pauseWhenHidden: true
+		});
+		pollControllers.set(albumId, controller);
+		controller.start();
 	}
 
 	async function cancelQueueDownload(albumId: number): Promise<QueueActionResponse> {

@@ -40,6 +40,102 @@ const buildSourcePayload = () => ({
 });
 
 describe('catalog.getArtist enrichment', () => {
+	it('prefers the requested artist identity when source tracks credit multiple artists', async () => {
+		const sourcePayload = {
+			version: '2.6',
+			albums: [
+				{
+					id: 419281359,
+					title: 'Different Rooms',
+					cover: 'cover-419281359',
+					videoCover: null,
+					artist: { id: 9640122, name: 'Jeremiah Chiu', type: 'MAIN' },
+					artists: [
+						{ id: 9640122, name: 'Jeremiah Chiu', type: 'MAIN' },
+						{ id: 17818738, name: 'Marta Sofia Honer', type: 'MAIN' }
+					]
+				}
+			],
+			tracks: [
+				{
+					id: 419281360,
+					title: 'Mean Solar Time',
+					duration: 144,
+					trackNumber: 1,
+					volumeNumber: 1,
+					version: null,
+					popularity: 46,
+					url: 'http://www.tidal.com/track/419281360',
+					streamReady: true,
+					allowStreaming: true,
+					premiumStreamingOnly: false,
+					explicit: false,
+					editable: false,
+					audioQuality: 'LOSSLESS',
+					audioModes: [],
+					artist: { id: 9640122, name: 'Jeremiah Chiu', type: 'MAIN' },
+					artists: [
+						{ id: 9640122, name: 'Jeremiah Chiu', type: 'MAIN' },
+						{ id: 17818738, name: 'Marta Sofia Honer', type: 'MAIN' }
+					],
+					album: {
+						id: 419281359,
+						title: 'Different Rooms',
+						cover: 'cover-419281359',
+						videoCover: null,
+						artist: { id: 9640122, name: 'Jeremiah Chiu', type: 'MAIN' },
+						artists: [
+							{ id: 9640122, name: 'Jeremiah Chiu', type: 'MAIN' },
+							{ id: 17818738, name: 'Marta Sofia Honer', type: 'MAIN' }
+						]
+					}
+				}
+			]
+		};
+		const searchPayload = {
+			version: '2.4',
+			data: {
+				albums: {
+					limit: 25,
+					offset: 0,
+					totalNumberOfItems: 0,
+					items: []
+				}
+			}
+		};
+
+		const fetchMock = vi.fn(async (url: string) => {
+			if (url.includes('/artist/?f=17818738')) return jsonResponse(sourcePayload);
+			if (url.includes('/artist/?id=17818738')) {
+				return jsonResponse({
+					artist: {
+						id: 17818738,
+						name: 'Marta Sofia Honer',
+						type: 'ARTIST',
+						picture: 'artist-picture-17818738'
+					}
+				});
+			}
+			if (url.includes('/search/?al=')) return jsonResponse(searchPayload);
+			throw new Error(`Unexpected URL: ${url}`);
+		});
+
+		const context: CatalogApiContext = {
+			baseUrl: 'https://example.test',
+			fetch: fetchMock,
+			ensureNotRateLimited: vi.fn()
+		};
+
+		const result = await getArtist(context, 17818738);
+
+		expect(result.id).toBe(17818738);
+		expect(result.name).toBe('Marta Sofia Honer');
+		expect(result.albums[0]?.artist?.id).toBe(17818738);
+		expect(result.albums[0]?.artist?.name).toBe('Marta Sofia Honer');
+		expect(result.tracks[0]?.artist?.id).toBe(17818738);
+		expect(result.tracks[0]?.artist?.name).toBe('Marta Sofia Honer');
+	});
+
 	it('enriches discography from artist-name search and exposes diagnostics', async () => {
 		const sourcePayload = buildSourcePayload();
 		const searchPayload = {

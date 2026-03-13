@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { downloadLogStore } from '$lib/stores/downloadLog';
 	import { getSessionHeaders } from '$lib/core/session';
+	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
 	import ToolPanel from '$lib/components/ui/ToolPanel.svelte';
 	import { Copy, Trash2, Heart } from 'lucide-svelte';
-	import { tick } from 'svelte';
+	import { onMount, tick } from 'svelte';
 
 	let scrollContainer: HTMLDivElement | null = null;
-	let healthData: {
+	let healthData = $state<{
 		activeUploads: number;
 		maxConcurrent: number;
 		pendingUploads: number;
@@ -19,14 +20,56 @@
 			totalBytes: number;
 			usedBytes: number;
 		} | null;
-	} | null = null;
-	let loadingHealth = false;
+	} | null>(null);
+	let loadingHealth = $state(false);
+	let shouldFollowLogTail = $state(true);
+	let isDocumentVisible = $state(true);
+	const sectionNavItems = $derived.by(() => {
+		const items = [];
+		if (healthData) {
+			items.push({ id: 'download-log-health', label: 'Health', tone: 'secondary' as const });
+		}
+		items.push({ id: 'download-log-stream', label: 'Event Stream', tone: 'tertiary' as const });
+		return items;
+	});
 
-	$: if ($downloadLogStore.entries.length > 0 && scrollContainer) {
-		tick().then(() => {
-			scrollContainer?.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
+	$effect(() => {
+		if (
+			$downloadLogStore.entries.length === 0 ||
+			!scrollContainer ||
+			!shouldFollowLogTail ||
+			!isDocumentVisible
+		) {
+			return;
+		}
+		void tick().then(() => {
+			scrollContainer?.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'auto' });
 		});
-	}
+	});
+
+	onMount(() => {
+		const updateTailFollowState = () => {
+			if (!scrollContainer) {
+				return;
+			}
+			const remaining =
+				scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
+			shouldFollowLogTail = remaining <= 40;
+		};
+		const updateDocumentVisibility = () => {
+			isDocumentVisible = document.visibilityState !== 'hidden';
+		};
+
+		updateDocumentVisibility();
+		updateTailFollowState();
+		document.addEventListener('visibilitychange', updateDocumentVisibility);
+		scrollContainer?.addEventListener('scroll', updateTailFollowState, { passive: true });
+
+		return () => {
+			document.removeEventListener('visibilitychange', updateDocumentVisibility);
+			scrollContainer?.removeEventListener('scroll', updateTailFollowState);
+		};
+	});
 
 	function copyLogs() {
 		const logText = $downloadLogStore.entries
@@ -87,6 +130,8 @@
 	}
 </script>
 
+<PageSectionNav items={sectionNavItems} sticky={true} />
+
 <section class="download-log-container" data-ui-block="main-sections">
 	<ToolPanel flush={true} tone="tertiary" panelRole="download-log">
 		<div class="download-log-panel">
@@ -97,17 +142,17 @@
 			</div>
 			<div class="download-log-actions">
 				<span class="download-log-count" title="Current log lines">{$downloadLogStore.entries.length}</span>
-				<button type="button" class="download-log-btn" title="Check server health" on:click={fetchHealth} disabled={loadingHealth}>
+				<button type="button" class="download-log-btn" title="Check server health" onclick={fetchHealth} disabled={loadingHealth}>
 					<Heart size={16} />
 				</button>
-				<button type="button" class="download-log-btn" title="Copy logs" on:click={copyLogs}>
+				<button type="button" class="download-log-btn" title="Copy logs" onclick={copyLogs}>
 					<Copy size={16} />
 				</button>
 				<button
 					type="button"
 					class="download-log-btn"
 					title="Clear logs"
-					on:click={() => downloadLogStore.clear()}
+					onclick={() => downloadLogStore.clear()}
 				>
 					<Trash2 size={16} />
 				</button>
@@ -116,7 +161,11 @@
 
 		<!-- Health Status -->
 		{#if healthData}
-			<div class="download-health-summary" data-ui-block="key-summary">
+			<div
+				id="download-log-health"
+				class="ui-section-anchor download-health-summary"
+				data-ui-block="key-summary"
+			>
 				<h4 class="download-health-title">Server Health</h4>
 				<div class="download-health-stats">
 					<div class="download-health-stat">
@@ -158,14 +207,18 @@
 						</div>
 					{/if}
 				</div>
-				<button type="button" class="download-health-btn" on:click={cleanupHealth}>Cleanup Stuck</button>
+				<button type="button" class="download-health-btn" onclick={cleanupHealth}>Cleanup Stuck</button>
 			</div>
 		{/if}
 
 		<!-- Log Content -->
-		<div class="download-log-content" bind:this={scrollContainer}>
+		<div
+			id="download-log-stream"
+			class="ui-section-anchor download-log-content"
+			bind:this={scrollContainer}
+		>
 			{#each $downloadLogStore.entries as entry (entry.id)}
-				<div class="download-log-entry download-log-entry--{entry.level}">
+				<div class="download-log-entry ui-perf-log-entry download-log-entry--{entry.level}">
 					<span class="download-log-time">{entry.timestamp.toLocaleTimeString()}</span>
 					<span class="download-log-level">[{entry.level.toUpperCase()}]</span>
 					<span class="download-log-message">{entry.message}</span>

@@ -5,6 +5,7 @@
 	export let summary: string | null = null;
 	export let tone: Tone = 'default';
 	export let intentful = false;
+	export let sticky = false;
 	export let className = '';
 	export let panelRole = '';
 
@@ -13,7 +14,7 @@
 </script>
 
 <div
-	class={`ui-action-panel ${intentful ? 'ui-action-panel--intentful' : ''} ${className}`.trim()}
+	class={`ui-action-panel ${intentful ? 'ui-action-panel--intentful' : ''} ${sticky ? 'ui-action-panel--sticky' : ''} ${className}`.trim()}
 	data-ui-role="action-panel"
 	data-ui-panel-role={panelRole || undefined}
 	data-tone={tone === 'default' ? undefined : tone}

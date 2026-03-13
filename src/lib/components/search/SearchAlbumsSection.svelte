@@ -76,7 +76,11 @@
 	}
 </script>
 
-<section id="search-section-albums" class="search-section search-section--albums" data-tone="album">
+<section
+	id="search-section-albums"
+	class="search-section search-section--albums ui-perf-block"
+	data-tone="album"
+>
 	<header class="search-section__header">
 		<div class="search-section__title-group">
 			<h2 class="search-section__title">Albums</h2>
@@ -95,7 +99,7 @@
 				albumDownloadStates[album.id] ?? createDefaultAlbumDownloadState(album.numberOfTracks ?? 0)}
 			{@const canCancelAlbumDownload = isAlbumQueueDownloadCancellable(albumDownloadState)}
 			{@const albumCoverSrc = getAlbumCoverSrc(album)}
-			<div class="search-row search-row--album">
+			<div class="search-row search-row--album ui-perf-row">
 				<a
 					href={`/album/${album.id}`}
 					class="search-row__content search-row__content--link search-row__content--with-media"
@@ -104,7 +108,7 @@
 				>
 					<div class="search-row__media" aria-hidden="true">
 						{#if albumCoverSrc}
-							<img src={albumCoverSrc} alt="" loading="lazy" />
+							<img src={albumCoverSrc} alt="" loading="lazy" decoding="async" />
 						{:else}
 							<span class="search-row__media-fallback">
 								{(album.title?.slice(0, 1) ?? 'A').toUpperCase()}

@@ -1,4 +1,6 @@
 import { losslessAPI } from '$lib/api';
+import { get } from 'svelte/store';
+import { userPreferencesStore } from '$lib/stores/userPreferences';
 
 type CachedResolvedEntry = {
 	url: string;
@@ -34,6 +36,8 @@ const MAX_FAILURE_BACKOFF_MS = Math.max(
 	Number(import.meta.env.VITE_COVER_FAILURE_TTL_MS || 15 * 60 * 1000)
 );
 const PREFETCH_CONCURRENCY = 4;
+const LOW_PERFORMANCE_PREFETCH_CONCURRENCY = 2;
+const LOW_PERFORMANCE_PREFETCH_LIMIT = 8;
 export type CoverImageSize = '1280' | '640' | '320' | '160' | '80';
 
 const resolvedCoverCache = new Map<string, CachedResolvedEntry>();
@@ -57,6 +61,49 @@ function pruneCoverCaches(): void {
 			failedCoverCache.delete(key);
 		}
 	}
+}
+
+function isDocumentHidden(): boolean {
+	return typeof document !== 'undefined' && document.visibilityState === 'hidden';
+}
+
+function resolvePrefetchProfile(totalItems: number): {
+	maxItems: number;
+	concurrency: number;
+	deferToIdle: boolean;
+} {
+	const performanceMode = get(userPreferencesStore).performanceMode;
+	if (performanceMode === 'low') {
+		return {
+			maxItems: Math.min(totalItems, LOW_PERFORMANCE_PREFETCH_LIMIT),
+			concurrency: LOW_PERFORMANCE_PREFETCH_CONCURRENCY,
+			deferToIdle: true
+		};
+	}
+
+	return {
+		maxItems: totalItems,
+		concurrency: PREFETCH_CONCURRENCY,
+		deferToIdle: totalItems > PREFETCH_CONCURRENCY * 2
+	};
+}
+
+async function waitForIdleWindow(): Promise<void> {
+	if (typeof window === 'undefined') {
+		return;
+	}
+
+	if ('requestIdleCallback' in window) {
+		await new Promise<void>((resolve) => {
+			window.requestIdleCallback(
+				() => resolve(),
+				{ timeout: 250 }
+			);
+		});
+		return;
+	}
+
+	await Promise.resolve();
 }
 
 function emitCoverPipelineEvent(event: CoverPipelineEvent): void {
@@ -185,9 +232,11 @@ async function tryPrefetchCandidates(cacheKey: string, candidates: string[]): Pr
 export async function prefetchCoverCandidates(
 	items: Array<{ cacheKey: string; candidates: string[] }>
 ): Promise<void> {
-	if (typeof window === 'undefined' || items.length === 0) {
+	if (typeof window === 'undefined' || items.length === 0 || isDocumentHidden()) {
 		return;
 	}
+
+	const profile = resolvePrefetchProfile(items.length);
 
 	const queue = items.filter(
 		(item) =>
@@ -196,12 +245,19 @@ export async function prefetchCoverCandidates(
 			!inFlightPrefetch.has(item.cacheKey) &&
 			!getResolvedCoverUrl(item.cacheKey) &&
 			!isCoverInFailureBackoff(item.cacheKey)
-	);
+	).slice(0, profile.maxItems);
 	if (queue.length === 0) {
 		return;
 	}
 
-	const workerCount = Math.min(PREFETCH_CONCURRENCY, queue.length);
+	if (profile.deferToIdle) {
+		await waitForIdleWindow();
+		if (isDocumentHidden()) {
+			return;
+		}
+	}
+
+	const workerCount = Math.min(profile.concurrency, queue.length);
 	const workers = Array.from({ length: workerCount }, async (_, workerIndex) => {
 		for (let i = workerIndex; i < queue.length; i += workerCount) {
 			const item = queue[i]!;

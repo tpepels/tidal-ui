@@ -66,7 +66,11 @@
 	}
 </script>
 
-<section id="search-section-tracks" class="search-section search-section--tracks" data-tone="tertiary">
+<section
+	id="search-section-tracks"
+	class="search-section search-section--tracks ui-perf-block"
+	data-tone="tertiary"
+>
 	<header class="search-section__header">
 		<h2 class="search-section__title">Songs</h2>
 		<span class="search-section__count">{tracks.length}</span>
@@ -86,11 +90,11 @@
 					handleTrackActivation(track);
 				}}
 				onkeydown={(event) => handleTrackKeydown(event, track)}
-				class="search-row"
+				class="search-row ui-perf-row"
 			>
 				<div class="search-row__media" aria-hidden="true">
 					{#if trackCoverSrc}
-						<img src={trackCoverSrc} alt="" loading="lazy" />
+						<img src={trackCoverSrc} alt="" loading="lazy" decoding="async" />
 					{:else}
 						<span class="search-row__media-fallback">
 							{(track.title?.slice(0, 1) ?? '♪').toUpperCase()}

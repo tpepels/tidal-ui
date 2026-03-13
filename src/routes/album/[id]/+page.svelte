@@ -12,6 +12,7 @@
 	import ShareButton from '$lib/components/ShareButton.svelte';
 	import ActionPanel from '$lib/components/ui/ActionPanel.svelte';
 	import DataGrid from '$lib/components/ui/DataGrid.svelte';
+	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
 	import StateBlock from '$lib/components/ui/StateBlock.svelte';
 	import type { Album, Track } from '$lib/types';
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
@@ -42,19 +43,30 @@
 	import { navigationHistoryStore } from '$lib/stores/navigationHistory';
 	import { fetchAlbumLibraryStatus, repairAlbumInLibrary } from '$lib/utils/mediaLibraryClient';
 	import { getCoverCacheKey, getUnifiedCoverCandidates } from '$lib/utils/coverPipeline';
+	import {
+		createAdaptivePollingController,
+		type AdaptivePollingController
+	} from '$lib/utils/adaptivePolling';
+	import {
+		type MusicBrainzReleaseOption,
+		formatMusicBrainzReleaseOption,
+		lookupAlbumMusicBrainzReleases
+	} from '$lib/features/album/albumMusicBrainzController';
+	import {
+		pollAlbumQueueJob,
+		requestAlbumQueueAction
+	} from '$lib/features/album/albumQueueController';
+	import {
+		playAlbumTracks,
+		shuffleAlbumTracks,
+		toggleAlbumPlayback
+	} from '$lib/features/album/albumPlaybackController';
+	import {
+		findMissingTrackNumbers,
+		resolveExpectedTrackCount
+	} from '$lib/features/album/albumTrackListModel';
 
 	import { downloadAlbum } from '$lib/downloads';
-
-	type MusicBrainzReleaseOption = {
-		id: string;
-		title?: string;
-		artistCredit?: string;
-		status?: string;
-		country?: string;
-		date?: string;
-		trackCount?: number;
-		barcode?: string;
-	};
 
 	let album = $state<Album | null>(null);
 	let tracks = $state<Track[]>([]);
@@ -87,7 +99,7 @@
 	let queueJobId = $state<string | null>(null);
 	let queueCompletedTracks = $state(0);
 	let queueTotalTracks = $state(0);
-	let queuePollInterval: ReturnType<typeof setInterval> | null = null;
+	let queuePollController: AdaptivePollingController | null = null;
 	let queuePollToken = 0;
 	let albumInLibrary = $state(false);
 	let albumLibraryTrackCount = $state(0);
@@ -240,73 +252,20 @@
 		}
 	}
 
-	function formatMusicBrainzReleaseOption(release: MusicBrainzReleaseOption): string {
-		const trackCountLabel =
-			typeof release.trackCount === 'number' && Number.isFinite(release.trackCount) && release.trackCount > 0
-				? `${Math.trunc(release.trackCount)} track${Math.trunc(release.trackCount) === 1 ? '' : 's'}`
-				: undefined;
-		const parts = [
-			release.title?.trim() || 'Untitled release',
-			trackCountLabel,
-			release.artistCredit?.trim(),
-			release.date?.trim(),
-			release.country?.trim(),
-			release.status?.trim()
-		].filter((value): value is string => typeof value === 'string' && value.length > 0);
-		return parts.join(' - ');
-	}
-
-	function resolveReleaseTrackCount(release: MusicBrainzReleaseOption): number | null {
-		const count = Number(release.trackCount);
-		if (!Number.isFinite(count) || count <= 0) {
-			return null;
-		}
-		return Math.trunc(count);
-	}
-
-	function resolveMusicBrainzTargetTrackCount(): number | null {
-		const albumTrackCount = Number(album?.numberOfTracks);
-		if (Number.isFinite(albumTrackCount) && albumTrackCount > 0) {
-			return Math.trunc(albumTrackCount);
-		}
-		if (tracks.length > 0) {
-			return tracks.length;
-		}
-		return null;
-	}
-
-	function pickDefaultMusicBrainzReleaseId(
-		releases: MusicBrainzReleaseOption[],
-		targetTrackCount: number | null
-	): string {
-		if (releases.length === 0) {
-			return '';
-		}
-		if (targetTrackCount === null) {
-			return releases[0]?.id ?? '';
-		}
-
-		const exactTrackCountMatch = releases.find(
-			(release) => resolveReleaseTrackCount(release) === targetTrackCount
-		);
-		if (exactTrackCountMatch) {
-			return exactTrackCountMatch.id;
-		}
-
-		const atLeastTrackCountMatch = releases.find((release) => {
-			const trackCount = resolveReleaseTrackCount(release);
-			return trackCount !== null && trackCount >= targetTrackCount;
-		});
-		if (atLeastTrackCountMatch) {
-			return atLeastTrackCountMatch.id;
-		}
-
-		return releases[0]?.id ?? '';
-	}
-
 	const selectedMusicBrainzRelease = $derived.by(() =>
 		musicBrainzReleaseOptions.find((release) => release.id === selectedMusicBrainzReleaseId) ?? null
 	);
+	const sectionNavItems = $derived.by(() => {
+		const items = [
+			{ id: 'album-actions', label: 'Actions', tone: 'secondary' as const },
+			{ id: 'album-metadata', label: 'MusicBrainz', tone: 'tertiary' as const },
+			{ id: 'album-tracks', label: 'Tracks' }
+		];
+		if (album?.copyright) {
+			items.push({ id: 'album-notes', label: 'Notes' });
+		}
+		return items;
+	});
 
 	async function lookupMusicBrainzReleases(options?: { manual?: boolean }): Promise<void> {
 		if (!album) {
@@ -318,56 +277,17 @@
 		musicBrainzReleaseLookupError = null;
 		hasMusicBrainzReleaseLookupAttempted = true;
 		try {
-			const response = await fetch('/api/metadata/musicbrainz-release-search', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					albumTitle: activeAlbum.title,
-					artistName: activeAlbum.artist?.name,
-					releaseDate: activeAlbum.releaseDate,
-					upc: activeAlbum.upc,
-					limit: 12
-				})
+			const result = await lookupAlbumMusicBrainzReleases({
+				album: activeAlbum,
+				tracks,
+				currentSelectionId: selectedMusicBrainzReleaseId,
+				fetchImpl: fetch
 			});
-			const payload = (await response.json().catch(() => null)) as {
-				success?: boolean;
-				error?: string;
-				releases?: MusicBrainzReleaseOption[];
-			} | null;
 			if (lookupToken !== musicBrainzReleaseLookupToken || album?.id !== activeAlbum.id) {
 				return;
 			}
-			if (!response.ok || !payload?.success) {
-				throw new Error(payload?.error || 'Failed to search MusicBrainz releases');
-			}
-
-			const releases = Array.isArray(payload.releases)
-				? payload.releases.filter((release) => typeof release?.id === 'string' && release.id.length > 0)
-				: [];
-			musicBrainzReleaseOptions = releases;
-			if (releases.length === 0) {
-				selectedMusicBrainzReleaseId = '';
-				return;
-			}
-			const existingSelection = selectedMusicBrainzReleaseId;
-			const hasExistingSelection = releases.some((release) => release.id === existingSelection);
-			const targetTrackCount = resolveMusicBrainzTargetTrackCount();
-			const recommendedSelection = pickDefaultMusicBrainzReleaseId(releases, targetTrackCount);
-			if (hasExistingSelection) {
-				if (targetTrackCount !== null) {
-					const selectedRelease = releases.find((release) => release.id === existingSelection) ?? null;
-					const selectedTrackCount = selectedRelease
-						? resolveReleaseTrackCount(selectedRelease)
-						: null;
-					const selectedIsTrackCompatible =
-						selectedTrackCount !== null && selectedTrackCount >= targetTrackCount;
-					if (!selectedIsTrackCompatible) {
-						selectedMusicBrainzReleaseId = recommendedSelection;
-					}
-				}
-				return;
-			}
-			selectedMusicBrainzReleaseId = recommendedSelection;
+			musicBrainzReleaseOptions = result.releases;
+			selectedMusicBrainzReleaseId = result.selectedReleaseId;
 		} catch (lookupError) {
 			const message =
 				lookupError instanceof Error ? lookupError.message : 'Failed to search MusicBrainz releases';
@@ -395,51 +315,20 @@
 	});
 
 	function handlePlayAll() {
-		// Validate tracks array
-		if (!Array.isArray(tracks) || tracks.length === 0) {
-			console.warn('No tracks available to play');
-			return;
-		}
-
-		try {
-			playbackFacade.loadQueue(tracks, 0, { autoPlay: true });
-		} catch (error) {
-			console.error('Failed to play album:', error);
-			// Could show error toast here
-		}
+		playAlbumTracks(tracks, playbackFacade);
 	}
 
 	function handleAlbumPlaybackToggle() {
-		if (!Array.isArray(tracks) || tracks.length === 0) {
-			console.warn('No tracks available to play');
-			return;
-		}
-
-		if (isAlbumPlaying) {
-			playbackFacade.pause();
-			return;
-		}
-
-		if (isAlbumQueue) {
-			const firstTrackId = tracks[0]?.id;
-			if ($machineCurrentTrack?.id !== firstTrackId) {
-				playbackFacade.loadQueue(tracks, 0, { autoPlay: true });
-			} else {
-				playbackFacade.play();
-			}
-			return;
-		}
-
-		handlePlayAll();
-	}
-
-	function shuffleTracks(list: Track[]): Track[] {
-		const items = list.slice();
-		for (let i = items.length - 1; i > 0; i -= 1) {
-			const j = Math.floor(Math.random() * (i + 1));
-			[items[i], items[j]] = [items[j]!, items[i]!];
-		}
-		return items;
+		toggleAlbumPlayback({
+			tracks,
+			isAlbumPlaying,
+			isAlbumQueue,
+			currentTrackId:
+				typeof $machineCurrentTrack?.id === 'number' && Number.isFinite($machineCurrentTrack.id)
+					? $machineCurrentTrack.id
+					: undefined,
+			playbackFacade
+		});
 	}
 
 	function handleBackNavigation() {
@@ -449,25 +338,16 @@
 
 	function handleShufflePlay() {
 		if (tracks.length === 0) return;
-		const shuffled = shuffleTracks(tracks);
+		const shuffled = shuffleAlbumTracks(tracks);
 		playbackFacade.loadQueue(shuffled, 0, { autoPlay: true });
 	}
 
 	function stopQueuePolling(): void {
 		queuePollToken += 1;
-		if (queuePollInterval) {
-			clearInterval(queuePollInterval);
-			queuePollInterval = null;
+		if (queuePollController) {
+			queuePollController.stop();
+			queuePollController = null;
 		}
-	}
-
-	function resolveQueueProgress(total: number, completed: number): { total: number; completed: number } {
-		const safeTotal = Number.isFinite(total) && total > 0 ? total : Math.max(0, tracks.length);
-		const safeCompleted = Number.isFinite(completed) && completed > 0 ? completed : 0;
-		if (safeTotal > 0) {
-			return { total: safeTotal, completed: Math.min(safeTotal, safeCompleted) };
-		}
-		return { total: safeTotal, completed: safeCompleted };
 	}
 
 	async function pollQueueJob(jobId: string, pollToken: number): Promise<void> {
@@ -475,32 +355,19 @@
 			return;
 		}
 		try {
-			const response = await fetch(`/api/download-queue/${jobId}`);
-			if (!response.ok) {
+			const snapshot = await pollAlbumQueueJob({
+				jobId,
+				currentTotalTracks: queueTotalTracks,
+				fallbackTrackCount: tracks.length,
+				fetchImpl: fetch
+			});
+			if (!snapshot || pollToken !== queuePollToken) {
 				return;
 			}
-			const payload = (await response.json()) as {
-				success?: boolean;
-				job?: {
-					status?: 'queued' | 'processing' | 'paused' | 'completed' | 'failed' | 'cancelled';
-					trackCount?: number;
-					completedTracks?: number;
-					progress?: number;
-					error?: string;
-				};
-			};
-			if (!payload.success || !payload.job || pollToken !== queuePollToken) {
-				return;
-			}
+			queueTotalTracks = snapshot.totalTracks;
+			queueCompletedTracks = snapshot.completedTracks;
 
-			const total = Number(payload.job.trackCount);
-			const completed = Number(payload.job.completedTracks);
-			const fallbackCompleted = Number(payload.job.progress) * (queueTotalTracks || tracks.length || 0);
-			const progress = resolveQueueProgress(total, Number.isFinite(completed) ? completed : fallbackCompleted);
-			queueTotalTracks = progress.total;
-			queueCompletedTracks = progress.completed;
-
-			switch (payload.job.status) {
+			switch (snapshot.status) {
 				case 'queued':
 					queueStatus = 'queued';
 					downloadError = null;
@@ -516,7 +383,7 @@
 					break;
 				case 'completed':
 					queueStatus = 'completed';
-					queueCompletedTracks = progress.total || progress.completed;
+					queueCompletedTracks = snapshot.totalTracks || snapshot.completedTracks;
 					downloadError = null;
 					stopQueuePolling();
 					break;
@@ -527,7 +394,7 @@
 					break;
 				case 'failed':
 					queueStatus = 'failed';
-					downloadError = payload.job.error ?? 'Album download failed.';
+					downloadError = snapshot.error ?? 'Album download failed.';
 					stopQueuePolling();
 					break;
 				default:
@@ -541,10 +408,15 @@
 	function startQueuePolling(jobId: string): void {
 		stopQueuePolling();
 		const token = queuePollToken;
-		void pollQueueJob(jobId, token);
-		queuePollInterval = setInterval(() => {
-			void pollQueueJob(jobId, token);
-		}, 1000);
+		queuePollController = createAdaptivePollingController({
+			run: async () => {
+				await pollQueueJob(jobId, token);
+			},
+			visibleIntervalMs: 1_000,
+			hiddenIntervalMs: 5_000,
+			pauseWhenHidden: true
+		});
+		queuePollController.start();
 	}
 
 	async function cancelQueueDownload(): Promise<void> {
@@ -552,17 +424,11 @@
 			return;
 		}
 		try {
-			const response = await fetch(`/api/download-queue/${queueJobId}`, {
-				method: 'PATCH',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({ action: 'cancel' })
+			await requestAlbumQueueAction({
+				jobId: queueJobId,
+				action: 'cancel',
+				fetchImpl: fetch
 			});
-			if (!response.ok) {
-				const body = await response.text();
-				throw new Error(body || 'Failed to cancel download');
-			}
 			queueStatus = 'cancelled';
 			downloadError = null;
 			stopQueuePolling();
@@ -579,17 +445,11 @@
 			return;
 		}
 		try {
-			const response = await fetch(`/api/download-queue/${queueJobId}`, {
-				method: 'PATCH',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({ action: 'resume' })
+			await requestAlbumQueueAction({
+				jobId: queueJobId,
+				action: 'resume',
+				fetchImpl: fetch
 			});
-			if (!response.ok) {
-				const body = await response.text();
-				throw new Error(body || 'Failed to resume download');
-			}
 			queueStatus = 'queued';
 			downloadError = null;
 			startQueuePolling(queueJobId);
@@ -766,34 +626,8 @@
 	}
 
 	const totalDuration = $derived(tracks.reduce((sum, track) => sum + (track.duration ?? 0), 0));
-	const expectedTrackCount = $derived.by(() => {
-		const count = Number(album?.numberOfTracks);
-		if (!Number.isFinite(count) || count <= 0) {
-			return null;
-		}
-		return Math.trunc(count);
-	});
-	const missingTrackNumbers = $derived.by(() => {
-		if (!expectedTrackCount) {
-			return [] as number[];
-		}
-
-		const observedTrackNumbers = new Set<number>();
-		for (const track of tracks) {
-			const trackNumber = Number(track.trackNumber);
-			if (Number.isFinite(trackNumber) && trackNumber > 0) {
-				observedTrackNumbers.add(Math.trunc(trackNumber));
-			}
-		}
-
-		const missing: number[] = [];
-		for (let expected = 1; expected <= expectedTrackCount; expected += 1) {
-			if (!observedTrackNumbers.has(expected)) {
-				missing.push(expected);
-			}
-		}
-		return missing;
-	});
+	const expectedTrackCount = $derived.by(() => resolveExpectedTrackCount(album));
+	const missingTrackNumbers = $derived.by(() => findMissingTrackNumbers(tracks, expectedTrackCount));
 	const hasIncompleteTrackList = $derived.by(
 		() =>
 			expectedTrackCount !== null &&
@@ -943,10 +777,132 @@
 						tracks{#if missingTrackLabel} (missing {missingTrackLabel}){/if}.
 					</p>
 				{/if}
-				<div data-ui-block="context-metadata">
-					<ActionPanel className="mb-6" panelRole="musicbrainz-release">
-					<svelte:fragment slot="header">
-						<div class="ui-action-subpanel__header">
+			</div>
+		</div>
+
+		<PageSectionNav items={sectionNavItems} sticky={true} />
+
+		{#if tracks.length > 0}
+			<section id="album-actions" class="ui-section-anchor" data-ui-block="primary-actions">
+				<ActionPanel
+					intent="Album Actions"
+					summary="Play, shuffle, download, and maintain this album from one action surface."
+					intentful={true}
+					sticky={true}
+					panelRole="album-actions"
+				>
+					<div class="ui-action-row ui-action-row--progressive">
+						<button
+							onclick={handleAlbumPlaybackToggle}
+							class="ui-action-button ui-action-button--primary"
+							aria-label={isAlbumPlaying ? 'Pause album' : 'Play album'}
+						>
+							{#if isAlbumPlaying}
+								<Pause size={16} fill="currentColor" />
+								Pause
+							{:else}
+								<Play size={16} fill="currentColor" />
+								Play Album
+							{/if}
+						</button>
+						<button onclick={handleShufflePlay} class="ui-action-button">
+							<Shuffle size={16} />
+							Shuffle Album
+						</button>
+						<button
+							onclick={handleDownloadAll}
+							class="ui-action-button"
+							disabled={queueStatus === 'submitting'}
+							aria-label={isQueueDownloadCancellable ? 'Stop album download' : 'Download album'}
+							aria-busy={hasActiveQueueDownload || isDownloadingAll}
+						>
+							{#if isQueueDownloadCancellable}
+								<X size={16} />
+								Stop Download
+							{:else if queueStatus === 'submitting'}
+								<LoaderCircle size={16} class="animate-spin" />
+								Queueing…
+							{:else if isDownloadingAll}
+								<LoaderCircle size={16} class="animate-spin" />
+								Downloading {downloadedCount}/{tracks.length}
+							{:else}
+								<Download size={16} />
+								{queueStatus === 'failed'
+									? 'Retry Download'
+									: queueStatus === 'paused'
+										? 'Resume Download'
+									: queueStatus === 'cancelled'
+										? 'Resume Download'
+										: queueStatus === 'completed'
+											? 'Download Again'
+											: albumInLibrary && queueStatus === 'idle'
+												? 'Redownload Album'
+												: 'Download Album'}
+							{/if}
+						</button>
+						{#if albumInLibrary}
+							<button
+								onclick={handleRepairAlbum}
+								class="ui-action-button"
+								disabled={isRepairingAlbum}
+								aria-busy={isRepairingAlbum}
+							>
+								{#if isRepairingAlbum}
+									<LoaderCircle size={16} class="animate-spin" />
+									Checking Integrity…
+								{:else}
+									Repair Corrupt Files
+								{/if}
+							</button>
+						{/if}
+						<ShareButton type="album" id={album.id} variant="secondary" />
+					</div>
+					{#if queueStatus === 'queued'}
+						<p class="ui-action-status" data-tone="info">
+							Queued on server. Open Download Manager for live progress.
+						</p>
+					{:else if queueStatus === 'processing'}
+						<p class="ui-action-status" data-tone="info">
+							Downloading on server
+							{#if queueTotalTracks > 0}
+								({queueCompletedTracks}/{queueTotalTracks} tracks)
+							{/if}
+							…
+						</p>
+					{:else if queueStatus === 'completed'}
+						<p class="ui-action-status" data-tone="success">Album download completed.</p>
+					{:else if queueStatus === 'cancelled'}
+						<p class="ui-action-status" data-tone="warning">Album download stopped.</p>
+					{:else if queueStatus === 'paused'}
+						<p class="ui-action-status" data-tone="warning">Album download paused.</p>
+					{:else if albumInLibrary}
+						<p class="ui-action-status" data-tone="success">
+							{#if downloadStoragePreference === 'server'}
+								Already in local library ({albumLibraryTrackCount} track{albumLibraryTrackCount === 1 ? '' : 's'} found). Click "Redownload Album" to overwrite.
+							{:else}
+								Already in local library ({albumLibraryTrackCount} track{albumLibraryTrackCount === 1 ? '' : 's'} found). Browser redownloads may append (2) to filenames.
+							{/if}
+						</p>
+					{/if}
+					{#if repairMessage}
+						<p class="ui-action-status" data-tone="success">{repairMessage}</p>
+					{/if}
+					{#if downloadError}
+						<p class="ui-action-status" data-tone="error">{downloadError}</p>
+					{/if}
+					{#if isMusicBrainzReleaseLookupLoading && !selectedMusicBrainzReleaseId}
+						<p class="ui-action-status" data-tone="warning">
+							MusicBrainz release data is still loading. Waiting briefly can improve metadata quality.
+						</p>
+					{/if}
+				</ActionPanel>
+			</section>
+		{/if}
+
+		<section id="album-metadata" class="ui-section-anchor" data-ui-block="context-metadata">
+			<ActionPanel panelRole="musicbrainz-release">
+				<svelte:fragment slot="header">
+					<div class="ui-action-subpanel__header">
 						<p class="ui-action-panel__intent">MusicBrainz Release Metadata</p>
 						<button
 							type="button"
@@ -960,218 +916,97 @@
 								Refresh Matches
 							{/if}
 						</button>
-						</div>
-					</svelte:fragment>
-					{#if isMusicBrainzReleaseLookupLoading && musicBrainzReleaseOptions.length === 0}
-						<p class="ui-action-status">Searching MusicBrainz releases…</p>
-					{:else if isMusicBrainzReleaseLookupLoading}
-						<p class="ui-action-status" data-tone="info">Refreshing MusicBrainz releases…</p>
-					{:else if musicBrainzReleaseOptions.length > 0}
-						<label class="ui-action-panel__intent" for="musicbrainz-release-select">
-							Selected Release
-						</label>
-						<select
-							id="musicbrainz-release-select"
-							class="ui-select w-full"
-							bind:value={selectedMusicBrainzReleaseId}
-						>
-							{#each musicBrainzReleaseOptions as release, index (release.id)}
-								<option value={release.id}>
-									{release.id === selectedMusicBrainzReleaseId
-										? 'Selected - '
-										: index === 0
-											? 'Best Score - '
-											: ''}{formatMusicBrainzReleaseOption(release)}
-								</option>
-							{/each}
-						</select>
-						{#if selectedMusicBrainzRelease}
-							<DataGrid>
-								{#if selectedMusicBrainzRelease.trackCount}
-									<div class="ui-data-point">
-										<p class="ui-data-point__label">Track Count</p>
-										<p class="ui-data-point__value">{selectedMusicBrainzRelease.trackCount}</p>
-									</div>
-								{/if}
-								{#if selectedMusicBrainzRelease.date}
-									<div class="ui-data-point">
-										<p class="ui-data-point__label">Release Date</p>
-										<p class="ui-data-point__value">{selectedMusicBrainzRelease.date}</p>
-									</div>
-								{/if}
-								{#if selectedMusicBrainzRelease.country}
-									<div class="ui-data-point">
-										<p class="ui-data-point__label">Country</p>
-										<p class="ui-data-point__value">{selectedMusicBrainzRelease.country}</p>
-									</div>
-								{/if}
-								{#if selectedMusicBrainzRelease.status}
-									<div class="ui-data-point">
-										<p class="ui-data-point__label">Status</p>
-										<p class="ui-data-point__value">{selectedMusicBrainzRelease.status}</p>
-									</div>
-								{/if}
-								{#if selectedMusicBrainzRelease.barcode}
-									<div class="ui-data-point">
-										<p class="ui-data-point__label">Barcode</p>
-										<p class="ui-data-point__value">{selectedMusicBrainzRelease.barcode}</p>
-									</div>
-								{/if}
-								<div class="ui-data-point">
-									<p class="ui-data-point__label">Release MBID</p>
-									<p class="ui-data-point__value">{selectedMusicBrainzRelease.id}</p>
-								</div>
-							</DataGrid>
-							<p class="ui-action-status">
-								<a
-									href={`https://musicbrainz.org/release/${selectedMusicBrainzRelease.id}`}
-									target="_blank"
-									rel="noreferrer"
-									class="text-gray-300 underline decoration-dotted underline-offset-2 transition-colors hover:text-white"
-								>
-									Open release in MusicBrainz
-								</a>
-							</p>
-						{/if}
-					{:else if hasMusicBrainzReleaseLookupAttempted}
-						<p class="ui-action-status">No MusicBrainz release matches found for this album.</p>
-					{/if}
-					{#if musicBrainzReleaseLookupError}
-						<p class="ui-action-status" data-tone="error">{musicBrainzReleaseLookupError}</p>
-					{/if}
-					<p class="ui-action-status">
-						{#if experimentalMusicBrainzTaggingPreference}
-							The selected release is used for MusicBrainz tagging when downloading this album.
-						{:else}
-							Enable experimental MusicBrainz tagging in Settings to apply this release when downloading.
-						{/if}
-					</p>
-					</ActionPanel>
-				</div>
-
-				{#if tracks.length > 0}
-					<div data-ui-block="primary-actions">
-					<ActionPanel
-						intent="Album Actions"
-						summary="Play, shuffle, download, and maintain this album from one action surface."
-						intentful={true}
-						panelRole="album-actions"
-					>
-						<div class="ui-action-row ui-action-row--progressive">
-							<button
-								onclick={handleAlbumPlaybackToggle}
-								class="ui-action-button ui-action-button--primary"
-								aria-label={isAlbumPlaying ? 'Pause album' : 'Play album'}
-							>
-								{#if isAlbumPlaying}
-									<Pause size={16} fill="currentColor" />
-									Pause
-								{:else}
-									<Play size={16} fill="currentColor" />
-									Play Album
-								{/if}
-							</button>
-							<button
-								onclick={handleShufflePlay}
-								class="ui-action-button"
-							>
-								<Shuffle size={16} />
-								Shuffle Album
-							</button>
-							<button
-								onclick={handleDownloadAll}
-								class="ui-action-button"
-								disabled={queueStatus === 'submitting'}
-								aria-label={isQueueDownloadCancellable ? 'Stop album download' : 'Download album'}
-								aria-busy={hasActiveQueueDownload || isDownloadingAll}
-							>
-								{#if isQueueDownloadCancellable}
-									<X size={16} />
-									Stop Download
-								{:else if queueStatus === 'submitting'}
-									<LoaderCircle size={16} class="animate-spin" />
-									Queueing…
-								{:else if isDownloadingAll}
-									<LoaderCircle size={16} class="animate-spin" />
-									Downloading {downloadedCount}/{tracks.length}
-								{:else}
-									<Download size={16} />
-									{queueStatus === 'failed'
-										? 'Retry Download'
-										: queueStatus === 'paused'
-											? 'Resume Download'
-										: queueStatus === 'cancelled'
-											? 'Resume Download'
-											: queueStatus === 'completed'
-												? 'Download Again'
-												: albumInLibrary && queueStatus === 'idle'
-													? 'Redownload Album'
-												: 'Download Album'}
-								{/if}
-							</button>
-							{#if albumInLibrary}
-								<button
-									onclick={handleRepairAlbum}
-									class="ui-action-button"
-									disabled={isRepairingAlbum}
-									aria-busy={isRepairingAlbum}
-								>
-									{#if isRepairingAlbum}
-										<LoaderCircle size={16} class="animate-spin" />
-										Checking Integrity…
-									{:else}
-										Repair Corrupt Files
-									{/if}
-								</button>
-							{/if}
-							<ShareButton type="album" id={album.id} variant="secondary" />
-						</div>
-						{#if queueStatus === 'queued'}
-							<p class="ui-action-status" data-tone="info">
-								Queued on server. Open Download Manager for live progress.
-							</p>
-						{:else if queueStatus === 'processing'}
-							<p class="ui-action-status" data-tone="info">
-								Downloading on server
-								{#if queueTotalTracks > 0}
-									({queueCompletedTracks}/{queueTotalTracks} tracks)
-								{/if}
-								…
-							</p>
-						{:else if queueStatus === 'completed'}
-							<p class="ui-action-status" data-tone="success">Album download completed.</p>
-						{:else if queueStatus === 'cancelled'}
-							<p class="ui-action-status" data-tone="warning">Album download stopped.</p>
-						{:else if queueStatus === 'paused'}
-							<p class="ui-action-status" data-tone="warning">Album download paused.</p>
-						{:else if albumInLibrary}
-							<p class="ui-action-status" data-tone="success">
-								{#if downloadStoragePreference === 'server'}
-									Already in local library ({albumLibraryTrackCount} track{albumLibraryTrackCount === 1 ? '' : 's'} found). Click "Redownload Album" to overwrite.
-								{:else}
-									Already in local library ({albumLibraryTrackCount} track{albumLibraryTrackCount === 1 ? '' : 's'} found). Browser redownloads may append (2) to filenames.
-								{/if}
-							</p>
-						{/if}
-						{#if repairMessage}
-							<p class="ui-action-status" data-tone="success">{repairMessage}</p>
-						{/if}
-						{#if downloadError}
-							<p class="ui-action-status" data-tone="error">{downloadError}</p>
-						{/if}
-						{#if isMusicBrainzReleaseLookupLoading && !selectedMusicBrainzReleaseId}
-							<p class="ui-action-status" data-tone="warning">
-								MusicBrainz release data is still loading. Waiting briefly can improve metadata quality.
-							</p>
-						{/if}
-					</ActionPanel>
 					</div>
+				</svelte:fragment>
+				{#if isMusicBrainzReleaseLookupLoading && musicBrainzReleaseOptions.length === 0}
+					<p class="ui-action-status">Searching MusicBrainz releases…</p>
+				{:else if isMusicBrainzReleaseLookupLoading}
+					<p class="ui-action-status" data-tone="info">Refreshing MusicBrainz releases…</p>
+				{:else if musicBrainzReleaseOptions.length > 0}
+					<label class="ui-action-panel__intent" for="musicbrainz-release-select">
+						Selected Release
+					</label>
+					<select
+						id="musicbrainz-release-select"
+						class="ui-select w-full"
+						bind:value={selectedMusicBrainzReleaseId}
+					>
+						{#each musicBrainzReleaseOptions as release, index (release.id)}
+							<option value={release.id}>
+								{release.id === selectedMusicBrainzReleaseId
+									? 'Selected - '
+									: index === 0
+										? 'Best Score - '
+										: ''}{formatMusicBrainzReleaseOption(release)}
+							</option>
+						{/each}
+					</select>
+					{#if selectedMusicBrainzRelease}
+						<DataGrid>
+							{#if selectedMusicBrainzRelease.trackCount}
+								<div class="ui-data-point">
+									<p class="ui-data-point__label">Track Count</p>
+									<p class="ui-data-point__value">{selectedMusicBrainzRelease.trackCount}</p>
+								</div>
+							{/if}
+							{#if selectedMusicBrainzRelease.date}
+								<div class="ui-data-point">
+									<p class="ui-data-point__label">Release Date</p>
+									<p class="ui-data-point__value">{selectedMusicBrainzRelease.date}</p>
+								</div>
+							{/if}
+							{#if selectedMusicBrainzRelease.country}
+								<div class="ui-data-point">
+									<p class="ui-data-point__label">Country</p>
+									<p class="ui-data-point__value">{selectedMusicBrainzRelease.country}</p>
+								</div>
+							{/if}
+							{#if selectedMusicBrainzRelease.status}
+								<div class="ui-data-point">
+									<p class="ui-data-point__label">Status</p>
+									<p class="ui-data-point__value">{selectedMusicBrainzRelease.status}</p>
+								</div>
+							{/if}
+							{#if selectedMusicBrainzRelease.barcode}
+								<div class="ui-data-point">
+									<p class="ui-data-point__label">Barcode</p>
+									<p class="ui-data-point__value">{selectedMusicBrainzRelease.barcode}</p>
+								</div>
+							{/if}
+							<div class="ui-data-point">
+								<p class="ui-data-point__label">Release MBID</p>
+								<p class="ui-data-point__value">{selectedMusicBrainzRelease.id}</p>
+							</div>
+						</DataGrid>
+						<p class="ui-action-status">
+							<a
+								href={`https://musicbrainz.org/release/${selectedMusicBrainzRelease.id}`}
+								target="_blank"
+								rel="noreferrer"
+								class="text-gray-300 underline decoration-dotted underline-offset-2 transition-colors hover:text-white"
+							>
+								Open release in MusicBrainz
+							</a>
+						</p>
+					{/if}
+				{:else if hasMusicBrainzReleaseLookupAttempted}
+					<p class="ui-action-status">No MusicBrainz release matches found for this album.</p>
 				{/if}
-			</div>
-		</div>
+				{#if musicBrainzReleaseLookupError}
+					<p class="ui-action-status" data-tone="error">{musicBrainzReleaseLookupError}</p>
+				{/if}
+				<p class="ui-action-status">
+					{#if experimentalMusicBrainzTaggingPreference}
+						The selected release is used for MusicBrainz tagging when downloading this album.
+					{:else}
+						Enable experimental MusicBrainz tagging in Settings to apply this release when downloading.
+					{/if}
+				</p>
+			</ActionPanel>
+		</section>
 
 		<!-- Tracks -->
-		<div class="mt-8 space-y-4" data-ui-block="main-content">
+		<section id="album-tracks" class="ui-section-anchor mt-8 space-y-4" data-ui-block="main-content">
 			<h2 class="text-2xl font-bold">Tracks</h2>
 			{#if tracks.length === 0}
 				<StateBlock
@@ -1182,11 +1017,11 @@
 			{:else}
 				<TrackList {tracks} showAlbum={false} />
 			{/if}
-		</div>
-		<div data-ui-block="secondary-content">
+		</section>
+		<section id="album-notes" class="ui-section-anchor" data-ui-block="secondary-content">
 			{#if album.copyright}
 				<p class="pt-2 text-sm text-gray-500">{album.copyright}</p>
 			{/if}
-		</div>
+		</section>
 	</div>
 {/if}

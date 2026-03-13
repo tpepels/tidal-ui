@@ -13,6 +13,7 @@
 	import EntityMediaCard from '$lib/components/ui/EntityMediaCard.svelte';
 	import ActionPanel from '$lib/components/ui/ActionPanel.svelte';
 	import DataGrid from '$lib/components/ui/DataGrid.svelte';
+	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
 	import { LoaderCircle, Play, ArrowLeft, Disc, Clock, Download, X } from 'lucide-svelte';
 	import { formatArtists } from '$lib/utils/formatters';
 
@@ -48,6 +49,10 @@
 			.map((id) => id.trim())
 			.filter((id) => id.length > 0)
 	);
+	const sectionNavItems = $derived.by(() => [
+		{ id: 'track-actions', label: 'Actions', tone: 'secondary' as const },
+		{ id: 'track-metadata', label: 'MusicBrainz', tone: 'tertiary' as const }
+	]);
 
 	$effect(() => {
 		const parsedTrackId = Number.parseInt(trackId ?? '', 10);
@@ -300,62 +305,64 @@
 						/>
 					</div>
 				</div>
+			</div>
+		</div>
 
-				<div data-ui-block="primary-actions">
-					<ActionPanel
-						intent="Track Actions"
-						summary="Play, download, or share this track."
-						intentful={true}
-						panelRole="track-actions"
+		<PageSectionNav items={sectionNavItems} sticky={true} />
+
+		<section id="track-actions" class="ui-section-anchor" data-ui-block="primary-actions">
+			<ActionPanel
+				intent="Track Actions"
+				summary="Play, download, or share this track."
+				intentful={true}
+				sticky={true}
+				panelRole="track-actions"
+			>
+				<div class="ui-action-row ui-action-row--progressive">
+					<button
+						onclick={() => {
+							if (track) {
+								playbackFacade.loadQueue([track], 0, { autoPlay: true });
+							}
+						}}
+						class="ui-action-button ui-action-button--primary"
 					>
-						<div class="ui-action-row ui-action-row--progressive">
+						<Play size={16} fill="currentColor" />
+						Play
+					</button>
+
+					{#if isDownloading}
 						<button
-							onclick={() => {
-								if (track) {
-									playbackFacade.loadQueue([track], 0, { autoPlay: true });
-								}
-							}}
-							class="ui-action-button ui-action-button--primary"
+							onclick={(event) => handleCancelDownload(track!.id, event)}
+							class="ui-action-button"
 						>
-							<Play size={16} fill="currentColor" />
-							Play
+							<X size={16} />
+							Cancel
 						</button>
+					{:else if isCancelled}
+						<button disabled class="ui-action-button">
+							<X size={16} />
+							Cancelled
+						</button>
+					{:else}
+						<button
+							onclick={(event) => handleDownload(track!, event)}
+							class="ui-action-button"
+						>
+							<Download size={16} />
+							{downloadActionLabel}
+						</button>
+					{/if}
 
-						{#if isDownloading}
-							<button
-								onclick={(event) => handleCancelDownload(track!.id, event)}
-								class="ui-action-button"
-							>
-								<X size={16} />
-								Cancel
-							</button>
-						{:else if isCancelled}
-							<button
-								disabled
-								class="ui-action-button"
-							>
-								<X size={16} />
-								Cancelled
-							</button>
-						{:else}
-							<button
-								onclick={(event) => handleDownload(track!, event)}
-								class="ui-action-button"
-							>
-								<Download size={16} />
-								{downloadActionLabel}
-							</button>
-						{/if}
-
-						<ShareButton type="track" id={track.id} variant="secondary" />
-						</div>
-					</ActionPanel>
+					<ShareButton type="track" id={track.id} variant="secondary" />
 				</div>
+			</ActionPanel>
+		</section>
 
-				<div data-ui-block="context-metadata">
-					<ActionPanel panelRole="musicbrainz-track">
-					<svelte:fragment slot="header">
-						<div class="ui-action-subpanel__header">
+		<section id="track-metadata" class="ui-section-anchor" data-ui-block="context-metadata">
+			<ActionPanel panelRole="musicbrainz-track">
+				<svelte:fragment slot="header">
+					<div class="ui-action-subpanel__header">
 						<p class="ui-action-panel__intent">MusicBrainz Track Metadata</p>
 						<button
 							type="button"
@@ -369,102 +376,100 @@
 								Refresh Metadata
 							{/if}
 						</button>
-						</div>
-					</svelte:fragment>
-					{#if isMusicBrainzLookupLoading && Object.keys(musicBrainzTags).length === 0}
-						<p class="ui-action-status">Resolving MusicBrainz metadata…</p>
-					{:else if Object.keys(musicBrainzTags).length > 0}
-						<DataGrid>
-							{#if musicBrainzTrackId}
-								<div class="ui-data-point">
-									<p class="ui-data-point__label">Track MBID</p>
-									<p class="ui-data-point__value">{musicBrainzTrackId}</p>
-								</div>
-							{/if}
-							{#if musicBrainzReleaseId}
-								<div class="ui-data-point">
-									<p class="ui-data-point__label">Release MBID</p>
-									<p class="ui-data-point__value">{musicBrainzReleaseId}</p>
-								</div>
-							{/if}
-							{#if musicBrainzReleaseGroupId}
-								<div class="ui-data-point">
-									<p class="ui-data-point__label">Release Group</p>
-									<p class="ui-data-point__value">{musicBrainzReleaseGroupId}</p>
-								</div>
-							{/if}
-							{#if musicBrainzReleaseType}
-								<div class="ui-data-point">
-									<p class="ui-data-point__label">Release Type</p>
-									<p class="ui-data-point__value">{musicBrainzReleaseType}</p>
-								</div>
-							{/if}
-							{#if musicBrainzTags.MUSICBRAINZ_RELEASESTATUS}
-								<div class="ui-data-point">
-									<p class="ui-data-point__label">Release Status</p>
-									<p class="ui-data-point__value">{musicBrainzTags.MUSICBRAINZ_RELEASESTATUS}</p>
-								</div>
-							{/if}
-							{#if musicBrainzTags.MUSICBRAINZ_RELEASECOUNTRY}
-								<div class="ui-data-point">
-									<p class="ui-data-point__label">Release Country</p>
-									<p class="ui-data-point__value">{musicBrainzTags.MUSICBRAINZ_RELEASECOUNTRY}</p>
-								</div>
-							{/if}
-							{#if musicBrainzTags.BARCODE}
-								<div class="ui-data-point">
-									<p class="ui-data-point__label">Barcode</p>
-									<p class="ui-data-point__value">{musicBrainzTags.BARCODE}</p>
-								</div>
-							{/if}
-							{#if musicBrainzArtistIds.length > 0}
-								<div class="ui-data-point">
-									<p class="ui-data-point__label">Artist MBIDs</p>
-									<p class="ui-data-point__value">{musicBrainzArtistIds.length}</p>
-								</div>
-							{/if}
-						</DataGrid>
-						<div class="ui-action-row">
-							{#if musicBrainzTrackId}
-								<a
-									href={`https://musicbrainz.org/recording/${musicBrainzTrackId}`}
-									target="_blank"
-									rel="noreferrer"
-									class="ui-chip-button ui-chip-button--compact"
-								>
-									Open Recording
-								</a>
-							{/if}
-							{#if musicBrainzReleaseId}
-								<a
-									href={`https://musicbrainz.org/release/${musicBrainzReleaseId}`}
-									target="_blank"
-									rel="noreferrer"
-									class="ui-chip-button ui-chip-button--compact"
-								>
-									Open Release
-								</a>
-							{/if}
-							{#if musicBrainzArtistIds.length > 0}
-								<a
-									href={`https://musicbrainz.org/artist/${musicBrainzArtistIds[0]}`}
-									target="_blank"
-									rel="noreferrer"
-									class="ui-chip-button ui-chip-button--compact"
-								>
-									Open Artist
-								</a>
-							{/if}
-						</div>
-					{:else if hasMusicBrainzLookupAttempted}
-						<p class="ui-action-status">No MusicBrainz metadata match found for this track.</p>
-					{/if}
-					{#if musicBrainzLookupError}
-						<p class="ui-action-status" data-tone="error">{musicBrainzLookupError}</p>
-					{/if}
-					</ActionPanel>
-				</div>
-			</div>
-		</div>
+					</div>
+				</svelte:fragment>
+				{#if isMusicBrainzLookupLoading && Object.keys(musicBrainzTags).length === 0}
+					<p class="ui-action-status">Resolving MusicBrainz metadata…</p>
+				{:else if Object.keys(musicBrainzTags).length > 0}
+					<DataGrid>
+						{#if musicBrainzTrackId}
+							<div class="ui-data-point">
+								<p class="ui-data-point__label">Track MBID</p>
+								<p class="ui-data-point__value">{musicBrainzTrackId}</p>
+							</div>
+						{/if}
+						{#if musicBrainzReleaseId}
+							<div class="ui-data-point">
+								<p class="ui-data-point__label">Release MBID</p>
+								<p class="ui-data-point__value">{musicBrainzReleaseId}</p>
+							</div>
+						{/if}
+						{#if musicBrainzReleaseGroupId}
+							<div class="ui-data-point">
+								<p class="ui-data-point__label">Release Group</p>
+								<p class="ui-data-point__value">{musicBrainzReleaseGroupId}</p>
+							</div>
+						{/if}
+						{#if musicBrainzReleaseType}
+							<div class="ui-data-point">
+								<p class="ui-data-point__label">Release Type</p>
+								<p class="ui-data-point__value">{musicBrainzReleaseType}</p>
+							</div>
+						{/if}
+						{#if musicBrainzTags.MUSICBRAINZ_RELEASESTATUS}
+							<div class="ui-data-point">
+								<p class="ui-data-point__label">Release Status</p>
+								<p class="ui-data-point__value">{musicBrainzTags.MUSICBRAINZ_RELEASESTATUS}</p>
+							</div>
+						{/if}
+						{#if musicBrainzTags.MUSICBRAINZ_RELEASECOUNTRY}
+							<div class="ui-data-point">
+								<p class="ui-data-point__label">Release Country</p>
+								<p class="ui-data-point__value">{musicBrainzTags.MUSICBRAINZ_RELEASECOUNTRY}</p>
+							</div>
+						{/if}
+						{#if musicBrainzTags.BARCODE}
+							<div class="ui-data-point">
+								<p class="ui-data-point__label">Barcode</p>
+								<p class="ui-data-point__value">{musicBrainzTags.BARCODE}</p>
+							</div>
+						{/if}
+						{#if musicBrainzArtistIds.length > 0}
+							<div class="ui-data-point">
+								<p class="ui-data-point__label">Artist MBIDs</p>
+								<p class="ui-data-point__value">{musicBrainzArtistIds.length}</p>
+							</div>
+						{/if}
+					</DataGrid>
+					<div class="ui-action-row">
+						{#if musicBrainzTrackId}
+							<a
+								href={`https://musicbrainz.org/recording/${musicBrainzTrackId}`}
+								target="_blank"
+								rel="noreferrer"
+								class="ui-chip-button ui-chip-button--compact"
+							>
+								Open Recording
+							</a>
+						{/if}
+						{#if musicBrainzReleaseId}
+							<a
+								href={`https://musicbrainz.org/release/${musicBrainzReleaseId}`}
+								target="_blank"
+								rel="noreferrer"
+								class="ui-chip-button ui-chip-button--compact"
+							>
+								Open Release
+							</a>
+						{/if}
+						{#if musicBrainzArtistIds.length > 0}
+							<a
+								href={`https://musicbrainz.org/artist/${musicBrainzArtistIds[0]}`}
+								target="_blank"
+								rel="noreferrer"
+								class="ui-chip-button ui-chip-button--compact"
+							>
+								Open Artist
+							</a>
+						{/if}
+					</div>
+				{:else if hasMusicBrainzLookupAttempted}
+					<p class="ui-action-status">No MusicBrainz metadata match found for this track.</p>
+				{/if}
+				{#if musicBrainzLookupError}
+					<p class="ui-action-status" data-tone="error">{musicBrainzLookupError}</p>
+				{/if}
+			</ActionPanel>
+		</section>
 	</div>
 {/if}

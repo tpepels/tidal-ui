@@ -25,8 +25,10 @@
 		Activity
 	} from 'lucide-svelte';
 	import ApiTargetsStatusCard from '$lib/components/status/ApiTargetsStatusCard.svelte';
+	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
 	import ToolPanel from '$lib/components/ui/ToolPanel.svelte';
 	import { onDestroy } from 'svelte';
+	import { createAdaptivePollingController } from '$lib/utils/adaptivePolling';
 	import './settings-page-content.css';
 	import {
 		createSettingsStatusPoller,
@@ -58,7 +60,14 @@
 	let isLibraryDeduplicating = $state(false);
 	let libraryDeduplicateSummary = $state<string | null>(null);
 	let libraryDeduplicateProgress = $state<string | null>(null);
-	let statusPollInterval: ReturnType<typeof setInterval> | null = null;
+	let statusPollController = createAdaptivePollingController({
+		run: async () => {
+			await refreshTargetsStatus();
+		},
+		visibleIntervalMs: 15_000,
+		hiddenIntervalMs: 60_000,
+		pauseWhenHidden: true
+	});
 	let apiTargetsStatusLoading = $state(false);
 	let statusTargets = $state<{
 		success?: boolean;
@@ -105,6 +114,12 @@
 			?.label ??
 			$userPreferencesStore.performanceMode
 	);
+	const sectionNavItems = [
+		{ id: 'settings-audio', label: 'Audio', tone: 'secondary' as const },
+		{ id: 'settings-downloads', label: 'Downloads', tone: 'tertiary' as const },
+		{ id: 'settings-queue', label: 'Queue Actions', tone: 'secondary' as const },
+		{ id: 'settings-system', label: 'System', tone: 'tertiary' as const }
+	];
 	let showGuidance = $state(false);
 
 	$effect(() => {
@@ -114,18 +129,18 @@
 	});
 
 	$effect(() => {
-		void refreshTargetsStatus();
-		if (statusPollInterval) {
-			clearInterval(statusPollInterval);
-		}
-		statusPollInterval = setInterval(() => {
-			void refreshTargetsStatus();
-		}, 15000);
+		statusPollController.stop();
+		statusPollController = createAdaptivePollingController({
+			run: async () => {
+				await refreshTargetsStatus();
+			},
+			visibleIntervalMs: 15_000,
+			hiddenIntervalMs: 60_000,
+			pauseWhenHidden: true
+		});
+		statusPollController.start();
 		return () => {
-			if (statusPollInterval) {
-				clearInterval(statusPollInterval);
-				statusPollInterval = null;
-			}
+			statusPollController.stop();
 		};
 	});
 
@@ -133,10 +148,7 @@
 		stopCorrectionDedupPolling();
 		stopFullLibraryRepairPolling();
 		stopLibraryDeduplicatePolling();
-		if (statusPollInterval) {
-			clearInterval(statusPollInterval);
-			statusPollInterval = null;
-		}
+		statusPollController.stop();
 	});
 
 	function resetMaintenanceLogScope(scope: string): void {
@@ -428,6 +440,9 @@
 		</button>
 	</div>
 
+	<PageSectionNav items={sectionNavItems} sticky={true} />
+
+	<div id="settings-audio" class="ui-section-anchor">
 	<ToolPanel
 		wide={true}
 		tone="secondary"
@@ -554,7 +569,9 @@
 			</div>
 		</div>
 	</ToolPanel>
+	</div>
 
+	<div id="settings-downloads" class="ui-section-anchor">
 	<ToolPanel
 		tone="tertiary"
 		panelRole="download-behavior"
@@ -672,8 +689,9 @@
 			{/if}
 		</div>
 	</ToolPanel>
+	</div>
 
-	<div data-ui-block="primary-actions">
+	<div id="settings-queue" class="ui-section-anchor" data-ui-block="primary-actions">
 		<ToolPanel
 			tone="secondary"
 			panelRole="queue-actions"
@@ -733,6 +751,7 @@
 		</ToolPanel>
 	</div>
 
+	<div id="settings-system" class="ui-section-anchor">
 	<ToolPanel
 		wide={true}
 		tone="tertiary"
@@ -891,4 +910,5 @@
 			</div>
 		</div>
 	</ToolPanel>
+	</div>
 </div>

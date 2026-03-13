@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { navigationHistoryStore } from '$lib/stores/navigationHistory';
 	import PageState from '$lib/components/ui/PageState.svelte';
+	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
 	import EntityMediaCard from '$lib/components/ui/EntityMediaCard.svelte';
 	import { Library, User, Trash2, Clock3 } from 'lucide-svelte';
 	import { getRouteMeta } from '$lib/config/routeMeta';
@@ -36,6 +37,11 @@
 	const hasArtistHistory = $derived($navigationHistoryStore.artists.length > 0);
 	const latestAlbum = $derived($navigationHistoryStore.albums[0] ?? null);
 	const latestArtist = $derived($navigationHistoryStore.artists[0] ?? null);
+	const sectionNavItems = $derived.by(() => [
+		{ id: 'history-overview', label: 'Overview' },
+		{ id: 'history-albums', label: 'Albums', tone: 'secondary' as const },
+		{ id: 'history-artists', label: 'Artists', tone: 'tertiary' as const }
+	]);
 
 	function clearHistory(): void {
 		navigationHistoryStore.clear();
@@ -69,7 +75,13 @@
 		</div>
 	</header>
 
-	<div class="ui-surface-grid history-page__overview" data-ui-block="results">
+	<PageSectionNav items={sectionNavItems} sticky={true} />
+
+	<div
+		id="history-overview"
+		class="ui-section-anchor ui-surface-grid history-page__overview"
+		data-ui-block="results"
+	>
 		<article class="ui-surface-card history-overview-card" data-tone="secondary">
 			<div class="history-overview-card__heading">
 				<Clock3 size={16} />
@@ -125,7 +137,11 @@
 	</div>
 
 	<div class="history-page__columns" data-ui-block="results">
-		<section class="ui-surface-card history-list-card" data-tone="secondary">
+		<section
+			id="history-albums"
+			class="ui-section-anchor ui-surface-card history-list-card ui-perf-block"
+			data-tone="secondary"
+		>
 			<div class="history-list-card__header">
 				<div class="history-list-card__title">
 					<Library size={16} />
@@ -165,7 +181,11 @@
 			{/if}
 		</section>
 
-		<section class="ui-surface-card history-list-card" data-tone="tertiary">
+		<section
+			id="history-artists"
+			class="ui-section-anchor ui-surface-card history-list-card ui-perf-block"
+			data-tone="tertiary"
+		>
 			<div class="history-list-card__header">
 				<div class="history-list-card__title">
 					<User size={16} />

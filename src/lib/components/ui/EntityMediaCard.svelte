@@ -85,7 +85,7 @@
 
 <article
 	{...restProps}
-	class={`ui-media-card ui-entity-card ${className}`.trim()}
+	class={`ui-media-card ui-entity-card ui-perf-card ${className}`.trim()}
 	data-tone={resolveCardTone()}
 >
 	{#if badge}

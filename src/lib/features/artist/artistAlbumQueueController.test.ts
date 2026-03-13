@@ -43,6 +43,7 @@ describe('artistAlbumQueueController', () => {
 	});
 
 	it('polls queued jobs and reconciles to completed state', async () => {
+		vi.useFakeTimers();
 		const stateByAlbum = new Map<number, ArtistAlbumDownloadState>();
 		const getState = (albumId: number) =>
 			stateByAlbum.get(albumId) ?? createDefaultArtistAlbumDownloadState();
@@ -75,13 +76,14 @@ describe('artistAlbumQueueController', () => {
 		});
 
 		controller.startPolling(42, 'job-42');
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		await vi.runAllTimersAsync();
 
 		expect(fetchQueueJob).toHaveBeenCalled();
 		expect(getState(42).status).toBe('completed');
 		expect(getState(42).queueJobId).toBeNull();
 
 		controller.stopAllPolling();
+		vi.useRealTimers();
 	});
 
 	it('cancels queue downloads when state is cancellable', async () => {

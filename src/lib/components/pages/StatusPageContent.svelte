@@ -9,8 +9,10 @@
 	import { getRetrySummary, type RetrySummary } from '$lib/core/retryTracker';
 	import { Activity, Gauge } from 'lucide-svelte';
 	import ApiTargetsStatusCard from '$lib/components/status/ApiTargetsStatusCard.svelte';
+	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
 	import StateBlock from '$lib/components/ui/StateBlock.svelte';
 	import ToolPanel from '$lib/components/ui/ToolPanel.svelte';
+	import { createAdaptivePollingController } from '$lib/utils/adaptivePolling';
 
 	let diagnosticsLoading = $state(false);
 	let diagnosticsSummary = $state<ReturnType<typeof getErrorSummary> | null>(null);
@@ -40,7 +42,14 @@
 		error?: string;
 	} | null>(null);
 	let statusLastUpdatedAt = $state<number | null>(null);
-	let statusPollInterval: ReturnType<typeof setInterval> | null = null;
+	let statusPollController = createAdaptivePollingController({
+		run: async () => {
+			await refreshDiagnostics();
+		},
+		visibleIntervalMs: 5_000,
+		hiddenIntervalMs: 20_000,
+		pauseWhenHidden: true
+	});
 	let diagnosticsError = $state<string | null>(null);
 
 	type QueueSnapshot = {
@@ -69,6 +78,13 @@
 
 	const queueSnapshot = $derived((statusQueueMetrics?.queue ?? null) as Partial<QueueSnapshot> | null);
 	const queueMetrics = $derived((statusQueueMetrics?.metrics ?? null) as Partial<QueueMetrics> | null);
+	const sectionNavItems = [
+		{ id: 'status-health', label: 'Health', tone: 'secondary' as const },
+		{ id: 'status-targets', label: 'API Targets', tone: 'secondary' as const },
+		{ id: 'status-queue', label: 'Queue', tone: 'tertiary' as const },
+		{ id: 'status-errors', label: 'Errors', tone: 'secondary' as const },
+		{ id: 'status-advanced', label: 'Advanced', tone: 'tertiary' as const }
+	];
 
 	function toMetricNumber(value: unknown, fallback = 0): number {
 		return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
@@ -114,26 +130,23 @@
 	}
 
 	$effect(() => {
-		void refreshDiagnostics();
-		if (statusPollInterval) {
-			clearInterval(statusPollInterval);
-		}
-		statusPollInterval = setInterval(() => {
-			void refreshDiagnostics();
-		}, 5000);
+		statusPollController.stop();
+		statusPollController = createAdaptivePollingController({
+			run: async () => {
+				await refreshDiagnostics();
+			},
+			visibleIntervalMs: 5_000,
+			hiddenIntervalMs: 20_000,
+			pauseWhenHidden: true
+		});
+		statusPollController.start();
 		return () => {
-			if (statusPollInterval) {
-				clearInterval(statusPollInterval);
-				statusPollInterval = null;
-			}
+			statusPollController.stop();
 		};
 	});
 
 	onDestroy(() => {
-		if (statusPollInterval) {
-			clearInterval(statusPollInterval);
-			statusPollInterval = null;
-		}
+		statusPollController.stop();
 	});
 </script>
 
@@ -176,8 +189,10 @@
 		/>
 	{/if}
 
+	<PageSectionNav items={sectionNavItems} sticky={true} />
+
 	<div class="status-page__grid" data-ui-block="main-sections">
-		<div data-ui-block="key-summary">
+		<div id="status-health" class="ui-section-anchor" data-ui-block="key-summary">
 			<ToolPanel tone="secondary">
 				<p class="section-heading">Health</p>
 				<p class="section-footnote">
@@ -194,50 +209,54 @@
 			</ToolPanel>
 		</div>
 
-		<ToolPanel tone="secondary">
-			<ApiTargetsStatusCard
-				title="API Targets"
-				status={statusTargets}
-				loading={diagnosticsLoading}
-				lastUpdatedAt={statusLastUpdatedAt}
-				onRefresh={() => void refreshDiagnostics()}
-				compact={true}
-			/>
-		</ToolPanel>
+		<div id="status-targets" class="ui-section-anchor">
+			<ToolPanel tone="secondary">
+				<ApiTargetsStatusCard
+					title="API Targets"
+					status={statusTargets}
+					loading={diagnosticsLoading}
+					lastUpdatedAt={statusLastUpdatedAt}
+					onRefresh={() => void refreshDiagnostics()}
+					compact={true}
+				/>
+			</ToolPanel>
+		</div>
 
-		<ToolPanel tone="tertiary">
-			<p class="section-heading">Queue</p>
-			<div class="status-page__metric-grid">
-				<div class="status-page__metric">
-					<p class="status-page__metric-label">Queued</p>
-					<p class="status-page__metric-value">{toMetricNumber(queueSnapshot?.queued)}</p>
+		<div id="status-queue" class="ui-section-anchor">
+			<ToolPanel tone="tertiary">
+				<p class="section-heading">Queue</p>
+				<div class="status-page__metric-grid">
+					<div class="status-page__metric">
+						<p class="status-page__metric-label">Queued</p>
+						<p class="status-page__metric-value">{toMetricNumber(queueSnapshot?.queued)}</p>
+					</div>
+					<div class="status-page__metric">
+						<p class="status-page__metric-label">Processing</p>
+						<p class="status-page__metric-value">{toMetricNumber(queueSnapshot?.processing)}</p>
+					</div>
+					<div class="status-page__metric">
+						<p class="status-page__metric-label">Paused</p>
+						<p class="status-page__metric-value">{toMetricNumber(queueSnapshot?.paused)}</p>
+					</div>
+					<div class="status-page__metric">
+						<p class="status-page__metric-label">Completed</p>
+						<p class="status-page__metric-value">{toMetricNumber(queueSnapshot?.completed)}</p>
+					</div>
+					<div class="status-page__metric">
+						<p class="status-page__metric-label">Failed</p>
+						<p class="status-page__metric-value">{toMetricNumber(queueSnapshot?.failed)}</p>
+					</div>
+					<div class="status-page__metric">
+						<p class="status-page__metric-label">Total</p>
+						<p class="status-page__metric-value">{toMetricNumber(queueSnapshot?.total)}</p>
+					</div>
 				</div>
-				<div class="status-page__metric">
-					<p class="status-page__metric-label">Processing</p>
-					<p class="status-page__metric-value">{toMetricNumber(queueSnapshot?.processing)}</p>
-				</div>
-				<div class="status-page__metric">
-					<p class="status-page__metric-label">Paused</p>
-					<p class="status-page__metric-value">{toMetricNumber(queueSnapshot?.paused)}</p>
-				</div>
-				<div class="status-page__metric">
-					<p class="status-page__metric-label">Completed</p>
-					<p class="status-page__metric-value">{toMetricNumber(queueSnapshot?.completed)}</p>
-				</div>
-				<div class="status-page__metric">
-					<p class="status-page__metric-label">Failed</p>
-					<p class="status-page__metric-value">{toMetricNumber(queueSnapshot?.failed)}</p>
-				</div>
-				<div class="status-page__metric">
-					<p class="status-page__metric-label">Total</p>
-					<p class="status-page__metric-value">{toMetricNumber(queueSnapshot?.total)}</p>
-				</div>
-			</div>
-			<details class="status-page__details">
-				<summary>Show raw queue snapshot</summary>
-				<pre class="status-page__json">{JSON.stringify(statusQueueMetrics?.queue ?? {}, null, 2)}</pre>
-			</details>
-		</ToolPanel>
+				<details class="status-page__details">
+					<summary>Show raw queue snapshot</summary>
+					<pre class="status-page__json">{JSON.stringify(statusQueueMetrics?.queue ?? {}, null, 2)}</pre>
+				</details>
+			</ToolPanel>
+		</div>
 
 		<ToolPanel tone="tertiary">
 			<p class="section-heading">Queue Metrics</p>
@@ -280,30 +299,32 @@
 			</details>
 		</ToolPanel>
 
-		<ToolPanel tone="secondary">
-			<p class="section-heading">Errors (Last Hour)</p>
-			<p class="section-footnote">
-				Total: {diagnosticsSummary?.totalErrors ?? 0} ·
-				Unique: {diagnosticsSummary?.uniqueErrors ?? 0} ·
-				Critical: {diagnosticsSummary?.criticalErrors ?? 0}
-			</p>
-			{#if diagnosticsDomains && Object.keys(diagnosticsDomains).length > 0}
-				<ul class="status-page__issues">
-					{#each Object.entries(diagnosticsDomains) as [domain, count] (domain)}
-						<li>{domain}: {count}</li>
-					{/each}
-				</ul>
-			{:else}
-				<StateBlock
-					kind="empty"
-					title="No domain spikes"
-					message="No domain-specific error concentration detected."
-					embedded={true}
-				/>
+		<div id="status-errors" class="ui-section-anchor">
+			<ToolPanel tone="secondary">
+				<p class="section-heading">Errors (Last Hour)</p>
+				<p class="section-footnote">
+					Total: {diagnosticsSummary?.totalErrors ?? 0} ·
+					Unique: {diagnosticsSummary?.uniqueErrors ?? 0} ·
+					Critical: {diagnosticsSummary?.criticalErrors ?? 0}
+				</p>
+				{#if diagnosticsDomains && Object.keys(diagnosticsDomains).length > 0}
+					<ul class="status-page__issues">
+						{#each Object.entries(diagnosticsDomains) as [domain, count] (domain)}
+							<li>{domain}: {count}</li>
+						{/each}
+					</ul>
+				{:else}
+					<StateBlock
+						kind="empty"
+						title="No domain spikes"
+						message="No domain-specific error concentration detected."
+						embedded={true}
+					/>
 				{/if}
-		</ToolPanel>
+			</ToolPanel>
+		</div>
 
-		<details class="status-page__advanced">
+		<details id="status-advanced" class="ui-section-anchor status-page__advanced">
 			<summary>Advanced diagnostics</summary>
 			<div class="status-page__advanced-grid">
 				<ToolPanel tone="tertiary">

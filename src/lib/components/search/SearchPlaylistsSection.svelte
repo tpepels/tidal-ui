@@ -16,7 +16,7 @@
 
 <section
 	id="search-section-playlists"
-	class="search-section search-section--playlists"
+	class="search-section search-section--playlists ui-perf-block"
 	data-tone="secondary"
 >
 	<header class="search-section__header">
@@ -27,7 +27,7 @@
 		{#each playlists as playlist (playlist.uuid)}
 			<a
 				href={`/playlist/${playlist.uuid}`}
-				class="search-row search-row--link"
+				class="search-row search-row--link ui-perf-row"
 				aria-label={`Open playlist ${playlist.title}`}
 				data-sveltekit-preload-data
 			>

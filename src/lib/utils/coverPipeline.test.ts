@@ -8,9 +8,11 @@ import {
 	markCoverResolved,
 	prefetchCoverCandidates
 } from './coverPipeline';
+import { userPreferencesStore } from '$lib/stores/userPreferences';
 
 class MockImage {
 	static outcomes = new Map<string, boolean>();
+	static createdCount = 0;
 	onload: ((event: Event) => void) | null = null;
 	onerror: ((event: Event) => void) | null = null;
 	private _src = '';
@@ -20,6 +22,7 @@ class MockImage {
 	}
 
 	set src(value: string) {
+		MockImage.createdCount += 1;
 		this._src = value;
 		const success = MockImage.outcomes.get(value) ?? false;
 		queueMicrotask(() => {
@@ -37,20 +40,31 @@ class MockImage {
 }
 
 const originalImage = globalThis.Image;
+const originalVisibilityState = Object.getOwnPropertyDescriptor(document, 'visibilityState');
 
 describe('coverPipeline', () => {
 	beforeEach(() => {
 		clearCoverPipelineCaches();
 		MockImage.outcomes.clear();
+		MockImage.createdCount = 0;
 		globalThis.Image = MockImage as unknown as typeof Image;
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date('2026-02-13T00:00:00.000Z'));
+		Object.defineProperty(document, 'visibilityState', {
+			configurable: true,
+			value: 'visible'
+		});
+		userPreferencesStore.reset();
 	});
 
 	afterEach(() => {
 		clearCoverPipelineCaches();
 		globalThis.Image = originalImage;
 		vi.useRealTimers();
+		if (originalVisibilityState) {
+			Object.defineProperty(document, 'visibilityState', originalVisibilityState);
+		}
+		userPreferencesStore.reset();
 	});
 
 	it('applies exponential failure backoff and clears it after success', () => {
@@ -110,5 +124,23 @@ describe('coverPipeline', () => {
 		expect(getResolvedCoverUrl('cover:key')).toBeNull();
 		expect(isCoverInFailureBackoff('cover:key')).toBe(true);
 		expect(getCoverFailureBackoffMs('cover:key')).toBeGreaterThan(0);
+	});
+
+	it('skips prefetch work when the document is hidden', async () => {
+		Object.defineProperty(document, 'visibilityState', {
+			configurable: true,
+			value: 'hidden'
+		});
+		MockImage.setOutcome('https://img.example.com/a.jpg', true);
+
+		await prefetchCoverCandidates([
+			{
+				cacheKey: 'cover:key',
+				candidates: ['https://img.example.com/a.jpg']
+			}
+		]);
+
+		expect(MockImage.createdCount).toBe(0);
+		expect(getResolvedCoverUrl('cover:key')).toBeNull();
 	});
 });
