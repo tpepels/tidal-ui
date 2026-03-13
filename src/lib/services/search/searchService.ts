@@ -48,11 +48,117 @@ export type SearchResult =
  * In-flight search cache to prevent duplicate concurrent requests
  */
 const inFlightSearches = new Map<string, Promise<SearchResult>>();
-const MAX_ARTIST_ENRICHMENT_SEEDS = 16;
-const MAX_ENRICHED_ALBUMS = 360;
-const ARTIST_ENRICHMENT_CONCURRENCY = 4;
-const TRACK_SEED_LIMIT = 10;
-const BASE_ALBUM_QUERY_ATTEMPTS = 6;
+const completedSearchCache = new Map<string, { expiresAt: number; result: SearchResult }>();
+const SEARCH_RESULT_CACHE_TTL_MS = 45_000;
+const BASE_MAX_ARTIST_ENRICHMENT_SEEDS = 10;
+const BASE_MAX_ENRICHED_ALBUMS = 160;
+const BASE_ARTIST_ENRICHMENT_CONCURRENCY = 2;
+const BASE_ENRICHMENT_SEED_QUERY_CONCURRENCY = 2;
+const BASE_ENRICHMENT_TIME_BUDGET_MS = 4_500;
+const BASE_TRACK_SEED_LIMIT = 8;
+const BASE_ALBUM_QUERY_ATTEMPTS = 4;
+const BASE_ALBUM_ATTEMPT_BATCH_SIZE = 2;
+const BASE_EARLY_RETURN_MATCH_COUNT = 8;
+
+type EnrichmentPlan = {
+	maxArtistSeeds: number;
+	maxEnrichedAlbums: number;
+	artistConcurrency: number;
+	seedQueryConcurrency: number;
+	timeBudgetMs: number;
+	trackSeedLimit: number;
+};
+
+function computeEnrichmentPlan(baseAlbumCount: number, hasArtistFilter: boolean): EnrichmentPlan {
+	const sparseBase = baseAlbumCount < 4;
+	const emptyBase = baseAlbumCount === 0;
+
+	const maxArtistSeeds = Math.min(
+		22,
+		BASE_MAX_ARTIST_ENRICHMENT_SEEDS +
+			(hasArtistFilter ? 4 : 0) +
+			(sparseBase ? 4 : 0) +
+			(emptyBase ? 3 : 0)
+	);
+
+	const maxEnrichedAlbums = Math.min(
+		420,
+		BASE_MAX_ENRICHED_ALBUMS +
+			(hasArtistFilter ? 90 : 0) +
+			(sparseBase ? 120 : 0) +
+			(emptyBase ? 70 : 0)
+	);
+
+	const artistConcurrency = Math.min(
+		4,
+		BASE_ARTIST_ENRICHMENT_CONCURRENCY + (sparseBase ? 1 : 0) + (hasArtistFilter ? 1 : 0)
+	);
+
+	const seedQueryConcurrency = Math.min(
+		4,
+		BASE_ENRICHMENT_SEED_QUERY_CONCURRENCY + (sparseBase ? 1 : 0)
+	);
+
+	const timeBudgetMs = Math.min(
+		11_500,
+		BASE_ENRICHMENT_TIME_BUDGET_MS +
+			(hasArtistFilter ? 2_000 : 0) +
+			(sparseBase ? 2_500 : 0) +
+			(emptyBase ? 2_000 : 0)
+	);
+
+	const trackSeedLimit = Math.min(
+		18,
+		BASE_TRACK_SEED_LIMIT + (sparseBase ? 4 : 0) + (hasArtistFilter ? 2 : 0)
+	);
+
+	return {
+		maxArtistSeeds,
+		maxEnrichedAlbums,
+		artistConcurrency,
+		seedQueryConcurrency,
+		timeBudgetMs,
+		trackSeedLimit
+	};
+}
+
+function cloneSearchResults(results: SearchResults): SearchResults {
+	return {
+		tracks: [...results.tracks],
+		albums: [...results.albums],
+		artists: [...results.artists],
+		playlists: [...results.playlists]
+	};
+}
+
+function cloneSearchResult(result: SearchResult): SearchResult {
+	if (!result.success) {
+		return { ...result };
+	}
+	return {
+		success: true,
+		results: cloneSearchResults(result.results)
+	};
+}
+
+function getCachedSearchResult(searchKey: string): SearchResult | null {
+	const cached = completedSearchCache.get(searchKey);
+	if (!cached) {
+		return null;
+	}
+	if (cached.expiresAt < Date.now()) {
+		completedSearchCache.delete(searchKey);
+		return null;
+	}
+	return cloneSearchResult(cached.result);
+}
+
+function setCachedSearchResult(searchKey: string, result: SearchResult): void {
+	completedSearchCache.set(searchKey, {
+		expiresAt: Date.now() + SEARCH_RESULT_CACHE_TTL_MS,
+		result: cloneSearchResult(result)
+	});
+}
 
 /**
  * Classifies an error into a structured SearchError type
@@ -132,6 +238,94 @@ function splitTokens(value: string): string[] {
 		.split(/[^a-z0-9]+/g)
 		.map((token) => token.trim())
 		.filter((token) => token.length > 1);
+}
+
+function hasWildcardPattern(value: string): boolean {
+	return /[*?]/.test(value);
+}
+
+function stripWildcardOperators(value: string): string {
+	return value
+		.replace(/[*?]+/g, ' ')
+		.replace(/\s+/g, ' ')
+		.trim();
+}
+
+function buildWildcardRegex(pattern: string): RegExp | null {
+	const normalizedPattern = normalizeToken(pattern).replace(/\s+/g, ' ').trim();
+	if (!normalizedPattern || !hasWildcardPattern(normalizedPattern)) {
+		return null;
+	}
+	const escaped = normalizedPattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+	const wildcardPattern = escaped.replace(/\*/g, '.*').replace(/\?/g, '.');
+	return new RegExp(`^${wildcardPattern}$`);
+}
+
+function queryMatchesArtistName(normalizedName: string, artistQuery: string, strict = false): boolean {
+	const cleanedQuery = stripWildcardOperators(artistQuery);
+	const normalizedQuery = normalizeToken(cleanedQuery);
+	if (!normalizedQuery && !hasWildcardPattern(artistQuery)) {
+		return true;
+	}
+
+	const wildcardRegex = buildWildcardRegex(artistQuery);
+
+	if (strict) {
+		if (wildcardRegex) {
+			return wildcardRegex.test(normalizedName);
+		}
+		return normalizedName === normalizedQuery;
+	}
+
+	if (wildcardRegex && wildcardRegex.test(normalizedName)) {
+		return true;
+	}
+
+	if (
+		normalizedQuery &&
+		(normalizedName === normalizedQuery ||
+			normalizedName.includes(normalizedQuery) ||
+			normalizedQuery.includes(normalizedName))
+	) {
+		return true;
+	}
+
+	const queryTokens = splitTokens(cleanedQuery);
+	if (queryTokens.length === 0) {
+		return false;
+	}
+	const matchedTokenCount = queryTokens.filter((token) => normalizedName.includes(token)).length;
+	const minimumMatches = Math.max(1, Math.ceil(queryTokens.length * 0.5));
+	return matchedTokenCount >= minimumMatches;
+}
+
+function buildArtistSeedQueries(artistQuery: string): string[] {
+	const cleaned = stripWildcardOperators(artistQuery);
+	if (!cleaned) {
+		return [];
+	}
+
+	const variants = new Set<string>();
+	const addVariant = (candidate: string): void => {
+		const trimmed = candidate.trim().replace(/\s+/g, ' ');
+		if (trimmed.length > 1) {
+			variants.add(trimmed);
+		}
+	};
+
+	addVariant(cleaned);
+	const tokens = cleaned
+		.split(/[^A-Za-z0-9]+/g)
+		.map((token) => token.trim())
+		.filter((token) => token.length > 1);
+	for (const token of tokens) {
+		addVariant(token);
+	}
+	if (tokens.length >= 2) {
+		addVariant(`${tokens[0]} ${tokens[tokens.length - 1]}`);
+	}
+
+	return Array.from(variants).slice(0, 6);
 }
 
 function extractArtistHintsFromAlbumQuery(query: string): string[] {
@@ -230,6 +424,151 @@ function getAlbumArtistNames(album: Album): string[] {
 	return Array.from(new Set(names.map((name) => name.trim())));
 }
 
+function computeTokenCoverageRatio(normalizedTarget: string, queryTokens: string[]): number {
+	if (queryTokens.length === 0 || !normalizedTarget) return 0;
+	const matchedTokenCount = queryTokens.filter((token) => normalizedTarget.includes(token)).length;
+	return matchedTokenCount / queryTokens.length;
+}
+
+function queryTokensAppearInOrder(normalizedTarget: string, queryTokens: string[]): boolean {
+	if (queryTokens.length === 0 || !normalizedTarget) return false;
+	let cursor = 0;
+	for (const token of queryTokens) {
+		const index = normalizedTarget.indexOf(token, cursor);
+		if (index < 0) {
+			return false;
+		}
+		cursor = index + token.length;
+	}
+	return true;
+}
+
+function computeDiceCoefficient(left: string, right: string): number {
+	const normalizedLeft = left.replace(/\s+/g, '');
+	const normalizedRight = right.replace(/\s+/g, '');
+	if (!normalizedLeft || !normalizedRight) {
+		return 0;
+	}
+	if (normalizedLeft === normalizedRight) {
+		return 1;
+	}
+	if (normalizedLeft.length < 2 || normalizedRight.length < 2) {
+		return 0;
+	}
+
+	const leftBigrams = new Map<string, number>();
+	for (let index = 0; index < normalizedLeft.length - 1; index += 1) {
+		const bigram = normalizedLeft.slice(index, index + 2);
+		leftBigrams.set(bigram, (leftBigrams.get(bigram) ?? 0) + 1);
+	}
+
+	let intersection = 0;
+	for (let index = 0; index < normalizedRight.length - 1; index += 1) {
+		const bigram = normalizedRight.slice(index, index + 2);
+		const available = leftBigrams.get(bigram) ?? 0;
+		if (available > 0) {
+			intersection += 1;
+			leftBigrams.set(bigram, available - 1);
+		}
+	}
+
+	const totalBigrams = normalizedLeft.length + normalizedRight.length - 2;
+	return totalBigrams > 0 ? (2 * intersection) / totalBigrams : 0;
+}
+
+function scoreTextRelevance(primaryText: string, query: string): number {
+	const normalizedPrimary = normalizeToken(primaryText);
+	const normalizedQuery = normalizeToken(query);
+	if (!normalizedPrimary || !normalizedQuery) {
+		return 0;
+	}
+
+	let score = 0;
+	if (normalizedPrimary === normalizedQuery) {
+		score += 420;
+	} else if (normalizedPrimary.startsWith(normalizedQuery)) {
+		score += 260;
+	} else if (normalizedPrimary.includes(normalizedQuery)) {
+		score += 180;
+	} else if (normalizedQuery.includes(normalizedPrimary)) {
+		score += 120;
+	}
+
+	const queryTokens = splitTokens(query);
+	const tokenCoverage = computeTokenCoverageRatio(normalizedPrimary, queryTokens);
+	score += Math.round(tokenCoverage * 150);
+	if (tokenCoverage === 1 && queryTokens.length > 0) {
+		score += 56;
+	}
+	if (queryTokensAppearInOrder(normalizedPrimary, queryTokens)) {
+		score += 22;
+	}
+
+	const dice = computeDiceCoefficient(normalizedPrimary, normalizedQuery);
+	score += Math.round(dice * 90);
+
+	const lengthPenalty = Math.min(36, Math.abs(normalizedPrimary.length - normalizedQuery.length));
+	return score - lengthPenalty;
+}
+
+function rankItemsByScore<T>(items: T[], scorer: (item: T) => number): T[] {
+	return items
+		.map((item, index) => ({ item, index, score: scorer(item) }))
+		.sort((a, b) => b.score - a.score || a.index - b.index)
+		.map((entry) => entry.item);
+}
+
+function getTrackArtistNames(track: Track | SonglinkTrack): string[] {
+	const names: string[] = [];
+	if ('artistName' in track && typeof track.artistName === 'string' && track.artistName.trim().length > 0) {
+		names.push(track.artistName);
+	}
+	if ('artist' in track && typeof track.artist?.name === 'string' && track.artist.name.trim().length > 0) {
+		names.push(track.artist.name);
+	}
+	if ('artists' in track && Array.isArray(track.artists)) {
+		for (const artist of track.artists) {
+			if (typeof artist?.name === 'string' && artist.name.trim().length > 0) {
+				names.push(artist.name);
+			}
+		}
+	}
+	return Array.from(new Set(names.map((name) => name.trim())));
+}
+
+function scoreTrackResult(track: Track | SonglinkTrack, query: string): number {
+	const title = track.title ?? '';
+	const artistNames = getTrackArtistNames(track).join(' ');
+	let score = 0;
+	score += scoreTextRelevance(title, query) * 1.35;
+	score += scoreTextRelevance(`${artistNames} ${title}`.trim(), query) * 0.6;
+	score += scoreTextRelevance(artistNames, query) * 0.35;
+	if ('popularity' in track && typeof track.popularity === 'number' && Number.isFinite(track.popularity)) {
+		score += Math.min(28, Math.max(0, track.popularity / 4));
+	}
+	return score;
+}
+
+function scoreArtistResult(artist: Artist, query: string): number {
+	let score = scoreTextRelevance(artist.name ?? '', query) * 1.6;
+	if (typeof artist.popularity === 'number' && Number.isFinite(artist.popularity)) {
+		score += Math.min(34, Math.max(0, artist.popularity / 3));
+	}
+	return score;
+}
+
+function scorePlaylistResult(playlist: Playlist, query: string): number {
+	const creatorName = playlist.creator?.name ?? '';
+	let score = 0;
+	score += scoreTextRelevance(playlist.title ?? '', query) * 1.45;
+	score += scoreTextRelevance(`${playlist.title ?? ''} ${creatorName}`.trim(), query) * 0.4;
+	score += scoreTextRelevance(playlist.description ?? '', query) * 0.22;
+	if (typeof playlist.popularity === 'number' && Number.isFinite(playlist.popularity)) {
+		score += Math.min(26, Math.max(0, playlist.popularity / 4));
+	}
+	return score;
+}
+
 function albumTitleMatchesQuery(album: Album, albumQuery: string): boolean {
 	const normalizedTitle = normalizeToken(album.title ?? '');
 	if (!normalizedTitle) return false;
@@ -248,46 +587,41 @@ function albumTitleMatchesQuery(album: Album, albumQuery: string): boolean {
 }
 
 function albumMatchesArtistFilter(album: Album, artistQuery: string, strict = false): boolean {
-	const normalizedArtistQuery = normalizeToken(artistQuery);
-	if (!normalizedArtistQuery) {
+	const cleanedQuery = stripWildcardOperators(artistQuery);
+	const hasWildcard = hasWildcardPattern(artistQuery);
+	const normalizedArtistQuery = normalizeToken(cleanedQuery);
+	if (!normalizedArtistQuery && !hasWildcard) {
 		return true;
 	}
 	return getAlbumArtistNames(album)
 		.map((name) => normalizeToken(name))
-		.some((name) =>
-			strict
-				? name === normalizedArtistQuery
-				: name === normalizedArtistQuery ||
-					name.includes(normalizedArtistQuery) ||
-					normalizedArtistQuery.includes(name)
-		);
+		.some((name) => queryMatchesArtistName(name, artistQuery, strict));
 }
 
 function scoreAlbumResult(album: Album, albumQuery: string, artistQuery?: string): number {
-	const normalizedTitle = normalizeToken(album.title ?? '');
-	const normalizedQuery = normalizeToken(albumQuery);
-	let score = 0;
+	let score = scoreTextRelevance(album.title ?? '', albumQuery) * 1.32;
+	score += scoreTextRelevance(
+		`${getAlbumArtistNames(album).join(' ')} ${album.title ?? ''}`.trim(),
+		albumQuery
+	) * 0.22;
 
-	if (normalizedTitle === normalizedQuery) score += 220;
-	else if (normalizedTitle.startsWith(normalizedQuery)) score += 160;
-	else if (normalizedTitle.includes(normalizedQuery)) score += 100;
-
-	const tokens = splitTokens(albumQuery);
-	if (tokens.length > 0 && tokens.every((token) => normalizedTitle.includes(token))) {
-		score += 60;
-	}
-
-	const normalizedArtistQuery = normalizeToken(artistQuery ?? '');
-	if (normalizedArtistQuery.length > 0) {
-		const artistMatch = getAlbumArtistNames(album)
-			.map((name) => normalizeToken(name))
-			.some(
-				(name) =>
-					name === normalizedArtistQuery ||
-					name.includes(normalizedArtistQuery) ||
-					normalizedArtistQuery.includes(name)
-			);
-		if (artistMatch) score += 100;
+	const rawArtistQuery = artistQuery ?? '';
+	const cleanedArtistQuery = stripWildcardOperators(rawArtistQuery);
+	const normalizedArtistQuery = normalizeToken(cleanedArtistQuery);
+	if (normalizedArtistQuery.length > 0 || hasWildcardPattern(rawArtistQuery)) {
+		const artistMatch = albumMatchesArtistFilter(album, rawArtistQuery, false);
+		if (artistMatch) score += 180;
+		score +=
+			Math.max(
+				0,
+				...getAlbumArtistNames(album).map((name) => scoreTextRelevance(name, cleanedArtistQuery))
+			) * 0.35;
+		if (normalizedArtistQuery.length > 0) {
+			const exactArtistMatch = getAlbumArtistNames(album)
+				.map((name) => normalizeToken(name))
+				.some((name) => name === normalizedArtistQuery);
+			if (exactArtistMatch) score += 36;
+		}
 	}
 
 	if (album.discographySource === 'official_tidal') {
@@ -359,7 +693,7 @@ function buildAlbumQueryAttempts(albumQuery: string, artistQuery?: string): Arra
 	artistQuery?: string;
 }> {
 	const attempts: Array<{ query: string; artistQuery?: string }> = [];
-	const normalizedArtistQuery = artistQuery?.trim() ?? '';
+	const normalizedArtistQuery = stripWildcardOperators(artistQuery ?? '');
 	const pushAttempt = (query: string, optionalArtistQuery?: string): void => {
 		const trimmedQuery = query.trim();
 		if (!trimmedQuery) return;
@@ -396,27 +730,45 @@ async function fetchBaseAlbumsFromApi(
 	strictAlbumArtistMatch = false
 ): Promise<Album[]> {
 	const attempts = buildAlbumQueryAttempts(albumQuery, artistQuery);
-	const settled = await Promise.allSettled(
-		attempts.map((attempt) =>
-			fetchWithRetry(
-				() => losslessAPI.searchAlbums(attempt.query, region, attempt.artistQuery),
-				2,
-				180
-			)
-		)
-	);
-
 	const allAlbums: Album[] = [];
 	let firstError: unknown = null;
 	let hasSuccess = false;
-	for (const result of settled) {
-		if (result.status === 'fulfilled') {
-			hasSuccess = true;
-			if (Array.isArray(result.value?.items)) {
-				allAlbums.push(...result.value.items);
+
+	for (let i = 0; i < attempts.length; i += BASE_ALBUM_ATTEMPT_BATCH_SIZE) {
+		const batch = attempts.slice(i, i + BASE_ALBUM_ATTEMPT_BATCH_SIZE);
+		const settled = await Promise.allSettled(
+			batch.map((attempt) =>
+				fetchWithRetry(
+					() => losslessAPI.searchAlbums(attempt.query, region, attempt.artistQuery),
+					2,
+					180
+				)
+			)
+		);
+		for (const result of settled) {
+			if (result.status === 'fulfilled') {
+				hasSuccess = true;
+				if (Array.isArray(result.value?.items)) {
+					allAlbums.push(...result.value.items);
+				}
+			} else if (!firstError) {
+				firstError = result.reason;
 			}
-		} else if (!firstError) {
-			firstError = result.reason;
+		}
+
+		if (hasSuccess) {
+			const earlyDeduped = dedupeAlbumList(allAlbums);
+			const earlyMatches = earlyDeduped.filter(
+				(album) =>
+					albumTitleMatchesQuery(album, albumQuery) &&
+					albumMatchesArtistFilter(album, artistQuery ?? '', strictAlbumArtistMatch)
+			);
+			if (
+				earlyMatches.length >= BASE_EARLY_RETURN_MATCH_COUNT ||
+				(strictAlbumArtistMatch && earlyMatches.length > 0)
+			) {
+				return earlyMatches;
+			}
 		}
 	}
 
@@ -425,21 +777,28 @@ async function fetchBaseAlbumsFromApi(
 	}
 
 	const deduped = dedupeAlbumList(allAlbums);
-	const strict = deduped.filter(
+	const hasArtistFilter = (artistQuery?.trim().length ?? 0) > 0;
+	const titleAndArtistMatches = deduped.filter(
 		(album) =>
 			albumTitleMatchesQuery(album, albumQuery) &&
 			albumMatchesArtistFilter(album, artistQuery ?? '', strictAlbumArtistMatch)
 	);
-	if (strict.length > 0) {
-		return strict;
+	if (titleAndArtistMatches.length > 0) {
+		return titleAndArtistMatches;
 	}
-	if (strictAlbumArtistMatch && (artistQuery?.trim().length ?? 0) > 0) {
+
+	if (hasArtistFilter) {
+		if (strictAlbumArtistMatch) {
+			return [];
+		}
 		return [];
 	}
-	const artistOnly = deduped.filter((album) => albumMatchesArtistFilter(album, artistQuery ?? ''));
-	if (artistOnly.length > 0) {
-		return artistOnly;
+
+	const titleOnly = deduped.filter((album) => albumTitleMatchesQuery(album, albumQuery));
+	if (titleOnly.length > 0) {
+		return titleOnly;
 	}
+
 	return deduped;
 }
 
@@ -451,8 +810,11 @@ async function fetchEnrichedAlbumsFromTidal(
 	strictAlbumArtistMatch = false,
 	onProgress?: (enrichedAlbums: Album[], progress: { processedArtists: number; totalArtists: number }) => void
 ): Promise<Album[]> {
-	const normalizedArtistQuery = normalizeToken(artistQuery ?? '');
+	const cleanedArtistQuery = stripWildcardOperators(artistQuery ?? '');
+	const normalizedArtistQuery = normalizeToken(cleanedArtistQuery);
+	const enrichmentPlan = computeEnrichmentPlan(baseAlbums.length, normalizedArtistQuery.length > 0);
 	const candidateArtistScores = new Map<number, number>();
+	const trackDerivedAlbums = new Map<string, Album>();
 
 	const registerArtist = (artistId: number, score: number): void => {
 		if (!Number.isFinite(artistId) || artistId <= 0) return;
@@ -462,10 +824,17 @@ async function fetchEnrichedAlbumsFromTidal(
 		}
 	};
 
+	const registerTrackDerivedAlbum = (album: Album): void => {
+		const key = albumDedupeKey(album);
+		if (!trackDerivedAlbums.has(key)) {
+			trackDerivedAlbums.set(key, album);
+		}
+	};
+
 	const seedArtistsFromTracks = async (
 		query: string,
 		baseScore: number,
-		limit = TRACK_SEED_LIMIT
+		limit = enrichmentPlan.trackSeedLimit
 	): Promise<void> => {
 		const trimmedQuery = query.trim();
 		if (!trimmedQuery) return;
@@ -478,6 +847,27 @@ async function fetchEnrichedAlbumsFromTidal(
 				for (const artist of track.artists ?? []) {
 					if (typeof artist?.id === 'number') {
 						registerArtist(artist.id, Math.max(1, baseScore - 15));
+					}
+				}
+				const trackAlbum = track.album;
+				if (trackAlbum && typeof trackAlbum === 'object') {
+					const hydratedTrackAlbum: Album = {
+						...trackAlbum,
+						artist: trackAlbum.artist ?? track.artist,
+						artists:
+							Array.isArray(trackAlbum.artists) && trackAlbum.artists.length > 0
+								? trackAlbum.artists
+								: track.artists
+					};
+					if (
+						albumTitleMatchesQuery(hydratedTrackAlbum, albumQuery) &&
+						albumMatchesArtistFilter(
+							hydratedTrackAlbum,
+							artistQuery ?? '',
+							strictAlbumArtistMatch
+						)
+					) {
+						registerTrackDerivedAlbum(hydratedTrackAlbum);
 					}
 				}
 			}
@@ -513,17 +903,6 @@ async function fetchEnrichedAlbumsFromTidal(
 		}
 	};
 
-	// Preferred path: user-provided artist query.
-	if (normalizedArtistQuery.length > 0) {
-		await seedArtistsByQuery(artistQuery ?? '', 180, 12);
-	}
-
-	// Parse artist hints from combined free-text input such as "artist - album" or "album by artist".
-	for (const hint of extractArtistHintsFromAlbumQuery(albumQuery)) {
-		if (normalizeToken(hint) === normalizedArtistQuery) continue;
-		await seedArtistsByQuery(hint, 120, 6);
-	}
-
 	// Fallback path: seed from current album results.
 	for (const album of baseAlbums) {
 		if (typeof album.artist?.id === 'number') {
@@ -536,41 +915,70 @@ async function fetchEnrichedAlbumsFromTidal(
 		}
 	}
 
-	// Additional seed path: track search often exposes useful artist IDs even when album search is sparse.
-	await seedArtistsFromTracks(albumQuery, 110);
+	const seedJobs: Array<() => Promise<void>> = [];
+
+	// Preferred path: user-provided artist query.
 	if (normalizedArtistQuery.length > 0) {
-		await seedArtistsFromTracks(`${artistQuery ?? ''} ${albumQuery}`.trim(), 120, 14);
+		const seedQueries = buildArtistSeedQueries(artistQuery ?? '');
+		for (const [index, seedQuery] of seedQueries.entries()) {
+			seedJobs.push(() =>
+				seedArtistsByQuery(seedQuery, Math.max(110, 180 - index * 20), index === 0 ? 12 : 8)
+			);
+		}
+	}
+
+	// Parse artist hints from combined free-text input such as "artist - album" or "album by artist".
+	for (const hint of extractArtistHintsFromAlbumQuery(albumQuery)) {
+		if (normalizeToken(hint) === normalizedArtistQuery) continue;
+		seedJobs.push(() => seedArtistsByQuery(hint, 120, 6));
+	}
+
+	// Additional seed path: track search often exposes useful artist IDs even when album search is sparse.
+	seedJobs.push(() => seedArtistsFromTracks(albumQuery, 110));
+	if (normalizedArtistQuery.length > 0) {
+		seedJobs.push(() => seedArtistsFromTracks(`${cleanedArtistQuery} ${albumQuery}`.trim(), 120, 12));
 	}
 
 	// Last fallback: discover candidate artists from album query text.
-	await seedArtistsByQuery(albumQuery, 90, 10);
+	seedJobs.push(() => seedArtistsByQuery(albumQuery, 90, 8));
+
+	await runWithConcurrency(seedJobs, enrichmentPlan.seedQueryConcurrency, async (job) => {
+		await job();
+	});
 
 	const artistIds = Array.from(candidateArtistScores.entries())
 		.sort((a, b) => b[1] - a[1])
-		.slice(0, MAX_ARTIST_ENRICHMENT_SEEDS)
+		.slice(0, enrichmentPlan.maxArtistSeeds)
 		.map(([artistId]) => artistId);
 
 	if (artistIds.length === 0) {
-		return [];
+		return Array.from(trackDerivedAlbums.values());
 	}
 
-	const enrichedAlbums: Album[] = [];
+	const enrichedAlbums: Album[] = Array.from(trackDerivedAlbums.values());
 	let reachedLimit = false;
 	let processedArtists = 0;
-	await runWithConcurrency(artistIds, ARTIST_ENRICHMENT_CONCURRENCY, async (artistId) => {
+	const enrichmentDeadline = Date.now() + enrichmentPlan.timeBudgetMs;
+	await runWithConcurrency(artistIds, enrichmentPlan.artistConcurrency, async (artistId) => {
 		let addedAlbums = false;
 		try {
-			if (reachedLimit) return;
+			if (reachedLimit || Date.now() > enrichmentDeadline) {
+				reachedLimit = true;
+				return;
+			}
 			// getArtist includes official-discography enrichment when available in browser context.
 			const artistDetails = await fetchWithRetry(() => losslessAPI.getArtist(artistId), 2, 220);
 			const albums = Array.isArray(artistDetails?.albums) ? artistDetails.albums : [];
 			for (const album of albums) {
-				if (reachedLimit) break;
+				if (reachedLimit || Date.now() > enrichmentDeadline) {
+					reachedLimit = true;
+					break;
+				}
 				if (!albumTitleMatchesQuery(album, albumQuery)) continue;
 				if (!albumMatchesArtistFilter(album, artistQuery ?? '', strictAlbumArtistMatch)) continue;
 				enrichedAlbums.push(album);
 				addedAlbums = true;
-				if (enrichedAlbums.length >= MAX_ENRICHED_ALBUMS) {
+				if (enrichedAlbums.length >= enrichmentPlan.maxEnrichedAlbums) {
 					reachedLimit = true;
 					break;
 				}
@@ -615,6 +1023,17 @@ export async function executeTabSearch(
 	const strictAlbumArtistMatch = options?.strictAlbumArtistMatch === true;
 	// Include region in cache key to prevent result mismatches across regions
 	const searchKey = `${tab}:${trimmedQuery.toLowerCase()}:${region || 'auto'}:${tab === 'albums' ? albumArtistQuery.toLowerCase() : ''}:${tab === 'albums' && strictAlbumArtistMatch ? 'strict' : 'relaxed'}`;
+	const cachedResult = getCachedSearchResult(searchKey);
+	if (cachedResult) {
+		if (cachedResult.success && tab === 'albums' && options?.onProgress) {
+			options.onProgress({
+				tab: 'albums',
+				phase: 'base',
+				items: [...cachedResult.results.albums]
+			});
+		}
+		return cachedResult;
+	}
 
 	// Check if there's already an in-flight search for this query+tab+region
 	let pending = inFlightSearches.get(searchKey);
@@ -629,16 +1048,23 @@ export async function executeTabSearch(
 						const response = await fetchWithRetry(() =>
 							losslessAPI.searchTracks(trimmedQuery, region)
 						);
-						const items = Array.isArray(response?.items) ? response.items : [];
+						const rawItems = Array.isArray(response?.items) ? response.items : [];
+						const items = rankItemsByScore(rawItems, (track) => scoreTrackResult(track, trimmedQuery));
 						results = { ...emptyResults, tracks: items };
 						break;
 					}
 					case 'albums': {
-						const baseItems = await fetchBaseAlbumsFromApi(
+						const baseItemsRaw = await fetchBaseAlbumsFromApi(
 							trimmedQuery,
 							region,
 							albumArtistQuery || undefined,
 							strictAlbumArtistMatch
+						);
+						const baseItems = mergeAlbumResults(
+							baseItemsRaw,
+							[],
+							trimmedQuery,
+							albumArtistQuery || undefined
 						);
 						options?.onProgress?.({
 							tab: 'albums',
@@ -665,36 +1091,49 @@ export async function executeTabSearch(
 									processedArtists: progress.processedArtists,
 									totalArtists: progress.totalArtists
 								});
-							}
-						);
-						const items =
-							enrichedItems.length > 0
-								? mergeAlbumResults(
-										baseItems,
-										enrichedItems,
-										trimmedQuery,
-										albumArtistQuery || undefined
-									)
-								: baseItems;
-						results = { ...emptyResults, albums: items };
-						break;
-					}
+								}
+							);
+							const items = mergeAlbumResults(
+								baseItems,
+								enrichedItems,
+								trimmedQuery,
+								albumArtistQuery || undefined
+							);
+							results = { ...emptyResults, albums: items };
+							break;
+						}
 					case 'artists': {
-						const response = await losslessAPI.searchArtists(trimmedQuery, region);
-						const items = Array.isArray(response?.items) ? response.items : [];
+						const response = await fetchWithRetry(
+							() => losslessAPI.searchArtists(trimmedQuery, region),
+							3,
+							220
+						);
+						const rawItems = Array.isArray(response?.items) ? response.items : [];
+						const items = rankItemsByScore(rawItems, (artist) =>
+							scoreArtistResult(artist, trimmedQuery)
+						);
 						results = { ...emptyResults, artists: items };
 						break;
 					}
 					case 'playlists': {
-						const response = await losslessAPI.searchPlaylists(trimmedQuery, region);
-						const items = Array.isArray(response?.items) ? response.items : [];
+						const response = await fetchWithRetry(
+							() => losslessAPI.searchPlaylists(trimmedQuery, region),
+							3,
+							220
+						);
+						const rawItems = Array.isArray(response?.items) ? response.items : [];
+						const items = rankItemsByScore(rawItems, (playlist) =>
+							scorePlaylistResult(playlist, trimmedQuery)
+						);
 						results = { ...emptyResults, playlists: items };
 						break;
 					}
 					default:
 						results = emptyResults;
 				}
-				return { success: true, results };
+				const successResult: SearchResult = { success: true, results };
+				setCachedSearchResult(searchKey, successResult);
+				return successResult;
 			} catch (error) {
 				return { success: false, error: classifySearchError(error) };
 			}
@@ -720,4 +1159,5 @@ export async function executeTabSearch(
  */
 export function clearSearchCache(): void {
 	inFlightSearches.clear();
+	completedSearchCache.clear();
 }

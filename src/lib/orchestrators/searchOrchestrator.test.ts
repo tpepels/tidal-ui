@@ -256,9 +256,15 @@ describe('SearchOrchestrator', () => {
 
 			expect(result.workflow).toBe('standard');
 			expect(result.success).toBe(true);
-			expect(mockExecuteTabSearch).toHaveBeenCalledWith('random access memories', 'albums', 'us', {
-				albumArtistQuery: 'daft punk'
-			});
+			expect(mockExecuteTabSearch).toHaveBeenCalledWith(
+				'random access memories',
+				'albums',
+				'us',
+				expect.objectContaining({
+					albumArtistQuery: 'daft punk',
+					onProgress: expect.any(Function)
+				})
+			);
 		});
 
 		it('forwards strict artist match option for album searches', async () => {
@@ -280,10 +286,16 @@ describe('SearchOrchestrator', () => {
 
 			expect(result.workflow).toBe('standard');
 			expect(result.success).toBe(true);
-			expect(mockExecuteTabSearch).toHaveBeenCalledWith('random access memories', 'albums', 'us', {
-				albumArtistQuery: 'daft punk',
-				strictAlbumArtistMatch: true
-			});
+			expect(mockExecuteTabSearch).toHaveBeenCalledWith(
+				'random access memories',
+				'albums',
+				'us',
+				expect.objectContaining({
+					albumArtistQuery: 'daft punk',
+					strictAlbumArtistMatch: true,
+					onProgress: expect.any(Function)
+				})
+			);
 		});
 
 		it('aggregates all sections in one search pass when requested', async () => {
@@ -319,9 +331,61 @@ describe('SearchOrchestrator', () => {
 			expect(result.success).toBe(true);
 			expect(mockExecuteTabSearch).toHaveBeenCalledTimes(4);
 			expect(mockExecuteTabSearch).toHaveBeenNthCalledWith(1, 'test query', 'tracks', 'us');
-			expect(mockExecuteTabSearch).toHaveBeenNthCalledWith(2, 'test query', 'albums', 'us');
+			expect(mockExecuteTabSearch).toHaveBeenNthCalledWith(
+				2,
+				'test query',
+				'albums',
+				'us',
+				expect.objectContaining({
+					onProgress: expect.any(Function)
+				})
+			);
 			expect(mockExecuteTabSearch).toHaveBeenNthCalledWith(3, 'test query', 'artists', 'us');
 			expect(mockExecuteTabSearch).toHaveBeenNthCalledWith(4, 'test query', 'playlists', 'us');
+		});
+
+		it('commits partial album updates during aggregate searches', async () => {
+			mockExecuteTabSearch.mockImplementation(async (_query, searchTab, _region, execOptions) => {
+				if (searchTab === 'albums') {
+					execOptions?.onProgress?.({
+						tab: 'albums',
+						phase: 'base',
+						items: [{ ...mockAlbum, id: 10 }]
+					});
+					execOptions?.onProgress?.({
+						tab: 'albums',
+						phase: 'enriched',
+						items: [{ ...mockAlbum, id: 10 }, { ...mockAlbum, id: 11 }],
+						processedArtists: 1,
+						totalArtists: 1
+					});
+					return {
+						success: true,
+						results: { tracks: [], albums: [{ ...mockAlbum, id: 10 }, { ...mockAlbum, id: 11 }], artists: [], playlists: [] }
+					};
+				}
+				if (searchTab === 'tracks') {
+					return { success: true, results: { tracks: [mockTrack], albums: [], artists: [], playlists: [] } };
+				}
+				if (searchTab === 'artists') {
+					return {
+						success: true,
+						results: { tracks: [], albums: [], artists: [{ id: 99, name: 'Artist', type: 'MAIN' }], playlists: [] }
+					};
+				}
+				return { success: true, results: { tracks: [], albums: [], artists: [], playlists: [mockPlaylist] } };
+			});
+
+			await orchestrator.search('test query', 'albums', {
+				region: 'us',
+				aggregateAllTabs: true
+			});
+
+			const progressiveCommits = mockSearchStoreActions.commit.mock.calls
+				.map((call) => call[0])
+				.filter((payload) => payload?.isLoading === true && payload?.results?.albums?.length >= 1);
+
+			expect(progressiveCommits.length).toBeGreaterThan(0);
 		});
 
 		it('does not dedupe album in-flight searches across different artist filters', async () => {
@@ -357,12 +421,26 @@ describe('SearchOrchestrator', () => {
 			await Promise.all([firstSearch, secondSearch]);
 
 			expect(mockExecuteTabSearch).toHaveBeenCalledTimes(2);
-			expect(mockExecuteTabSearch).toHaveBeenNthCalledWith(1, 'greatest hits', 'albums', 'us', {
-				albumArtistQuery: 'Artist One'
-			});
-			expect(mockExecuteTabSearch).toHaveBeenNthCalledWith(2, 'greatest hits', 'albums', 'us', {
-				albumArtistQuery: 'Artist Two'
-			});
+			expect(mockExecuteTabSearch).toHaveBeenNthCalledWith(
+				1,
+				'greatest hits',
+				'albums',
+				'us',
+				expect.objectContaining({
+					albumArtistQuery: 'Artist One',
+					onProgress: expect.any(Function)
+				})
+			);
+			expect(mockExecuteTabSearch).toHaveBeenNthCalledWith(
+				2,
+				'greatest hits',
+				'albums',
+				'us',
+				expect.objectContaining({
+					albumArtistQuery: 'Artist Two',
+					onProgress: expect.any(Function)
+				})
+			);
 		});
 
 		it('ignores stale results when a newer search completes', async () => {

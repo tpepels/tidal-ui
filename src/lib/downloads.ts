@@ -141,6 +141,139 @@ function warnIfAlbumTrackListIncomplete(album: Album, tracks: Track[]): void {
 	);
 }
 
+type MusicBrainzReleaseSearchOption = {
+	id: string;
+	title?: string;
+	trackCount?: number;
+	date?: string;
+};
+
+function normalizeMusicBrainzText(value: string | undefined): string {
+	if (!value) return '';
+	return value
+		.normalize('NFKD')
+		.replace(/[\u0300-\u036f]/g, '')
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, ' ')
+		.trim();
+}
+
+function musicBrainzTitlesLikelyMatch(albumTitle: string, releaseTitle: string): boolean {
+	const normalizedAlbumTitle = normalizeMusicBrainzText(albumTitle);
+	const normalizedReleaseTitle = normalizeMusicBrainzText(releaseTitle);
+	if (!normalizedAlbumTitle || !normalizedReleaseTitle) {
+		return false;
+	}
+	if (
+		normalizedAlbumTitle === normalizedReleaseTitle ||
+		normalizedAlbumTitle.includes(normalizedReleaseTitle) ||
+		normalizedReleaseTitle.includes(normalizedAlbumTitle)
+	) {
+		return true;
+	}
+
+	const albumTokens = normalizedAlbumTitle.split(' ').filter((token) => token.length > 1);
+	const releaseTokens = new Set(
+		normalizedReleaseTitle.split(' ').filter((token) => token.length > 1)
+	);
+	if (albumTokens.length === 0 || releaseTokens.size === 0) {
+		return false;
+	}
+	const matchedTokens = albumTokens.filter((token) => releaseTokens.has(token)).length;
+	const minimumMatchCount = Math.max(1, Math.ceil(albumTokens.length * 0.75));
+	return matchedTokens >= minimumMatchCount;
+}
+
+function resolveMusicBrainzReleaseTrackCount(release: MusicBrainzReleaseSearchOption): number | null {
+	const trackCount = Number(release.trackCount);
+	if (!Number.isFinite(trackCount) || trackCount <= 0) {
+		return null;
+	}
+	return Math.trunc(trackCount);
+}
+
+function compareMusicBrainzReleaseDateDesc(
+	left: MusicBrainzReleaseSearchOption,
+	right: MusicBrainzReleaseSearchOption
+): number {
+	const leftDate = left.date?.trim() ?? '';
+	const rightDate = right.date?.trim() ?? '';
+	if (!leftDate && !rightDate) return 0;
+	if (!leftDate) return 1;
+	if (!rightDate) return -1;
+	return rightDate.localeCompare(leftDate);
+}
+
+async function resolveAutomaticMusicBrainzReleaseId(
+	album: Album,
+	trackCount: number,
+	options: {
+		experimentalMusicBrainzTagging: boolean;
+		explicitMusicBrainzReleaseId?: string;
+	}
+): Promise<string | undefined> {
+	if (!options.experimentalMusicBrainzTagging || options.explicitMusicBrainzReleaseId) {
+		return options.explicitMusicBrainzReleaseId;
+	}
+	if (typeof fetch !== 'function') {
+		return undefined;
+	}
+
+	const albumTitle = album.title?.trim() ?? '';
+	const artistName = album.artist?.name?.trim() ?? '';
+	if (!albumTitle || !artistName || !Number.isFinite(trackCount) || trackCount <= 0) {
+		return undefined;
+	}
+
+	try {
+		const response = await fetch('/api/metadata/musicbrainz-release-search', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				albumTitle,
+				artistName,
+				releaseDate: album.releaseDate,
+				upc: album.upc,
+				limit: 18
+			})
+		});
+		const payload = (await response.json().catch(() => null)) as
+			| { success?: boolean; releases?: MusicBrainzReleaseSearchOption[] }
+			| null;
+		if (!response.ok || !payload?.success || !Array.isArray(payload.releases)) {
+			return undefined;
+		}
+
+		const normalizedTrackCount = Math.trunc(trackCount);
+		const compatibleReleases = payload.releases
+			.filter(
+				(release) =>
+					typeof release?.id === 'string' &&
+					release.id.length > 0 &&
+					typeof release.title === 'string' &&
+					musicBrainzTitlesLikelyMatch(albumTitle, release.title)
+			)
+			.filter((release) => {
+				const releaseTrackCount = resolveMusicBrainzReleaseTrackCount(release);
+				return releaseTrackCount !== null && releaseTrackCount >= normalizedTrackCount;
+			})
+			.sort((left, right) => {
+				const leftTrackCount = resolveMusicBrainzReleaseTrackCount(left) ?? Number.MAX_SAFE_INTEGER;
+				const rightTrackCount = resolveMusicBrainzReleaseTrackCount(right) ?? Number.MAX_SAFE_INTEGER;
+				const leftDistance = Math.abs(leftTrackCount - normalizedTrackCount);
+				const rightDistance = Math.abs(rightTrackCount - normalizedTrackCount);
+				if (leftDistance !== rightDistance) {
+					return leftDistance - rightDistance;
+				}
+				return compareMusicBrainzReleaseDateDesc(left, right);
+			});
+
+		return compatibleReleases[0]?.id;
+	} catch {
+		return undefined;
+	}
+}
+
 export interface AlbumDownloadCallbacks {
 	onTotalResolved?(total: number): void;
 	onTrackDownloaded?(completed: number, total: number, track: Track): void;
@@ -468,6 +601,9 @@ export async function downloadAlbum(
 	}
 ): Promise<AlbumDownloadResult> {
 	const storage = options?.storage ?? 'server';
+	const experimentalMusicBrainzTagging = options?.experimentalMusicBrainzTagging ?? true;
+	const strictMusicBrainzMatching = options?.strictMusicBrainzMatching ?? false;
+	const explicitMusicBrainzReleaseId = options?.musicBrainzReleaseId;
 
 	// For server downloads, submit to the Redis-backed queue API
 	if (storage === 'server') {
@@ -483,6 +619,14 @@ export async function downloadAlbum(
 		const artistName = preferredArtistName ?? canonicalAlbum.artist?.name ?? 'Unknown Artist';
 		const albumTitle = canonicalAlbum.title ?? 'Unknown Album';
 		const trackCount = tracks.length;
+		const musicBrainzReleaseId = await resolveAutomaticMusicBrainzReleaseId(
+			canonicalAlbum,
+			trackCount,
+			{
+				experimentalMusicBrainzTagging,
+				explicitMusicBrainzReleaseId
+			}
+		);
 
 		// Submit album job to server queue
 		const response = await fetch('/api/download-queue', {
@@ -495,12 +639,12 @@ export async function downloadAlbum(
 					quality,
 					artistName,
 					albumTitle,
-						trackCount,
-						experimentalMusicBrainzTagging: options?.experimentalMusicBrainzTagging ?? true,
-						strictMusicBrainzMatching: options?.strictMusicBrainzMatching ?? false,
-						musicBrainzReleaseId: options?.musicBrainzReleaseId,
-						forceOverwrite: options?.forceOverwrite === true
-					},
+					trackCount,
+					experimentalMusicBrainzTagging,
+					strictMusicBrainzMatching,
+					musicBrainzReleaseId,
+					forceOverwrite: options?.forceOverwrite === true
+				},
 				forceOverwrite: options?.forceOverwrite === true
 			})
 		});
@@ -540,9 +684,14 @@ export async function downloadAlbum(
 	const artistName = preferredArtistName ?? canonicalAlbum.artist?.name ?? 'Unknown Artist';
 	const convertAacToMp3 = options?.convertAacToMp3 ?? false;
 	const downloadCoverSeperately = options?.downloadCoverSeperately ?? false;
-	const experimentalMusicBrainzTagging = options?.experimentalMusicBrainzTagging ?? true;
-	const strictMusicBrainzMatching = options?.strictMusicBrainzMatching ?? false;
-	const musicBrainzReleaseId = options?.musicBrainzReleaseId;
+	const musicBrainzReleaseId = await resolveAutomaticMusicBrainzReleaseId(
+		canonicalAlbum,
+		totalTracks,
+		{
+			experimentalMusicBrainzTagging,
+			explicitMusicBrainzReleaseId
+		}
+	);
 
 	let completedTracks = 0;
 	let failedTracks = 0;
@@ -558,12 +707,12 @@ export async function downloadAlbum(
 
 		const result = await downloadTrackWithRetry(track.id, quality, filename, track, callbacks, {
 			convertAacToMp3,
-				downloadCoverSeperately,
-				experimentalMusicBrainzTagging,
-				strictMusicBrainzMatching,
-				musicBrainzReleaseId,
-				storage: 'client'
-			});
+			downloadCoverSeperately,
+			experimentalMusicBrainzTagging,
+			strictMusicBrainzMatching,
+			musicBrainzReleaseId,
+			storage: 'client'
+		});
 
 		if (result.success && result.blob) {
 			triggerFileDownload(result.blob, filename);

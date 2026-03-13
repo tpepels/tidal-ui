@@ -299,100 +299,105 @@
 					message="No domain-specific error concentration detected."
 					embedded={true}
 				/>
-			{/if}
+				{/if}
 		</ToolPanel>
 
-		<ToolPanel>
-			<p class="section-heading">Retry Health</p>
-			<p class="section-footnote">Total retries (last hour): {diagnosticsRetries?.total ?? 0}</p>
-			<p class="section-footnote">Recent retry events: {diagnosticsRetries?.recent?.length ?? 0}</p>
-			{#if diagnosticsRetries?.recent?.length}
-				<ul class="status-page__issues">
-					{#each diagnosticsRetries.recent as retryEvent (retryEvent.id)}
-						<li>
-							{retryEvent.operation ?? 'request'} attempt {retryEvent.attempt} ({Math.round(
-								retryEvent.delayMs
-							)}ms backoff)
-						</li>
-					{/each}
-				</ul>
-			{/if}
-		</ToolPanel>
+		<details class="status-page__advanced">
+			<summary>Advanced diagnostics</summary>
+			<div class="status-page__advanced-grid">
+				<ToolPanel>
+					<p class="section-heading">Retry Health</p>
+					<p class="section-footnote">Total retries (last hour): {diagnosticsRetries?.total ?? 0}</p>
+					<p class="section-footnote">Recent retry events: {diagnosticsRetries?.recent?.length ?? 0}</p>
+					{#if diagnosticsRetries?.recent?.length}
+						<ul class="status-page__issues">
+							{#each diagnosticsRetries.recent as retryEvent (retryEvent.id)}
+								<li>
+									{retryEvent.operation ?? 'request'} attempt {retryEvent.attempt} ({Math.round(
+										retryEvent.delayMs
+									)}ms backoff)
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				</ToolPanel>
 
-		<ToolPanel wide={true}>
-			<p class="section-heading">Recent Errors</p>
-			{#if diagnosticsErrors && diagnosticsErrors.length > 0}
-				<ul class="status-page__errors">
-					{#each diagnosticsErrors.slice(0, 20) as errorReport (errorReport.id)}
-						<li>
-							<strong>{errorReport.context?.domain ?? 'unknown'}</strong>
-							<span>{new Date(errorReport.timestamp).toLocaleTimeString()}</span>
-							<p>{errorReport.error.message}</p>
-						</li>
-					{/each}
-				</ul>
-			{:else if diagnosticsLoading}
-				<StateBlock
-					kind="loading"
-					title="Loading errors"
-					message="Fetching latest error telemetry."
-					embedded={true}
-				/>
-			{:else}
-				<StateBlock
-					kind="empty"
-					title="No errors recorded"
-					message="No recent errors are currently tracked."
-					embedded={true}
-				/>
-			{/if}
-		</ToolPanel>
+				<ToolPanel wide={true}>
+					<p class="section-heading">Recent Errors</p>
+					{#if diagnosticsErrors && diagnosticsErrors.length > 0}
+						<ul class="status-page__errors">
+							{#each diagnosticsErrors.slice(0, 20) as errorReport (errorReport.id)}
+								<li>
+									<strong>{errorReport.context?.domain ?? 'unknown'}</strong>
+									<span>{new Date(errorReport.timestamp).toLocaleTimeString()}</span>
+									<p>{errorReport.error.message}</p>
+								</li>
+							{/each}
+						</ul>
+					{:else if diagnosticsLoading}
+						<StateBlock
+							kind="loading"
+							title="Loading errors"
+							message="Fetching latest error telemetry."
+							embedded={true}
+						/>
+					{:else}
+						<StateBlock
+							kind="empty"
+							title="No errors recorded"
+							message="No recent errors are currently tracked."
+							embedded={true}
+						/>
+					{/if}
+				</ToolPanel>
 
-		<ToolPanel>
-			<p class="section-heading">Persisted Summary</p>
-			{#if diagnosticsPersisted}
-				<p class="section-footnote">
-					Captured {new Date(diagnosticsPersisted.capturedAt).toLocaleTimeString()}
-				</p>
-				<div class="status-page__metric-grid">
-					<div class="status-page__metric">
-						<p class="status-page__metric-label">Total Errors</p>
-						<p class="status-page__metric-value">{diagnosticsPersisted.summary.totalErrors}</p>
-					</div>
-					<div class="status-page__metric">
-						<p class="status-page__metric-label">Unique Errors</p>
-						<p class="status-page__metric-value">{diagnosticsPersisted.summary.uniqueErrors}</p>
-					</div>
-					<div class="status-page__metric">
-						<p class="status-page__metric-label">Critical Errors</p>
-						<p class="status-page__metric-value">{diagnosticsPersisted.summary.criticalErrors}</p>
-					</div>
-					<div class="status-page__metric">
-						<p class="status-page__metric-label">Error Rate</p>
-						<p class="status-page__metric-value">{diagnosticsPersisted.summary.errorRate}/min</p>
-					</div>
-				</div>
-				<details class="status-page__details">
-					<summary>Show raw persisted snapshot</summary>
-					<pre class="status-page__json">{JSON.stringify(diagnosticsPersisted, null, 2)}</pre>
-				</details>
-			{:else}
-				<StateBlock
-					kind="empty"
-					title="No persisted summary"
-					message="A persisted snapshot will appear after errors are tracked."
-					embedded={true}
-				/>
-			{/if}
-		</ToolPanel>
+				<ToolPanel>
+					<p class="section-heading">Persisted Summary</p>
+					{#if diagnosticsPersisted}
+						<p class="section-footnote">
+							Captured {new Date(diagnosticsPersisted.capturedAt).toLocaleTimeString()}
+						</p>
+						<div class="status-page__metric-grid">
+							<div class="status-page__metric">
+								<p class="status-page__metric-label">Total Errors</p>
+								<p class="status-page__metric-value">{diagnosticsPersisted.summary.totalErrors}</p>
+							</div>
+							<div class="status-page__metric">
+								<p class="status-page__metric-label">Unique Errors</p>
+								<p class="status-page__metric-value">{diagnosticsPersisted.summary.uniqueErrors}</p>
+							</div>
+							<div class="status-page__metric">
+								<p class="status-page__metric-label">Critical Errors</p>
+								<p class="status-page__metric-value">{diagnosticsPersisted.summary.criticalErrors}</p>
+							</div>
+							<div class="status-page__metric">
+								<p class="status-page__metric-label">Error Rate</p>
+								<p class="status-page__metric-value">{diagnosticsPersisted.summary.errorRate}/min</p>
+							</div>
+						</div>
+						<details class="status-page__details">
+							<summary>Show raw persisted snapshot</summary>
+							<pre class="status-page__json">{JSON.stringify(diagnosticsPersisted, null, 2)}</pre>
+						</details>
+					{:else}
+						<StateBlock
+							kind="empty"
+							title="No persisted summary"
+							message="A persisted snapshot will appear after errors are tracked."
+							embedded={true}
+						/>
+					{/if}
+				</ToolPanel>
 
-		<ToolPanel>
-			<p class="section-heading">Tracker Snapshot</p>
-			<div class="status-page__tracker-snapshot">
-				<Gauge size={14} />
-				<span class="section-footnote">Realtime tracker reflects client-side observability state.</span>
+				<ToolPanel>
+					<p class="section-heading">Tracker Snapshot</p>
+					<div class="status-page__tracker-snapshot">
+						<Gauge size={14} />
+						<span class="section-footnote">Realtime tracker reflects client-side observability state.</span>
+					</div>
+				</ToolPanel>
 			</div>
-		</ToolPanel>
+		</details>
 	</div>
 </section>
 
@@ -431,6 +436,33 @@
 
 	.status-page__refresh-btn {
 		padding-inline: 0.84rem;
+	}
+
+	.status-page__advanced {
+		grid-column: 1 / -1;
+		border-top: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		border-bottom: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		padding: 0.2rem 0;
+	}
+
+	.status-page__advanced > summary {
+		list-style: none;
+		cursor: pointer;
+		padding: 0.6rem 0.1rem;
+		font-size: 0.88rem;
+		font-weight: 620;
+		color: rgba(224, 224, 224, 0.9);
+	}
+
+	.status-page__advanced > summary::-webkit-details-marker {
+		display: none;
+	}
+
+	.status-page__advanced-grid {
+		display: grid;
+		gap: 0.92rem;
+		grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+		padding-bottom: 0.6rem;
 	}
 
 	.status-page__metric-grid {

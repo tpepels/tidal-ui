@@ -164,6 +164,7 @@
 		PERFORMANCE_OPTIONS.find((option) => option.value === $userPreferencesStore.performanceMode)?.label ??
 			$userPreferencesStore.performanceMode
 	);
+	let showGuidance = $state(false);
 
 	$effect(() => {
 		if (isServerStorage && downloadMode !== 'individual') {
@@ -1004,7 +1005,7 @@
 	}
 </script>
 
-<div class="settings-layout" data-ui-block="main-sections">
+<div class="settings-layout" data-ui-block="main-sections" data-guidance={showGuidance ? 'on' : 'off'}>
 	<div class="settings-summary" data-ui-block="key-summary">
 		<div class="settings-summary__item">
 			<p class="settings-summary__label">Quality</p>
@@ -1028,6 +1029,18 @@
 			<p class="settings-summary__label">Performance</p>
 			<p class="settings-summary__value">{activePerformanceLabel}</p>
 		</div>
+	</div>
+	<div class="settings-summary-controls">
+		<button
+			type="button"
+			class="ui-chip-button settings-summary-controls__toggle"
+			onclick={() => {
+				showGuidance = !showGuidance;
+			}}
+			aria-pressed={showGuidance}
+		>
+			{showGuidance ? 'Hide guidance' : 'Show guidance'}
+		</button>
 	</div>
 
 	<ToolPanel
@@ -1508,6 +1521,17 @@
 		background: var(--ui-surface-base, #0d0d0d);
 	}
 
+	.settings-summary-controls {
+		display: flex;
+		justify-content: flex-end;
+		margin-top: -0.08rem;
+	}
+
+	.settings-summary-controls__toggle {
+		padding: 0.45rem 0.74rem;
+		font-size: 0.82rem;
+	}
+
 	.settings-summary__item {
 		display: flex;
 		flex-direction: column;
@@ -1845,6 +1869,30 @@
 		font-size: 0.88rem;
 		line-height: 1.4;
 		color: rgba(212, 212, 212, 0.74);
+	}
+
+	.settings-layout[data-guidance='off'] .settings-choice__description,
+	.settings-layout[data-guidance='off'] .settings-toggle__description,
+	.settings-layout[data-guidance='off'] .settings-block__note {
+		display: none;
+	}
+
+	.settings-layout[data-guidance='off'] .settings-choice {
+		min-height: 3.5rem;
+		padding: 0.72rem 0.88rem;
+	}
+
+	.settings-layout[data-guidance='off'] .settings-choice--compact {
+		min-height: 3.1rem;
+	}
+
+	.settings-layout[data-guidance='off'] .settings-toggle {
+		min-height: 3.9rem;
+		padding: 0.74rem 0.9rem;
+	}
+
+	.settings-layout[data-guidance='off'] .settings-feedback p:not(:last-child) {
+		display: none;
 	}
 
 	@media (min-width: 1024px) {

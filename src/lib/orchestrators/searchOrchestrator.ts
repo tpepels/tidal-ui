@@ -208,6 +208,7 @@ export class SearchOrchestrator {
 
 		// Update store to loading state
 		searchStoreActions.search(query, tab);
+		searchStoreActions.commit({ playlistLoadingMessage: null });
 
 		try {
 			// Execute search via service
@@ -231,7 +232,7 @@ export class SearchOrchestrator {
 				artists: [...source.artists],
 				playlists: [...source.playlists]
 			});
-			const commitProgressResults = (source: SearchResults): void => {
+			const commitProgressResults = (source: SearchResults, loadingMessage?: string): void => {
 				if (requestToken !== this.currentSearchToken) {
 					return;
 				}
@@ -239,7 +240,8 @@ export class SearchOrchestrator {
 					results: cloneResults(source),
 					isLoading: true,
 					error: null,
-					tabLoading: loadingState
+					tabLoading: loadingState,
+					playlistLoadingMessage: loadingMessage ?? null
 				});
 			};
 
@@ -272,7 +274,13 @@ export class SearchOrchestrator {
 						const albumSearchOptions: AlbumSearchExecutionOptions = {
 							onProgress: (update) => {
 								combinedResults.albums = update.items;
-								commitProgressResults(combinedResults);
+								const progressLabel =
+									update.phase === 'enriched' &&
+									typeof update.processedArtists === 'number' &&
+									typeof update.totalArtists === 'number'
+										? `Scanning artist catalogs ${update.processedArtists}/${update.totalArtists} • ${update.items.length} album${update.items.length === 1 ? '' : 's'}`
+										: `Found ${update.items.length} album${update.items.length === 1 ? '' : 's'} • expanding catalog…`;
+								commitProgressResults(combinedResults, progressLabel);
 							}
 						};
 						if (trimmedAlbumArtistQuery.length > 0) {
@@ -293,7 +301,7 @@ export class SearchOrchestrator {
 
 				let successfulTabCount = 0;
 				let firstError: SearchError | null = null;
-				for (const { tab: tabKey, tabResult } of settled) {
+				for (const { tabResult } of settled) {
 					if (tabResult?.success) {
 						successfulTabCount += 1;
 					} else if (!firstError && tabResult && !tabResult.success) {
@@ -315,7 +323,13 @@ export class SearchOrchestrator {
 					const albumSearchOptions: AlbumSearchExecutionOptions = {
 						onProgress: (update) => {
 							combinedResults.albums = update.items;
-							commitProgressResults(combinedResults);
+							const progressLabel =
+								update.phase === 'enriched' &&
+								typeof update.processedArtists === 'number' &&
+								typeof update.totalArtists === 'number'
+									? `Scanning artist catalogs ${update.processedArtists}/${update.totalArtists} • ${update.items.length} album${update.items.length === 1 ? '' : 's'}`
+									: `Found ${update.items.length} album${update.items.length === 1 ? '' : 's'} • expanding catalog…`;
+							commitProgressResults(combinedResults, progressLabel);
 						}
 					};
 					if (trimmedAlbumArtistQuery.length > 0) {
@@ -352,6 +366,7 @@ export class SearchOrchestrator {
 				searchStoreActions.commit({
 					error: result.error.message,
 					isLoading: false,
+					playlistLoadingMessage: null,
 					tabLoading: {
 						tracks: false,
 						albums: false,
@@ -378,6 +393,7 @@ export class SearchOrchestrator {
 				results: result.results,
 				isLoading: false,
 				error: null,
+				playlistLoadingMessage: null,
 				tabLoading: {
 					tracks: false,
 					albums: false,
@@ -399,6 +415,7 @@ export class SearchOrchestrator {
 			searchStoreActions.commit({
 				error: message,
 				isLoading: false,
+				playlistLoadingMessage: null,
 				tabLoading: {
 					tracks: false,
 					albums: false,

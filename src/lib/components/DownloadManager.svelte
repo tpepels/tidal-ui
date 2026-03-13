@@ -134,7 +134,6 @@
 	);
 	let queuedPreviewJobs = $derived(queuedJobs.slice(0, 4));
 	let attentionPreviewJobs = $derived(resumableJobs.slice(0, 4));
-	let completedPreviewJobs = $derived(completedJobs.slice(0, 4));
 	let activeSectionOpen = $derived(pageMode || sectionExpanded.active);
 	let queueSectionOpen = $derived(pageMode || sectionExpanded.queue);
 	let failedSectionOpen = $derived(pageMode || sectionExpanded.failed);
@@ -1206,9 +1205,6 @@
 						<div class="section-title section-title-main">
 							<span>Priority Overview</span>
 						</div>
-						<p class="priority-overview-subtitle">
-							Key queue information is always visible. Use actions here first.
-						</p>
 						<div class="priority-grid">
 							<div class="priority-column">
 								<div class="priority-column__header">
@@ -1339,43 +1335,6 @@
 								{/if}
 							</div>
 
-							<div class="priority-column">
-								<div class="priority-column__header">
-									<h4 class="priority-column__title">Recently Completed</h4>
-									<span class="section-count">{completedJobs.length}</span>
-								</div>
-								{#if completedPreviewJobs.length === 0}
-									<p class="priority-empty">No completed items yet.</p>
-								{:else}
-									<div class="priority-list">
-										{#each completedPreviewJobs as job (job.id)}
-											{@const jobPending = isJobActionPending(job.id)}
-											<div class="priority-item">
-												<div class="priority-item__main">
-													<p class="priority-item__title">{job.job.trackTitle || job.job.albumTitle || 'Unknown'}</p>
-													<p class="priority-item__meta">
-														{job.job.artistName || 'Unknown Artist'}
-														{#if job.completedAt}
-															• {new Date(job.completedAt).toLocaleTimeString()}
-														{/if}
-													</p>
-												</div>
-												<div class="detail-actions">
-													<button
-														type="button"
-														class="item-action-btn"
-														onclick={() => handleRemoveJob(job)}
-														disabled={jobPending}
-													>
-														<Trash2 size={12} />
-														<span>{jobPending ? 'Removing…' : 'Dismiss'}</span>
-													</button>
-												</div>
-											</div>
-										{/each}
-									</div>
-								{/if}
-							</div>
 						</div>
 						{#if stats.total === 0}
 							<div class="priority-empty-state">
@@ -1427,7 +1386,7 @@
 								class="control-btn control-btn--secondary"
 								onclick={() => (showDetailedSections = !showDetailedSections)}
 							>
-								{showDetailedSections ? 'Hide Detailed Timeline' : 'Show Detailed Timeline'}
+								{showDetailedSections ? 'Hide timeline details' : 'Show timeline details'}
 							</button>
 						</div>
 					</div>
@@ -1590,7 +1549,7 @@
 								{:else}
 									{#each filteredQueuedJobs.slice(0, 5) as job (job.id)}
 										{@const jobPending = isJobActionPending(job.id)}
-										{@const queueItemExpanded = pageMode || expandedJobId === job.id}
+										{@const queueItemExpanded = expandedJobId === job.id}
 										<div class="queue-item-card">
 											{#if pageMode}
 												<div class="queue-item-click">
@@ -1708,7 +1667,7 @@
 				{/if}
 
 				<!-- Completed -->
-				{#if stats.completed > 0}
+				{#if stats.completed > 0 && !pageMode}
 					<div class="section section--completed">
 						<h4 class="section-title">
 							<span>Completed</span>
@@ -1829,7 +1788,7 @@
 							<div class="failed-list">
 								{#each resumableJobs.slice(0, 4) as job (job.id)}
 									{@const jobPending = isJobActionPending(job.id)}
-									{@const failedItemExpanded = pageMode || expandedJobId === job.id}
+									{@const failedItemExpanded = expandedJobId === job.id}
 									<div class="failed-item-card">
 										{#if pageMode}
 											<div class="failed-item-click">
@@ -2288,12 +2247,6 @@
 	.download-manager-panel--page .section--priority {
 		padding: 0.9rem 0 0;
 		gap: 0.78rem;
-	}
-
-	.priority-overview-subtitle {
-		margin: 0;
-		font-size: 0.84rem;
-		color: rgba(214, 214, 214, 0.78);
 	}
 
 	.priority-grid {
