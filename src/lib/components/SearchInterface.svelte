@@ -1150,26 +1150,34 @@
 				{/if}
 
 				{#if albumResults.length > 0}
-					<section id="search-section-albums" class="search-section search-section--albums">
+					<section
+						id="search-section-albums"
+						class="search-section search-section--albums"
+						data-tone="album"
+					>
 						<header class="search-section__header">
 							<h2 class="search-section__title">Albums</h2>
-							<span class="search-section__count">{albumResults.length}</span>
+							<span class="search-section__count" data-tone="album">{albumResults.length}</span>
 						</header>
-						<div class="search-list">
+						<div class="search-list" data-tone="album">
 							{#each albumResults as album (album.id)}
 								{@const albumDownloadState =
 									albumDownloadStates[album.id] ??
 									createDefaultAlbumDownloadState(album.numberOfTracks ?? 0)}
 								{@const canCancelAlbumDownload = isAlbumQueueDownloadCancellable(albumDownloadState)}
 								{@const albumCoverSrc = getAlbumCoverSrc(album)}
-									<div class="search-row search-row--album">
+									<div class="search-row search-row--album" data-tone="album">
 										<a
 											href={`/album/${album.id}`}
 											class="search-row__content search-row__content--link search-row__content--with-media"
 											aria-label={`Open album ${album.title}`}
 											data-sveltekit-preload-data
 										>
-											<div class="search-row__media search-row__media--album" aria-hidden="true">
+											<div
+												class="search-row__media search-row__media--album"
+												data-tone="album"
+												aria-hidden="true"
+											>
 												{#if albumCoverSrc}
 													<img src={albumCoverSrc} alt="" loading="lazy" />
 												{:else}
@@ -1571,6 +1579,10 @@
 		color: var(--ui-tone-secondary-text, rgba(224, 234, 255, 0.96));
 	}
 
+	.search-section[data-tone='album'] .search-section__title {
+		color: rgba(255, 235, 212, 0.96);
+	}
+
 	.search-section[data-tone='tertiary'] .search-section__title {
 		color: var(--ui-tone-tertiary-text, rgba(220, 244, 233, 0.96));
 	}
@@ -1596,6 +1608,12 @@
 		color: var(--ui-tone-secondary-text, rgba(224, 234, 255, 0.96));
 	}
 
+	.search-section__count[data-tone='album'] {
+		border-color: rgba(236, 187, 136, 0.52);
+		background: rgba(176, 122, 66, 0.18);
+		color: rgba(255, 235, 212, 0.96);
+	}
+
 	.search-section__count[data-tone='tertiary'] {
 		border-color: var(--ui-tone-tertiary-border, rgba(159, 215, 190, 0.42));
 		background: var(--ui-tone-tertiary-surface, rgba(96, 156, 130, 0.16));
@@ -1616,6 +1634,15 @@
 		background: linear-gradient(
 			180deg,
 			var(--ui-tone-secondary-surface, rgba(104, 136, 210, 0.16)) 0%,
+			var(--ui-surface-raised, #121212) 100%
+		);
+	}
+
+	.search-list[data-tone='album'] {
+		border-color: rgba(236, 187, 136, 0.42);
+		background: linear-gradient(
+			180deg,
+			rgba(176, 122, 66, 0.16) 0%,
 			var(--ui-surface-raised, #121212) 100%
 		);
 	}
@@ -1655,6 +1682,10 @@
 
 	.search-row[data-tone='secondary']:hover {
 		background: var(--ui-tone-secondary-surface-hover, rgba(104, 136, 210, 0.24));
+	}
+
+	.search-row[data-tone='album']:hover {
+		background: rgba(176, 122, 66, 0.24);
 	}
 
 	.search-row[data-tone='tertiary']:hover {
@@ -1699,6 +1730,11 @@
 	.search-row__media[data-tone='secondary'] {
 		border-color: var(--ui-tone-secondary-border, rgba(159, 185, 246, 0.42));
 		background: rgba(159, 185, 246, 0.12);
+	}
+
+	.search-row__media[data-tone='album'] {
+		border-color: rgba(236, 187, 136, 0.44);
+		background: rgba(176, 122, 66, 0.15);
 	}
 
 	.search-row__media[data-tone='tertiary'] {
