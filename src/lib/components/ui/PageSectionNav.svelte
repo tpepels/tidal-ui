@@ -1,4 +1,11 @@
 <script lang="ts">
+	import {
+		buildSectionHashUrl,
+		normalizeSectionId,
+		resolveHashSectionId,
+		shouldSkipInitialSectionHashSync
+	} from '$lib/components/ui/pageSectionNavState';
+
 	type Tone = 'default' | 'secondary' | 'tertiary';
 
 	export type PageSectionNavItem = {
@@ -21,14 +28,29 @@
 	} = $props();
 
 	let activeId = $state('');
+	let lastObservedId = $state('');
 
 	const visibleItems = $derived.by(() =>
 		items.filter((item) => !item.hidden && item.id.trim().length > 0)
 	);
 
+	function scheduleSectionRestore(callback: () => void): void {
+		if (typeof window === 'undefined') {
+			return;
+		}
+		if (typeof window.requestAnimationFrame === 'function') {
+			window.requestAnimationFrame(() => {
+				window.requestAnimationFrame(callback);
+			});
+			return;
+		}
+		window.setTimeout(callback, 0);
+	}
+
 	$effect(() => {
 		if (visibleItems.length === 0) {
 			activeId = '';
+			lastObservedId = '';
 			return;
 		}
 
@@ -50,19 +72,63 @@
 			return;
 		}
 
-		const handleHashChange = () => {
-			const hash = window.location.hash.replace(/^#/, '').trim();
-			if (hash) {
-				activeId = hash;
+		const firstVisibleId = visibleItems[0]?.id ?? '';
+		const knownIds = new Set(nodes.map((node) => node.id));
+
+		const replaceCurrentEntryHash = (sectionId: string) => {
+			const normalizedId = normalizeSectionId(sectionId);
+			if (!normalizedId) {
+				return;
+			}
+			const currentHash = normalizeSectionId(window.location.hash);
+			if (currentHash === normalizedId) {
+				return;
+			}
+			window.history.replaceState(
+				window.history.state,
+				'',
+				buildSectionHashUrl(window.location, normalizedId)
+			);
+		};
+
+		const restoreHashTarget = (sectionId: string) => {
+			const normalizedId = normalizeSectionId(sectionId);
+			if (!normalizedId || !knownIds.has(normalizedId)) {
+				return;
+			}
+			const target = document.getElementById(normalizedId);
+			if (!(target instanceof HTMLElement)) {
+				return;
+			}
+			scheduleSectionRestore(() => {
+				target.scrollIntoView({ block: 'start', behavior: 'auto' });
+			});
+		};
+
+		const syncFromHash = (restoreScroll: boolean) => {
+			const hash = resolveHashSectionId(window.location.hash, knownIds);
+			if (!hash) {
+				return;
+			}
+			activeId = hash;
+			lastObservedId = hash;
+			if (restoreScroll) {
+				restoreHashTarget(hash);
 			}
 		};
 
-		handleHashChange();
+		const handleHashChange = () => {
+			syncFromHash(true);
+		};
+
+		syncFromHash(true);
 
 		if (typeof IntersectionObserver === 'undefined') {
 			window.addEventListener('hashchange', handleHashChange);
+			window.addEventListener('popstate', handleHashChange);
 			return () => {
 				window.removeEventListener('hashchange', handleHashChange);
+				window.removeEventListener('popstate', handleHashChange);
 			};
 		}
 
@@ -73,7 +139,21 @@
 					.sort((left, right) => Math.abs(left.boundingClientRect.top) - Math.abs(right.boundingClientRect.top));
 				const next = visibleEntries[0]?.target;
 				if (next instanceof HTMLElement && next.id) {
-					activeId = next.id;
+					const nextId = normalizeSectionId(next.id);
+					if (!nextId || !knownIds.has(nextId) || activeId === nextId) {
+						return;
+					}
+					activeId = nextId;
+					const shouldSkipInitialHashSync = shouldSkipInitialSectionHashSync({
+						lastObservedId,
+						currentHash: window.location.hash,
+						nextId,
+						firstVisibleId
+					});
+					lastObservedId = nextId;
+					if (!shouldSkipInitialHashSync) {
+						replaceCurrentEntryHash(nextId);
+					}
 				}
 			},
 			{
@@ -87,10 +167,12 @@
 		}
 
 		window.addEventListener('hashchange', handleHashChange);
+		window.addEventListener('popstate', handleHashChange);
 
 		return () => {
 			observer.disconnect();
 			window.removeEventListener('hashchange', handleHashChange);
+			window.removeEventListener('popstate', handleHashChange);
 		};
 	});
 </script>
@@ -110,6 +192,7 @@
 					aria-current={activeId === item.id ? 'location' : undefined}
 					onclick={() => {
 						activeId = item.id;
+						lastObservedId = item.id;
 					}}
 				>
 					{item.label}
