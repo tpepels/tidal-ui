@@ -81,6 +81,15 @@ export class SearchOrchestrator {
 	private currentSearchToken = 0;
 	private inflightSearches = new Map<string, Promise<SearchWorkflowResult>>();
 
+	private static resetTabLoadingState(): Record<SearchTab, boolean> {
+		return {
+			tracks: false,
+			albums: false,
+			artists: false,
+			playlists: false
+		};
+	}
+
 	/**
 	 * Detects the type of URL in the query
 	 *
@@ -169,20 +178,32 @@ export class SearchOrchestrator {
 	}
 
 	/**
+	 * Cancels the currently active search workflow without clearing query/results.
+	 * In-flight responses are treated as stale and ignored.
+	 */
+	cancelActiveSearch(): void {
+		this.currentSearchToken += 1;
+		this.inflightSearches.clear();
+		searchStoreActions.commit({
+			isLoading: false,
+			error: null,
+			playlistLoadingMessage: null,
+			tabLoading: SearchOrchestrator.resetTabLoadingState()
+		});
+	}
+
+	/**
 	 * Clears search state
 	 */
 	clear(): void {
+		this.currentSearchToken += 1;
+		this.inflightSearches.clear();
 		searchStoreActions.commit({
 			query: '',
 			results: null,
 			error: null,
 			isLoading: false,
-			tabLoading: {
-				tracks: false,
-				albums: false,
-				artists: false,
-				playlists: false
-			}
+			tabLoading: SearchOrchestrator.resetTabLoadingState()
 		});
 	}
 
@@ -476,12 +497,7 @@ export class SearchOrchestrator {
 		searchStoreActions.commit({
 			isLoading: true,
 			error: null,
-			tabLoading: {
-				tracks: false,
-				albums: false,
-				artists: false,
-				playlists: false
-			}
+			tabLoading: SearchOrchestrator.resetTabLoadingState()
 		});
 
 		try {
@@ -493,12 +509,7 @@ export class SearchOrchestrator {
 				searchStoreActions.commit({
 					error: conversionResult.error.message,
 					isLoading: false,
-					tabLoading: {
-						tracks: false,
-						albums: false,
-						artists: false,
-						playlists: false
-					}
+					tabLoading: SearchOrchestrator.resetTabLoadingState()
 				});
 
 				return {
@@ -596,12 +607,7 @@ export class SearchOrchestrator {
 			searchStoreActions.commit({
 				error: message,
 				isLoading: false,
-				tabLoading: {
-					tracks: false,
-					albums: false,
-					artists: false,
-					playlists: false
-				}
+				tabLoading: SearchOrchestrator.resetTabLoadingState()
 			});
 
 			console.error('[SearchOrchestrator] Streaming URL conversion error:', error);

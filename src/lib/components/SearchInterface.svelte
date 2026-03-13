@@ -401,10 +401,13 @@
 		void albumMusicBrainzController.hydrate(albumResults);
 	});
 
-	async function handleSearch() {
+	function isSearchBusy(): boolean {
+		return $searchStore.isLoading || $searchStore.tabLoading[$searchStore.activeTab];
+	}
+
+	async function runSearch() {
 		const trimmedQuery = $searchStore.query.trim();
 		if (!trimmedQuery) return;
-		if ($searchStore.isLoading || $searchStore.tabLoading[$searchStore.activeTab]) return;
 		const scopeSettings = resolveSearchExecutionScopes(selectedSearchScopes);
 
 		await searchOrchestrator.search(
@@ -420,6 +423,14 @@
 				isUrlQuery: isQueryAUrl
 			})
 		);
+	}
+
+	async function handleSearchSubmit(): Promise<void> {
+		if (isSearchBusy()) {
+			searchOrchestrator.cancelActiveSearch();
+			return;
+		}
+		await runSearch();
 	}
 
 	onDestroy(unsubscribeRegion);
@@ -442,7 +453,7 @@
 		searchScopeOptions={SEARCH_SCOPE_OPTIONS}
 		albumArtistFilter={albumArtistFilter}
 		strictAlbumArtistMatch={strictAlbumArtistMatch}
-		onSubmit={() => void handleSearch()}
+		onSubmit={() => void handleSearchSubmit()}
 		onQueryInput={(value) => {
 			searchStoreActions.setQuery(value);
 		}}

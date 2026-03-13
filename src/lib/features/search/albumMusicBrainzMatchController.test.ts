@@ -77,6 +77,33 @@ describe('albumMusicBrainzMatchController', () => {
 		expect(match).toBe('z');
 	});
 
+	it('still matches when album track count is missing by preferring latest compatible title', async () => {
+		const album = createAlbum({
+			title: 'Missing Count Album',
+			numberOfTracks: undefined
+		});
+		const lookupKey = resolveAlbumMusicBrainzLookupKey(album);
+		expect(lookupKey).toBeTruthy();
+
+		const fetchImpl = vi.fn().mockResolvedValue({
+			ok: true,
+			json: async () => ({
+				success: true,
+				releases: [
+					{ id: 'old', title: 'Missing Count Album', trackCount: 9, date: '2017-01-01' },
+					{ id: 'new', title: 'Missing Count Album', trackCount: 11, date: '2024-02-01' }
+				]
+			})
+		});
+
+		const match = await resolveAlbumMusicBrainzReleaseMatch(album, lookupKey!, {
+			lookupCache: new Map<string, string | null>(),
+			fetchImpl: fetchImpl as unknown as typeof fetch
+		});
+
+		expect(match).toBe('new');
+	});
+
 	it('hydrates matches and avoids duplicate fetches once matched', async () => {
 		const album = createAlbum({ id: 202, title: 'Cache Test Album' });
 		const matchedByAlbum = new Map<number, string>();

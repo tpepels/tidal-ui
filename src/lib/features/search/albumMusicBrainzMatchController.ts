@@ -95,14 +95,14 @@ export function resolveAlbumMusicBrainzLookupKey(album: Album): string | null {
 	const title = album.title?.trim() ?? '';
 	const artistName = album.artist?.name?.trim() ?? '';
 	const trackCount = resolveAlbumTrackCountForMusicBrainz(album);
-	if (!title || !artistName || !trackCount) {
+	if (!title || !artistName) {
 		return null;
 	}
 	const normalizedTitle = normalizeMusicBrainzText(title);
 	const normalizedArtist = normalizeMusicBrainzText(artistName);
 	const releaseDate = album.releaseDate?.trim() ?? '';
 	const upc = album.upc?.trim() ?? '';
-	return `${normalizedTitle}::${normalizedArtist}::${trackCount}::${releaseDate}::${upc}`;
+	return `${normalizedTitle}::${normalizedArtist}::${trackCount ?? 0}::${releaseDate}::${upc}`;
 }
 
 export async function resolveAlbumMusicBrainzReleaseMatch(
@@ -117,7 +117,7 @@ export async function resolveAlbumMusicBrainzReleaseMatch(
 	const albumTitle = album.title?.trim() ?? '';
 	const artistName = album.artist?.name?.trim() ?? '';
 	const trackCount = resolveAlbumTrackCountForMusicBrainz(album);
-	if (!albumTitle || !artistName || !trackCount) {
+	if (!albumTitle || !artistName) {
 		options.lookupCache.set(lookupKey, null);
 		return null;
 	}
@@ -152,10 +152,16 @@ export async function resolveAlbumMusicBrainzReleaseMatch(
 					musicBrainzTitlesLikelyMatch(albumTitle, release.title)
 			)
 			.filter((release) => {
+				if (trackCount === null) {
+					return true;
+				}
 				const releaseTrackCount = resolveMusicBrainzReleaseTrackCount(release);
 				return releaseTrackCount !== null && releaseTrackCount >= trackCount;
 			})
 			.sort((left, right) => {
+				if (trackCount === null) {
+					return compareMusicBrainzReleaseDateDesc(left, right);
+				}
 				const leftTrackCount =
 					resolveMusicBrainzReleaseTrackCount(left) ?? Number.MAX_SAFE_INTEGER;
 				const rightTrackCount =

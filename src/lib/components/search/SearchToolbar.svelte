@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { LoaderCircle, Search } from 'lucide-svelte';
+	import { Search, Square } from 'lucide-svelte';
 	import type { SearchTab } from '$lib/stores/searchStoreAdapter';
 	import { getPlatformName } from '$lib/utils/songlink';
 
@@ -56,6 +56,8 @@
 	function isScopeSelected(scope: SearchTab): boolean {
 		return selectedSearchScopes.includes(scope);
 	}
+
+	const isSearchInProgress = $derived(isLoading || isActiveTabLoading);
 </script>
 
 <section class="ui-tool-panel search-panel" data-tone="secondary" aria-label="Catalog search">
@@ -90,12 +92,12 @@
 			<button
 				type="submit"
 				class="ui-action-button ui-action-button--primary search-panel__submit"
-				disabled={!query.trim() || isLoading || isActiveTabLoading}
-				aria-busy={isLoading || isActiveTabLoading}
+				disabled={!query.trim() && !isSearchInProgress}
+				aria-busy={isSearchInProgress}
 			>
-				{#if isLoading || isActiveTabLoading}
-					<LoaderCircle size={16} class="animate-spin" />
-					Searching
+				{#if isSearchInProgress}
+					<Square size={16} />
+					Stop
 				{:else}
 					<Search size={16} />
 					Search

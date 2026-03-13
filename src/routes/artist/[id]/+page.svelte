@@ -11,6 +11,12 @@
 		type ArtistAlbumDownloadState as AlbumDownloadState
 	} from '$lib/features/artist/artistAlbumQueueController';
 	import {
+		buildArtistAlbumCoverCandidates as buildAlbumCoverCandidates,
+		createArtistCoverHydrationController,
+		parseCoverCandidates,
+		serializeCoverCandidates
+	} from '$lib/features/artist/artistCoverHydrationController';
+	import {
 		buildFeaturedDiscographyAlbums,
 		buildTopTrackAlbumSignals,
 		filterDiscographyEntries
@@ -38,7 +44,6 @@
 		getCoverCacheKey,
 		getResolvedCoverUrl,
 		getUnifiedCoverCandidates,
-		isCoverInFailureBackoff,
 		markCoverFailed,
 		markCoverResolved,
 		prefetchCoverCandidates,
@@ -178,35 +183,14 @@
 	let albumCoverOverrides = $state<Record<number, string>>({});
 	let albumCoverFailures = $state<Record<number, boolean>>({});
 	let albumCoverHydrationAttempted = $state<Record<number, boolean>>({});
-	type PendingCoverLookup = {
-		generation: number;
-		promise: Promise<string | null>;
-	};
-	type CoverHydrationScheduler = {
-		generation: number;
-		activeLookups: number;
-		queue: number[];
-		queuedAlbumIds: Set<number>;
-	};
-
-	const MAX_CONCURRENT_COVER_LOOKUPS = 4;
 	const ALBUM_QUEUE_POLL_INTERVAL_MS = 1000;
-	const pendingAlbumCoverLookups = new Map<number, PendingCoverLookup>();
 	let coverHydrationGeneration = $state(0);
-	let coverHydrationGenerationCounter = 0;
-	let coverHydrationScheduler: CoverHydrationScheduler = {
-		generation: 0,
-		activeLookups: 0,
-		queue: [],
-		queuedAlbumIds: new Set<number>()
-	};
 	let activeRequestToken = 0;
 	let artistLoadAbortController: AbortController | null = null;
 	let activeArtistLoadId: number | null = null;
 	let albumLibraryLookupToken = 0;
 	let coverResolutionTick = $state(0);
 	let isDocumentVisible = $state(true);
-	const COVER_CANDIDATE_DELIMITER = '\n';
 	const FORCE_OVERWRITE_CONFIRMATION =
 		'This album is already in your local library. Redownload it and overwrite existing files?';
 	const CLIENT_REDOWNLOAD_CONFIRMATION =
@@ -448,67 +432,6 @@
 		};
 	}
 
-	function buildAlbumCoverCandidates(
-		representative: Album,
-		versions: Album[],
-		useProxy: boolean,
-		overrideCoverId?: string
-	): string[] {
-		const coverIds: string[] = [];
-		const seenIds = new Set<string>();
-		const normalizedOverride = typeof overrideCoverId === 'string' ? overrideCoverId.trim() : '';
-		if (normalizedOverride) {
-			seenIds.add(normalizedOverride);
-			coverIds.push(normalizedOverride);
-		}
-		for (const version of [representative, ...versions]) {
-			const cover = typeof version.cover === 'string' ? version.cover.trim() : '';
-			if (!cover || seenIds.has(cover)) continue;
-			seenIds.add(cover);
-			coverIds.push(cover);
-			if (coverIds.length >= 4) break;
-		}
-
-		const urls: string[] = [];
-		for (const coverId of coverIds) {
-			const cacheKey = getCoverCacheKey({
-				coverId,
-				size: '640',
-				proxy: useProxy
-			});
-			const resolved = getResolvedCoverUrl(cacheKey);
-			if (resolved && !urls.includes(resolved)) {
-				urls.push(resolved);
-			}
-			if (isCoverInFailureBackoff(cacheKey) && !resolved) {
-				continue;
-			}
-			const candidates = getUnifiedCoverCandidates({
-				coverId,
-				size: '640',
-				proxy: useProxy,
-				includeLowerSizes: true
-			});
-			for (const candidate of candidates) {
-				if (candidate && !urls.includes(candidate)) {
-					urls.push(candidate);
-				}
-			}
-		}
-		return urls;
-	}
-
-	function serializeCoverCandidates(candidates: string[]): string {
-		return candidates.join(COVER_CANDIDATE_DELIMITER);
-	}
-
-	function parseCoverCandidates(rawCandidates: string): string[] {
-		return rawCandidates
-			.split(COVER_CANDIDATE_DELIMITER)
-			.map((candidate) => candidate.trim())
-			.filter((candidate) => candidate.length > 0);
-	}
-
 	function markAlbumCoverFailed(albumId: number): void {
 		albumCoverFailures = {
 			...albumCoverFailures,
@@ -525,130 +448,39 @@
 		albumCoverFailures = next;
 	}
 
-	function createCoverHydrationScheduler(generation: number): CoverHydrationScheduler {
-		return {
-			generation,
-			activeLookups: 0,
-			queue: [],
-			queuedAlbumIds: new Set<number>()
-		};
-	}
-
 	function beginCoverHydrationGeneration(): number {
-		coverHydrationGenerationCounter += 1;
-		coverHydrationGeneration = coverHydrationGenerationCounter;
-		coverHydrationScheduler = createCoverHydrationScheduler(coverHydrationGenerationCounter);
-		pendingAlbumCoverLookups.clear();
-		return coverHydrationGenerationCounter;
+		return coverHydrationController.beginGeneration();
 	}
 
-	function drainAlbumCoverHydrationQueue(scheduler: CoverHydrationScheduler): void {
-		if (
-			scheduler !== coverHydrationScheduler ||
-			scheduler.generation !== coverHydrationGeneration
-		) {
-			return;
-		}
-
-		while (
-			scheduler.activeLookups < MAX_CONCURRENT_COVER_LOOKUPS &&
-			scheduler.queue.length > 0
-		) {
-			const albumId = scheduler.queue.shift();
-			if (albumId === undefined || !Number.isFinite(albumId)) {
-				continue;
-			}
-			scheduler.activeLookups += 1;
-			void resolveAlbumCoverFromApi(albumId, scheduler.generation)
-				.catch(() => null)
-				.finally(() => {
-					scheduler.activeLookups = Math.max(0, scheduler.activeLookups - 1);
-					scheduler.queuedAlbumIds.delete(albumId);
-					drainAlbumCoverHydrationQueue(scheduler);
-				});
-		}
-	}
-
-	function enqueueAlbumCoverHydration(albumId: number, generation: number): void {
-		if (!Number.isFinite(albumId) || albumId <= 0 || generation !== coverHydrationGeneration) {
-			return;
-		}
-
-		const scheduler = coverHydrationScheduler;
-		if (scheduler.generation !== generation) {
-			return;
-		}
-
-		if (scheduler.queuedAlbumIds.has(albumId)) {
-			return;
-		}
-
-		scheduler.queuedAlbumIds.add(albumId);
-		scheduler.queue.push(albumId);
-		drainAlbumCoverHydrationQueue(scheduler);
-	}
-
-	async function resolveAlbumCoverFromApi(
-		albumId: number,
-		generation: number
-	): Promise<string | null> {
-		if (!Number.isFinite(albumId) || albumId <= 0 || generation !== coverHydrationGeneration) {
-			return null;
-		}
-
-		const existingOverride = albumCoverOverrides[albumId];
-		if (existingOverride) {
-			return existingOverride;
-		}
-
-		const pending = pendingAlbumCoverLookups.get(albumId);
-		if (pending && pending.generation === generation) {
-			return pending.promise;
-		}
-		if (pending && pending.generation !== generation) {
-			pendingAlbumCoverLookups.delete(albumId);
-		}
-
-		const lookupPromise = (async () => {
-			try {
-				const { album: albumData } = await losslessAPI.getAlbum(albumId);
-				const cover = typeof albumData.cover === 'string' ? albumData.cover.trim() : '';
-				if (!cover || generation !== coverHydrationGeneration) {
-					return null;
-				}
-
-				albumCoverOverrides = {
-					...albumCoverOverrides,
-					[albumId]: cover
-				};
-				clearAlbumCoverFailure(albumId);
-
-				const artistForCache = albumData.artist?.id ?? artist?.id;
-				if (typeof artistForCache === 'number' && Number.isFinite(artistForCache)) {
-					artistCacheStore.upsertAlbumCover(artistForCache, albumId, cover);
-				}
-				artistCacheStore.upsertAlbumCoverGlobally(albumId, cover);
-
-				return cover;
-			} catch (lookupError) {
-				if (generation === coverHydrationGeneration) {
-					console.warn(`[Artist] Failed to hydrate cover for album ${albumId}:`, lookupError);
-				}
+	const coverHydrationController = createArtistCoverHydrationController({
+		getCoverOverride: (albumId) => albumCoverOverrides[albumId],
+		setCoverOverride: (albumId, coverId) => {
+			albumCoverOverrides = {
+				...albumCoverOverrides,
+				[albumId]: coverId
+			};
+		},
+		clearCoverFailure: clearAlbumCoverFailure,
+		fetchCoverFromApi: async (albumId, generation) => {
+			const { album: albumData } = await losslessAPI.getAlbum(albumId);
+			const cover = typeof albumData.cover === 'string' ? albumData.cover.trim() : '';
+			if (!cover || generation !== coverHydrationGeneration) {
 				return null;
-			} finally {
-				const current = pendingAlbumCoverLookups.get(albumId);
-				if (current && current.generation === generation) {
-					pendingAlbumCoverLookups.delete(albumId);
-				}
 			}
-		})();
-
-		pendingAlbumCoverLookups.set(albumId, {
-			generation,
-			promise: lookupPromise
-		});
-		return lookupPromise;
-	}
+			const artistForCache = albumData.artist?.id ?? artist?.id;
+			if (typeof artistForCache === 'number' && Number.isFinite(artistForCache)) {
+				artistCacheStore.upsertAlbumCover(artistForCache, albumId, cover);
+			}
+			artistCacheStore.upsertAlbumCoverGlobally(albumId, cover);
+			return cover;
+		},
+		onGenerationChange: (generation) => {
+			coverHydrationGeneration = generation;
+		},
+		onLookupError: (albumId, lookupError) => {
+			console.warn(`[Artist] Failed to hydrate cover for album ${albumId}:`, lookupError);
+		}
+	});
 
 	async function attemptAlbumCoverRecovery(
 		image: HTMLImageElement,
@@ -664,7 +496,7 @@
 			return;
 		}
 
-		const hydratedCover = await resolveAlbumCoverFromApi(albumId, generation);
+		const hydratedCover = await coverHydrationController.resolveCoverFromApi(albumId, generation);
 		if (!image.isConnected || generation !== coverHydrationGeneration) {
 			return;
 		}
@@ -777,7 +609,7 @@
 				...albumCoverHydrationAttempted,
 				[album.id]: true
 			};
-			enqueueAlbumCoverHydration(album.id, generation);
+			coverHydrationController.enqueue(album.id, generation);
 		}
 	});
 

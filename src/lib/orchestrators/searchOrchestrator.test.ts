@@ -733,6 +733,75 @@ describe('SearchOrchestrator', () => {
 		});
 	});
 
+	describe('cancelActiveSearch()', () => {
+		it('clears loading state without clearing query or results', () => {
+			orchestrator.cancelActiveSearch();
+
+			expect(mockSearchStoreActions.commit).toHaveBeenCalledWith(
+				expect.objectContaining({
+					isLoading: false,
+					error: null,
+					playlistLoadingMessage: null,
+					tabLoading: expect.objectContaining({
+						tracks: false,
+						albums: false,
+						artists: false,
+						playlists: false
+					})
+				})
+			);
+
+			const payload = mockSearchStoreActions.commit.mock.calls.at(-1)?.[0];
+			expect(payload?.query).toBeUndefined();
+			expect(payload?.results).toBeUndefined();
+		});
+
+		it('cancels inflight dedupe so the same query can be re-run immediately', async () => {
+			let resolveFirstSearch: (value: unknown) => void;
+			const firstSearchPromise = new Promise((resolve) => {
+				resolveFirstSearch = resolve;
+			});
+
+			mockExecuteTabSearch
+				.mockReturnValueOnce(firstSearchPromise)
+				.mockResolvedValueOnce({
+					success: true,
+					results: {
+						tracks: [{ ...mockTrack, id: 222 }],
+						albums: [],
+						artists: [],
+						playlists: []
+					}
+				});
+
+			const firstSearch = orchestrator.search('same query', 'tracks', { region: 'us' });
+			orchestrator.cancelActiveSearch();
+			const secondSearch = orchestrator.search('same query', 'tracks', { region: 'us' });
+
+			resolveFirstSearch!({
+				success: true,
+				results: {
+					tracks: [{ ...mockTrack, id: 111 }],
+					albums: [],
+					artists: [],
+					playlists: []
+				}
+			});
+
+			await Promise.all([firstSearch, secondSearch]);
+
+			expect(mockExecuteTabSearch).toHaveBeenCalledTimes(2);
+
+			const resultCommits = mockSearchStoreActions.commit.mock.calls
+				.map((call) => call[0])
+				.filter((payload) => payload?.results?.tracks?.length > 0);
+			const committedTrackIds = resultCommits.map((payload) => payload.results.tracks[0]?.id);
+
+			expect(committedTrackIds).toContain(222);
+			expect(committedTrackIds).not.toContain(111);
+		});
+	});
+
 	describe('clear()', () => {
 		it('should reset search state', () => {
 			orchestrator.clear();
