@@ -4,7 +4,24 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { losslessAPI } from '$lib/api';
 	import { downloadAlbum } from '$lib/downloads';
-	import { isAlbumDownloadQueueActive, type AlbumDownloadStatus } from '$lib/controllers/albumDownloadUi';
+	import {
+		createArtistAlbumQueueController,
+		createDefaultArtistAlbumDownloadState as createDefaultAlbumDownloadState,
+		isArtistAlbumQueueDownloadCancellable as isAlbumQueueDownloadCancellable,
+		type ArtistAlbumDownloadState as AlbumDownloadState
+	} from '$lib/features/artist/artistAlbumQueueController';
+	import {
+		buildFeaturedDiscographyAlbums,
+		buildTopTrackAlbumSignals,
+		filterDiscographyEntries
+	} from '$lib/features/artist/artistDiscographyModel';
+	import {
+		formatMusicBrainzArtistLifeSpan,
+		normalizeArtistToken as normalizeToken,
+		pickDefaultMusicBrainzArtistId,
+		searchMusicBrainzArtistsByName,
+		type MusicBrainzArtistOption
+	} from '$lib/features/artist/artistMusicBrainzController';
 	import type { Album, ArtistDetails, ArtistRecommendations, AudioQuality } from '$lib/types';
 	import TopTracksGrid from '$lib/components/TopTracksGrid.svelte';
 	import EntityMediaCard from '$lib/components/ui/EntityMediaCard.svelte';
@@ -15,7 +32,6 @@
 	import StateBlock from '$lib/components/ui/StateBlock.svelte';
 	import {
 		groupDiscography,
-		getDiscographyTraits,
 		type DiscographyBestEditionRule
 	} from '$lib/utils/discography';
 	import {
@@ -100,15 +116,7 @@
 		groupDiscography(rawDiscography, downloadQuality, { bestEditionRule })
 	);
 	const discographyEntries = $derived(
-		groupedDiscographyEntries.filter((entry) => {
-			const traits = getDiscographyTraits(entry.representative);
-			if (!discographyFilterState[traits.releaseType]) return false;
-			if (!discographyFilterState.live && traits.isLive) return false;
-			if (!discographyFilterState.remaster && traits.isRemaster) return false;
-			if (!discographyFilterState.explicit && traits.isExplicit) return false;
-			if (!discographyFilterState.clean && !traits.isExplicit) return false;
-			return true;
-		})
+		filterDiscographyEntries(groupedDiscographyEntries, discographyFilterState)
 	);
 	const hasGroupedDiscography = $derived(groupedDiscographyEntries.length > 0);
 	const filtersHideAllDiscography = $derived(hasGroupedDiscography && discographyEntries.length === 0);
@@ -143,74 +151,12 @@
 	const discographyAlbums = $derived(discographyEntries.filter((entry) => entry.section === 'album'));
 	const discographyEps = $derived(discographyEntries.filter((entry) => entry.section === 'ep'));
 	const discographySingles = $derived(discographyEntries.filter((entry) => entry.section === 'single'));
-	type AlbumTopTrackSignal = {
-		hits: number;
-		popularitySum: number;
-		rankWeight: number;
-	};
-	type FeaturedDiscographyAlbum = {
-		entry: (typeof discographyEntries)[number];
-		score: number;
-		topTrackHits: number;
-		topTrackPopularity: number;
-	};
-	const topTrackAlbumSignals = $derived.by(() => {
-		const signals = new Map<number, AlbumTopTrackSignal>();
-		const rankedTracks = topTracks.slice(0, 80);
-		const rankedTrackCount = rankedTracks.length;
-		for (const [index, track] of rankedTracks.entries()) {
-			const albumId = track.album?.id;
-			if (!Number.isFinite(albumId)) {
-				continue;
-			}
-			const existing = signals.get(albumId) ?? { hits: 0, popularitySum: 0, rankWeight: 0 };
-			existing.hits += 1;
-			existing.popularitySum += Math.max(0, track.popularity ?? 0);
-			existing.rankWeight += Math.max(0, rankedTrackCount - index);
-			signals.set(albumId, existing);
-		}
-		return signals;
-	});
-	const featuredDiscographyAlbums = $derived.by(() => {
-		return discographyEntries
-			.filter((entry) => entry.section === 'album')
-			.map((entry) => {
-				const album = entry.representative;
-				const topTrackSignal = topTrackAlbumSignals.get(album.id);
-				const traits = getDiscographyTraits(album);
-				const popularityScore = Math.max(0, album.popularity ?? 0) * 1.6;
-				const trackCountScore = Math.min(Math.max(album.numberOfTracks ?? 0, 0), 24) * 0.45;
-				const topTrackHits = topTrackSignal?.hits ?? 0;
-				const topTrackPopularity = topTrackSignal?.popularitySum ?? 0;
-				const topTrackHitsScore = topTrackHits * 16;
-				const topTrackPopularityScore = topTrackPopularity * 0.55;
-				const topTrackRankScore = (topTrackSignal?.rankWeight ?? 0) * 0.75;
-				const variantPenalty = (traits.isLive ? 26 : 0) + (traits.isRemaster ? 10 : 0);
-				const score =
-					popularityScore +
-					trackCountScore +
-					topTrackHitsScore +
-					topTrackPopularityScore +
-					topTrackRankScore -
-					variantPenalty;
-				return {
-					entry,
-					score,
-					topTrackHits,
-					topTrackPopularity
-				} satisfies FeaturedDiscographyAlbum;
-			})
-			.sort((a, b) => {
-				if (b.score !== a.score) return b.score - a.score;
-				const popularityA = a.entry.representative.popularity ?? 0;
-				const popularityB = b.entry.representative.popularity ?? 0;
-				if (popularityB !== popularityA) return popularityB - popularityA;
-				const hitsDelta = b.topTrackHits - a.topTrackHits;
-				if (hitsDelta !== 0) return hitsDelta;
-				return a.entry.representative.title.localeCompare(b.entry.representative.title);
-			})
-			.slice(0, FEATURED_DISCOGRAPHY_ALBUM_LIMIT);
-	});
+	const topTrackAlbumSignals = $derived.by(() => buildTopTrackAlbumSignals(topTracks));
+	const featuredDiscographyAlbums = $derived.by(() =>
+		buildFeaturedDiscographyAlbums(discographyEntries, topTrackAlbumSignals, {
+			limit: FEATURED_DISCOGRAPHY_ALBUM_LIMIT
+		})
+	);
 	const discographyMissingCoverCount = $derived(
 		Math.max(0, discographyEntries.length - discographyEntriesWithLoadedCovers.length)
 	);
@@ -223,28 +169,6 @@
 		$userPreferencesStore.strictMusicBrainzMatching
 	);
 	const downloadStoragePreference = $derived($downloadPreferencesStore.storage);
-
-	type AlbumDownloadState = {
-		status: AlbumDownloadStatus;
-		downloading: boolean;
-		completed: number;
-		total: number;
-		error: string | null;
-		failedTracks: number;
-		queueJobId: string | null;
-	};
-
-	type MusicBrainzArtistOption = {
-		id: string;
-		name?: string;
-		type?: string;
-		country?: string;
-		area?: string;
-		disambiguation?: string;
-		lifeSpanBegin?: string;
-		lifeSpanEnd?: string;
-		score?: number;
-	};
 
 	let isDownloadingDiscography = $state(false);
 	let discographyProgress = $state({ completed: 0, total: 0 });
@@ -268,8 +192,6 @@
 	const MAX_CONCURRENT_COVER_LOOKUPS = 4;
 	const ALBUM_QUEUE_POLL_INTERVAL_MS = 1000;
 	const pendingAlbumCoverLookups = new Map<number, PendingCoverLookup>();
-	const albumQueuePollTimers = new Map<number, ReturnType<typeof setInterval>>();
-	const albumQueuePollTokens = new Map<number, number>();
 	let coverHydrationGeneration = $state(0);
 	let coverHydrationGenerationCounter = 0;
 	let coverHydrationScheduler: CoverHydrationScheduler = {
@@ -312,7 +234,7 @@
 			artistLoadAbortController = null;
 			activeArtistLoadId = null;
 			activeRequestToken += 1;
-			stopAllAlbumQueuePolling();
+			albumQueueController.stopAllPolling();
 			beginCoverHydrationGeneration();
 			albumDownloadStates = {};
 			artist = null;
@@ -344,7 +266,7 @@
 		artistLoadAbortController?.abort();
 		artistLoadAbortController = null;
 		activeArtistLoadId = null;
-		stopAllAlbumQueuePolling();
+		albumQueueController.stopAllPolling();
 	});
 
 	onMount(() => {
@@ -384,61 +306,6 @@
 		});
 	});
 
-	function normalizeToken(value: string | null | undefined): string {
-		if (!value) return '';
-		return value
-			.normalize('NFKD')
-			.replace(/[\u0300-\u036f]/g, '')
-			.toLowerCase()
-			.replace(/[^a-z0-9]+/g, ' ')
-			.trim();
-	}
-
-	function formatMusicBrainzArtistLifeSpan(candidate: MusicBrainzArtistOption): string | null {
-		const begin = candidate.lifeSpanBegin?.trim();
-		const end = candidate.lifeSpanEnd?.trim();
-		if (!begin && !end) {
-			return null;
-		}
-		if (begin && end) {
-			return `${begin} - ${end}`;
-		}
-		if (begin) {
-			return `${begin} - present`;
-		}
-		return end ?? null;
-	}
-
-	function pickDefaultMusicBrainzArtistId(
-		candidates: MusicBrainzArtistOption[],
-		artistName: string
-	): string {
-		if (candidates.length === 0) {
-			return '';
-		}
-		const normalizedTarget = normalizeToken(artistName);
-		if (!normalizedTarget) {
-			return candidates[0]?.id ?? '';
-		}
-		const exactMatch =
-			candidates.find((candidate) => normalizeToken(candidate.name) === normalizedTarget) ?? null;
-		if (exactMatch) {
-			return exactMatch.id;
-		}
-		const partialMatch =
-			candidates.find((candidate) => {
-				const normalizedCandidate = normalizeToken(candidate.name);
-				return (
-					normalizedCandidate.includes(normalizedTarget) ||
-					normalizedTarget.includes(normalizedCandidate)
-				);
-			}) ?? null;
-		if (partialMatch) {
-			return partialMatch.id;
-		}
-		return candidates[0]?.id ?? '';
-	}
-
 	async function lookupMusicBrainzArtists(
 		activeArtist: Pick<ArtistDetails, 'id' | 'name'>
 	): Promise<void> {
@@ -447,19 +314,7 @@
 		musicBrainzArtistLookupError = null;
 		hasMusicBrainzArtistLookupAttempted = true;
 		try {
-			const response = await fetch('/api/metadata/musicbrainz-artist-search', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					artistName: activeArtist.name,
-					limit: 10
-				})
-			});
-			const payload = (await response.json().catch(() => null)) as {
-				success?: boolean;
-				error?: string;
-				artists?: MusicBrainzArtistOption[];
-			} | null;
+			const candidates = await searchMusicBrainzArtistsByName(activeArtist.name, { limit: 10 });
 			if (
 				lookupToken !== musicBrainzArtistLookupToken ||
 				!artist ||
@@ -467,15 +322,6 @@
 			) {
 				return;
 			}
-			if (!response.ok || !payload?.success) {
-				throw new Error(payload?.error || 'Failed to search MusicBrainz artists');
-			}
-
-			const candidates = Array.isArray(payload.artists)
-				? payload.artists.filter(
-						(candidate) => typeof candidate?.id === 'string' && candidate.id.length > 0
-					)
-				: [];
 			musicBrainzArtistOptions = candidates;
 			if (candidates.length === 0) {
 				selectedMusicBrainzArtistId = '';
@@ -505,32 +351,6 @@
 		const timestamp = Date.parse(date);
 		if (Number.isNaN(timestamp)) return null;
 		return new Date(timestamp).getFullYear().toString();
-	}
-
-	function formatFeaturedDiscographyMeta(item: FeaturedDiscographyAlbum): string {
-		const album = item.entry.representative;
-		const parts: string[] = [];
-		if (item.topTrackHits > 0) {
-			parts.push(`${item.topTrackHits} top track${item.topTrackHits === 1 ? '' : 's'}`);
-		}
-		const popularity = Math.max(0, album.popularity ?? 0);
-		if (popularity > 0) {
-			parts.push(`Popularity ${Math.round(popularity)}`);
-		}
-		if (item.topTrackPopularity > 0) {
-			parts.push(`Top-track score ${Math.round(item.topTrackPopularity)}`);
-		}
-		if (album.numberOfTracks && album.numberOfTracks > 0) {
-			parts.push(`${album.numberOfTracks} tracks`);
-		}
-		const year = getReleaseYear(album.releaseDate ?? null);
-		if (year) {
-			parts.push(year);
-		}
-		if (parts.length === 0) {
-			return 'Ranked from discography metadata';
-		}
-		return parts.join(' • ');
 	}
 
 	function formatAlbumMeta(album: Album): string | null {
@@ -1063,18 +883,6 @@
 			});
 	});
 
-	function createDefaultAlbumDownloadState(total = 0): AlbumDownloadState {
-		return {
-			status: 'idle',
-			downloading: false,
-			completed: 0,
-			total,
-			error: null,
-			failedTracks: 0,
-			queueJobId: null
-		};
-	}
-
 	function patchAlbumDownloadState(albumId: number, patch: Partial<AlbumDownloadState>) {
 		const previous = albumDownloadStates[albumId] ?? createDefaultAlbumDownloadState();
 		albumDownloadStates = {
@@ -1087,236 +895,38 @@
 		return albumDownloadStates[albumId] ?? createDefaultAlbumDownloadState();
 	}
 
-	function isAlbumQueueDownloadCancellable(state: AlbumDownloadState | undefined): boolean {
-		if (!state) return false;
-		return isAlbumDownloadQueueActive(state.status);
-	}
-
-	function stopAlbumQueuePolling(albumId: number): void {
-		const timer = albumQueuePollTimers.get(albumId);
-		if (timer) {
-			clearInterval(timer);
-			albumQueuePollTimers.delete(albumId);
-		}
-	}
-
-	function stopAllAlbumQueuePolling(): void {
-		for (const timer of albumQueuePollTimers.values()) {
-			clearInterval(timer);
-		}
-		albumQueuePollTimers.clear();
-		albumQueuePollTokens.clear();
-	}
-
-	function resolveAlbumQueueProgress(
-		state: AlbumDownloadState,
-		job: {
-			trackCount?: number;
-			completedTracks?: number;
-			progress?: number;
-		}
-	): { total: number; completed: number } {
-		const totalCandidate = Number(job.trackCount);
-		const completedCandidate = Number(job.completedTracks);
-		const progressCandidate = Number(job.progress);
-
-		const total =
-			Number.isFinite(totalCandidate) && totalCandidate > 0
-				? totalCandidate
-				: state.total > 0
-					? state.total
-					: 0;
-		const progressCompleted =
-			Number.isFinite(progressCandidate) && total > 0 ? Math.round(progressCandidate * total) : state.completed;
-		const completed =
-			Number.isFinite(completedCandidate) && completedCandidate >= 0
-				? completedCandidate
-				: progressCompleted;
-
-		if (total > 0) {
-			return { total, completed: Math.min(total, Math.max(0, completed)) };
-		}
-		return { total, completed: Math.max(0, completed) };
-	}
-
-	async function pollAlbumQueueJob(albumId: number, jobId: string, pollToken: number): Promise<void> {
-		if (!jobId || albumQueuePollTokens.get(albumId) !== pollToken) {
-			return;
-		}
-
-		try {
-			const response = await fetch(`/api/download-queue/${jobId}`);
-			if (!response.ok) {
-				return;
-			}
-			const payload = (await response.json()) as {
-				success?: boolean;
-				job?: {
-					status?: 'queued' | 'processing' | 'paused' | 'completed' | 'failed' | 'cancelled';
-					trackCount?: number;
-					completedTracks?: number;
-					progress?: number;
-					error?: string;
-				};
-			};
-			if (!payload.success || !payload.job || albumQueuePollTokens.get(albumId) !== pollToken) {
-				return;
-			}
-
-			const current = getAlbumDownloadState(albumId);
-			const progress = resolveAlbumQueueProgress(current, payload.job);
-
-			switch (payload.job.status) {
-				case 'queued':
-					patchAlbumDownloadState(albumId, {
-						status: 'queued',
-						downloading: false,
-						total: progress.total,
-						completed: progress.completed,
-						error: null
-					});
-					break;
-				case 'processing':
-					patchAlbumDownloadState(albumId, {
-						status: 'processing',
-						downloading: true,
-						total: progress.total,
-						completed: progress.completed,
-						error: null
-					});
-					break;
-				case 'paused':
-					patchAlbumDownloadState(albumId, {
-						status: 'paused',
-						downloading: false,
-						total: progress.total,
-						completed: progress.completed,
-						error: null
-					});
-					stopAlbumQueuePolling(albumId);
-					albumQueuePollTokens.delete(albumId);
-					break;
-				case 'completed':
-					patchAlbumDownloadState(albumId, {
-						status: 'completed',
-						downloading: false,
-						total: progress.total,
-						completed: progress.total || progress.completed,
-						error: null
-					});
-					stopAlbumQueuePolling(albumId);
-					albumQueuePollTokens.delete(albumId);
-					break;
-				case 'cancelled':
-					patchAlbumDownloadState(albumId, {
-						status: 'cancelled',
-						downloading: false,
-						error: null
-					});
-					stopAlbumQueuePolling(albumId);
-					albumQueuePollTokens.delete(albumId);
-					break;
-				case 'failed':
-					patchAlbumDownloadState(albumId, {
-						status: 'failed',
-						downloading: false,
-						error: payload.job.error ?? 'Album download failed.'
-					});
-					stopAlbumQueuePolling(albumId);
-					albumQueuePollTokens.delete(albumId);
-					break;
-				default:
-					break;
-			}
-		} catch {
-			// Keep latest optimistic state; next poll will reconcile.
-		}
-	}
-
-	function startAlbumQueuePolling(albumId: number, jobId: string): void {
-		stopAlbumQueuePolling(albumId);
-		const currentToken = (albumQueuePollTokens.get(albumId) ?? 0) + 1;
-		albumQueuePollTokens.set(albumId, currentToken);
-		void pollAlbumQueueJob(albumId, jobId, currentToken);
-		const timer = setInterval(() => {
-			void pollAlbumQueueJob(albumId, jobId, currentToken);
-		}, ALBUM_QUEUE_POLL_INTERVAL_MS);
-		albumQueuePollTimers.set(albumId, timer);
-	}
+	const albumQueueController = createArtistAlbumQueueController({
+		getState: getAlbumDownloadState,
+		patchState: patchAlbumDownloadState,
+		pollIntervalMs: ALBUM_QUEUE_POLL_INTERVAL_MS
+	});
 
 	async function cancelAlbumQueueDownload(albumId: number, event?: MouseEvent): Promise<void> {
 		event?.preventDefault();
 		event?.stopPropagation();
 
-		const state = getAlbumDownloadState(albumId);
-		if (!isAlbumQueueDownloadCancellable(state) || !state.queueJobId) {
+		const result = await albumQueueController.cancelQueueDownload(albumId);
+		if (result.success || !result.error) {
 			return;
 		}
 
-		try {
-			const response = await fetch(`/api/download-queue/${state.queueJobId}`, {
-				method: 'PATCH',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({ action: 'cancel' })
-			});
-			if (!response.ok) {
-				const body = await response.text();
-				throw new Error(body || 'Failed to cancel album download');
-			}
-			patchAlbumDownloadState(albumId, {
-				status: 'cancelled',
-				downloading: false,
-				error: null
-			});
-			stopAlbumQueuePolling(albumId);
-			albumQueuePollTokens.delete(albumId);
-		} catch (cancelError) {
-			patchAlbumDownloadState(albumId, {
-				error:
-					cancelError instanceof Error && cancelError.message
-						? cancelError.message
-						: 'Unable to stop this album download right now.'
-			});
-		}
+		patchAlbumDownloadState(albumId, {
+			error: result.error || 'Unable to stop this album download right now.'
+		});
 	}
 
 	async function resumeAlbumQueueDownload(albumId: number, event?: MouseEvent): Promise<void> {
 		event?.preventDefault();
 		event?.stopPropagation();
 
-		const state = getAlbumDownloadState(albumId);
-		if (state.status !== 'paused' || !state.queueJobId) {
+		const result = await albumQueueController.resumeQueueDownload(albumId);
+		if (result.success || !result.error) {
 			return;
 		}
 
-		try {
-			const response = await fetch(`/api/download-queue/${state.queueJobId}`, {
-				method: 'PATCH',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({ action: 'resume' })
-			});
-			if (!response.ok) {
-				const body = await response.text();
-				throw new Error(body || 'Failed to resume album download');
-			}
-			patchAlbumDownloadState(albumId, {
-				status: 'queued',
-				downloading: false,
-				error: null
-			});
-			startAlbumQueuePolling(albumId, state.queueJobId);
-		} catch (resumeError) {
-			patchAlbumDownloadState(albumId, {
-				error:
-					resumeError instanceof Error && resumeError.message
-						? resumeError.message
-						: 'Unable to resume this album download right now.'
-			});
-		}
+		patchAlbumDownloadState(albumId, {
+			error: result.error || 'Unable to resume this album download right now.'
+		});
 	}
 
 	async function handleAlbumDownload(album: Album, event?: MouseEvent) {
@@ -1409,7 +1019,7 @@
 					error: null,
 					queueJobId: result.jobId
 				});
-				startAlbumQueuePolling(album.id, result.jobId);
+				albumQueueController.startPolling(album.id, result.jobId);
 				return;
 			}
 
@@ -1554,7 +1164,7 @@
 	async function loadArtist(id: number, controller: AbortController) {
 		const requestToken = ++activeRequestToken;
 		beginCoverHydrationGeneration();
-		stopAllAlbumQueuePolling();
+		albumQueueController.stopAllPolling();
 		const cachedArtist = artistCacheStore.get(id);
 		const hasCachedArtist = Boolean(cachedArtist);
 

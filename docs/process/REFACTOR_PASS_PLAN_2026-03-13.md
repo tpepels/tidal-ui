@@ -14,6 +14,10 @@ This plan breaks them into focused modules without changing user-facing behavior
 - `src/lib/components/AudioPlayer.svelte` — 1284 LOC
 - `src/routes/album/[id]/+page.svelte` — 1175 LOC
 
+## Progress Snapshot (2026-03-13)
+- `src/lib/components/SearchInterface.svelte`: 1920 -> 599 LOC
+- `src/routes/artist/[id]/+page.svelte`: 2617 -> 2227 LOC
+
 ## Refactor Objectives
 1. Reduce cognitive load by splitting files by responsibility (UI rendering vs orchestration vs IO).
 2. Keep behavior stable (no product changes in this pass).
@@ -35,35 +39,36 @@ This plan breaks them into focused modules without changing user-facing behavior
 ## Phase Plan
 
 ### Phase 1: Safety Net + Boundaries
-- [ ] Add "large-file contract" to CI docs (warning threshold: 1200 LOC route/component, 900 LOC helper).
+- [x] Add "large-file contract" to CI docs (warning threshold: 1200 LOC route/component, 900 LOC helper).
 - [ ] Add/expand focused tests around current behavior for top hotspots:
   - Search aggregation + album artist filtering + MusicBrainz match behavior.
   - Artist discography filtering/grouping + queue/polling transitions.
   - Layout maintenance actions and polling helpers.
-- [ ] Create feature folders for incremental extraction:
+- [x] Create feature folders for incremental extraction:
   - `src/lib/features/search/*`
   - `src/lib/features/artist/*`
   - `src/lib/features/settings/*`
 - Exit criteria: tests covering current behavior exist before moving large blocks.
 
 ### Phase 2: Search Surface Decomposition (`SearchInterface.svelte`)
-- [ ] Extract search scope/query/url synchronization into `searchQueryController.ts`.
-- [ ] Extract album queue download state/polling/actions into `albumQueueController.ts`.
-- [ ] Extract MusicBrainz lookup pipeline into `musicBrainzAlbumMatchController.ts`.
-- [ ] Split rendering into presentational components:
-  - `SearchToolbar.svelte`
-  - `SearchAlbumsSection.svelte`
-  - `SearchArtistsSection.svelte`
-  - `SearchTracksSection.svelte`
-  - `SearchPlaylistsSection.svelte`
-- [ ] Keep `SearchInterface.svelte` as composition shell.
-- Exit criteria: `SearchInterface.svelte` < 900 LOC with unchanged outputs.
+- [x] Extract search scope/query/url synchronization into `searchQueryController.ts`.
+- [x] Extract album queue download state/polling/actions into `albumQueueController.ts`.
+- [x] Extract MusicBrainz lookup pipeline into `albumMusicBrainzMatchController.ts`.
+- [x] Split rendering into presentational components:
+  - [x] `SearchToolbar.svelte`
+  - [x] `SearchAlbumsSection.svelte`
+  - [x] `SearchArtistsSection.svelte`
+  - [x] `SearchTracksSection.svelte`
+  - [x] `SearchPlaylistsSection.svelte`
+- [x] Keep `SearchInterface.svelte` as composition shell.
+- [x] Exit criteria: `SearchInterface.svelte` < 900 LOC with unchanged outputs.
 
 ### Phase 3: Artist Page Decomposition (`artist/[id]/+page.svelte`)
-- [ ] Extract discography shaping/filtering/scoring into `artistDiscographyModel.ts`.
+- [x] Extract discography shaping/filtering/scoring into `artistDiscographyModel.ts`.
 - [ ] Extract album cover hydration/recovery queue into `artistCoverHydrationController.ts`.
 - [ ] Extract album download + queue polling into `artistAlbumDownloadController.ts`.
-- [ ] Extract MusicBrainz artist lookup/defaulting into `artistMusicBrainzController.ts`.
+  Queue polling/cancel/resume now extracted into `artistAlbumQueueController.ts`; per-album download orchestration remains in page shell.
+- [x] Extract MusicBrainz artist lookup/defaulting into `artistMusicBrainzController.ts`.
 - [ ] Split secondary rails and panels into presentational components:
   - `ArtistRecommendationsRail.svelte`
   - `ArtistDiscographySection.svelte`

@@ -23,6 +23,10 @@ Use this checklist before shipping feature changes that touch core flows.
 ## CI Guardrails
 - [ ] Stabilization Playwright suite remains in CI (`npm run test:e2e:stabilization`).
 - [ ] CI coverage changes are documented if suites are removed or replaced.
+- [ ] Large-file contract check is run (`npm run check:large-files`).
+  Thresholds:
+  Route/component files > 1200 LOC are warnings.
+  Helper/controller/service files > 900 LOC are warnings.
 
 ## Regression
 - [ ] Run `npm run test:run` or targeted unit suite.

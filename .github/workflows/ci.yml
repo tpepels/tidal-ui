@@ -35,6 +35,9 @@ jobs:
       - name: Run type checker
         run: npm run check
 
+      - name: Report large files above refactor thresholds
+        run: npm run check:large-files
+
       - name: Run core tests
         run: |
           echo "Running core tests..."
