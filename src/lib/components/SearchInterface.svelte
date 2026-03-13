@@ -237,6 +237,15 @@
 	const albumResults = $derived($searchStore.results?.albums ?? []);
 	const artistResults = $derived($searchStore.results?.artists ?? []);
 	const playlistResults = $derived($searchStore.results?.playlists ?? []);
+	const visibleResultSectionCount = $derived(
+		(trackResults.length > 0 ? 1 : 0) +
+			(albumResults.length > 0 ? 1 : 0) +
+			(artistResults.length > 0 ? 1 : 0) +
+			(playlistResults.length > 0 ? 1 : 0)
+	);
+	const shouldUseSingleColumnResults = $derived(
+		selectedSearchScopes.length <= 1 || visibleResultSectionCount <= 1
+	);
 	const hasAnySearchResults = $derived(
 		trackResults.length > 0 ||
 			albumResults.length > 0 ||
@@ -1063,7 +1072,7 @@
 
 	{#if !$searchStore.error}
 		{#if hasAnySearchResults}
-			<div class="search-sections">
+			<div class={`search-sections ${shouldUseSingleColumnResults ? 'search-sections--single' : ''}`}>
 				{#if trackResults.length > 0}
 					<section
 						id="search-section-tracks"
@@ -1840,6 +1849,10 @@
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 			align-items: start;
 			gap: 1.05rem;
+		}
+
+		.search-sections.search-sections--single {
+			grid-template-columns: minmax(0, 1fr);
 		}
 	}
 
