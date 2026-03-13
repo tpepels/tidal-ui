@@ -1484,6 +1484,25 @@
 		letter-spacing: 0.02em;
 	}
 
+	.search-scope-chip:not(.is-selected):not([data-tone]) {
+		border-color: rgba(255, 255, 255, 0.14);
+		background: rgba(255, 255, 255, 0.035);
+		color: rgba(202, 202, 202, 0.82);
+	}
+
+	.search-scope-chip.is-selected:not([data-tone]) {
+		border-color: rgba(255, 255, 255, 0.74);
+		background: rgba(248, 248, 248, 0.98);
+		color: #0a0a0a;
+		box-shadow: inset 0 0 0 1px rgba(10, 10, 10, 0.08);
+	}
+
+	.search-scope-chip.is-selected:not([data-tone]):hover {
+		border-color: rgba(255, 255, 255, 0.9);
+		background: #ffffff;
+		color: #040404;
+	}
+
 	.search-status {
 		display: inline-flex;
 		align-items: center;

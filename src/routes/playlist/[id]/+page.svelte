@@ -45,6 +45,7 @@
 			}
 			playlist = data.playlist;
 			tracks = data.items.map((item) => item.item);
+			breadcrumbStore.setParent(`/playlist/${data.playlist.uuid}`, '/');
 			breadcrumbStore.setCurrentLabel(data.playlist.title, `/playlist/${data.playlist.uuid}`);
 		} catch (err) {
 			if (requestToken === activeRequestToken) {

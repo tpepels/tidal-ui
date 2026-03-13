@@ -146,6 +146,19 @@
 			}
 			if (data.track.album?.id) {
 				breadcrumbStore.setLabel(`/album/${data.track.album.id}`, data.track.album.title);
+				if (data.track.album?.artist?.id) {
+					breadcrumbStore.setParent(
+						`/album/${data.track.album.id}`,
+						`/artist/${data.track.album.artist.id}`
+					);
+				} else {
+					breadcrumbStore.setParent(`/album/${data.track.album.id}`, '/');
+				}
+				breadcrumbStore.setParent(`/track/${data.track.id}`, `/album/${data.track.album.id}`);
+			} else if (data.track.album?.artist?.id) {
+				breadcrumbStore.setParent(`/track/${data.track.id}`, `/artist/${data.track.album.artist.id}`);
+			} else {
+				breadcrumbStore.setParent(`/track/${data.track.id}`, '/');
 			}
 			breadcrumbStore.setCurrentLabel(data.track.title, `/track/${data.track.id}`);
 

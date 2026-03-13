@@ -1585,6 +1585,7 @@
 				? losslessAPI.getArtistPictureUrl(normalizedCached.picture)
 				: null;
 			isLoading = false;
+			breadcrumbStore.setParent(`/artist/${normalizedCached.id}`, '/');
 			breadcrumbStore.setCurrentLabel(normalizedCached.name, `/artist/${normalizedCached.id}`);
 			navigationHistoryStore.visitArtist({
 				id: normalizedCached.id,
@@ -1609,6 +1610,7 @@
 			artist = normalizedData;
 			artistCacheStore.set(normalizedData);
 
+			breadcrumbStore.setParent(`/artist/${normalizedData.id}`, '/');
 			breadcrumbStore.setCurrentLabel(normalizedData.name, `/artist/${normalizedData.id}`);
 			navigationHistoryStore.visitArtist({
 				id: normalizedData.id,

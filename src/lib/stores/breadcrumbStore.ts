@@ -1,5 +1,6 @@
 import { writable, type Writable } from 'svelte/store';
 import { browser } from '$app/environment';
+import { getRouteMeta } from '$lib/config/routeMeta';
 
 export interface BreadcrumbItem {
 	label: string;
@@ -7,14 +8,20 @@ export interface BreadcrumbItem {
 }
 
 interface BreadcrumbState {
+	currentHref: string;
 	breadcrumbs: BreadcrumbItem[];
+	labels: Record<string, string>;
+	parents: Record<string, string>;
 }
 
 const HOME_BREADCRUMB: BreadcrumbItem = { label: 'Home', href: '/' };
 const MAX_BREADCRUMBS = 10;
 
 const initialState: BreadcrumbState = {
-	breadcrumbs: [HOME_BREADCRUMB]
+	currentHref: HOME_BREADCRUMB.href,
+	breadcrumbs: [HOME_BREADCRUMB],
+	labels: {},
+	parents: {}
 };
 
 function normalizeHref(value: string | null | undefined): string {
@@ -48,6 +55,10 @@ function toTitleCase(value: string): string {
 
 function deriveFallbackLabel(href: string): string {
 	if (href === '/') return HOME_BREADCRUMB.label;
+	const routeMeta = getRouteMeta(href);
+	if (routeMeta?.path === href) {
+		return routeMeta.navLabel ?? routeMeta.title;
+	}
 	if (href.startsWith('/artist/')) return 'Artist';
 	if (href.startsWith('/album/')) return 'Album';
 	if (href.startsWith('/track/')) return 'Track';
@@ -61,20 +72,115 @@ function normalizeLabel(value: string | null | undefined, fallbackHref: string):
 	return trimmed.length > 0 ? trimmed : deriveFallbackLabel(fallbackHref);
 }
 
-function ensureHome(crumbs: BreadcrumbItem[]): BreadcrumbItem[] {
-	if (crumbs.length === 0) return [HOME_BREADCRUMB];
-	if (crumbs[0]?.href === HOME_BREADCRUMB.href) {
-		return crumbs;
+function normalizeLabelMap(raw: unknown): Record<string, string> {
+	if (!raw || typeof raw !== 'object') {
+		return {};
 	}
-	return [HOME_BREADCRUMB, ...crumbs];
+	const labels: Record<string, string> = {};
+	for (const [rawHref, rawLabel] of Object.entries(raw as Record<string, unknown>)) {
+		if (typeof rawLabel !== 'string') continue;
+		const href = normalizeHref(rawHref);
+		labels[href] = normalizeLabel(rawLabel, href);
+	}
+	return labels;
 }
 
-function trimBreadcrumbTrail(crumbs: BreadcrumbItem[]): BreadcrumbItem[] {
-	if (crumbs.length <= MAX_BREADCRUMBS) {
-		return ensureHome(crumbs);
+function normalizeParentMap(raw: unknown): Record<string, string> {
+	if (!raw || typeof raw !== 'object') {
+		return {};
 	}
-	const tail = crumbs.slice(-(MAX_BREADCRUMBS - 1));
-	return ensureHome(tail);
+	const parents: Record<string, string> = {};
+	for (const [rawChild, rawParent] of Object.entries(raw as Record<string, unknown>)) {
+		if (typeof rawParent !== 'string') continue;
+		const child = normalizeHref(rawChild);
+		if (child === HOME_BREADCRUMB.href) continue;
+		const parent = normalizeHref(rawParent);
+		if (child === parent) continue;
+		parents[child] = parent;
+	}
+	return parents;
+}
+
+function resolveParentHref(href: string, parents: Record<string, string>): string | null {
+	if (href === HOME_BREADCRUMB.href) {
+		return null;
+	}
+	const explicitParent = parents[href];
+	if (explicitParent && explicitParent !== href) {
+		return explicitParent;
+	}
+
+	const segments = href.split('/').filter(Boolean);
+	if (segments.length > 1) {
+		const candidate = `/${segments.slice(0, -1).join('/')}`;
+		if (candidate === HOME_BREADCRUMB.href || getRouteMeta(candidate)?.path === candidate) {
+			return candidate;
+		}
+	}
+
+	const routeMeta = getRouteMeta(href);
+	if (routeMeta?.path && routeMeta.path !== HOME_BREADCRUMB.href) {
+		if (href === routeMeta.path) {
+			return HOME_BREADCRUMB.href;
+		}
+		if (href.startsWith(`${routeMeta.path}/`)) {
+			return routeMeta.path;
+		}
+	}
+
+	return HOME_BREADCRUMB.href;
+}
+
+function resolveLabel(href: string, labels: Record<string, string>): string {
+	if (href === HOME_BREADCRUMB.href) {
+		return HOME_BREADCRUMB.label;
+	}
+	const existingLabel = labels[href];
+	if (existingLabel && existingLabel.trim().length > 0) {
+		return existingLabel;
+	}
+	return deriveFallbackLabel(href);
+}
+
+function trimHrefs(hrefs: string[]): string[] {
+	if (hrefs.length <= MAX_BREADCRUMBS) {
+		return hrefs;
+	}
+	const tail = hrefs.slice(-(MAX_BREADCRUMBS - 1));
+	return [HOME_BREADCRUMB.href, ...tail.filter((href) => href !== HOME_BREADCRUMB.href)];
+}
+
+function buildBreadcrumbs(currentHref: string, labels: Record<string, string>, parents: Record<string, string>): BreadcrumbItem[] {
+	const normalizedCurrent = normalizeHref(currentHref);
+	if (normalizedCurrent === HOME_BREADCRUMB.href) {
+		return [HOME_BREADCRUMB];
+	}
+
+	const chain = [normalizedCurrent];
+	const visited = new Set(chain);
+	let cursor = normalizedCurrent;
+	while (chain.length < MAX_BREADCRUMBS) {
+		const parent = resolveParentHref(cursor, parents);
+		if (!parent || visited.has(parent)) {
+			break;
+		}
+		chain.push(parent);
+		visited.add(parent);
+		cursor = parent;
+		if (parent === HOME_BREADCRUMB.href) {
+			break;
+		}
+	}
+
+	const ordered = chain.reverse();
+	if (ordered[0] !== HOME_BREADCRUMB.href) {
+		ordered.unshift(HOME_BREADCRUMB.href);
+	}
+	const trimmed = trimHrefs(ordered);
+	return trimmed.map((href) => ({
+		href,
+		label: resolveLabel(href, labels)
+	}));
 }
 
 function normalizeState(raw: unknown): BreadcrumbState {
@@ -82,19 +188,38 @@ function normalizeState(raw: unknown): BreadcrumbState {
 		return initialState;
 	}
 
-	const candidate = raw as { breadcrumbs?: unknown };
+	const candidate = raw as {
+		currentHref?: unknown;
+		breadcrumbs?: unknown;
+		labels?: unknown;
+		parents?: unknown;
+	};
+	const labels = normalizeLabelMap(candidate.labels);
+	const parents = normalizeParentMap(candidate.parents);
+	let currentHref = normalizeHref(typeof candidate.currentHref === 'string' ? candidate.currentHref : '/');
+
 	const rawCrumbs = Array.isArray(candidate.breadcrumbs) ? candidate.breadcrumbs : [];
-	const normalized: BreadcrumbItem[] = [];
+	let lastCrumbHref: string | null = null;
 
 	for (const entry of rawCrumbs) {
 		if (!entry || typeof entry !== 'object') continue;
 		const item = entry as Partial<BreadcrumbItem>;
 		const href = normalizeHref(typeof item.href === 'string' ? item.href : '/');
 		const label = normalizeLabel(typeof item.label === 'string' ? item.label : undefined, href);
-		normalized.push({ href, label });
+		labels[href] = label;
+		lastCrumbHref = href;
 	}
 
-	return { breadcrumbs: trimBreadcrumbTrail(normalized) };
+	if (!candidate.currentHref && lastCrumbHref) {
+		currentHref = lastCrumbHref;
+	}
+
+	return {
+		currentHref,
+		labels,
+		parents,
+		breadcrumbs: buildBreadcrumbs(currentHref, labels, parents)
+	};
 }
 
 const store: Writable<BreadcrumbState> = writable(initialState);
@@ -123,73 +248,31 @@ export const breadcrumbStore = {
 
 	visit(href: string, label?: string): void {
 		const normalizedHref = normalizeHref(href);
-		const hasExplicitLabel = typeof label === 'string' && label.trim().length > 0;
 		store.update((state) => {
-			if (normalizedHref === HOME_BREADCRUMB.href) {
-				return { breadcrumbs: [HOME_BREADCRUMB] };
+			const labels = { ...state.labels };
+			if (typeof label === 'string' && label.trim().length > 0) {
+				labels[normalizedHref] = normalizeLabel(label, normalizedHref);
 			}
-
-			const breadcrumbs = [...state.breadcrumbs];
-			const resolvedLabel = normalizeLabel(label, normalizedHref);
-			const last = breadcrumbs[breadcrumbs.length - 1];
-			if (last?.href === normalizedHref) {
-				const nextLabel = hasExplicitLabel
-					? resolvedLabel
-					: normalizeLabel(last.label, normalizedHref);
-				breadcrumbs[breadcrumbs.length - 1] = { href: normalizedHref, label: nextLabel };
-				return { breadcrumbs: breadcrumbs };
-			}
-
-			// Keep breadcrumbs path-relative: revisiting an earlier location trims
-			// the trail back to that crumb instead of appending duplicates.
-			let existingIndex = -1;
-			for (let i = breadcrumbs.length - 1; i >= 0; i -= 1) {
-				if (breadcrumbs[i]?.href === normalizedHref) {
-					existingIndex = i;
-					break;
-				}
-			}
-			if (existingIndex >= 0) {
-				const trimmed = breadcrumbs.slice(0, existingIndex + 1);
-				if (normalizedHref === HOME_BREADCRUMB.href) {
-					trimmed[0] = { ...HOME_BREADCRUMB };
-				} else {
-					const existingLabel = trimmed[existingIndex]?.label;
-					const nextLabel = hasExplicitLabel
-						? resolvedLabel
-						: normalizeLabel(existingLabel, normalizedHref);
-					trimmed[existingIndex] = { href: normalizedHref, label: nextLabel };
-				}
-				return { breadcrumbs: trimmed };
-			}
-
 			return {
-				breadcrumbs: trimBreadcrumbTrail([...breadcrumbs, { href: normalizedHref, label: resolvedLabel }])
+				currentHref: normalizedHref,
+				labels,
+				parents: state.parents,
+				breadcrumbs: buildBreadcrumbs(normalizedHref, labels, state.parents)
 			};
 		});
 	},
 
 	setCurrentLabel(label: string, href?: string): void {
 		store.update((state) => {
-			const targetHref = normalizeHref(href ?? state.breadcrumbs[state.breadcrumbs.length - 1]?.href ?? '/');
+			const targetHref = normalizeHref(href ?? state.currentHref ?? '/');
 			const resolvedLabel = normalizeLabel(label, targetHref);
-			const breadcrumbs = [...state.breadcrumbs];
-			let index = -1;
-			for (let i = breadcrumbs.length - 1; i >= 0; i -= 1) {
-				if (breadcrumbs[i]?.href === targetHref) {
-					index = i;
-					break;
-				}
-			}
-			if (index >= 0) {
-				breadcrumbs[index] = { ...breadcrumbs[index]!, label: resolvedLabel };
-				return { breadcrumbs: breadcrumbs };
-			}
-			if (targetHref === HOME_BREADCRUMB.href) {
-				return { breadcrumbs: [{ ...HOME_BREADCRUMB, label: resolvedLabel }] };
-			}
+			const labels = { ...state.labels, [targetHref]: resolvedLabel };
+			const currentHref = state.currentHref ?? HOME_BREADCRUMB.href;
 			return {
-				breadcrumbs: trimBreadcrumbTrail([...breadcrumbs, { href: targetHref, label: resolvedLabel }])
+				currentHref,
+				labels,
+				parents: state.parents,
+				breadcrumbs: buildBreadcrumbs(currentHref, labels, state.parents)
 			};
 		});
 	},
@@ -198,13 +281,32 @@ export const breadcrumbStore = {
 		const targetHref = normalizeHref(href);
 		const resolvedLabel = normalizeLabel(label, targetHref);
 		store.update((state) => {
-			if (!state.breadcrumbs.some((crumb) => crumb.href === targetHref)) {
-				return state;
-			}
-			const breadcrumbs = state.breadcrumbs.map((crumb) =>
-				crumb.href === targetHref ? { ...crumb, label: resolvedLabel } : crumb
-			);
-			return { breadcrumbs };
+			const labels = { ...state.labels, [targetHref]: resolvedLabel };
+			const currentHref = state.currentHref ?? HOME_BREADCRUMB.href;
+			return {
+				currentHref,
+				labels,
+				parents: state.parents,
+				breadcrumbs: buildBreadcrumbs(currentHref, labels, state.parents)
+			};
+		});
+	},
+
+	setParent(childHref: string, parentHref: string): void {
+		const normalizedChild = normalizeHref(childHref);
+		const normalizedParent = normalizeHref(parentHref);
+		if (normalizedChild === HOME_BREADCRUMB.href || normalizedChild === normalizedParent) {
+			return;
+		}
+		store.update((state) => {
+			const parents = { ...state.parents, [normalizedChild]: normalizedParent };
+			const currentHref = state.currentHref ?? HOME_BREADCRUMB.href;
+			return {
+				currentHref,
+				labels: state.labels,
+				parents,
+				breadcrumbs: buildBreadcrumbs(currentHref, state.labels, parents)
+			};
 		});
 	},
 
@@ -213,27 +315,15 @@ export const breadcrumbStore = {
 		let target = normalizeHref(fallbackHref);
 
 		store.update((state) => {
-			const breadcrumbs = [...state.breadcrumbs];
-			if (breadcrumbs.length <= 1) {
-				target = normalizeHref(fallbackHref);
-				return { breadcrumbs: [HOME_BREADCRUMB] };
-			}
-
-			let indexInTrail = -1;
-			for (let i = breadcrumbs.length - 1; i >= 0; i -= 1) {
-				if (breadcrumbs[i]?.href === normalizedCurrent) {
-					indexInTrail = i;
-					break;
-				}
-			}
-			const currentIndex = indexInTrail >= 0 ? indexInTrail : breadcrumbs.length - 1;
-			if (currentIndex <= 0) {
-				target = normalizeHref(fallbackHref);
-				return { breadcrumbs: [HOME_BREADCRUMB] };
-			}
-
-			target = breadcrumbs[currentIndex - 1]!.href;
-			return { breadcrumbs: breadcrumbs.slice(0, currentIndex) };
+			const sourceHref = normalizedCurrent || state.currentHref || HOME_BREADCRUMB.href;
+			const currentTrail = buildBreadcrumbs(sourceHref, state.labels, state.parents);
+			target = currentTrail.length > 1 ? currentTrail[currentTrail.length - 2]!.href : normalizeHref(fallbackHref);
+			return {
+				currentHref: target,
+				labels: state.labels,
+				parents: state.parents,
+				breadcrumbs: buildBreadcrumbs(target, state.labels, state.parents)
+			};
 		});
 
 		return target;

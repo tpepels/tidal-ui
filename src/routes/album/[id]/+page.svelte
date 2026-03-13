@@ -186,6 +186,9 @@
 			// Set breadcrumbs
 			if (albumData.artist) {
 				breadcrumbStore.setLabel(`/artist/${albumData.artist.id}`, albumData.artist.name);
+				breadcrumbStore.setParent(`/album/${albumData.id}`, `/artist/${albumData.artist.id}`);
+			} else {
+				breadcrumbStore.setParent(`/album/${albumData.id}`, '/');
 			}
 			breadcrumbStore.setCurrentLabel(albumData.title, `/album/${albumData.id}`);
 			navigationHistoryStore.visitAlbum({

@@ -15,6 +15,7 @@
 	const SMART_SEED_LIMIT = 8;
 	const SMART_ARTIST_LIMIT = 20;
 	const SMART_ALBUM_LIMIT = 20;
+	const SUGGESTIONS_CACHE_KEY = 'tidal-ui-library-suggestions-cache-v1';
 
 	type SeedArtist = {
 		artist: Artist;
@@ -34,8 +35,22 @@
 		seedMatches: number;
 	};
 
+	type SuggestionsCacheSnapshot = {
+		localArtists: MediaLibraryArtistSuggestion[];
+		localAlbums: MediaLibraryAlbumSuggestion[];
+		scannedAt: number | null;
+		seedArtists: SeedArtist[];
+		smartArtists: ScoredArtist[];
+		smartAlbums: ScoredAlbum[];
+		localError: string | null;
+		smartError: string | null;
+		suggestionSeed: number | null;
+		smartGeneratedAt: number | null;
+	};
+
 	let refreshToken = 0;
 	let refreshing = $state(false);
+	let activeAction = $state<'refresh' | 'generate' | null>(null);
 	let localError = $state<string | null>(null);
 	let smartError = $state<string | null>(null);
 	let localArtists = $state<MediaLibraryArtistSuggestion[]>([]);
@@ -44,6 +59,8 @@
 	let seedArtists = $state<SeedArtist[]>([]);
 	let smartArtists = $state<ScoredArtist[]>([]);
 	let smartAlbums = $state<ScoredAlbum[]>([]);
+	let suggestionSeed = $state<number | null>(null);
+	let smartGeneratedAt = $state<number | null>(null);
 
 	const hasSmartSuggestions = $derived(smartArtists.length > 0 || smartAlbums.length > 0);
 	const scannedAtText = $derived.by(() =>
@@ -51,10 +68,102 @@
 			? new Date(scannedAt).toLocaleString()
 			: 'not scanned yet'
 	);
+	const suggestionSeedText = $derived.by(() =>
+		typeof suggestionSeed === 'number' && Number.isFinite(suggestionSeed)
+			? String(suggestionSeed)
+			: 'not generated yet'
+	);
+	const smartGeneratedAtText = $derived.by(() =>
+		Number.isFinite(smartGeneratedAt) && smartGeneratedAt
+			? new Date(smartGeneratedAt).toLocaleString()
+			: 'not generated yet'
+	);
 
 	onMount(() => {
-		void refreshSuggestions();
+		const restored = restoreSuggestionsFromCache();
+		if (!restored) {
+			void refreshSuggestions();
+		}
 	});
+
+	function getCurrentSnapshot(): SuggestionsCacheSnapshot {
+		return {
+			localArtists: [...localArtists],
+			localAlbums: [...localAlbums],
+			scannedAt,
+			seedArtists: [...seedArtists],
+			smartArtists: [...smartArtists],
+			smartAlbums: [...smartAlbums],
+			localError,
+			smartError,
+			suggestionSeed,
+			smartGeneratedAt
+		};
+	}
+
+	function applySnapshot(snapshot: SuggestionsCacheSnapshot): void {
+		localArtists = Array.isArray(snapshot.localArtists) ? snapshot.localArtists : [];
+		localAlbums = Array.isArray(snapshot.localAlbums) ? snapshot.localAlbums : [];
+		scannedAt = typeof snapshot.scannedAt === 'number' && Number.isFinite(snapshot.scannedAt)
+			? snapshot.scannedAt
+			: null;
+		seedArtists = Array.isArray(snapshot.seedArtists) ? snapshot.seedArtists : [];
+		smartArtists = Array.isArray(snapshot.smartArtists) ? snapshot.smartArtists : [];
+		smartAlbums = Array.isArray(snapshot.smartAlbums) ? snapshot.smartAlbums : [];
+		localError = snapshot.localError ?? null;
+		smartError = snapshot.smartError ?? null;
+		suggestionSeed = typeof snapshot.suggestionSeed === 'number' && Number.isFinite(snapshot.suggestionSeed)
+			? snapshot.suggestionSeed
+			: null;
+		smartGeneratedAt = typeof snapshot.smartGeneratedAt === 'number' && Number.isFinite(snapshot.smartGeneratedAt)
+			? snapshot.smartGeneratedAt
+			: null;
+	}
+
+	function persistSuggestionsToCache(): void {
+		if (typeof window === 'undefined') {
+			return;
+		}
+		try {
+			const snapshot = getCurrentSnapshot();
+			sessionStorage.setItem(SUGGESTIONS_CACHE_KEY, JSON.stringify(snapshot));
+		} catch (error) {
+			console.warn('[Library Suggestions] Failed to persist cache:', error);
+		}
+	}
+
+	function restoreSuggestionsFromCache(): boolean {
+		if (typeof window === 'undefined') {
+			return false;
+		}
+		try {
+			const raw = sessionStorage.getItem(SUGGESTIONS_CACHE_KEY);
+			if (!raw) {
+				return false;
+			}
+			const parsed = JSON.parse(raw) as SuggestionsCacheSnapshot | null;
+			if (!parsed || typeof parsed !== 'object') {
+				return false;
+			}
+			const hasRenderableState =
+				(Array.isArray(parsed.localArtists) && parsed.localArtists.length > 0) ||
+				(Array.isArray(parsed.localAlbums) && parsed.localAlbums.length > 0) ||
+				(Array.isArray(parsed.smartArtists) && parsed.smartArtists.length > 0) ||
+				(Array.isArray(parsed.smartAlbums) && parsed.smartAlbums.length > 0) ||
+				(typeof parsed.scannedAt === 'number' && Number.isFinite(parsed.scannedAt)) ||
+				(typeof parsed.suggestionSeed === 'number' && Number.isFinite(parsed.suggestionSeed)) ||
+				typeof parsed.localError === 'string' ||
+				typeof parsed.smartError === 'string';
+			if (!hasRenderableState) {
+				return false;
+			}
+			applySnapshot(parsed);
+			return true;
+		} catch (error) {
+			console.warn('[Library Suggestions] Failed to restore cache:', error);
+			return false;
+		}
+	}
 
 	function normalizeToken(value: string | null | undefined): string {
 		if (!value) return '';
@@ -181,21 +290,42 @@
 		return `${normalizeToken(artistName)}::${normalizeToken(albumTitle)}`;
 	}
 
-	function randomInt(maxExclusive: number): number {
-		if (maxExclusive <= 1) return 0;
-		return Math.floor(Math.random() * maxExclusive);
+	type RandomFn = () => number;
+
+	function createSuggestionSeed(): number {
+		if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+			const seedBuffer = new Uint32Array(1);
+			crypto.getRandomValues(seedBuffer);
+			return seedBuffer[0] >>> 0;
+		}
+		return Math.floor(Math.random() * 0x1_0000_0000) >>> 0;
 	}
 
-	function pickWeightedRandomIndex(weights: number[]): number {
+	function createSeededRandom(seed: number): RandomFn {
+		let t = seed >>> 0;
+		return () => {
+			t += 0x6d2b79f5;
+			let result = Math.imul(t ^ (t >>> 15), 1 | t);
+			result ^= result + Math.imul(result ^ (result >>> 7), 61 | result);
+			return ((result ^ (result >>> 14)) >>> 0) / 4294967296;
+		};
+	}
+
+	function randomInt(maxExclusive: number, random: RandomFn): number {
+		if (maxExclusive <= 1) return 0;
+		return Math.floor(random() * maxExclusive);
+	}
+
+	function pickWeightedRandomIndex(weights: number[], random: RandomFn): number {
 		if (weights.length === 0) return -1;
 		const totalWeight = weights.reduce(
 			(total, weight) => total + (Number.isFinite(weight) && weight > 0 ? weight : 0),
 			0
 		);
 		if (!Number.isFinite(totalWeight) || totalWeight <= 0) {
-			return randomInt(weights.length);
+			return randomInt(weights.length, random);
 		}
-		let threshold = Math.random() * totalWeight;
+		let threshold = random() * totalWeight;
 		for (let index = 0; index < weights.length; index += 1) {
 			const candidateWeight = weights[index];
 			const weight =
@@ -212,7 +342,8 @@
 
 	function sampleSeedArtistCandidates(
 		artists: MediaLibraryArtistSuggestion[],
-		limit: number
+		limit: number,
+		random: RandomFn
 	): MediaLibraryArtistSuggestion[] {
 		const candidatePool = [...artists]
 			.map((candidate) => ({
@@ -230,10 +361,10 @@
 		while (selected.length < limit && workingPool.length > 0) {
 			const weights = workingPool.map((entry, index) => {
 				const rankFactor = (workingPool.length - index) / workingPool.length;
-				const randomJitter = Math.random() * Math.max(2, entry.baseWeight * 0.35);
+				const randomJitter = random() * Math.max(2, entry.baseWeight * 0.35);
 				return entry.baseWeight * (0.75 + rankFactor * 0.5) + randomJitter;
 			});
-			const pickedIndex = pickWeightedRandomIndex(weights);
+			const pickedIndex = pickWeightedRandomIndex(weights, random);
 			if (pickedIndex < 0 || pickedIndex >= workingPool.length) {
 				break;
 			}
@@ -244,9 +375,10 @@
 	}
 
 	async function resolveSeedArtists(
-		artists: MediaLibraryArtistSuggestion[]
+		artists: MediaLibraryArtistSuggestion[],
+		random: RandomFn
 	): Promise<SeedArtist[]> {
-		const rankedCandidates = sampleSeedArtistCandidates(artists, SMART_SEED_LIMIT * 4);
+		const rankedCandidates = sampleSeedArtistCandidates(artists, SMART_SEED_LIMIT * 4, random);
 		const resolved: SeedArtist[] = [];
 		const seenArtistIds = new Set<number>();
 		for (const candidate of rankedCandidates) {
@@ -280,16 +412,21 @@
 	async function buildSmartSuggestions(
 		artists: MediaLibraryArtistSuggestion[],
 		albums: MediaLibraryAlbumSuggestion[],
-		token: number
+		token: number,
+		seed: number
 	): Promise<void> {
 		smartError = null;
-		const resolvedSeeds = await resolveSeedArtists(artists);
+		const random = createSeededRandom(seed);
+		const resolvedSeeds = await resolveSeedArtists(artists, random);
 		if (token !== refreshToken) return;
+		suggestionSeed = seed >>> 0;
+		smartGeneratedAt = Date.now();
 		seedArtists = resolvedSeeds;
 		if (resolvedSeeds.length === 0) {
 			smartArtists = [];
 			smartAlbums = [];
 			smartError = 'No reliable seed artists found in your library yet.';
+			persistSuggestionsToCache();
 			return;
 		}
 
@@ -371,11 +508,13 @@
 		} else if (smartArtists.length === 0 && smartAlbums.length === 0) {
 			smartError = 'No new recommendations available from current seed artists.';
 		}
+		persistSuggestionsToCache();
 	}
 
 	async function refreshSuggestions(force = false): Promise<void> {
 		const token = ++refreshToken;
 		refreshing = true;
+		activeAction = 'refresh';
 		localError = null;
 		smartError = null;
 		try {
@@ -391,7 +530,7 @@
 			localArtists = Array.isArray(result.artists) ? result.artists : [];
 			localAlbums = Array.isArray(result.albums) ? result.albums : [];
 			scannedAt = typeof result.scannedAt === 'number' ? result.scannedAt : null;
-			await buildSmartSuggestions(localArtists, localAlbums, token);
+			await buildSmartSuggestions(localArtists, localAlbums, token, createSuggestionSeed());
 		} catch (error) {
 			if (token !== refreshToken) return;
 			localArtists = [];
@@ -400,14 +539,44 @@
 			seedArtists = [];
 			smartArtists = [];
 			smartAlbums = [];
+			suggestionSeed = null;
+			smartGeneratedAt = null;
 			localError =
 				error instanceof Error && error.message
 					? error.message
 					: 'Failed to load media library suggestions.';
 			smartError = localError;
+			persistSuggestionsToCache();
 		} finally {
 			if (token === refreshToken) {
 				refreshing = false;
+				activeAction = null;
+			}
+		}
+	}
+
+	async function generateNewSuggestions(): Promise<void> {
+		if (localArtists.length === 0 && localAlbums.length === 0) {
+			await refreshSuggestions(false);
+			return;
+		}
+		const token = ++refreshToken;
+		refreshing = true;
+		activeAction = 'generate';
+		smartError = null;
+		try {
+			await buildSmartSuggestions(localArtists, localAlbums, token, createSuggestionSeed());
+		} catch (error) {
+			if (token !== refreshToken) return;
+			smartError =
+				error instanceof Error && error.message
+					? error.message
+					: 'Failed to generate new recommendations.';
+			persistSuggestionsToCache();
+		} finally {
+			if (token === refreshToken) {
+				refreshing = false;
+				activeAction = null;
 			}
 		}
 	}
@@ -434,17 +603,32 @@
 			<button
 				type="button"
 				class="ui-chip-button"
+				onclick={generateNewSuggestions}
+				disabled={refreshing}
+			>
+				{#if refreshing && activeAction === 'generate'}
+					<span class="library-suggestions-page__spinner" aria-hidden="true">
+						<LoaderCircle size={14} />
+					</span>
+				{:else}
+					<Activity size={14} />
+				{/if}
+				<span>{refreshing && activeAction === 'generate' ? 'Generating…' : 'Generate New Suggestions'}</span>
+			</button>
+			<button
+				type="button"
+				class="ui-chip-button"
 				onclick={() => refreshSuggestions(true)}
 				disabled={refreshing}
 			>
-				{#if refreshing}
+				{#if refreshing && activeAction === 'refresh'}
 					<span class="library-suggestions-page__spinner" aria-hidden="true">
 						<LoaderCircle size={14} />
 					</span>
 				{:else}
 					<RefreshCw size={14} />
 				{/if}
-				<span>{refreshing ? 'Refreshing…' : 'Refresh Suggestions'}</span>
+				<span>{refreshing && activeAction === 'refresh' ? 'Refreshing…' : 'Refresh Library Index'}</span>
 			</button>
 		</div>
 	</header>
@@ -459,6 +643,12 @@
 		{#if seedArtists.length > 0}
 			<div class="library-suggestions-seeds">
 				<p class="library-suggestions-seeds__label">Seed artists</p>
+				<p class="library-suggestions-seeds__meta">
+					Random seed: <code>{suggestionSeedText}</code>
+					{#if Number.isFinite(smartGeneratedAt) && smartGeneratedAt}
+						<span> • Generated {smartGeneratedAtText}</span>
+					{/if}
+				</p>
 				<div class="library-suggestions-seeds__chips">
 					{#each seedArtists as seed (`${seed.artist.id}:${seed.source.artistDir}`)}
 						<a class="library-suggestions-seed-chip" href={`/artist/${seed.artist.id}`}>
@@ -482,8 +672,8 @@
 				kind="empty"
 				title="No smart recommendations yet"
 				message={smartError}
-				actionLabel="Retry"
-				onAction={() => refreshSuggestions(true)}
+				actionLabel="Generate New"
+				onAction={generateNewSuggestions}
 			/>
 		{:else if !hasSmartSuggestions}
 			<PageState
@@ -598,6 +788,16 @@
 				{scannedAtText}
 			</p>
 		</article>
+		<article class="ui-surface-card library-suggestions-overview__card">
+			<div class="library-suggestions-overview__heading">
+				<Activity size={16} />
+				<p>Suggestion Seed</p>
+			</div>
+			<p class="library-suggestions-overview__value library-suggestions-overview__value--small">
+				{suggestionSeedText}
+			</p>
+			<p class="library-suggestions-overview__meta">{smartGeneratedAtText}</p>
+		</article>
 	</div>
 </section>
 
@@ -705,6 +905,19 @@
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 		color: rgba(194, 194, 194, 0.76);
+	}
+
+	.library-suggestions-seeds__meta {
+		margin: 0;
+		font-size: 0.86rem;
+		color: rgba(212, 212, 212, 0.78);
+	}
+
+	.library-suggestions-seeds__meta code {
+		padding: 0.08rem 0.35rem;
+		border-radius: 0.32rem;
+		background: rgba(255, 255, 255, 0.08);
+		font-size: 0.82rem;
 	}
 
 	.library-suggestions-seeds__chips {
