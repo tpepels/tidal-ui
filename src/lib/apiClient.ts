@@ -1,10 +1,7 @@
-// API service for HIFI API
-import { detectAudioFormat } from './utils/audioFormat';
 import { API_CONFIG, fetchWithCORS, selectApiTargetForRegion } from '$lib/config';
 import type { RegionOption } from '$lib/stores/region';
 import { parseTidalUrl } from './utils/urlParser';
 import { buildStandardMetadataEntries, type StandardMetadataKey } from './utils/metadataStandard';
-import { z } from 'zod';
 import { prepareAlbum, prepareArtist, prepareTrack } from './api/normalizers';
 import {
 	getAlbum,
@@ -16,18 +13,20 @@ import {
 } from './api/catalog';
 import { searchAlbums, searchArtists, searchPlaylists, searchTracks } from './api/search';
 import {
-	extractUrlsFromDashJsonPayload,
-	isDashManifestPayload,
-	isJsonContentType,
-	isSegmentedDashManifest,
-	isXmlContentType,
-	parseJsonSafely
-} from './api/manifest';
-import {
-	downloadCoverSeparately,
-} from './api/coverDownload';
+	buildDashManifestResult as buildDashManifestResultHelper,
+	decodeBase64Manifest as decodeBase64ManifestHelper,
+	extractStreamUrlFromManifest as extractStreamUrlFromManifestHelper,
+	parseFlacUrlFromMpd as parseFlacUrlFromMpdHelper
+} from './api/streamManifest';
 import { runMetadataEmbeddingPipeline } from './api/metadataEmbedding';
 import { fetchTrackBlobPayload } from './api/trackBlob';
+import {
+	downloadFlacFromMpdManifest,
+	downloadTrackToClient,
+	getStreamDataForTrack,
+	resolveHiResStreamFromDash as resolveHiResStreamFromDashHelper,
+	resolveTrackStreamUrl
+} from './api/streamDownload';
 import { TrackInfoSchema, StreamDataSchema, safeValidateApiResponse } from './utils/schemas';
 import type {
 	Track,
@@ -182,63 +181,7 @@ class LosslessAPI {
 	}
 
 	private extractStreamUrlFromManifest(manifest: string): string | null {
-		try {
-			let decoded = this.decodeBase64Manifest(manifest);
-			const trimmed = decoded.trim();
-			if (!trimmed.startsWith('{') && !trimmed.startsWith('[') && this.isValidMediaUrl(decoded)) {
-				return decoded;
-			}
-			const parsed = parseJsonSafely<{ urls?: unknown; url?: unknown; manifest?: unknown }>(
-				decoded
-			);
-			if (parsed) {
-				if (Array.isArray(parsed.urls) && parsed.urls.length > 0) {
-					const candidate = parsed.urls.find((value) => typeof value === 'string');
-					if (candidate) return candidate;
-				}
-				if (typeof parsed.url === 'string') {
-					return parsed.url;
-				}
-				if (typeof parsed.manifest === 'string') {
-					decoded = this.decodeBase64Manifest(parsed.manifest);
-					const nestedTrimmed = decoded.trim();
-					if (
-						!nestedTrimmed.startsWith('{') &&
-						!nestedTrimmed.startsWith('[') &&
-						this.isValidMediaUrl(decoded)
-					) {
-						return decoded;
-					}
-				}
-			}
-
-			// If this is a segmented DASH manifest, don't extract a URL - let it fall through to segment download
-			if (isSegmentedDashManifest(decoded)) {
-				return null;
-			}
-
-			const mpdUrl = this.parseFlacUrlFromMpd(decoded);
-			if (mpdUrl) {
-				return mpdUrl;
-			}
-
-			// Match all URLs and filter out schema/namespace URLs and segment URLs
-			const urlRegex = /https?:\/\/[\w\-.~:?#[\]@!$&'()*+,;=%/]+/g;
-			let match: RegExpExecArray | null;
-			while ((match = urlRegex.exec(decoded)) !== null) {
-				const url = match[0];
-				// Skip segment template URLs and initialization segments
-				if (url.includes('$Number$')) continue;
-				if (/\/\d+\.mp4/.test(url)) continue; // Skip segment files like /0.mp4, /1.mp4, etc.
-				if (this.isValidMediaUrl(url)) {
-					return url;
-				}
-			}
-			return null;
-		} catch (error) {
-			console.error('Failed to decode manifest:', error);
-			return null;
-		}
+		return extractStreamUrlFromManifestHelper(manifest);
 	}
 
 	private createDashUnavailableError(message: string): CodedError {
@@ -265,23 +208,7 @@ class LosslessAPI {
 	}
 
 	private decodeBase64Manifest(manifest: string): string {
-		if (typeof manifest !== 'string') return '';
-		const trimmed = manifest.trim();
-		if (!trimmed) return '';
-		try {
-			// Support URL-safe base64 and missing padding
-			const normalized = (() => {
-				let value = trimmed.replace(/-/g, '+').replace(/_/g, '/');
-				const pad = value.length % 4;
-				if (pad === 2) value += '==';
-				if (pad === 3) value += '=';
-				return value;
-			})();
-			const decoded = atob(normalized);
-			return decoded || trimmed;
-		} catch {
-			return trimmed;
-		}
+		return decodeBase64ManifestHelper(manifest);
 	}
 
 	private extractTrackFromPayload(payload: unknown): Track | undefined {
@@ -393,334 +320,30 @@ class LosslessAPI {
 	}
 
 	private buildDashManifestResult(payload: string, contentType: string | null): DashManifestResult {
-		const manifestText = this.decodeBase64Manifest(payload);
-
-		if (isXmlContentType(contentType) || isDashManifestPayload(manifestText, contentType)) {
-			return { kind: 'dash', manifest: manifestText, contentType };
-		}
-
-		const trimmed = manifestText.trim();
-		if (isJsonContentType(contentType) || trimmed.startsWith('{') || trimmed.startsWith('[')) {
-			const parsed = parseJsonSafely<{ detail?: unknown; urls?: unknown }>(manifestText);
-			if (
-				parsed &&
-				typeof parsed === 'object' &&
-				parsed.detail &&
-				typeof parsed.detail === 'string' &&
-				parsed.detail.toLowerCase() === 'not found'
-			) {
-				throw this.createDashUnavailableError('Dash manifest not found for track');
-			}
-			const urls = extractUrlsFromDashJsonPayload(parsed);
-			if (urls.length > 0) {
-				return { kind: 'flac', manifestText, urls, contentType };
-			}
-		}
-
-		if (isDashManifestPayload(manifestText, contentType)) {
-			return { kind: 'dash', manifest: manifestText, contentType };
-		}
-
-		const parsed = parseJsonSafely(manifestText);
-		const urls = extractUrlsFromDashJsonPayload(parsed);
-		if (urls.length > 0) {
-			return { kind: 'flac', manifestText, urls, contentType };
-		}
-
-		throw this.createDashUnavailableError('Received unexpected payload from dash endpoint.');
-	}
-
-	private isValidMediaUrl(url: string): boolean {
-		if (!url) return false;
-		const normalized = url.toLowerCase();
-		// We don't support HLS playlists in the audio element.
-		if (normalized.includes('.m3u8') || normalized.includes('.m3u')) return false;
-		// Filter out XML schema/namespace URLs
-		if (normalized.includes('w3.org')) return false;
-		if (normalized.includes('xmlschema')) return false;
-		if (normalized.includes('xmlns')) return false;
-		// Must look like a media URL (has extension or query params suggesting media)
-		if (
-			normalized.includes('.flac') ||
-			normalized.includes('.mp4') ||
-			normalized.includes('.m4a') ||
-			normalized.includes('.aac') ||
-			normalized.includes('token=') ||
-			normalized.includes('/audio/')
-		) {
-			return true;
-		}
-		// If it has a file-like path segment, it's likely valid
-		if (/\/[^/]+\.[a-z0-9]{2,5}(\?|$)/i.test(url)) return true;
-		// If it's a relative path starting with a segment name, likely valid
-		if (/^[a-z0-9_-]+\//i.test(url)) return true;
-		// If it ends with a path segment that could be a file
-		if (/\/[a-z0-9_-]+$/i.test(url)) return true;
-		return false;
-	}
-
-	private parseFlacUrlFromMpd(manifestText: string): string | null {
-		const trimmed = manifestText.trim();
-		if (!trimmed) return null;
-
-		const isValidMediaUrl = this.isValidMediaUrl.bind(this);
-
-		const scoreUrl = (url: string | undefined | null): number => {
-			if (!url) return -1;
-			const normalized = url.toLowerCase();
-			let score = 0;
-			if (normalized.includes('flac')) score += 3;
-			if (normalized.includes('hires')) score += 1;
-			if (normalized.endsWith('.flac')) score += 4;
-			if (normalized.includes('token=')) score += 1;
-			return score;
-		};
-
-		const pickBest = (urls: Array<string | undefined | null>): string | null => {
-			const candidates = urls
-				.map((u) => (typeof u === 'string' ? u.trim() : ''))
-				.filter((u) => u.length > 0 && isValidMediaUrl(u));
-			if (candidates.length === 0) return null;
-			return candidates.sort((a, b) => scoreUrl(b) - scoreUrl(a))[0] ?? null;
-		};
-
-		// Prefer DOMParser when available (browser side)
-		if (typeof DOMParser !== 'undefined') {
-			try {
-				const doc = new DOMParser().parseFromString(trimmed, 'application/xml');
-				const baseUrls = Array.from(doc.getElementsByTagName('BaseURL')).map(
-					(n) => n.textContent?.trim() ?? ''
-				);
-				if (baseUrls.length > 0) {
-					const best = pickBest(baseUrls);
-					if (best) return best;
-				}
-
-				const reps = Array.from(doc.getElementsByTagName('Representation'));
-				for (const rep of reps) {
-					const codecs = rep.getAttribute('codecs')?.toLowerCase() ?? '';
-					const base = Array.from(rep.getElementsByTagName('BaseURL')).map(
-						(n) => n.textContent?.trim() ?? ''
-					);
-					if (base.length > 0 && codecs.includes('flac')) {
-						const best = pickBest(base);
-						if (best) return best;
-					}
-				}
-			} catch (error) {
-				console.debug('Failed to parse MPD manifest via DOMParser', error);
-			}
-		}
-
-		// Regex fallback for SSR / non-browser
-		const baseUrlMatch = trimmed.match(/<BaseURL[^>]*>([^<]+)<\/BaseURL>/i);
-		if (baseUrlMatch?.[1]) {
-			const candidate = baseUrlMatch[1].trim();
-			if (isValidMediaUrl(candidate)) {
-				return candidate;
-			}
-		}
-
-		return null;
-	}
-
-	private parseMpdSegmentTemplate(manifestText: string): {
-		initializationUrl: string;
-		mediaUrlTemplate: string;
-		startNumber: number;
-		segmentTimeline: Array<{ duration: number; repeat: number }>;
-		baseUrl?: string;
-		codec?: string;
-	} | null {
-		const trimmed = manifestText.trim();
-		if (!trimmed) return null;
-
-		const parseWithDom = () => {
-			if (typeof DOMParser === 'undefined') return null;
-			try {
-				const doc = new DOMParser().parseFromString(trimmed, 'application/xml');
-				const rawBaseUrl = doc.getElementsByTagName('BaseURL')[0]?.textContent?.trim();
-				// Filter out schema/namespace URLs
-				const baseUrl = rawBaseUrl && this.isValidMediaUrl(rawBaseUrl) ? rawBaseUrl : undefined;
-
-				let template: Element | null = null;
-				let codec: string | undefined;
-
-				const representations = Array.from(doc.getElementsByTagName('Representation'));
-				for (const rep of representations) {
-					const candidateTemplate = rep.getElementsByTagName('SegmentTemplate')[0];
-					if (!candidateTemplate) continue;
-					const codecsAttr = rep.getAttribute('codecs')?.toLowerCase() ?? '';
-					if (!template || codecsAttr.includes('flac')) {
-						template = candidateTemplate;
-						codec = codecsAttr || undefined;
-						if (codecsAttr.includes('flac')) break;
-					}
-				}
-
-				if (!template) {
-					template = doc.getElementsByTagName('SegmentTemplate')[0] ?? null;
-				}
-
-				if (!template) return null;
-
-				const initializationUrl = template.getAttribute('initialization')?.trim();
-				const mediaUrlTemplate = template.getAttribute('media')?.trim();
-				if (!initializationUrl || !mediaUrlTemplate) return null;
-
-				const startNumber = Number.parseInt(template.getAttribute('startNumber') ?? '1', 10);
-				const timelineParent = template.getElementsByTagName('SegmentTimeline')[0];
-				const segmentTimeline: Array<{ duration: number; repeat: number }> = [];
-				if (timelineParent) {
-					const segments = timelineParent.getElementsByTagName('S');
-					for (const seg of Array.from(segments)) {
-						const duration = Number.parseInt(seg.getAttribute('d') ?? '0', 10);
-						if (!Number.isFinite(duration) || duration <= 0) continue;
-						const repeat = Number.parseInt(seg.getAttribute('r') ?? '0', 10);
-						segmentTimeline.push({ duration, repeat: Number.isFinite(repeat) ? repeat : 0 });
-					}
-				}
-
-				return {
-					initializationUrl,
-					mediaUrlTemplate,
-					startNumber: Number.isFinite(startNumber) && startNumber > 0 ? startNumber : 1,
-					segmentTimeline,
-					baseUrl,
-					codec
-				};
-			} catch (error) {
-				console.debug('Failed to parse MPD manifest with DOMParser', error);
-				return null;
-			}
-		};
-
-		const parseWithRegex = () => {
-			const initializationUrl = /initialization="([^"]+)"/i.exec(trimmed)?.[1]?.trim();
-			const mediaUrlTemplate = /media="([^"]+)"/i.exec(trimmed)?.[1]?.trim();
-			if (!initializationUrl || !mediaUrlTemplate) return null;
-			const startNumberMatch = /startNumber="(\d+)"/i.exec(trimmed);
-			const startNumber = startNumberMatch ? Number.parseInt(startNumberMatch[1]!, 10) : 1;
-			const segmentTimeline: Array<{ duration: number; repeat: number }> = [];
-			// Match <S> elements with d attribute, r attribute is optional
-			const timelineRegex = /<S[^>]*\sd="(\d+)"(?:[^>]*\sr="(-?\d+)")?[^>]*\/?>/gi;
-			let match: RegExpExecArray | null;
-			while ((match = timelineRegex.exec(trimmed)) !== null) {
-				const duration = Number.parseInt(match[1]!, 10);
-				const repeat = match[2] ? Number.parseInt(match[2], 10) : 0;
-				if (Number.isFinite(duration) && duration > 0) {
-					segmentTimeline.push({ duration, repeat: Number.isFinite(repeat) ? repeat : 0 });
-				}
-			}
-
-			return {
-				initializationUrl,
-				mediaUrlTemplate,
-				startNumber: Number.isFinite(startNumber) && startNumber > 0 ? startNumber : 1,
-				segmentTimeline
-			};
-		};
-
-		return parseWithDom() ?? parseWithRegex();
-	}
-
-	private buildMpdSegmentUrls(
-		template: {
-			initializationUrl: string;
-			mediaUrlTemplate: string;
-			startNumber: number;
-			segmentTimeline: Array<{ duration: number; repeat: number }>;
-			baseUrl?: string;
-			codec?: string;
-		} | null
-	): { initializationUrl: string; segmentUrls: string[] } | null {
-		if (!template) return null;
-
-		const resolveUrl = (url: string): string => {
-			if (/^https?:\/\//i.test(url)) return url;
-			if (template.baseUrl) {
-				try {
-					return new URL(url, template.baseUrl).toString();
-				} catch {
-					return `${template.baseUrl.replace(/\/+$/, '')}/${url.replace(/^\/+/, '')}`;
-				}
-			}
-			return url;
-		};
-
-		const initializationUrl = resolveUrl(template.initializationUrl);
-		const segmentUrls: string[] = [];
-		let segmentNumber = template.startNumber;
-		const timeline =
-			template.segmentTimeline.length > 0 ? template.segmentTimeline : [{ duration: 0, repeat: 0 }];
-
-		for (const entry of timeline) {
-			const repeat = Number.isFinite(entry.repeat) ? entry.repeat : 0;
-			const count = Math.max(1, repeat + 1);
-			for (let i = 0; i < count; i += 1) {
-				const url = template.mediaUrlTemplate.replace('$Number$', `${segmentNumber}`);
-				segmentUrls.push(resolveUrl(url));
-				segmentNumber += 1;
-			}
-		}
-
-		return { initializationUrl, segmentUrls };
+		return buildDashManifestResultHelper({
+			payload,
+			contentType,
+			createDashUnavailableError: (message) => this.createDashUnavailableError(message)
+		});
 	}
 
 	private async downloadFlacFromMpd(
 		manifestText: string,
 		options?: DownloadTrackOptions
 	): Promise<{ blob: Blob; mimeType: string } | null> {
-		const template = this.parseMpdSegmentTemplate(manifestText);
-		const segments = this.buildMpdSegmentUrls(template);
-		if (!segments) return null;
-
-		const urls = [segments.initializationUrl, ...segments.segmentUrls];
-		const chunks: Uint8Array[] = [];
-		let receivedBytes = 0;
-
-		for (const url of urls) {
-			const response = await this.fetch(url, { signal: options?.signal });
-			if (!response.ok) {
-				throw new Error(`Failed to fetch DASH segment (status ${response.status})`);
-			}
-			const buffer = await response.arrayBuffer();
-			const chunk = new Uint8Array(buffer);
-			receivedBytes += chunk.byteLength;
-			chunks.push(chunk);
-			options?.onProgress?.({ stage: 'downloading', receivedBytes, totalBytes: undefined });
-		}
-
-		const totalBytes = chunks.reduce((total, current) => total + current.byteLength, 0);
-		const merged = new Uint8Array(totalBytes);
-		let offset = 0;
-		for (const chunk of chunks) {
-			merged.set(chunk, offset);
-			offset += chunk.byteLength;
-		}
-
-		// Detect actual format from magic bytes instead of assuming FLAC
-		const detectedFormat = detectAudioFormat(merged);
-		const mimeType = detectedFormat?.mimeType ?? 'audio/flac';
-		return { blob: new Blob([merged], { type: mimeType }), mimeType };
+		return downloadFlacFromMpdManifest({
+			manifestText,
+			options,
+			fetch: (url, requestInit) => this.fetch(url, requestInit)
+		});
 	}
 
 	private async resolveHiResStreamFromDash(trackId: number): Promise<string> {
-		const manifest = await this.getDashManifest(trackId, 'HI_RES_LOSSLESS');
-		if (manifest.kind === 'flac') {
-			const url = manifest.urls.find(
-				(candidate) => typeof candidate === 'string' && candidate.length > 0
-			);
-			if (url) {
-				return url;
-			}
-			throw new Error('DASH manifest did not include any FLAC URLs.');
-		}
-		const directUrl = this.parseFlacUrlFromMpd(manifest.manifest);
-		if (directUrl) {
-			return directUrl;
-		}
-		throw new Error('Hi-res DASH manifest does not expose a direct FLAC URL.');
+		return resolveHiResStreamFromDashHelper({
+			trackId,
+			getDashManifest: (candidateTrackId, quality) => this.getDashManifest(candidateTrackId, quality),
+			parseFlacUrlFromMpd: (manifestText) => parseFlacUrlFromMpdHelper(manifestText)
+		});
 	}
 
 	/**
@@ -1041,118 +664,16 @@ class LosslessAPI {
 		sampleRate: number | null;
 		bitDepth: number | null;
 	}> {
-		let replayGain: number | null = null;
-		let sampleRate: number | null = null;
-		let bitDepth: number | null = null;
-		const isDev = import.meta.env.DEV;
-
-		if (this.isHiResQuality(quality)) {
-			try {
-				// Try to fetch metadata for replay gain, but don't fail if it fails
-				try {
-					const lookup = await this.getTrack(trackId, quality);
-					replayGain = lookup.info.trackReplayGain ?? null;
-					sampleRate = lookup.info.sampleRate ?? null;
-					bitDepth = lookup.info.bitDepth ?? null;
-				} catch {
-					// Ignore metadata fetch failure for HiRes
-				}
-
-				const url = await this.resolveHiResStreamFromDash(trackId);
-
-				const result = { url, replayGain, sampleRate, bitDepth };
-
-				// Validate the result
-				const StreamDataResultSchema = z.object({
-					url: z.string(),
-					replayGain: z.number().nullable(),
-					sampleRate: z.number().nullable(),
-					bitDepth: z.number().nullable()
-				});
-
-				const validationResult = safeValidateApiResponse(result, StreamDataResultSchema, {
-					endpoint: 'stream.hires',
-					allowUnvalidated: true
-				});
-
-				return validationResult.success ? validationResult.data : result;
-			} catch (error) {
-				console.warn('Failed to resolve hi-res stream via DASH manifest', error);
-				quality = 'LOSSLESS';
-			}
-		}
-
-		let lastError: Error | null = null;
-
-		for (let attempt = 1; attempt <= 3; attempt += 1) {
-			try {
-				const lookup = await this.getTrack(trackId, quality);
-				replayGain = lookup.info.trackReplayGain ?? null;
-				sampleRate = lookup.info.sampleRate ?? null;
-				bitDepth = lookup.info.bitDepth ?? null;
-
-				if (lookup.originalTrackUrl) {
-					const result = { url: lookup.originalTrackUrl, replayGain, sampleRate, bitDepth };
-
-					// Validate the result
-					const StreamDataResultSchema = z.object({
-						url: z.string(),
-						replayGain: z.number().nullable(),
-						sampleRate: z.number().nullable(),
-						bitDepth: z.number().nullable()
-					});
-
-					const validationResult = safeValidateApiResponse(result, StreamDataResultSchema, {
-						endpoint: 'stream.standard.original',
-						allowUnvalidated: true
-					});
-
-					return validationResult.success ? validationResult.data : result;
-				}
-
-				if (isDev) {
-					const manifestPayload = lookup.info.manifest;
-					console.debug('[getStreamData] manifest payload summary', {
-						trackId,
-						quality,
-						manifestType: typeof manifestPayload,
-						manifestLength: typeof manifestPayload === 'string' ? manifestPayload.length : null,
-						manifestStartsWith:
-							typeof manifestPayload === 'string' ? manifestPayload.trim().slice(0, 40) : null,
-						manifestMimeType: lookup.info.manifestMimeType ?? null
-					});
-				}
-				const manifestUrl = this.extractStreamUrlFromManifest(lookup.info.manifest);
-				if (manifestUrl) {
-					const result = { url: manifestUrl, replayGain, sampleRate, bitDepth };
-
-					// Validate the result
-					const StreamDataResultSchema = z.object({
-						url: z.string(),
-						replayGain: z.number().nullable(),
-						sampleRate: z.number().nullable(),
-						bitDepth: z.number().nullable()
-					});
-
-					const validationResult = safeValidateApiResponse(result, StreamDataResultSchema, {
-						endpoint: 'stream.standard.manifest',
-						allowUnvalidated: true
-					});
-
-					return validationResult.success ? validationResult.data : result;
-				}
-
-				lastError = new Error('Unable to resolve stream URL for track');
-			} catch (error) {
-				lastError = error instanceof Error ? error : new Error(String(error));
-			}
-
-			if (attempt < 3) {
-				await this.delay(200 * attempt);
-			}
-		}
-
-		throw lastError ?? new Error('Unable to resolve stream URL for track');
+		return getStreamDataForTrack({
+			trackId,
+			quality,
+			isHiResQuality: (candidateQuality) => this.isHiResQuality(candidateQuality),
+			getTrack: (candidateTrackId, candidateQuality) => this.getTrack(candidateTrackId, candidateQuality),
+			resolveHiResStreamFromDash: (candidateTrackId) => this.resolveHiResStreamFromDash(candidateTrackId),
+			extractStreamUrlFromManifest: (manifest) => this.extractStreamUrlFromManifest(manifest),
+			delay: (ms) => this.delay(ms),
+			isDev: import.meta.env.DEV
+		});
 	}
 
 	/**
@@ -1458,19 +979,13 @@ class LosslessAPI {
 	}
 
 	async getTrackStreamUrl(trackId: number, quality: AudioQuality = 'LOSSLESS'): Promise<string> {
-		if (this.isHiResQuality(quality)) {
-			quality = 'LOSSLESS';
-		}
-
-		const lookup = await this.getTrack(trackId, quality);
-		if (lookup.originalTrackUrl) {
-			return lookup.originalTrackUrl;
-		}
-		const fallback = this.extractStreamUrlFromManifest(lookup.info.manifest);
-		if (!fallback) {
-			throw new Error('Could not resolve stream URL for track');
-		}
-		return fallback;
+		return resolveTrackStreamUrl({
+			trackId,
+			quality,
+			isHiResQuality: (candidateQuality) => this.isHiResQuality(candidateQuality),
+			getTrack: (candidateTrackId, candidateQuality) => this.getTrack(candidateTrackId, candidateQuality),
+			extractStreamUrlFromManifest: (manifest) => this.extractStreamUrlFromManifest(manifest)
+		});
 	}
 
 	/**
@@ -1483,47 +998,18 @@ class LosslessAPI {
 		filename: string,
 		options?: DownloadTrackOptions
 	): Promise<void> {
-		try {
-			const { blob } = await this.fetchTrackBlob(trackId, quality, filename, options);
-			const url = URL.createObjectURL(blob);
-
-			// Trigger download
-			const a = document.createElement('a');
-			a.href = url;
-			a.download = filename;
-			document.body.appendChild(a);
-			a.click();
-			document.body.removeChild(a);
-			URL.revokeObjectURL(url);
-
-			// Download cover separately if enabled
-			if (options?.downloadCoverSeperately) {
-				try {
-					const metadata = await this.getPreferredTrackMetadata(trackId, quality);
-					const coverId = metadata.track.album?.cover;
-					if (coverId) {
-						console.log('[Cover Download] Fetching cover for separate download...');
-						await downloadCoverSeparately({
-							coverId,
-							getCoverUrl: (id, size) => this.getCoverUrl(id, size)
-						});
-					}
-				} catch (coverError) {
-					console.warn('Failed to download cover separately:', coverError);
-				}
-			}
-		} catch (error) {
-			if (error instanceof DOMException && error.name === 'AbortError') {
-				throw error;
-			}
-			console.error('Download failed:', error);
-			if (error instanceof Error && error.message === RATE_LIMIT_ERROR_MESSAGE) {
-				throw error;
-			}
-			throw new Error(
-				'Download failed. The stream URL may require a proxy. Please try streaming instead.'
-			);
-		}
+		return downloadTrackToClient({
+			trackId,
+			quality,
+			filename,
+			options,
+			fetchTrackBlob: (candidateTrackId, candidateQuality, candidateFilename, downloadOptions) =>
+				this.fetchTrackBlob(candidateTrackId, candidateQuality, candidateFilename, downloadOptions),
+			getPreferredTrackMetadata: (candidateTrackId, candidateQuality) =>
+				this.getPreferredTrackMetadata(candidateTrackId, candidateQuality),
+			getCoverUrl: (coverId, size, coverOptions) => this.getCoverUrl(coverId, size, coverOptions),
+			rateLimitErrorMessage: RATE_LIMIT_ERROR_MESSAGE
+		});
 	}
 
 	/**

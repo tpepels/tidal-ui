@@ -163,7 +163,7 @@ export const createTrackLoadController = (
 			shakaPlayer = new shakaNamespace.Player();
 			const networking = shakaPlayer.getNetworkingEngine?.();
 			if (networking && !shakaNetworkingConfigured) {
-				networking.registerRequestFilter((type, request) => {
+				networking.registerRequestFilter((_type, request) => {
 					if (request.method === 'HEAD') {
 						request.method = 'GET';
 					}

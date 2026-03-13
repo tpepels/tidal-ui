@@ -22,7 +22,7 @@ This plan breaks them into focused modules without changing user-facing behavior
 - `src/lib/components/DownloadManager.svelte`: 3842 -> 918 LOC
 - `src/lib/components/AudioPlayer.svelte`: 1284 -> 986 LOC
 - `src/lib/api.ts`: 2396 -> 3 LOC (facade only)
-- `src/lib/apiClient.ts`: 2396 -> 1713 LOC (continued extraction in progress)
+- `src/lib/apiClient.ts`: 2396 -> 1199 LOC
 
 ## Refactor Objectives
 1. Reduce cognitive load by splitting files by responsibility (UI rendering vs orchestration vs IO).
@@ -108,7 +108,8 @@ This plan breaks them into focused modules without changing user-facing behavior
 - [ ] Align with existing `src/lib/api/catalog.ts` pattern and remove duplicate helper logic.
 - [x] Exit criteria: root `api.ts` < 700 LOC, consumers unchanged.
   - [x] Extracted `src/lib/api/coverDownload.ts`, `src/lib/api/metadataEmbedding.ts`, and `src/lib/api/trackBlob.ts` from `apiClient`.
-  - [ ] Continue extracting stream/download orchestration from `apiClient` until under 1200 LOC.
+  - [x] Extracted `src/lib/api/streamManifest.ts` and `src/lib/api/streamDownload.ts` from `apiClient`.
+  - [x] Stream/download orchestration in `apiClient` reduced under 1200 LOC.
 
 ## Work Order (Recommended)
 1. Phase 1 (safety net)

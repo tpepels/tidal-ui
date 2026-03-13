@@ -146,7 +146,7 @@ export function createArtistAlbumDownloadController(options: ArtistAlbumDownload
 							total
 						});
 					},
-					onTrackFailed: (track, error, attempt) => {
+					onTrackFailed: (_track, _error, attempt) => {
 						if (attempt >= 3) {
 							failedCount += 1;
 							options.patchAlbumDownloadState(album.id, { failedTracks: failedCount });
@@ -243,7 +243,7 @@ export function createArtistAlbumDownloadController(options: ArtistAlbumDownload
 							completed += 1;
 							options.setDiscographyProgress({ completed, total });
 						},
-						onTrackFailed: (track, error, attempt) => {
+						onTrackFailed: (_track, _error, attempt) => {
 							if (attempt >= 3) {
 								albumFailedCount += 1;
 							}

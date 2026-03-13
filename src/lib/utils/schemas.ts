@@ -431,7 +431,7 @@ export function validateApiResponseGracefully<T>(
 /**
  * Converts validation errors into user-friendly messages
  */
-export function getUserFriendlyValidationError(context: string, validationError: string): string {
+export function getUserFriendlyValidationError(_context: string, validationError: string): string {
 	// Extract common validation error patterns and convert to user-friendly messages
 	if (
 		validationError.includes('Required') ||

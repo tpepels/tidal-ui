@@ -108,8 +108,8 @@ export class DownloadQueue {
 		item.error = error;
 		item.lastAttemptAt = Date.now();
 
-		// Re-queue if retries remaining
-		if (item.retryCount < item.maxRetries) {
+		// Respect configured retry policy.
+		if (this.autoRetryFailures && item.retryCount < item.maxRetries) {
 			item.retryCount++;
 			this.callbacks.onRetry?.(item, item.retryCount);
 			this.running.delete(id);

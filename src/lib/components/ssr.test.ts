@@ -30,7 +30,6 @@ describe('SSR compile', () => {
 	it('compiles key shared components for SSR', () => {
 		const sharedComponents = [
 			'src/lib/components/DownloadLog.svelte',
-			'src/lib/components/DownloadProgress.svelte',
 			'src/lib/components/TrackList.svelte',
 			'src/lib/components/LyricsPopup.svelte',
 			'src/lib/components/Breadcrumb.svelte',
