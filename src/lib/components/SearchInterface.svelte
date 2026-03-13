@@ -171,8 +171,13 @@
 	const ALBUM_QUEUE_POLL_INTERVAL_MS = 1000;
 	const ALBUM_MUSICBRAINZ_LOOKUP_CONCURRENCY = 3;
 	const ALBUM_MUSICBRAINZ_LOOKUP_LIMIT = 24;
+	const MUSICBRAINZ_PENDING_DOWNLOAD_CONFIRMATION =
+		'MusicBrainz matching is still running for this album. Waiting a few seconds can improve metadata. Continue download now?';
 	let albumDownloadStates = $state<Record<number, AlbumDownloadState>>({});
 	let albumMusicBrainzReleaseMatches = $state<Record<number, string>>({});
+	let isAlbumMusicBrainzLookupLoading = $state(false);
+	let pendingAlbumMusicBrainzAlbumIds = $state<Set<number>>(new Set());
+	let albumMusicBrainzLookupToken = 0;
 
 	const trackResults = $derived($searchStore.results?.tracks ?? []);
 	const albumResults = $derived($searchStore.results?.albums ?? []);
@@ -235,8 +240,21 @@
 				...albumMusicBrainzReleaseMatches,
 				[albumId]: releaseId
 			};
+			if (pendingAlbumMusicBrainzAlbumIds.has(albumId)) {
+				const next = new Set(pendingAlbumMusicBrainzAlbumIds);
+				next.delete(albumId);
+				pendingAlbumMusicBrainzAlbumIds = next;
+			}
 		}
 	});
+
+	function shouldWarnMusicBrainzStillLoadingForAlbum(albumId: number): boolean {
+		return (
+			isAlbumMusicBrainzLookupLoading &&
+			pendingAlbumMusicBrainzAlbumIds.has(albumId) &&
+			!albumMusicBrainzReleaseMatches[albumId]
+		);
+	}
 
 	async function cancelAlbumQueueDownload(albumId: number, event?: MouseEvent): Promise<void> {
 		event?.preventDefault();
@@ -281,6 +299,12 @@
 		}
 		if (currentState.downloading || currentState.status === 'submitting') {
 			return;
+		}
+		if (shouldWarnMusicBrainzStillLoadingForAlbum(album.id)) {
+			const proceedWithoutWaiting = window.confirm(MUSICBRAINZ_PENDING_DOWNLOAD_CONFIRMATION);
+			if (!proceedWithoutWaiting) {
+				return;
+			}
 		}
 
 		patchAlbumDownloadState(album.id, {
@@ -394,11 +418,35 @@
 
 	$effect(() => {
 		if (albumResults.length === 0) {
+			albumMusicBrainzLookupToken += 1;
+			isAlbumMusicBrainzLookupLoading = false;
+			pendingAlbumMusicBrainzAlbumIds = new Set();
 			albumMusicBrainzController.invalidate();
 			return;
 		}
+		const token = ++albumMusicBrainzLookupToken;
+		const pendingIds = albumResults
+			.slice(0, ALBUM_MUSICBRAINZ_LOOKUP_LIMIT)
+			.map((album) => album.id);
+		if (pendingIds.length === 0) {
+			isAlbumMusicBrainzLookupLoading = false;
+			pendingAlbumMusicBrainzAlbumIds = new Set();
+			return;
+		}
 
-		void albumMusicBrainzController.hydrate(albumResults);
+		isAlbumMusicBrainzLookupLoading = true;
+		pendingAlbumMusicBrainzAlbumIds = new Set(pendingIds);
+		void (async () => {
+			try {
+				await albumMusicBrainzController.hydrate(albumResults);
+			} finally {
+				if (token !== albumMusicBrainzLookupToken) {
+					return;
+				}
+				isAlbumMusicBrainzLookupLoading = false;
+				pendingAlbumMusicBrainzAlbumIds = new Set();
+			}
+		})();
 	});
 
 	function isSearchBusy(): boolean {
@@ -497,6 +545,8 @@
 						albums={albumResults}
 						albumDownloadStates={albumDownloadStates}
 						albumMusicBrainzReleaseMatches={albumMusicBrainzReleaseMatches}
+						isMusicBrainzLoading={isAlbumMusicBrainzLookupLoading}
+						pendingMusicBrainzAlbumIds={pendingAlbumMusicBrainzAlbumIds}
 						downloadActionLabel={downloadActionLabel}
 						onDownloadClick={handleAlbumDownloadClick}
 						onCancelQueueDownload={cancelAlbumQueueDownload}

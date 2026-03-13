@@ -16,7 +16,13 @@ This plan breaks them into focused modules without changing user-facing behavior
 
 ## Progress Snapshot (2026-03-13)
 - `src/lib/components/SearchInterface.svelte`: 1920 -> 599 LOC
-- `src/routes/artist/[id]/+page.svelte`: 2617 -> 2227 LOC
+- `src/routes/artist/[id]/+page.svelte`: 2617 -> 1198 LOC
+- `src/routes/+layout.svelte`: 2179 -> 1030 LOC
+- `src/lib/components/pages/SettingsPageContent.svelte`: 1927 -> 894 LOC
+- `src/lib/components/DownloadManager.svelte`: 3842 -> 918 LOC
+- `src/lib/components/AudioPlayer.svelte`: 1284 -> 986 LOC
+- `src/lib/api.ts`: 2396 -> 3 LOC (facade only)
+- `src/lib/apiClient.ts`: 2396 -> 1713 LOC (continued extraction in progress)
 
 ## Refactor Objectives
 1. Reduce cognitive load by splitting files by responsibility (UI rendering vs orchestration vs IO).
@@ -65,43 +71,44 @@ This plan breaks them into focused modules without changing user-facing behavior
 
 ### Phase 3: Artist Page Decomposition (`artist/[id]/+page.svelte`)
 - [x] Extract discography shaping/filtering/scoring into `artistDiscographyModel.ts`.
-- [ ] Extract album cover hydration/recovery queue into `artistCoverHydrationController.ts`.
-- [ ] Extract album download + queue polling into `artistAlbumDownloadController.ts`.
-  Queue polling/cancel/resume now extracted into `artistAlbumQueueController.ts`; per-album download orchestration remains in page shell.
+- [x] Extract album cover hydration/recovery queue into `artistCoverHydrationController.ts`.
+- [x] Extract album download + queue polling into `artistAlbumDownloadController.ts`.
 - [x] Extract MusicBrainz artist lookup/defaulting into `artistMusicBrainzController.ts`.
-- [ ] Split secondary rails and panels into presentational components:
-  - `ArtistRecommendationsRail.svelte`
-  - `ArtistDiscographySection.svelte`
-  - `ArtistTopTracksSection.svelte`
+- [x] Split secondary rails and panels into presentational components:
+  - [x] `ArtistRecommendationsRail.svelte`
+  - [x] `ArtistDiscographySection.svelte`
+  - [x] `ArtistTopTracksSection.svelte`
 - Exit criteria: route file < 1200 LOC and no direct polling maps/timers in page shell.
 
 ### Phase 4: Layout + Settings Split
-- [ ] Move maintenance/repair/dedupe workflows from `+layout.svelte` into:
-  - `settingsMaintenanceController.ts`
-  - `settingsQueueExportController.ts`
-- [ ] Consolidate polling lifecycle utilities (repair/dedupe/status) under `src/lib/features/settings/polling.ts`.
-- [ ] Keep `+layout.svelte` for app shell, navigation, global UI wiring only.
-- [ ] Split `SettingsPageContent.svelte` into sections (download prefs, maintenance, diagnostics).
+- [x] Move maintenance/repair/dedupe workflows from `+layout.svelte` into:
+  - [x] `settingsMaintenanceController.ts`
+  - [x] `settingsQueueExportController.ts`
+- [x] Consolidate polling lifecycle utilities (repair/dedupe/status) under `src/lib/features/settings/polling.ts`.
+- [x] Keep `+layout.svelte` for app shell, navigation, global UI wiring only.
+- [x] Split/decompose `SettingsPageContent.svelte` into feature modules (polling/controller/style module extraction).
 - Exit criteria: `+layout.svelte` < 1300 LOC and `SettingsPageContent.svelte` < 900 LOC.
 
 ### Phase 5: Download + Player Focus
-- [ ] Break `DownloadManager.svelte` into:
-  - queue summary/panel component
-  - failed/completed reporting component
-  - action toolbar component
-  - controller for queue operations/logging
-- [ ] Break `AudioPlayer.svelte` into:
-  - transport controls
-  - queue panel
-  - overlays/download state
-  - playback lifecycle controller
-- Exit criteria: no single media UI component > 1000 LOC.
+- [x] Break `DownloadManager.svelte` into:
+  - [x] queue summary/panel component
+  - [x] failed/completed reporting component
+  - [x] action toolbar component
+  - [x] controller for queue operations/logging (started via `model.ts`, `lifecycleTracker.ts`, `queueActions.ts`)
+- [x] Break `AudioPlayer.svelte` into:
+  - [x] transport controls
+  - [x] queue panel
+  - [x] overlays/download state
+  - [x] playback lifecycle controller
+- [x] Exit criteria: no single media UI component > 1000 LOC.
 
 ### Phase 6: API Layer Segmentation
 - [ ] Split `src/lib/api.ts` into domain modules (catalog, playback, metadata, downloads, playlists).
-- [ ] Keep `api.ts` as typed facade/re-export layer for compatibility.
+- [x] Keep `api.ts` as typed facade/re-export layer for compatibility.
 - [ ] Align with existing `src/lib/api/catalog.ts` pattern and remove duplicate helper logic.
-- Exit criteria: root `api.ts` < 700 LOC, consumers unchanged.
+- [x] Exit criteria: root `api.ts` < 700 LOC, consumers unchanged.
+  - [x] Extracted `src/lib/api/coverDownload.ts`, `src/lib/api/metadataEmbedding.ts`, and `src/lib/api/trackBlob.ts` from `apiClient`.
+  - [ ] Continue extracting stream/download orchestration from `apiClient` until under 1200 LOC.
 
 ## Work Order (Recommended)
 1. Phase 1 (safety net)

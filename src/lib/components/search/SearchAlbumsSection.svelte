@@ -12,6 +12,8 @@
 		albums: Album[];
 		albumDownloadStates: Record<number, AlbumDownloadState>;
 		albumMusicBrainzReleaseMatches: Record<number, string>;
+		isMusicBrainzLoading: boolean;
+		pendingMusicBrainzAlbumIds: Set<number>;
 		downloadActionLabel: string;
 		onDownloadClick: (album: Album, event: MouseEvent) => Promise<void> | void;
 		onCancelQueueDownload: (albumId: number, event: MouseEvent) => Promise<void> | void;
@@ -21,6 +23,8 @@
 		albums,
 		albumDownloadStates,
 		albumMusicBrainzReleaseMatches,
+		isMusicBrainzLoading,
+		pendingMusicBrainzAlbumIds,
 		downloadActionLabel,
 		onDownloadClick,
 		onCancelQueueDownload
@@ -62,11 +66,27 @@
 		}
 		return null;
 	}
+
+	function isMusicBrainzPendingForAlbum(albumId: number): boolean {
+		return (
+			isMusicBrainzLoading &&
+			pendingMusicBrainzAlbumIds.has(albumId) &&
+			!albumMusicBrainzReleaseMatches[albumId]
+		);
+	}
 </script>
 
 <section id="search-section-albums" class="search-section search-section--albums" data-tone="album">
 	<header class="search-section__header">
-		<h2 class="search-section__title">Albums</h2>
+		<div class="search-section__title-group">
+			<h2 class="search-section__title">Albums</h2>
+			{#if isMusicBrainzLoading}
+				<p class="search-section__status" aria-live="polite">
+					<LoaderCircle size={13} class="animate-spin" />
+					Matching MusicBrainz…
+				</p>
+			{/if}
+		</div>
 		<span class="search-section__count">{albums.length}</span>
 	</header>
 	<div class="search-list">
@@ -113,6 +133,9 @@
 							1
 								? ''
 								: 's'}
+							{#if isMusicBrainzPendingForAlbum(album.id)}
+								• Matching MusicBrainz…
+							{/if}
 							{#if albumStatusText(albumDownloadState)}
 								• {albumStatusText(albumDownloadState)}
 							{/if}
@@ -172,6 +195,13 @@
 		gap: 0.5rem;
 	}
 
+	.search-section__title-group {
+		display: flex;
+		min-width: 0;
+		flex-direction: column;
+		gap: 0.12rem;
+	}
+
 	.search-section__title {
 		margin: 0;
 		font-size: 1.06rem;
@@ -192,6 +222,16 @@
 		font-size: 0.8rem;
 		font-weight: 700;
 		color: rgba(255, 235, 212, 0.96);
+	}
+
+	.search-section__status {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		margin: 0;
+		font-size: 0.72rem;
+		letter-spacing: 0.03em;
+		color: rgba(255, 213, 165, 0.86);
 	}
 
 	.search-list {

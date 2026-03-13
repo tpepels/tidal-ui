@@ -36,8 +36,8 @@
 	// Orchestrators
 	import { downloadOrchestrator } from '$lib/orchestrators';
 	import LazyImage from '$lib/components/LazyImage.svelte';
-	import { slide } from 'svelte/transition';
-	import { cubicOut } from 'svelte/easing';
+	import AudioPlayerQueuePanel from '$lib/components/audio-player/AudioPlayerQueuePanel.svelte';
+	import './audio-player.css';
 	import { createMediaSessionController } from '$lib/controllers/mediaSessionController';
 	import { createAudioElementController } from '$lib/controllers/audioElementController';
 	import { createPlaybackTransitions } from '$lib/controllers/playbackTransitions';
@@ -54,9 +54,7 @@
 		Volume2,
 		VolumeX,
 		ListMusic,
-		Trash2,
 		X,
-		Shuffle,
 		ScrollText,
 		Download,
 		LoaderCircle,
@@ -956,103 +954,15 @@
 						{/if}
 
 						{#if showQueuePanel}
-							<div
-								class="queue-panel mt-4 space-y-3 rounded-2xl border p-4 text-sm shadow-inner"
-								transition:slide={{ duration: 220, easing: cubicOut }}
-							>
-								<div class="flex items-center justify-between gap-2">
-									<div class="flex items-center gap-2 text-gray-300">
-										<ListMusic size={18} />
-										<span class="font-medium">Playback Queue</span>
-										<span class="rounded-full bg-gray-800 px-2 py-0.5 text-xs text-gray-400">
-											{$machineQueue.length}
-										</span>
-									</div>
-									<div class="flex items-center gap-2">
-										<button
-											onclick={handleShuffleQueue}
-											class="flex items-center gap-1 rounded-full border border-transparent px-3 py-1 text-xs tracking-wide text-gray-400 uppercase transition-colors hover:border-white/35 hover:text-white disabled:opacity-40"
-											type="button"
-											disabled={$machineQueue.length <= 1}
-											aria-label="Shuffle queue"
-										>
-											<Shuffle size={14} />
-											Shuffle Queue
-										</button>
-										<button
-											onclick={clearQueue}
-											class="flex items-center gap-1 rounded-full border border-transparent px-3 py-1 text-xs tracking-wide text-gray-400 uppercase transition-colors hover:border-red-500 hover:text-red-400"
-											type="button"
-											disabled={$machineQueue.length === 0}
-											aria-label="Clear queue"
-										>
-											<Trash2 size={14} />
-											Clear Queue
-										</button>
-										<button
-											onclick={closeQueuePanel}
-											class="rounded-full p-1 text-gray-400 transition-colors hover:text-white"
-											aria-label="Close queue panel"
-										>
-											<X size={16} />
-										</button>
-									</div>
-								</div>
-
-								{#if $machineQueue.length > 0}
-									<ul class="max-h-60 space-y-2 overflow-y-auto pr-1">
-										{#each $machineQueue as queuedTrack, index (queuedTrack.id)}
-											<li>
-												<div
-													onclick={() => playFromQueue(index)}
-													onkeydown={(event) => {
-														if (event.key === 'Enter' || event.key === ' ') {
-															event.preventDefault();
-															playFromQueue(index);
-														}
-													}}
-													tabindex="0"
-													role="button"
-													class="group flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors {index === $machineQueueIndex ? 'bg-white/10 text-white' : 'text-gray-200 hover:bg-gray-800/70'}"
-												>
-													<span class="w-6 text-xs font-semibold text-gray-500 group-hover:text-gray-300">
-														{index + 1}
-													</span>
-													<div class="min-w-0 flex-1">
-														<p class="truncate text-sm font-medium">
-															{queuedTrack.title}{!isSonglinkTrack(queuedTrack) && asTrack(queuedTrack).version ? ` (${asTrack(queuedTrack).version})` : ''}
-														</p>
-														{#if isSonglinkTrack(queuedTrack)}
-															<p class="truncate text-xs text-gray-400">{queuedTrack.artistName}</p>
-														{:else}
-															<a
-																href={`/artist/${asTrack(queuedTrack).artist.id}`}
-																onclick={(e) => e.stopPropagation()}
-																class="truncate text-xs text-gray-400 hover:text-white hover:underline inline-block"
-																data-sveltekit-preload-data
-															>
-																{formatArtists(asTrack(queuedTrack).artists)}
-															</a>
-														{/if}
-													</div>
-													<button
-														onclick={(event) => removeFromQueue(index, event)}
-														class="rounded-full p-1 text-gray-500 transition-colors hover:text-red-400"
-														aria-label={`Remove ${queuedTrack.title} from queue`}
-														type="button"
-													>
-														<X size={14} />
-													</button>
-												</div>
-											</li>
-										{/each}
-									</ul>
-								{:else}
-									<p class="rounded-lg border border-dashed border-gray-700 bg-gray-900/70 px-3 py-8 text-center text-gray-400">
-										Queue is empty
-									</p>
-								{/if}
-							</div>
+							<AudioPlayerQueuePanel
+								queue={$machineQueue}
+								queueIndex={$machineQueueIndex}
+								onPlayFromQueue={playFromQueue}
+								onRemoveFromQueue={removeFromQueue}
+								onShuffleQueue={handleShuffleQueue}
+								onClearQueue={clearQueue}
+								onClose={closeQueuePanel}
+							/>
 						{/if}
 
 
@@ -1074,211 +984,3 @@
 	</button>
 {/if}
 
-<style>
-	.audio-player-glass {
-		background: #0f0f0f;
-		border-color: var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		backdrop-filter: none;
-		-webkit-backdrop-filter: none;
-		box-shadow: none;
-		transition:
-			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
-	}
-
-	.queue-panel {
-		background: #101010;
-		border-color: var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		backdrop-filter: none;
-		-webkit-backdrop-filter: none;
-		box-shadow: none;
-		transition:
-			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
-	}
-
-
-	.audio-player-backdrop {
-		isolation: isolate;
-	}
-
-	.audio-player-backdrop::before {
-		content: none;
-		position: absolute;
-		inset: 0;
-		pointer-events: none;
-		z-index: 0;
-		backdrop-filter: none;
-		-webkit-backdrop-filter: none;
-		mask: none;
-	}
-
-	.audio-player-backdrop > * {
-		position: relative;
-		z-index: 1;
-	}
-
-	input[type='range']::-webkit-slider-thumb {
-		appearance: none;
-		width: 12px;
-		height: 12px;
-		background: white;
-		border-radius: 50%;
-		cursor: pointer;
-	}
-
-	input[type='range']::-moz-range-thumb {
-		width: 12px;
-		height: 12px;
-		background: white;
-		border-radius: 50%;
-		cursor: pointer;
-		border: none;
-	}
-
-
-
-
-
-
-
-	button.rounded-full {
-		transition:
-			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
-	}
-
-	button.rounded-full:hover {
-		border-color: var(--bloom-accent, rgba(255, 255, 255, 0.7)) !important;
-		transform: translateY(var(--ui-lift-y, -1px));
-	}
-
-	button.rounded-full:active {
-		transform: translateY(var(--ui-press-y, 0px));
-	}
-
-	.player-toggle-button {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		border-radius: 9999px;
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
-		backdrop-filter: none;
-		-webkit-backdrop-filter: none;
-		padding: 0.5rem 0.75rem;
-		font-size: 0.875rem;
-		color: rgba(209, 213, 219, 0.85);
-		transition:
-			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
-	}
-
-	.player-toggle-button:hover {
-		border-color: var(--bloom-accent, rgba(255, 255, 255, 0.55));
-		color: rgba(255, 255, 255, 0.95);
-		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
-		transform: translateY(var(--ui-lift-y, -1px));
-	}
-
-	.player-toggle-button:active {
-		transform: translateY(var(--ui-press-y, 0px));
-	}
-
-	.player-toggle-button--active {
-		border-color: var(--bloom-accent, rgba(255, 255, 255, 0.62));
-		color: rgba(255, 255, 255, 0.98);
-		box-shadow: none;
-		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
-	}
-
-
-
-	.playback-indicator {
-		position: fixed;
-		bottom: 1rem;
-		right: 1rem;
-		z-index: 60;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 3rem;
-		height: 3rem;
-		border-radius: 50%;
-		background: #101010;
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		color: rgba(226, 232, 240, 0.9);
-		box-shadow: none;
-		backdrop-filter: none;
-		transition:
-			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
-		cursor: pointer;
-	}
-
-	.playback-indicator:hover {
-		background: #141414;
-		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		transform: translateY(var(--ui-lift-y, -1px));
-	}
-
-	.playback-indicator:active {
-		transform: translateY(var(--ui-press-y, 0px));
-	}
-
-	.playback-indicator-pulse {
-		position: absolute;
-		inset: 0;
-		border-radius: 50%;
-		background: rgba(255, 255, 255, 0.22);
-		animation: pulse 2s infinite;
-	}
-
-	@keyframes pulse {
-		0%, 100% {
-			opacity: 0.6;
-			transform: scale(1);
-		}
-		50% {
-			opacity: 0.3;
-			transform: scale(1.2);
-		}
-	}
-
-	@media (min-width: 640px) {
-		.playback-indicator {
-			bottom: 1.5rem;
-			right: 1.5rem;
-		}
-	}
-
-	.download-progress-bar {
-		width: 100%;
-		height: 4px;
-		background: rgba(255, 255, 255, 0.2);
-		border-radius: 2px;
-		overflow: hidden;
-	}
-
-	.download-progress-bar-fill {
-		height: 100%;
-		background: rgba(255, 255, 255, 0.92);
-		border-radius: 2px;
-		transition: width var(--ui-motion-medium, 200ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.audio-player-backdrop *,
-		.playback-indicator,
-		.playback-indicator-pulse {
-			animation: none !important;
-			transition: none !important;
-			transform: none !important;
-		}
-	}
-</style>

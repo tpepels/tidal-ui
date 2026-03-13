@@ -5,6 +5,10 @@
 	import { losslessAPI } from '$lib/api';
 	import { downloadAlbum } from '$lib/downloads';
 	import {
+		artistAlbumDownloadPrompts,
+		createArtistAlbumDownloadController
+	} from '$lib/features/artist/artistAlbumDownloadController';
+	import {
 		createArtistAlbumQueueController,
 		createDefaultArtistAlbumDownloadState as createDefaultAlbumDownloadState,
 		isArtistAlbumQueueDownloadCancellable as isAlbumQueueDownloadCancellable,
@@ -21,6 +25,10 @@
 		buildTopTrackAlbumSignals,
 		filterDiscographyEntries
 	} from '$lib/features/artist/artistDiscographyModel';
+	import ArtistDiscographySection from '$lib/components/artist/ArtistDiscographySection.svelte';
+	import ArtistDiscographyHighlights from '$lib/components/artist/ArtistDiscographyHighlights.svelte';
+	import ArtistRecommendationsRail from '$lib/components/artist/ArtistRecommendationsRail.svelte';
+	import ArtistTopTracksSection from '$lib/components/artist/ArtistTopTracksSection.svelte';
 	import {
 		formatMusicBrainzArtistLifeSpan,
 		normalizeArtistToken as normalizeToken,
@@ -29,11 +37,8 @@
 		type MusicBrainzArtistOption
 	} from '$lib/features/artist/artistMusicBrainzController';
 	import type { Album, ArtistDetails, ArtistRecommendations, AudioQuality } from '$lib/types';
-	import TopTracksGrid from '$lib/components/TopTracksGrid.svelte';
-	import EntityMediaCard from '$lib/components/ui/EntityMediaCard.svelte';
 	import ShareButton from '$lib/components/ShareButton.svelte';
 	import ActionPanel from '$lib/components/ui/ActionPanel.svelte';
-	import ToolPanel from '$lib/components/ui/ToolPanel.svelte';
 	import DataGrid from '$lib/components/ui/DataGrid.svelte';
 	import StateBlock from '$lib/components/ui/StateBlock.svelte';
 	import {
@@ -52,16 +57,7 @@
 	import { scoreAlbumForSelection } from '$lib/utils/albumSelection';
 	import { sortTopTracks } from '$lib/utils/topTracks';
 	import { fetchAlbumLibraryStatus } from '$lib/utils/mediaLibraryClient';
-	import {
-		ArrowLeft,
-		ChevronLeft,
-		ChevronRight,
-		Download,
-		LoaderCircle,
-		RotateCcw,
-		User,
-		X
-	} from 'lucide-svelte';
+	import { ArrowLeft, LoaderCircle, User } from 'lucide-svelte';
 
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
@@ -191,13 +187,6 @@
 	let albumLibraryLookupToken = 0;
 	let coverResolutionTick = $state(0);
 	let isDocumentVisible = $state(true);
-	const FORCE_OVERWRITE_CONFIRMATION =
-		'This album is already in your local library. Redownload it and overwrite existing files?';
-	const CLIENT_REDOWNLOAD_CONFIRMATION =
-		'This album is already in your local library. Browser downloads cannot overwrite existing files and may append (2) to filenames. Continue anyway?';
-	let recommendedArtistsRail = $state<HTMLDivElement | null>(null);
-	let recommendedAlbumsRail = $state<HTMLDivElement | null>(null);
-	let featuredDiscographyRail = $state<HTMLDivElement | null>(null);
 	let musicBrainzArtistOptions = $state<MusicBrainzArtistOption[]>([]);
 	let selectedMusicBrainzArtistId = $state<string>('');
 	let isMusicBrainzArtistLookupLoading = $state(false);
@@ -733,226 +722,55 @@
 		pollIntervalMs: ALBUM_QUEUE_POLL_INTERVAL_MS
 	});
 
+	const albumDownloadController = createArtistAlbumDownloadController({
+		getAlbumDownloadState,
+		patchAlbumDownloadState,
+		isAlbumQueueDownloadCancellable: isAlbumQueueDownloadCancellable,
+		requestQueueCancel: (albumId) => albumQueueController.cancelQueueDownload(albumId),
+		requestQueueResume: (albumId) => albumQueueController.resumeQueueDownload(albumId),
+		startQueuePolling: (albumId, jobId) => {
+			albumQueueController.startPolling(albumId, jobId);
+		},
+		isDiscographyDownloading: () => isDownloadingDiscography,
+		setDiscographyDownloading: (downloading) => {
+			isDownloadingDiscography = downloading;
+		},
+		setDiscographyProgress: (progress) => {
+			discographyProgress = progress;
+		},
+		setDiscographyError: (message) => {
+			discographyError = message;
+		},
+		resolveAlbumInLibrary: (albumId) => albumLibraryPresence[albumId]?.exists === true,
+		confirmServerOverwrite: () =>
+			window.confirm(artistAlbumDownloadPrompts.FORCE_OVERWRITE_CONFIRMATION),
+		confirmClientRedownload: () =>
+			window.confirm(artistAlbumDownloadPrompts.CLIENT_REDOWNLOAD_CONFIRMATION),
+		getDownloadPreferences: () => ({
+			quality: downloadQuality,
+			mode: downloadMode,
+			convertAacToMp3: convertAacToMp3Preference,
+			experimentalMusicBrainzTagging: experimentalMusicBrainzTaggingPreference,
+			strictMusicBrainzMatching: strictMusicBrainzMatchingPreference,
+			storage: downloadStoragePreference
+		}),
+		resolveArtistName: () => artist?.name,
+		downloadAlbumFn: downloadAlbum
+	});
+
 	async function cancelAlbumQueueDownload(albumId: number, event?: MouseEvent): Promise<void> {
-		event?.preventDefault();
-		event?.stopPropagation();
-
-		const result = await albumQueueController.cancelQueueDownload(albumId);
-		if (result.success || !result.error) {
-			return;
-		}
-
-		patchAlbumDownloadState(albumId, {
-			error: result.error || 'Unable to stop this album download right now.'
-		});
+		await albumDownloadController.cancelAlbumQueueDownload(albumId, event);
 	}
 
-	async function resumeAlbumQueueDownload(albumId: number, event?: MouseEvent): Promise<void> {
-		event?.preventDefault();
-		event?.stopPropagation();
-
-		const result = await albumQueueController.resumeQueueDownload(albumId);
-		if (result.success || !result.error) {
-			return;
-		}
-
-		patchAlbumDownloadState(albumId, {
-			error: result.error || 'Unable to resume this album download right now.'
-		});
+	async function handleAlbumDownload(album: Album, event?: MouseEvent): Promise<void> {
+		await albumDownloadController.handleAlbumDownload(album, event);
 	}
 
-	async function handleAlbumDownload(album: Album, event?: MouseEvent) {
-		event?.preventDefault();
-		event?.stopPropagation();
-
-		const currentState = getAlbumDownloadState(album.id);
-		if (isDownloadingDiscography) {
+	async function handleDownloadDiscography(): Promise<void> {
+		if (!artist) {
 			return;
 		}
-
-		if (isAlbumQueueDownloadCancellable(currentState)) {
-			await cancelAlbumQueueDownload(album.id);
-			return;
-		}
-		if (currentState.status === 'paused') {
-			await resumeAlbumQueueDownload(album.id);
-			return;
-		}
-		const inLibrary = albumLibraryPresence[album.id]?.exists === true;
-		let forceOverwrite = false;
-		if (inLibrary && currentState.status === 'idle') {
-			if (downloadStoragePreference === 'server') {
-				forceOverwrite = window.confirm(FORCE_OVERWRITE_CONFIRMATION);
-				if (!forceOverwrite) {
-					return;
-				}
-			} else if (!window.confirm(CLIENT_REDOWNLOAD_CONFIRMATION)) {
-				return;
-			}
-		}
-
-		if (currentState.downloading || currentState.status === 'submitting') {
-			return;
-		}
-
-		patchAlbumDownloadState(album.id, {
-			status: 'submitting',
-			downloading: true,
-			completed: 0,
-			total: album.numberOfTracks ?? 0,
-			error: null,
-			failedTracks: 0,
-			queueJobId: null
-		});
-
-		const quality = downloadQuality;
-
-		try {
-			let failedCount = 0;
-			const result = await downloadAlbum(
-				album,
-				quality,
-				{
-					onTotalResolved: (total) => {
-						patchAlbumDownloadState(album.id, { total });
-					},
-					onTrackDownloaded: (completed, total) => {
-						patchAlbumDownloadState(album.id, {
-							status: 'processing',
-							downloading: true,
-							completed,
-							total
-						});
-					},
-					onTrackFailed: (track, error, attempt) => {
-						if (attempt >= 3) {
-							failedCount++;
-							patchAlbumDownloadState(album.id, { failedTracks: failedCount });
-						}
-					}
-				},
-				artist?.name,
-				{
-					mode: downloadMode,
-					convertAacToMp3: convertAacToMp3Preference,
-					experimentalMusicBrainzTagging: experimentalMusicBrainzTaggingPreference,
-					strictMusicBrainzMatching: strictMusicBrainzMatchingPreference,
-					storage: downloadStoragePreference,
-					forceOverwrite
-				}
-			);
-
-			if (result.storage === 'server' && result.jobId) {
-				patchAlbumDownloadState(album.id, {
-					status: 'queued',
-					downloading: false,
-					completed: 0,
-					total: result.totalTracks,
-					error: null,
-					queueJobId: result.jobId
-				});
-				albumQueueController.startPolling(album.id, result.jobId);
-				return;
-			}
-
-			const finalState = albumDownloadStates[album.id];
-			patchAlbumDownloadState(album.id, {
-				status: failedCount > 0 ? 'failed' : 'completed',
-				downloading: false,
-				completed: finalState?.total ?? result.completedTracks ?? finalState?.completed ?? 0,
-				error:
-					failedCount > 0
-						? `${failedCount} track${failedCount > 1 ? 's' : ''} failed after 3 attempts`
-						: null,
-				queueJobId: null
-			});
-		} catch (err) {
-			console.error('Failed to download album:', err);
-			const message =
-				err instanceof Error && err.message
-					? err.message
-					: 'Failed to download album. Please try again.';
-			patchAlbumDownloadState(album.id, {
-				status: 'failed',
-				downloading: false,
-				error: message,
-				queueJobId: null
-			});
-		}
-	}
-
-	async function handleDownloadDiscography() {
-		if (!artist || discography.length === 0 || isDownloadingDiscography) {
-			return;
-		}
-
-		isDownloadingDiscography = true;
-		discographyError = null;
-
-		let estimatedTotal = discography.reduce((sum, album) => sum + (album.numberOfTracks ?? 0), 0);
-		if (!Number.isFinite(estimatedTotal) || estimatedTotal < 0) {
-			estimatedTotal = 0;
-		}
-
-		let completed = 0;
-		let total = estimatedTotal;
-		discographyProgress = { completed, total };
-		const quality = downloadQuality;
-
-		for (const album of discography) {
-			let albumEstimate = album.numberOfTracks ?? 0;
-			let albumFailedCount = 0;
-			try {
-				await downloadAlbum(
-					album,
-					quality,
-					{
-						onTotalResolved: (resolvedTotal) => {
-							if (resolvedTotal !== albumEstimate) {
-								total += resolvedTotal - albumEstimate;
-								albumEstimate = resolvedTotal;
-								discographyProgress = { completed, total };
-							} else if (total === 0 && resolvedTotal > 0) {
-								total += resolvedTotal;
-								discographyProgress = { completed, total };
-							}
-						},
-						onTrackDownloaded: () => {
-							completed += 1;
-							discographyProgress = { completed, total };
-						},
-						onTrackFailed: (track, error, attempt) => {
-							if (attempt >= 3) {
-								albumFailedCount++;
-							}
-						}
-					},
-					artist?.name,
-					{
-						mode: downloadMode,
-						convertAacToMp3: convertAacToMp3Preference,
-						experimentalMusicBrainzTagging: experimentalMusicBrainzTaggingPreference,
-						strictMusicBrainzMatching: strictMusicBrainzMatchingPreference,
-						storage: downloadStoragePreference
-					}
-				);
-				if (albumFailedCount > 0) {
-					console.warn(
-						`[Discography] ${albumFailedCount} track(s) failed in album: ${album.title}`
-					);
-				}
-			} catch (err) {
-				console.error('Failed to download discography album:', err);
-				const message =
-					err instanceof Error && err.message
-						? err.message
-						: 'Failed to download part of the discography.';
-				discographyError = message;
-				break;
-			}
-		}
-
-		isDownloadingDiscography = false;
+		await albumDownloadController.handleDownloadDiscography(discography);
 	}
 
 	async function loadArtistRecommendations(
@@ -1086,23 +904,6 @@
 	function handleBackNavigation() {
 		const target = breadcrumbStore.goBack($page.url.pathname, '/');
 		void goto(target);
-	}
-
-	function scrollRecommendationRail(
-		rail: HTMLDivElement | null,
-		direction: 'left' | 'right'
-	): void {
-		if (!rail) {
-			return;
-		}
-		const sampleCard = rail.querySelector<HTMLElement>('[data-recommendation-card="true"]');
-		const step = sampleCard
-			? sampleCard.getBoundingClientRect().width + 14
-			: Math.max(rail.clientWidth * 0.85, 260);
-		rail.scrollBy({
-			left: direction === 'left' ? -step : step,
-			behavior: 'smooth'
-		});
 	}
 </script>
 
@@ -1329,731 +1130,69 @@
 							{/each}
 						</div>
 					</div>
-				{/if}
+					{/if}
+				</div>
+			</div>
+			<!-- Music Overview -->
+			<div class="space-y-12">
+				<ArtistTopTracksSection topTracks={topTracks} artistName={artist.name} />
+				<ArtistRecommendationsRail
+					artistId={artist.id}
+					artistName={artist.name}
+				{recommendations}
+				{recommendationsLoading}
+				{recommendationsError}
+				{recommendedArtists}
+					{recommendedAlbums}
+					{formatAlbumMeta}
+				/>
+				<ArtistDiscographyHighlights
+					artistId={artist.id}
+					artistName={artist.name}
+				{featuredDiscographyAlbums}
+				{albumCoverOverrides}
+				{albumCoverFailures}
+				coverHydrationGeneration={coverHydrationGeneration}
+				{formatAlbumMeta}
+					onAlbumCoverError={handleAlbumCoverError}
+					onAlbumCoverLoad={handleAlbumCoverLoad}
+				/>
+				<ArtistDiscographySection
+					artistId={artist.id}
+					artistName={artist.name}
+				{discography}
+				visibleDiscography={visibleDiscography}
+				discographyAlbums={discographyAlbums}
+				discographyEps={discographyEps}
+				discographySingles={discographySingles}
+				discographyInfo={discographyInfo}
+				downloadQuality={downloadQuality}
+				bestEditionRule={bestEditionRule}
+				discographyFilterState={discographyFilterState}
+				filtersHideAllDiscography={filtersHideAllDiscography}
+				isDownloadingDiscography={isDownloadingDiscography}
+				discographyProgress={discographyProgress}
+				discographyError={discographyError}
+				discographyMissingCoverCount={discographyMissingCoverCount}
+				albumCoverOverrides={albumCoverOverrides}
+				albumCoverFailures={albumCoverFailures}
+				coverHydrationGeneration={coverHydrationGeneration}
+				albumDownloadStates={albumDownloadStates}
+				albumLibraryPresence={albumLibraryPresence}
+				{displayTrackTotal}
+				{formatAlbumMeta}
+				{formatQualityLabel}
+				onDownloadDiscography={handleDownloadDiscography}
+				onBestEditionRuleChange={(rule) => {
+					bestEditionRule = rule;
+				}}
+				onToggleDiscographyFilter={toggleDiscographyFilter}
+				onResetDiscographyFilters={resetDiscographyFilters}
+				onCancelAlbumQueueDownload={cancelAlbumQueueDownload}
+				onAlbumDownload={handleAlbumDownload}
+				onAlbumCoverError={handleAlbumCoverError}
+					onAlbumCoverLoad={handleAlbumCoverLoad}
+				/>
 			</div>
 		</div>
-
-		<!-- Music Overview -->
-		<div class="space-y-12">
-			<section data-ui-block="main-content">
-				<div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-					<div>
-						<h2 class="text-2xl font-semibold text-white">Top Tracks</h2>
-						<p class="text-sm text-gray-400">Best songs from {artist.name}.</p>
-					</div>
-				</div>
-				{#if topTracks.length > 0}
-					<div class="ui-surface-card mt-6 overflow-hidden p-4">
-						<TopTracksGrid tracks={topTracks} />
-					</div>
-				{:else}
-					<div
-						class="ui-surface-card mt-6 p-6 text-sm text-gray-400"
-					>
-						<p>No top tracks available for this artist yet.</p>
-					</div>
-				{/if}
-			</section>
-
-			<section data-ui-block="secondary-content">
-				<ToolPanel
-					eyebrow="Secondary"
-					title="Discovery Suggestions"
-					subtitle={`Related artists and albums based on ${artist.name}.`}
-					panelRole="artist-discovery"
-				>
-					{#if recommendations?.source === 'artist-mix' && recommendations.mixTitle}
-						<p class="ui-action-status">
-							Source: {recommendations.mixTitle}
-							{#if recommendations.mixSubtitle}
-								• {recommendations.mixSubtitle}
-							{/if}
-						</p>
-					{/if}
-					{#if recommendationsLoading}
-						<StateBlock
-							kind="loading"
-							title="Loading recommendations"
-							message="Fetching related artists and albums."
-							embedded={true}
-						/>
-					{:else if recommendationsError}
-						<StateBlock
-							kind="error"
-							title="Recommendations unavailable"
-							message={recommendationsError}
-							embedded={true}
-						/>
-					{:else if recommendedArtists.length > 0 || recommendedAlbums.length > 0}
-						<div class="artist-rail-stack">
-							{#if recommendedArtists.length > 0}
-								<div class="artist-rail-group">
-									<div class="artist-rail-group__header">
-										<div class="artist-rail-group__title-row">
-											<h3 class="artist-rail-group__title">Recommended Artists</h3>
-											<span class="recommendation-count-pill">{recommendedArtists.length}</span>
-										</div>
-										<div class="recommendation-slider__controls">
-											<button
-												type="button"
-												class="recommendation-slider__control"
-												onclick={() => scrollRecommendationRail(recommendedArtistsRail, 'left')}
-												aria-label="Scroll recommended artists left"
-											>
-												<ChevronLeft size={16} />
-											</button>
-											<button
-												type="button"
-												class="recommendation-slider__control"
-												onclick={() => scrollRecommendationRail(recommendedArtistsRail, 'right')}
-												aria-label="Scroll recommended artists right"
-											>
-												<ChevronRight size={16} />
-											</button>
-										</div>
-									</div>
-									<div
-										class="recommendation-slider"
-										role="region"
-										aria-label="Recommended artists"
-										bind:this={recommendedArtistsRail}
-									>
-										{#each recommendedArtists as recommendationArtist (recommendationArtist.id)}
-											<EntityMediaCard
-												type="artist"
-												href={`/artist/${recommendationArtist.id}`}
-												title={recommendationArtist.name}
-												subtitle={recommendationArtist.type || 'Artist'}
-												class="recommendation-slider__item"
-												data-recommendation-card="true"
-											>
-												{#snippet artwork()}
-													{#if recommendationArtist.picture}
-														<img
-															src={losslessAPI.getArtistPictureUrl(recommendationArtist.picture)}
-															alt={recommendationArtist.name}
-															loading="lazy"
-														/>
-													{:else}
-														<div class="flex h-full w-full items-center justify-center text-gray-500">
-															<User size={34} />
-														</div>
-													{/if}
-												{/snippet}
-											</EntityMediaCard>
-										{/each}
-									</div>
-								</div>
-							{/if}
-							{#if recommendedAlbums.length > 0}
-								<div class="artist-rail-group">
-									<div class="artist-rail-group__header">
-										<div class="artist-rail-group__title-row">
-											<h3 class="artist-rail-group__title">Recommended Albums</h3>
-											<span class="recommendation-count-pill">{recommendedAlbums.length}</span>
-										</div>
-										<div class="recommendation-slider__controls">
-											<button
-												type="button"
-												class="recommendation-slider__control"
-												onclick={() => scrollRecommendationRail(recommendedAlbumsRail, 'left')}
-												aria-label="Scroll recommended albums left"
-											>
-												<ChevronLeft size={16} />
-											</button>
-											<button
-												type="button"
-												class="recommendation-slider__control"
-												onclick={() => scrollRecommendationRail(recommendedAlbumsRail, 'right')}
-												aria-label="Scroll recommended albums right"
-											>
-												<ChevronRight size={16} />
-											</button>
-										</div>
-									</div>
-									<div
-										class="recommendation-slider"
-										role="region"
-										aria-label="Recommended albums"
-										bind:this={recommendedAlbumsRail}
-									>
-										{#each recommendedAlbums as recommendationAlbum (recommendationAlbum.id)}
-											{@const recommendationCoverCacheKey = getCoverCacheKey({
-												coverId: recommendationAlbum.cover,
-												size: '640',
-												proxy: true,
-												overrideKey: `artist:${artist.id}:recommendation:${recommendationAlbum.id}`
-											})}
-											{@const recommendationCoverCandidates = getUnifiedCoverCandidates({
-												coverId: recommendationAlbum.cover,
-												size: '640',
-												proxy: true,
-												includeLowerSizes: true
-											})}
-											<EntityMediaCard
-												type="album"
-												href={`/album/${recommendationAlbum.id}`}
-												title={recommendationAlbum.title}
-												subtitle={recommendationAlbum.artist?.name}
-												meta={formatAlbumMeta(recommendationAlbum)}
-												coverCacheKey={recommendationAlbum.cover ? recommendationCoverCacheKey : null}
-												coverCandidates={recommendationAlbum.cover ? recommendationCoverCandidates : []}
-												class="recommendation-slider__item"
-												data-recommendation-card="true"
-											/>
-										{/each}
-									</div>
-								</div>
-							{/if}
-						</div>
-					{:else}
-						<StateBlock
-							kind="empty"
-							title="No recommendations yet"
-							message="No related artists or albums are available right now."
-							embedded={true}
-						/>
-					{/if}
-				</ToolPanel>
-			</section>
-
-			{#if featuredDiscographyAlbums.length > 0}
-				<section data-ui-block="secondary-content">
-					<ToolPanel
-						eyebrow="Secondary"
-						title="Discography Highlights"
-						subtitle={`Best-known releases from ${artist.name}, separated from the full catalog below.`}
-						panelRole="artist-discography-highlights"
-					>
-						<div class="artist-rail-group">
-							<div class="artist-rail-group__header">
-								<h3 class="artist-rail-group__title">Featured Releases</h3>
-								<div class="recommendation-slider__controls">
-									<button
-										type="button"
-										class="recommendation-slider__control"
-										onclick={() => scrollRecommendationRail(featuredDiscographyRail, 'left')}
-										aria-label="Scroll recommended discography albums left"
-									>
-										<ChevronLeft size={16} />
-									</button>
-									<button
-										type="button"
-										class="recommendation-slider__control"
-										onclick={() => scrollRecommendationRail(featuredDiscographyRail, 'right')}
-										aria-label="Scroll recommended discography albums right"
-									>
-										<ChevronRight size={16} />
-									</button>
-								</div>
-							</div>
-							<div
-								class="recommendation-slider discography-featured__slider"
-								role="region"
-								aria-label="Recommended albums from this artist discography"
-								bind:this={featuredDiscographyRail}
-							>
-								{#each featuredDiscographyAlbums as featured (`featured:${featured.entry.key}:${featured.entry.representative.id}`)}
-									{@const album = featured.entry.representative}
-									{@const hasOfficialTidalSource = album.discographySource === 'official_tidal'}
-									{@const coverOverride = albumCoverOverrides[album.id]}
-									{@const coverImageCandidates = buildAlbumCoverCandidates(
-										album,
-										featured.entry.versions,
-										hasOfficialTidalSource,
-										coverOverride
-									)}
-									{@const coverCacheKey = getCoverCacheKey({
-										coverId: coverOverride || album.cover,
-										size: '640',
-										proxy: hasOfficialTidalSource,
-										overrideKey: `artist:${artist?.id ?? 0}:album:${album.id}`
-									})}
-									{@const resolvedCoverUrl = getResolvedCoverUrl(coverCacheKey)}
-									{@const coverImageUrl = resolvedCoverUrl ?? coverImageCandidates[0] ?? ''}
-									<EntityMediaCard
-										type="album"
-										href={`/album/${album.id}`}
-										title={album.title}
-										subtitle={formatAlbumMeta(album)}
-										class="recommendation-slider__item discography-featured__item"
-										data-recommendation-card="true"
-									>
-										{#snippet artwork()}
-											{#if coverImageCandidates.length > 0 && !albumCoverFailures[album.id]}
-												<img
-													src={coverImageUrl}
-													data-album-id={album.id}
-													data-cover-use-proxy={hasOfficialTidalSource ? '1' : '0'}
-													data-cover-candidates={serializeCoverCandidates(coverImageCandidates)}
-													data-cover-index="0"
-													data-cover-generation={coverHydrationGeneration}
-													data-cover-recovery-tried="0"
-													data-cover-cache-key={coverCacheKey}
-													onerror={handleAlbumCoverError}
-													onload={handleAlbumCoverLoad}
-													alt={album.title}
-													class="h-full w-full object-cover"
-													loading="lazy"
-													decoding="async"
-												/>
-											{:else}
-												<div class="flex h-full w-full items-center justify-center text-sm text-gray-500">
-													No artwork
-												</div>
-											{/if}
-										{/snippet}
-									</EntityMediaCard>
-								{/each}
-							</div>
-						</div>
-					</ToolPanel>
-				</section>
-			{/if}
-
-				<section class="artist-discography-primary" data-ui-block="main-content">
-					<div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-						<div>
-							<h2 class="text-2xl font-semibold text-white">Discography</h2>
-							<p class="text-sm text-gray-400">Albums, EPs, and more from {artist.name}.</p>
-						</div>
-						<div class="ui-action-row ui-action-row--progressive">
-							<button
-								onclick={handleDownloadDiscography}
-								type="button"
-								class="ui-action-button ui-action-button--primary"
-								disabled={isDownloadingDiscography || discography.length === 0}
-								aria-live="polite"
-							>
-								{#if isDownloadingDiscography}
-									<LoaderCircle size={16} class="animate-spin" />
-									<span class="whitespace-nowrap">
-										Downloading
-										{#if discographyProgress.total > 0}
-											{discographyProgress.completed}/{displayTrackTotal(discographyProgress.total)}
-										{:else}
-											{discographyProgress.completed}
-										{/if}
-										tracks
-									</span>
-								{:else}
-									<Download size={16} />
-									<span class="whitespace-nowrap">Download Discography</span>
-								{/if}
-							</button>
-						</div>
-					</div>
-					<ActionPanel
-						className="mt-4"
-						intent="Discography Selection"
-						summary="Refine which releases are shown and which edition is preferred."
-						intentful={true}
-						panelRole="discography-selection"
-					>
-						<div class="ui-action-row ui-action-row--progressive md:justify-between">
-							<label class="flex items-center gap-2 text-xs text-gray-400">
-								<span>Best edition</span>
-								<select
-									bind:value={bestEditionRule}
-									class="ui-select"
-									aria-label="Best edition rule"
-								>
-									<option value="balanced">Balanced</option>
-									<option value="quality_first">Quality first</option>
-									<option value="completeness_first">Most complete</option>
-									<option value="original_release">Original release</option>
-								</select>
-							</label>
-						</div>
-						<div class="ui-action-row ui-action-row--progressive">
-							{#each [
-								{ key: 'album', label: 'Albums' },
-								{ key: 'ep', label: 'EPs' },
-								{ key: 'single', label: 'Singles' }
-							] as release (release.key)}
-								<button
-									type="button"
-									onclick={() => toggleDiscographyFilter(release.key as 'album' | 'ep' | 'single')}
-									class="ui-filter-chip"
-									class:is-active={discographyFilterState[release.key as 'album' | 'ep' | 'single']}
-								>
-									{release.label}
-								</button>
-							{/each}
-						</div>
-						<div class="ui-action-row ui-action-row--progressive">
-							{#each [
-								{ key: 'live', label: 'Live' },
-								{ key: 'remaster', label: 'Remaster/Deluxe' },
-								{ key: 'explicit', label: 'Explicit' },
-								{ key: 'clean', label: 'Non-explicit' }
-							] as filter (filter.key)}
-								<button
-									type="button"
-									onclick={() =>
-										toggleDiscographyFilter(
-											filter.key as 'live' | 'remaster' | 'explicit' | 'clean'
-										)}
-									class="ui-filter-chip ui-filter-chip--soft"
-									class:is-active={discographyFilterState[
-										filter.key as 'live' | 'remaster' | 'explicit' | 'clean'
-									]}
-								>
-									{filter.label}
-								</button>
-							{/each}
-						</div>
-						<p class="ui-action-status">
-							Content filters use release metadata. “Non-explicit” is what some catalogs label as “clean”.
-						</p>
-					</ActionPanel>
-				{#if discographyInfo?.mayBeIncomplete}
-					<StateBlock
-						kind="empty"
-						title="Discography may be incomplete"
-						message={discographyInfo.reason
-							? `${discographyInfo.reason}.`
-							: 'The upstream source can return partial release lists for some artists.'}
-						embedded={true}
-					/>
-				{/if}
-				{#if discographyError}
-					<p class="mt-2 ui-action-status" data-tone="error" role="alert">{discographyError}</p>
-				{/if}
-				{#if visibleDiscography.length > 0}
-					<div class="mt-6 space-y-8">
-						{#if discographyMissingCoverCount > 0}
-							<p class="text-xs text-gray-500">
-								Resolving cover art for {discographyMissingCoverCount} release{discographyMissingCoverCount === 1 ? '' : 's'} in the background.
-							</p>
-						{/if}
-						{#each [
-							{ id: 'album', title: 'Albums', entries: discographyAlbums },
-							{ id: 'ep', title: 'EPs', entries: discographyEps },
-							{ id: 'single', title: 'Singles', entries: discographySingles }
-						] as section (section.id)}
-							{#if section.entries.length > 0}
-								<div class="space-y-3">
-									<div class="flex items-center justify-between">
-										<div>
-											<h3 class="text-lg font-semibold text-white">{section.title}</h3>
-											<p class="text-xs text-gray-400">
-												Showing {formatQualityLabel(downloadQuality)} variants
-											</p>
-										</div>
-										<span
-											class="ui-meta-pill"
-										>
-											{section.entries.length}
-										</span>
-									</div>
-										<div class="grid gap-4 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
-											{#each section.entries as entry (`${entry.key}:${downloadQuality}`)}
-												{@const album = entry.representative}
-												{@const hasOfficialTidalSource = album.discographySource === 'official_tidal'}
-												{@const coverOverride = albumCoverOverrides[album.id]}
-												{@const coverImageCandidates = buildAlbumCoverCandidates(
-													album,
-													entry.versions,
-													hasOfficialTidalSource,
-													coverOverride
-												)}
-												{@const coverCacheKey = getCoverCacheKey({
-													coverId: coverOverride || album.cover,
-													size: '640',
-													proxy: hasOfficialTidalSource,
-													overrideKey: `artist:${artist?.id ?? 0}:album:${album.id}`
-												})}
-												{@const resolvedCoverUrl = getResolvedCoverUrl(coverCacheKey)}
-												{@const coverImageUrl = resolvedCoverUrl ?? coverImageCandidates[0] ?? ''}
-												{@const albumDownloadState =
-													albumDownloadStates[album.id] ??
-													createDefaultAlbumDownloadState(album.numberOfTracks ?? 0)}
-												{@const canCancelAlbumDownload = isAlbumQueueDownloadCancellable(
-													albumDownloadState
-												)}
-												{@const albumInLibrary = albumLibraryPresence[album.id]?.exists === true}
-												<EntityMediaCard
-													type="album"
-													href={`/album/${album.id}`}
-													title={album.title}
-													subtitle={formatAlbumMeta(album)}
-													class="group"
-												>
-													{#snippet action()}
-														<button
-															onclick={(event) =>
-																canCancelAlbumDownload
-																	? cancelAlbumQueueDownload(album.id, event)
-																	: handleAlbumDownload(album, event)}
-															type="button"
-															class="absolute top-3 right-3 z-40 flex items-center justify-center rounded-full border border-white/15 bg-black/80 p-2 text-gray-200 transition-[background-color,border-color,color,transform] duration-200 ease-[cubic-bezier(0.2,0,0,1)] hover:-translate-y-px hover:border-white/35 hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-															disabled={
-																isDownloadingDiscography ||
-																albumDownloadState.status === 'submitting'
-															}
-															aria-label={
-																canCancelAlbumDownload
-																	? `Stop download ${album.title}`
-																	: albumDownloadState.status === 'paused'
-																		? `Resume download ${album.title}`
-																		: `Download ${album.title}`
-															}
-															aria-busy={albumDownloadState.status === 'submitting' || albumDownloadState.status === 'queued' || albumDownloadState.downloading}
-														>
-															{#if canCancelAlbumDownload}
-																<X size={16} />
-															{:else if albumDownloadState.status === 'submitting' || albumDownloadState.downloading}
-																<LoaderCircle size={16} class="animate-spin" />
-															{:else if albumDownloadState.status === 'paused'}
-																<RotateCcw size={16} />
-															{:else}
-																<Download size={16} />
-															{/if}
-														</button>
-													{/snippet}
-													{#snippet artwork()}
-														{#if coverImageCandidates.length > 0 && !albumCoverFailures[album.id]}
-															<img
-																src={coverImageUrl}
-																data-album-id={album.id}
-																data-cover-use-proxy={hasOfficialTidalSource ? '1' : '0'}
-																data-cover-candidates={serializeCoverCandidates(coverImageCandidates)}
-																data-cover-index="0"
-																data-cover-generation={coverHydrationGeneration}
-																data-cover-recovery-tried="0"
-																data-cover-cache-key={coverCacheKey}
-																onerror={handleAlbumCoverError}
-																onload={handleAlbumCoverLoad}
-																alt={album.title}
-																class="h-full w-full object-cover"
-																loading="lazy"
-																decoding="async"
-															/>
-														{:else}
-															<div class="flex h-full w-full items-center justify-center text-sm text-gray-500">
-																No artwork
-															</div>
-														{/if}
-													{/snippet}
-													{#snippet footer()}
-														{#if albumDownloadState.status === 'queued'}
-															<p class="album-card-status">Queued</p>
-														{:else if albumDownloadState.downloading}
-															<p class="album-card-status">
-																Downloading {albumDownloadState.completed ?? 0}/{displayTrackTotal(
-																	albumDownloadState.total ?? 0
-																)}
-															</p>
-														{:else if albumDownloadState.status === 'completed'}
-															<p class="album-card-status">Downloaded</p>
-														{:else if albumDownloadState.status === 'cancelled'}
-															<p class="album-card-status">Stopped</p>
-														{:else if albumDownloadState.status === 'paused'}
-															<p class="album-card-status">Paused</p>
-														{:else if albumDownloadState.error}
-															<p class="album-card-status" role="alert">Download error</p>
-														{:else if albumInLibrary}
-															<p class="album-card-status">In library</p>
-														{/if}
-													{/snippet}
-												</EntityMediaCard>
-											{/each}
-									</div>
-								</div>
-							{/if}
-						{/each}
-					</div>
-					{:else if filtersHideAllDiscography}
-						<div class="mt-6 space-y-3">
-							<StateBlock
-								kind="empty"
-								title="Current filters hide all releases"
-								message="Enable both explicit and non-explicit filters to include all editions."
-							/>
-							<div>
-								<button
-									type="button"
-									onclick={resetDiscographyFilters}
-									class="ui-chip-button ui-chip-button--compact"
-								>
-									Reset discography filters
-								</button>
-							</div>
-						</div>
-					{:else}
-						<div class="ui-surface-card mt-6 p-6 text-sm text-gray-400">
-						<p>Discography information isn&apos;t available right now.</p>
-					</div>
-				{/if}
-			</section>
-		</div>
-
-	</div>
-{/if}
-
-<style>
-	.artist-discography-primary {
-		border-top: 1px solid rgba(255, 255, 255, 0.18);
-		padding-top: 0.9rem;
-	}
-
-	.artist-rail-stack {
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-	}
-
-	.artist-rail-group {
-		display: flex;
-		flex-direction: column;
-		gap: 0.55rem;
-	}
-
-	.artist-rail-group__header {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.65rem;
-	}
-
-	.artist-rail-group__title-row {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		min-width: 0;
-	}
-
-	.artist-rail-group__title {
-		margin: 0;
-		font-size: 0.96rem;
-		font-weight: 700;
-		line-height: 1.3;
-		color: rgba(238, 238, 238, 0.96);
-	}
-
-	.recommendation-count-pill {
-		display: inline-flex;
-		align-items: center;
-		border: 1px solid rgba(255, 255, 255, 0.2);
-		background: rgba(255, 255, 255, 0.05);
-		border-radius: var(--ui-radius-sm, 9px);
-		padding: 0.2rem 0.58rem;
-		font-size: 0.74rem;
-		font-weight: 600;
-		color: rgba(234, 234, 234, 0.95);
-	}
-
-	.recommendation-slider__controls {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.4rem;
-	}
-
-	.recommendation-slider__control {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		border: 1px solid rgba(255, 255, 255, 0.16);
-		background: rgba(255, 255, 255, 0.04);
-		border-radius: var(--ui-radius-sm, 9px);
-		padding: 0.28rem 0.36rem;
-		min-width: 2rem;
-		min-height: 2rem;
-		color: rgba(234, 234, 234, 0.95);
-		transition:
-			background-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
-	}
-
-	.recommendation-slider__control:hover {
-		border-color: rgba(255, 255, 255, 0.3);
-		background: rgba(255, 255, 255, 0.11);
-		color: rgba(246, 246, 246, 0.98);
-		transform: translateY(var(--ui-lift-y, -1px));
-	}
-
-	.recommendation-slider {
-		display: grid;
-		grid-auto-flow: column;
-		grid-auto-columns: minmax(180px, 220px);
-		gap: 0.65rem;
-		overflow-x: auto;
-		padding: 0.1rem 0.1rem 0.5rem;
-		scroll-snap-type: x mandatory;
-		scrollbar-color: rgba(255, 255, 255, 0.28) rgba(22, 22, 22, 0.4);
-		scrollbar-width: thin;
-	}
-
-	.recommendation-slider::-webkit-scrollbar {
-		height: 8px;
-	}
-
-	.recommendation-slider::-webkit-scrollbar-track {
-		background: rgba(22, 22, 22, 0.4);
-	}
-
-	.recommendation-slider::-webkit-scrollbar-thumb {
-		background: rgba(255, 255, 255, 0.28);
-	}
-
-	:global(.recommendation-slider__item) {
-		scroll-snap-align: start;
-	}
-
-	:global(.recommendation-slider__item.ui-media-card) {
-		padding: 0.62rem;
-		gap: 0.46rem;
-		border-radius: var(--ui-radius-sm, 9px);
-	}
-
-	:global(.recommendation-slider__item .ui-media-card__title) {
-		font-size: 0.92rem;
-	}
-
-	:global(.recommendation-slider__item .ui-media-card__subtitle) {
-		font-size: 0.82rem;
-	}
-
-	:global(.recommendation-slider__item .ui-media-card__meta) {
-		font-size: 0.76rem;
-	}
-
-	.discography-featured__slider {
-		padding-top: 0.1rem;
-	}
-
-	:global(.discography-featured__item) {
-		border-color: rgba(255, 255, 255, 0.14);
-		background: rgba(255, 255, 255, 0.02);
-	}
-
-	.album-card-status {
-		margin: 0;
-		padding-top: 0.2rem;
-		font-size: 0.76rem;
-		color: rgba(200, 200, 200, 0.9);
-		text-transform: uppercase;
-		letter-spacing: 0.06em;
-		font-weight: 600;
-	}
-
-	@media (max-width: 900px) {
-		.recommendation-slider {
-			grid-auto-columns: minmax(180px, 62vw);
-		}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.recommendation-slider__control,
-		.recommendation-slider,
-		.recommendation-slider * {
-			animation: none !important;
-			transition: none !important;
-			transform: none !important;
-		}
-	}
-</style>
+	{/if}

@@ -103,6 +103,8 @@
 		'This album is already in your local library. Redownload it and overwrite existing files?';
 	const CLIENT_REDOWNLOAD_CONFIRMATION =
 		'This album is already in your local library. Browser downloads cannot overwrite existing files and may append (2) to filenames. Continue anyway?';
+	const MUSICBRAINZ_PENDING_DOWNLOAD_CONFIRMATION =
+		'MusicBrainz release matching is still running. Waiting a few seconds can improve tagging metadata. Continue download now?';
 
 	const hasActiveQueueDownload = $derived(
 		queueStatus === 'submitting' || queueStatus === 'queued' || queueStatus === 'processing'
@@ -627,6 +629,14 @@
 		if (isDownloadingAll || hasActiveQueueDownload) {
 			return;
 		}
+		if (isMusicBrainzReleaseLookupLoading && !selectedMusicBrainzReleaseId) {
+			const proceedWithoutMusicBrainzRelease = window.confirm(
+				MUSICBRAINZ_PENDING_DOWNLOAD_CONFIRMATION
+			);
+			if (!proceedWithoutMusicBrainzRelease) {
+				return;
+			}
+		}
 
 		queueStatus = 'submitting';
 		queueJobId = null;
@@ -954,6 +964,8 @@
 					</svelte:fragment>
 					{#if isMusicBrainzReleaseLookupLoading && musicBrainzReleaseOptions.length === 0}
 						<p class="ui-action-status">Searching MusicBrainz releases…</p>
+					{:else if isMusicBrainzReleaseLookupLoading}
+						<p class="ui-action-status" data-tone="info">Refreshing MusicBrainz releases…</p>
 					{:else if musicBrainzReleaseOptions.length > 0}
 						<label class="ui-action-panel__intent" for="musicbrainz-release-select">
 							Selected Release
@@ -1146,6 +1158,11 @@
 						{/if}
 						{#if downloadError}
 							<p class="ui-action-status" data-tone="error">{downloadError}</p>
+						{/if}
+						{#if isMusicBrainzReleaseLookupLoading && !selectedMusicBrainzReleaseId}
+							<p class="ui-action-status" data-tone="warning">
+								MusicBrainz release data is still loading. Waiting briefly can improve metadata quality.
+							</p>
 						{/if}
 					</ActionPanel>
 					</div>

@@ -1,8 +1,6 @@
 <script lang="ts">
 	import { get } from 'svelte/store';
 	import { toasts } from '$lib/stores/toasts';
-	import { machineCurrentTrack, machineQueue } from '$lib/stores/playerDerived';
-	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { downloadLogStore } from '$lib/stores/downloadLog';
 	import { artistCacheStore } from '$lib/stores/artistCache';
 	import {
@@ -11,25 +9,12 @@
 		type DownloadStorage
 	} from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
-	import { losslessAPI, type TrackDownloadProgress } from '$lib/api';
 	import {
-		sanitizeForFilename,
-		getExtensionForQuality,
-		buildTrackLinksCsv,
-		downloadTrackToServer,
-		type ServerDownloadProgress
-	} from '$lib/downloads';
-	import { formatArtists } from '$lib/utils/formatters';
-	import {
-		correctAndDeduplicateLibrary,
-		deduplicateLibraryInLibrary,
 		fetchCorrectAndDeduplicateStatus,
 		fetchLibraryDeduplicateStatus,
-		fetchFullLibraryRepairStatus,
-		repairFullLibraryInLibrary,
-		sweepTemporaryLibraryArtifacts
+		fetchFullLibraryRepairStatus
 	} from '$lib/utils/mediaLibraryClient';
-	import { type Track, type AudioQuality, type PlayableTrack, isSonglinkTrack } from '$lib/types';
+	import { type AudioQuality } from '$lib/types';
 	import {
 		Archive,
 		FileSpreadsheet,
@@ -42,16 +27,21 @@
 	import ApiTargetsStatusCard from '$lib/components/status/ApiTargetsStatusCard.svelte';
 	import ToolPanel from '$lib/components/ui/ToolPanel.svelte';
 	import { onDestroy } from 'svelte';
+	import './settings-page-content.css';
+	import {
+		createSettingsStatusPoller,
+		formatCorrectionDedupProgress,
+		formatFullLibraryRepairProgress,
+		formatLibraryDeduplicateProgress
+	} from '$lib/features/settings/polling';
+	import { createSettingsQueueExportController } from '$lib/features/settings/settingsQueueExportController';
+	import { createSettingsMaintenanceController } from '$lib/features/settings/settingsMaintenanceController';
+	import {
+		SETTINGS_PERFORMANCE_OPTIONS,
+		SETTINGS_QUALITY_OPTIONS
+	} from '$lib/features/settings/options';
 
 	const MAX_QUEUE_ZIP_TRACKS = 75;
-	const FULL_LIBRARY_REPAIR_CONFIRMATION =
-		'Scan your full local library and queue automatic repairs for corrupt tracks only? This can queue many downloads.';
-	const LIBRARY_TRANSIENT_SWEEP_CONFIRMATION =
-		'Remove stale temporary publish/backup album folders left from interrupted jobs?';
-	const LIBRARY_CORRECTION_DEDUP_CONFIRMATION =
-		'Run correction sweep first and then deduplicate the library in one run?';
-	const LIBRARY_DEDUP_CONFIRMATION =
-		'Merge duplicate album folders and remove duplicate tracks by track number? Duplicates are moved to a backup folder first.';
 
 	let isZipDownloading = $state(false);
 	let isCsvExporting = $state(false);
@@ -62,18 +52,12 @@
 	let isCorrectionDedupRunning = $state(false);
 	let correctionDedupSummary = $state<string | null>(null);
 	let correctionDedupProgress = $state<string | null>(null);
-	let correctionDedupPollInterval = $state<ReturnType<typeof setInterval> | null>(null);
-	let correctionDedupPollToken = $state(0);
 	let isFullLibraryRepairing = $state(false);
 	let fullLibraryRepairSummary = $state<string | null>(null);
 	let fullLibraryRepairProgress = $state<string | null>(null);
 	let isLibraryDeduplicating = $state(false);
 	let libraryDeduplicateSummary = $state<string | null>(null);
 	let libraryDeduplicateProgress = $state<string | null>(null);
-	let libraryDeduplicatePollInterval = $state<ReturnType<typeof setInterval> | null>(null);
-	let libraryDeduplicatePollToken = $state(0);
-	let fullLibraryRepairPollInterval = $state<ReturnType<typeof setInterval> | null>(null);
-	let fullLibraryRepairPollToken = $state(0);
 	let statusPollInterval: ReturnType<typeof setInterval> | null = null;
 	let apiTargetsStatusLoading = $state(false);
 	let statusTargets = $state<{
@@ -111,57 +95,14 @@
 	);
 	const strictMusicBrainzMatching = $derived($userPreferencesStore.strictMusicBrainzMatching);
 
-	const QUALITY_OPTIONS: Array<{
-		value: AudioQuality;
-		label: string;
-		description: string;
-		disabled?: boolean;
-	}> = [
-		{
-			value: 'HI_RES_LOSSLESS',
-			label: 'Hi-Res',
-			description: '24-bit FLAC (DASH) up to 192 kHz',
-			disabled: false
-		},
-		{
-			value: 'LOSSLESS',
-			label: 'CD Lossless',
-			description: '16-bit / 44.1 kHz FLAC'
-		},
-		{
-			value: 'HIGH',
-			label: '320kbps AAC',
-			description: 'High quality AAC streaming'
-		},
-		{
-			value: 'LOW',
-			label: '96kbps AAC',
-			description: 'Data saver AAC streaming'
-		}
-	];
-
-	const PERFORMANCE_OPTIONS: Array<{
-		value: 'medium' | 'low';
-		label: string;
-		description: string;
-	}> = [
-		{
-			value: 'medium',
-			label: 'Balanced',
-			description: 'Smooth animations with visual effects'
-		},
-		{
-			value: 'low',
-			label: 'Performance',
-			description: 'Minimal effects for better performance'
-		}
-	];
 	const activeQualityLabel = $derived(
-		QUALITY_OPTIONS.find((option) => option.value === $downloadPreferencesStore.downloadQuality)?.label ??
+		SETTINGS_QUALITY_OPTIONS.find((option) => option.value === $downloadPreferencesStore.downloadQuality)
+			?.label ??
 			$downloadPreferencesStore.downloadQuality
 	);
 	const activePerformanceLabel = $derived(
-		PERFORMANCE_OPTIONS.find((option) => option.value === $userPreferencesStore.performanceMode)?.label ??
+		SETTINGS_PERFORMANCE_OPTIONS.find((option) => option.value === $userPreferencesStore.performanceMode)
+			?.label ??
 			$userPreferencesStore.performanceMode
 	);
 	let showGuidance = $state(false);
@@ -228,37 +169,18 @@
 		}
 	}
 
-	function selectDownloadQuality(quality: AudioQuality): void {
+	const selectDownloadQuality = (quality: AudioQuality): void =>
 		downloadPreferencesStore.setDownloadQuality(quality);
-	}
-
-	function toggleAacConversion(): void {
-		userPreferencesStore.toggleConvertAacToMp3();
-	}
-
-	function toggleDownloadCoversSeperately(): void {
+	const toggleAacConversion = (): void => userPreferencesStore.toggleConvertAacToMp3();
+	const toggleDownloadCoversSeperately = (): void =>
 		userPreferencesStore.toggleDownloadCoversSeperately();
-	}
-
-	function toggleExperimentalMusicBrainzTagging(): void {
+	const toggleExperimentalMusicBrainzTagging = (): void =>
 		userPreferencesStore.toggleExperimentalMusicBrainzTagging();
-	}
-
-	function toggleStrictMusicBrainzMatching(): void {
-		userPreferencesStore.toggleStrictMusicBrainzMatching();
-	}
-
-	function setDownloadMode(mode: DownloadMode): void {
-		downloadPreferencesStore.setMode(mode);
-	}
-
-	function setDownloadStorage(storage: DownloadStorage): void {
+	const toggleStrictMusicBrainzMatching = (): void => userPreferencesStore.toggleStrictMusicBrainzMatching();
+	const setDownloadMode = (mode: DownloadMode): void => downloadPreferencesStore.setMode(mode);
+	const setDownloadStorage = (storage: DownloadStorage): void =>
 		downloadPreferencesStore.setStorage(storage);
-	}
-
-	function setPerformanceMode(mode: 'medium' | 'low'): void {
-		userPreferencesStore.setPerformanceMode(mode);
-	}
+	const setPerformanceMode = (mode: 'medium' | 'low'): void => userPreferencesStore.setPerformanceMode(mode);
 
 	async function handleClearCaches(): Promise<void> {
 		if (isCacheClearing) return;
@@ -297,432 +219,125 @@
 		}
 	}
 
+	const fullLibraryRepairPoller = createSettingsStatusPoller({
+		fetchStatus: fetchFullLibraryRepairStatus,
+		isRunningStatus: (status) => status.success === true && status.status === 'running',
+		mapProgress: formatFullLibraryRepairProgress,
+		onProgress: (message) => {
+			fullLibraryRepairProgress = message;
+			logMaintenanceMessage('Library Repair', message);
+		}
+	});
+
 	function stopFullLibraryRepairPolling(): void {
-		fullLibraryRepairPollToken += 1;
-		if (fullLibraryRepairPollInterval) {
-			clearInterval(fullLibraryRepairPollInterval);
-			fullLibraryRepairPollInterval = null;
-		}
-	}
-
-	function formatFullLibraryRepairProgress(status: {
-		currentAlbum?: { index: number; total: number; artistName: string; albumTitle: string } | null;
-		summary?: { albumsProcessed: number; albumsDiscovered: number; tracksQueued: number };
-	}): string {
-		const processed = status.summary?.albumsProcessed ?? 0;
-		const discovered = status.summary?.albumsDiscovered ?? 0;
-		const currentAlbum = status.currentAlbum;
-		const queued = status.summary?.tracksQueued ?? 0;
-		const currentLabel =
-			currentAlbum && currentAlbum.albumTitle
-				? ` Currently: ${currentAlbum.artistName} - ${currentAlbum.albumTitle}.`
-				: '';
-		return `Scanning library: ${processed}/${discovered} album(s) processed.${currentLabel} Queued ${queued} track repair(s).`;
-	}
-
-	async function pollFullLibraryRepairStatus(token: number): Promise<void> {
-		if (token !== fullLibraryRepairPollToken) return;
-		const status = await fetchFullLibraryRepairStatus();
-		if (token !== fullLibraryRepairPollToken || !status.success) return;
-		if (status.status === 'running') {
-			fullLibraryRepairProgress = formatFullLibraryRepairProgress(status);
-			logMaintenanceMessage('Library Repair', fullLibraryRepairProgress);
-		}
+		fullLibraryRepairPoller.stop();
 	}
 
 	function startFullLibraryRepairPolling(): void {
-		stopFullLibraryRepairPolling();
-		const token = fullLibraryRepairPollToken;
-		void pollFullLibraryRepairStatus(token);
-		fullLibraryRepairPollInterval = setInterval(() => {
-			void pollFullLibraryRepairStatus(token);
-		}, 1000);
+		fullLibraryRepairPoller.start();
 	}
 
 	async function handleFullLibraryRepair(): Promise<void> {
-		if (isFullLibraryRepairing) return;
-		if (typeof window !== 'undefined') {
-			const confirmed = window.confirm(FULL_LIBRARY_REPAIR_CONFIRMATION);
-			if (!confirmed) return;
-		}
-		isFullLibraryRepairing = true;
-		fullLibraryRepairSummary = null;
-		fullLibraryRepairProgress = 'Starting full-library integrity scan...';
-		resetMaintenanceLogScope('Library Repair');
-		logMaintenanceMessage('Library Repair', fullLibraryRepairProgress, 'info', false);
-		startFullLibraryRepairPolling();
-
-		try {
-			const quality = get(downloadPreferencesStore).downloadQuality;
-			const result = await repairFullLibraryInLibrary({ quality, queue: true });
-			if (!result.success || !result.summary) {
-				throw new Error(result.error || 'Failed to auto-repair full library');
-			}
-
-			const summary = result.summary;
-			const summaryLine = `Scanned ${summary.albumsProcessed}/${summary.albumsDiscovered} album(s); queued ${summary.tracksQueued} repair track(s).`;
-			fullLibraryRepairProgress = null;
-			fullLibraryRepairSummary = summaryLine;
-			toasts.success(summaryLine);
-			logMaintenanceMessage('Library Repair', summaryLine, 'success');
-			if (summary.albumsUnresolved > 0) {
-				const warning = `${summary.albumsUnresolved} album(s) could not be confidently matched to TIDAL and were skipped.`;
-				toasts.warning(warning);
-				logMaintenanceMessage('Library Repair', warning, 'warning', false);
-			}
-			if (summary.albumsErrored > 0) {
-				const warning = `${summary.albumsErrored} album(s) failed during auto-repair. Check server logs for details.`;
-				toasts.warning(warning);
-				logMaintenanceMessage('Library Repair', warning, 'warning', false);
-			}
-		} catch (error) {
-			const message =
-				error instanceof Error && error.message ? error.message : 'Failed to auto-repair full library';
-			fullLibraryRepairProgress = null;
-			fullLibraryRepairSummary = null;
-			toasts.error(message);
-			logMaintenanceMessage('Library Repair', message, 'error', false);
-		} finally {
-			stopFullLibraryRepairPolling();
-			isFullLibraryRepairing = false;
-		}
+		await maintenanceController.handleFullLibraryRepair();
 	}
 
 	async function handleSweepTransientArtifacts(): Promise<void> {
-		if (isLibraryTransientSweeping) return;
-		if (typeof window !== 'undefined') {
-			const confirmed = window.confirm(LIBRARY_TRANSIENT_SWEEP_CONFIRMATION);
-			if (!confirmed) return;
-		}
-		isLibraryTransientSweeping = true;
-		libraryTransientSweepSummary = null;
-		resetMaintenanceLogScope('Library Sweep');
-		logMaintenanceMessage('Library Sweep', 'Starting stale publish/backup folder sweep...', 'info', false);
-
-		try {
-			const result = await sweepTemporaryLibraryArtifacts({ dryRun: false });
-			if (!result.success) throw new Error(result.error || 'Failed to sweep temporary album artifacts');
-			const found = result.artifactDirsFound ?? 0;
-			const removed = result.artifactDirsRemoved ?? 0;
-			const summary =
-				`Transient sweep complete: removed ${removed}/${found} temporary folder(s). ` +
-				`Skipped active ${result.skippedActive ?? 0}, too fresh ${result.skippedTooFresh ?? 0}.`;
-			libraryTransientSweepSummary = summary;
-			toasts.success(summary);
-			logMaintenanceMessage('Library Sweep', summary, 'success');
-			if (result.reportPath) {
-				toasts.info(`Sweep report saved to ${result.reportPath}`);
-				logMaintenanceMessage('Library Sweep', `Report saved to ${result.reportPath}`, 'info', false);
-			}
-		} catch (error) {
-			const message =
-				error instanceof Error && error.message
-					? error.message
-					: 'Failed to sweep temporary album artifacts';
-			libraryTransientSweepSummary = null;
-			toasts.error(message);
-			logMaintenanceMessage('Library Sweep', message, 'error', false);
-		} finally {
-			isLibraryTransientSweeping = false;
-		}
+		await maintenanceController.handleSweepTransientArtifacts();
 	}
 
 	async function handleCorrectionSweepThenDedupe(): Promise<void> {
-		if (isCorrectionDedupRunning || isLibraryTransientSweeping || isLibraryDeduplicating) return;
-		if (typeof window !== 'undefined') {
-			const confirmed = window.confirm(LIBRARY_CORRECTION_DEDUP_CONFIRMATION);
-			if (!confirmed) return;
-		}
-		isCorrectionDedupRunning = true;
-		correctionDedupSummary = null;
-		correctionDedupProgress = 'Running correction dry-run...';
-		resetMaintenanceLogScope('Correction + Dedupe');
-		logMaintenanceMessage('Correction + Dedupe', correctionDedupProgress, 'info', false);
-		let executionStarted = false;
-
-		try {
-			const preview = await correctAndDeduplicateLibrary({ dryRun: true, forceRescan: true });
-			if (!preview.success || !preview.sweep || !preview.deduplicate) {
-				throw new Error(preview.error || 'Correction + dedupe dry-run failed');
-			}
-
-			const previewFound = preview.sweep.artifactDirsFound ?? 0;
-			const previewRemoved = preview.sweep.artifactDirsRemoved ?? 0;
-			const previewDedupe = preview.deduplicate;
-			const previewSummary =
-				`Dry-run plan: sweep ${previewRemoved}/${previewFound} temp folder(s), ` +
-				`merge ${previewDedupe.albumsMerged ?? 0} album folder(s), move ${previewDedupe.filesMovedBetweenAlbums ?? 0} file(s), ` +
-				`backup ${previewDedupe.duplicateFilesBackedUp ?? 0} duplicate track file(s), ` +
-				`manual review ${previewDedupe.manualReviewRequired ?? 0}.`;
-			logMaintenanceMessage('Correction + Dedupe', previewSummary, 'info', false);
-			const plannedChanges =
-				(previewDedupe.filesMovedBetweenAlbums ?? 0) + (previewDedupe.duplicateFilesBackedUp ?? 0);
-
-			if (preview.reportPath) {
-				toasts.info(`Correction dry-run report saved to ${preview.reportPath}`);
-				logMaintenanceMessage('Correction + Dedupe', `Dry-run report saved to ${preview.reportPath}`, 'info', false);
-			}
-
-			if (plannedChanges <= 0) {
-				correctionDedupProgress = null;
-				correctionDedupSummary = `${previewSummary} No execute pass needed.`;
-				toasts.success('Correction dry-run found no actionable changes.');
-				logMaintenanceMessage('Correction + Dedupe', 'Dry-run found no actionable changes. Execute pass skipped.', 'success');
-				return;
-			}
-
-			let executeNow = true;
-			if (typeof window !== 'undefined') {
-				executeNow = window.confirm(`${previewSummary}\n\nRun execute pass now?`);
-			}
-			if (!executeNow) {
-				correctionDedupProgress = null;
-				correctionDedupSummary = `${previewSummary} Execute pass cancelled.`;
-				toasts.info('Correction dry-run complete. Execute pass cancelled.');
-				logMaintenanceMessage('Correction + Dedupe', 'Execute pass cancelled by user.', 'warning', false);
-				return;
-			}
-
-			correctionDedupProgress = 'Running correction sweep + dedupe...';
-			logMaintenanceMessage('Correction + Dedupe', correctionDedupProgress, 'info', false);
-			startCorrectionDedupPolling();
-			executionStarted = true;
-
-			const result = await correctAndDeduplicateLibrary({ dryRun: false, forceRescan: true });
-			if (!result.success || !result.sweep || !result.deduplicate) {
-				throw new Error(result.error || 'Correction + dedupe failed');
-			}
-			const durationLabel =
-				typeof result.durationMs === 'number' && Number.isFinite(result.durationMs)
-					? ` in ${Math.max(1, Math.round(result.durationMs / 1000))}s`
-					: '';
-			const found = result.sweep.artifactDirsFound ?? 0;
-			const removed = result.sweep.artifactDirsRemoved ?? 0;
-			const dedupeResult = result.deduplicate;
-			const summary =
-				`Correction + dedupe complete${durationLabel}: swept ${removed}/${found} temp folder(s), ` +
-				`merged ${dedupeResult.albumsMerged ?? 0} album folder(s), moved ${dedupeResult.filesMovedBetweenAlbums ?? 0} file(s), ` +
-				`and backed up ${dedupeResult.duplicateFilesBackedUp ?? 0} duplicate track file(s). ` +
-				`Skipped active ${result.sweep.skippedActive ?? 0}, too fresh ${result.sweep.skippedTooFresh ?? 0}, ` +
-				`manual review ${dedupeResult.manualReviewRequired ?? 0}.`;
-			correctionDedupProgress = null;
-			correctionDedupSummary = summary;
-			toasts.success(summary);
-			logMaintenanceMessage('Correction + Dedupe', summary, 'success');
-			if (result.reportPath) {
-				toasts.info(`Correction report saved to ${result.reportPath}`);
-				logMaintenanceMessage('Correction + Dedupe', `Report saved to ${result.reportPath}`, 'info', false);
-			}
-			if (dedupeResult.backupRoot) {
-				toasts.info(`Duplicate backups saved to ${dedupeResult.backupRoot}`);
-				logMaintenanceMessage('Correction + Dedupe', `Duplicate backups saved to ${dedupeResult.backupRoot}`, 'info', false);
-			}
-		} catch (error) {
-			const message =
-				error instanceof Error && error.message
-					? error.message
-					: 'Failed to run correction sweep + dedupe';
-			correctionDedupProgress = null;
-			correctionDedupSummary = null;
-			toasts.error(message);
-			logMaintenanceMessage('Correction + Dedupe', message, 'error', false);
-		} finally {
-			if (executionStarted) stopCorrectionDedupPolling();
-			isCorrectionDedupRunning = false;
-		}
+		await maintenanceController.handleCorrectionSweepThenDedupe();
 	}
+
+	const correctionDedupPoller = createSettingsStatusPoller({
+		fetchStatus: fetchCorrectAndDeduplicateStatus,
+		isRunningStatus: (status) => status.success === true && status.status === 'running',
+		mapProgress: formatCorrectionDedupProgress,
+		onProgress: (message) => {
+			correctionDedupProgress = message;
+			logMaintenanceMessage('Correction + Dedupe', message);
+		}
+	});
 
 	function stopCorrectionDedupPolling(): void {
-		correctionDedupPollToken += 1;
-		if (correctionDedupPollInterval) {
-			clearInterval(correctionDedupPollInterval);
-			correctionDedupPollInterval = null;
-		}
-	}
-
-	function formatCorrectionDedupProgress(status: {
-		phase?: 'idle' | 'sweep' | 'deduplicate' | 'completed' | 'failed';
-		progress?: {
-			message: string;
-			processed: number;
-			total: number;
-			currentArtistDir?: string;
-			currentAlbumDir?: string;
-		} | null;
-	}): string {
-		if (status.phase === 'sweep') return 'Step 1/2: Sweeping stale publish/backup folders...';
-		if (status.phase === 'deduplicate') {
-			const progress = status.progress;
-			if (!progress) return 'Step 2/2: Deduplicating media library...';
-			const current =
-				progress.currentArtistDir && progress.currentAlbumDir
-					? ` Current: ${progress.currentArtistDir} - ${progress.currentAlbumDir}.`
-					: '';
-			return `Step 2/2: ${progress.message} (${progress.processed}/${progress.total}).${current}`;
-		}
-		return 'Running correction sweep + dedupe...';
-	}
-
-	async function pollCorrectionDedupStatus(token: number): Promise<void> {
-		if (token !== correctionDedupPollToken) return;
-		const status = await fetchCorrectAndDeduplicateStatus();
-		if (token !== correctionDedupPollToken || !status.success) return;
-		if (status.status === 'running') {
-			correctionDedupProgress = formatCorrectionDedupProgress(status);
-			logMaintenanceMessage('Correction + Dedupe', correctionDedupProgress);
-		}
+		correctionDedupPoller.stop();
 	}
 
 	function startCorrectionDedupPolling(): void {
-		stopCorrectionDedupPolling();
-		const token = correctionDedupPollToken;
-		void pollCorrectionDedupStatus(token);
-		correctionDedupPollInterval = setInterval(() => {
-			void pollCorrectionDedupStatus(token);
-		}, 1000);
+		correctionDedupPoller.start();
 	}
 
 	async function handleLibraryDeduplicate(): Promise<void> {
-		if (isLibraryDeduplicating || isCorrectionDedupRunning) return;
-		if (typeof window !== 'undefined') {
-			const confirmed = window.confirm(LIBRARY_DEDUP_CONFIRMATION);
-			if (!confirmed) return;
-		}
-
-		isLibraryDeduplicating = true;
-		libraryDeduplicateSummary = null;
-		libraryDeduplicateProgress = 'Running deduplication dry-run...';
-		resetMaintenanceLogScope('Library Dedupe');
-		logMaintenanceMessage('Library Dedupe', libraryDeduplicateProgress, 'info', false);
-		let executionStarted = false;
-
-		try {
-			const preview = await deduplicateLibraryInLibrary({ dryRun: true, forceRescan: true });
-			if (!preview.success) throw new Error(preview.error || 'Failed to run dedupe dry-run');
-			const previewSummary =
-				`Dry-run plan: merge ${preview.albumsMerged ?? 0} album folder(s), move ${preview.filesMovedBetweenAlbums ?? 0} file(s), ` +
-				`backup ${preview.duplicateFilesBackedUp ?? 0} duplicate track file(s), manual review ${preview.manualReviewRequired ?? 0}.`;
-			logMaintenanceMessage('Library Dedupe', previewSummary, 'info', false);
-			const plannedChanges = (preview.filesMovedBetweenAlbums ?? 0) + (preview.duplicateFilesBackedUp ?? 0);
-			if (preview.report?.reportPath) {
-				toasts.info(`Dedupe dry-run report saved to ${preview.report.reportPath}`);
-				logMaintenanceMessage('Library Dedupe', `Dry-run report saved to ${preview.report.reportPath}`, 'info', false);
-			}
-			if (plannedChanges <= 0) {
-				libraryDeduplicateProgress = null;
-				libraryDeduplicateSummary = `${previewSummary} No execute pass needed.`;
-				toasts.success('Dedupe dry-run found no actionable changes.');
-				logMaintenanceMessage('Library Dedupe', 'Dry-run found no actionable changes. Execute pass skipped.', 'success');
-				return;
-			}
-			let executeNow = true;
-			if (typeof window !== 'undefined') executeNow = window.confirm(`${previewSummary}\n\nRun execute pass now?`);
-			if (!executeNow) {
-				libraryDeduplicateProgress = null;
-				libraryDeduplicateSummary = `${previewSummary} Execute pass cancelled.`;
-				toasts.info('Dedupe dry-run complete. Execute pass cancelled.');
-				logMaintenanceMessage('Library Dedupe', 'Execute pass cancelled by user.', 'warning', false);
-				return;
-			}
-
-			libraryDeduplicateProgress = 'Starting library deduplication...';
-			logMaintenanceMessage('Library Dedupe', libraryDeduplicateProgress, 'info', false);
-			startLibraryDeduplicatePolling();
-			executionStarted = true;
-
-			const result = await deduplicateLibraryInLibrary({ dryRun: false, forceRescan: true });
-			if (!result.success) throw new Error(result.error || 'Failed to deduplicate media library');
-			const report = result.report;
-			const durationLabel =
-				report && Number.isFinite(report.durationMs)
-					? ` in ${Math.max(1, Math.round(report.durationMs / 1000))}s`
-					: '';
-			const summary =
-				`Dedupe complete${durationLabel}: scanned ${result.albumsScanned ?? 0} album folder(s), ` +
-				`merged ${result.albumsMerged ?? 0}, moved ${result.filesMovedBetweenAlbums ?? 0}, ` +
-				`duplicate groups ${result.duplicateTrackGroups ?? 0}, backed up ${result.duplicateFilesBackedUp ?? 0}, ` +
-				`move errors ${result.filesMoveErrors ?? 0}, backup errors ${result.backupErrors ?? 0}, manual review ${result.manualReviewRequired ?? 0}.`;
-			libraryDeduplicateProgress = null;
-			libraryDeduplicateSummary = summary;
-			toasts.success(summary);
-			logMaintenanceMessage('Library Dedupe', summary, 'success');
-			if (report?.reportPath) {
-				toasts.info(`Dedupe report saved to ${report.reportPath}`);
-				logMaintenanceMessage('Library Dedupe', `Report saved to ${report.reportPath}`, 'info', false);
-			}
-			if (result.backupRoot) {
-				toasts.info(`Duplicate backups saved to ${result.backupRoot}`);
-				logMaintenanceMessage('Library Dedupe', `Duplicate backups saved to ${result.backupRoot}`, 'info', false);
-			}
-		} catch (error) {
-			const message =
-				error instanceof Error && error.message
-					? error.message
-					: 'Failed to deduplicate media library';
-			libraryDeduplicateProgress = null;
-			libraryDeduplicateSummary = null;
-			toasts.error(message);
-			logMaintenanceMessage('Library Dedupe', message, 'error', false);
-		} finally {
-			if (executionStarted) stopLibraryDeduplicatePolling();
-			isLibraryDeduplicating = false;
-		}
+		await maintenanceController.handleLibraryDeduplicate();
 	}
+
+	const libraryDeduplicatePoller = createSettingsStatusPoller({
+		fetchStatus: fetchLibraryDeduplicateStatus,
+		isRunningStatus: (status) => status.success === true && status.status === 'running',
+		mapProgress: formatLibraryDeduplicateProgress,
+		onProgress: (message) => {
+			libraryDeduplicateProgress = message;
+			logMaintenanceMessage('Library Dedupe', message);
+		}
+	});
 
 	function stopLibraryDeduplicatePolling(): void {
-		libraryDeduplicatePollToken += 1;
-		if (libraryDeduplicatePollInterval) {
-			clearInterval(libraryDeduplicatePollInterval);
-			libraryDeduplicatePollInterval = null;
-		}
-	}
-
-	function formatLibraryDeduplicateProgress(status: {
-		progress?: {
-			message: string;
-			processed: number;
-			total: number;
-			currentArtistDir?: string;
-			currentAlbumDir?: string;
-			summary?: {
-				albumsMerged?: number;
-				duplicateFilesBackedUp?: number;
-				manualReviewRequired?: number;
-			};
-		} | null;
-	}): string {
-		const progress = status.progress;
-		if (!progress) return 'Preparing deduplication...';
-		const processed = progress.processed ?? 0;
-		const total = progress.total ?? 0;
-		const current =
-			progress.currentArtistDir && progress.currentAlbumDir
-				? ` Current: ${progress.currentArtistDir} - ${progress.currentAlbumDir}.`
-				: '';
-		const merged = progress.summary?.albumsMerged ?? 0;
-		const backedUp = progress.summary?.duplicateFilesBackedUp ?? 0;
-		const manualReview = progress.summary?.manualReviewRequired ?? 0;
-		return `${progress.message} (${processed}/${total}). Merged ${merged}, backed up ${backedUp}, manual review ${manualReview}.${current}`;
-	}
-
-	async function pollLibraryDeduplicateStatus(token: number): Promise<void> {
-		if (token !== libraryDeduplicatePollToken) return;
-		const status = await fetchLibraryDeduplicateStatus();
-		if (token !== libraryDeduplicatePollToken || !status.success) return;
-		if (status.status === 'running') {
-			libraryDeduplicateProgress = formatLibraryDeduplicateProgress(status);
-			logMaintenanceMessage('Library Dedupe', libraryDeduplicateProgress);
-		}
+		libraryDeduplicatePoller.stop();
 	}
 
 	function startLibraryDeduplicatePolling(): void {
-		stopLibraryDeduplicatePolling();
-		const token = libraryDeduplicatePollToken;
-		void pollLibraryDeduplicateStatus(token);
-		libraryDeduplicatePollInterval = setInterval(() => {
-			void pollLibraryDeduplicateStatus(token);
-		}, 1000);
+		libraryDeduplicatePoller.start();
 	}
+
+	const maintenanceController = createSettingsMaintenanceController({
+		confirm: (message) => (typeof window === 'undefined' ? true : window.confirm(message)),
+		getDownloadQuality: () => get(downloadPreferencesStore).downloadQuality,
+		isFullLibraryRepairing: () => isFullLibraryRepairing,
+		setFullLibraryRepairing: (value) => {
+			isFullLibraryRepairing = value;
+		},
+		setFullLibraryRepairSummary: (value) => {
+			fullLibraryRepairSummary = value;
+		},
+		setFullLibraryRepairProgress: (value) => {
+			fullLibraryRepairProgress = value;
+		},
+		startFullLibraryRepairPolling,
+		stopFullLibraryRepairPolling,
+		isLibraryTransientSweeping: () => isLibraryTransientSweeping,
+		setLibraryTransientSweeping: (value) => {
+			isLibraryTransientSweeping = value;
+		},
+		setLibraryTransientSweepSummary: (value) => {
+			libraryTransientSweepSummary = value;
+		},
+		isCorrectionDedupRunning: () => isCorrectionDedupRunning,
+		setCorrectionDedupRunning: (value) => {
+			isCorrectionDedupRunning = value;
+		},
+		setCorrectionDedupSummary: (value) => {
+			correctionDedupSummary = value;
+		},
+		setCorrectionDedupProgress: (value) => {
+			correctionDedupProgress = value;
+		},
+		startCorrectionDedupPolling,
+		stopCorrectionDedupPolling,
+		isLibraryDeduplicating: () => isLibraryDeduplicating,
+		setLibraryDeduplicating: (value) => {
+			isLibraryDeduplicating = value;
+		},
+		setLibraryDeduplicateSummary: (value) => {
+			libraryDeduplicateSummary = value;
+		},
+		setLibraryDeduplicateProgress: (value) => {
+			libraryDeduplicateProgress = value;
+		},
+		startLibraryDeduplicatePolling,
+		stopLibraryDeduplicatePolling,
+		resetMaintenanceLogScope,
+		logMaintenanceMessage
+	});
 
 	async function refreshTargetsStatus(forceRefresh = false): Promise<void> {
 		apiTargetsStatusLoading = true;
@@ -743,265 +358,34 @@
 		}
 	}
 
-	function collectQueueState(): { tracks: PlayableTrack[]; quality: AudioQuality } {
-		const queue = get(machineQueue);
-		const currentTrack = get(machineCurrentTrack);
-		const tracks = queue.length ? queue : currentTrack ? [currentTrack] : [];
-		return { tracks, quality: get(downloadPreferencesStore).downloadQuality };
-	}
-
-	function filterExportableQueueTracks(tracks: PlayableTrack[]): Track[] {
-		const exportable = tracks.filter((track): track is Track => !isSonglinkTrack(track));
-		const skipped = tracks.length - exportable.length;
-		if (skipped > 0 && exportable.length > 0) {
-			toasts.warning(
-				`Skipped ${skipped} Songlink track${skipped === 1 ? '' : 's'}; convert to TIDAL before exporting.`
-			);
+	const queueExportController = createSettingsQueueExportController({
+		maxQueueZipTracks: MAX_QUEUE_ZIP_TRACKS,
+		getDownloadMode: () => downloadMode,
+		getStorage: () => get(downloadPreferencesStore).storage,
+		setDownloadMode,
+		isServerStorage: () => isServerStorage,
+		isQueueActionBusy: () => queueActionBusy,
+		getConvertAacToMp3: () => convertAacToMp3,
+		getDownloadCoversSeparately: () => downloadCoversSeperately,
+		getExperimentalMusicBrainzTagging: () => experimentalMusicBrainzTagging,
+		getStrictMusicBrainzMatching: () => strictMusicBrainzMatching,
+		setZipDownloading: (downloading) => {
+			isZipDownloading = downloading;
+		},
+		setCsvExporting: (exporting) => {
+			isCsvExporting = exporting;
+		},
+		setLegacyQueueDownloading: (downloading) => {
+			isLegacyQueueDownloading = downloading;
 		}
-		return exportable;
-	}
-
-	function buildQueueFilename(track: PlayableTrack, index: number, quality: AudioQuality): string {
-		const ext = getExtensionForQuality(quality, convertAacToMp3 && !isServerStorage);
-		const order = `${index + 1}`.padStart(2, '0');
-		const artistName = sanitizeForFilename(
-			isSonglinkTrack(track) ? track.artistName : formatArtists(track.artists)
-		);
-		const titleName = sanitizeForFilename(track.title ?? `Track ${order}`);
-		return `${order} - ${artistName} - ${titleName}.${ext}`;
-	}
-
-	function createServerProgressHandler(taskId: string) {
-		const downloadWeight = 0.55;
-		let downloadFraction = 0;
-		let uploadFraction = 0;
-		return (progress: ServerDownloadProgress) => {
-			if (progress.stage === 'downloading') {
-				downloadUiStore.updateTrackPhase(taskId, 'downloading');
-				const fraction = progress.totalBytes
-					? progress.receivedBytes / progress.totalBytes
-					: Math.min(downloadFraction + 0.05, 0.9);
-				downloadFraction = Math.max(downloadFraction, Math.min(1, fraction));
-			} else if (progress.stage === 'embedding') {
-				downloadUiStore.updateTrackPhase(taskId, 'embedding');
-				const fraction = 0.85 + progress.progress * 0.15;
-				downloadFraction = Math.max(downloadFraction, Math.min(1, fraction));
-			} else if (progress.stage === 'uploading') {
-				downloadUiStore.updateTrackPhase(taskId, 'uploading');
-				const fraction = progress.totalBytes ? progress.uploadedBytes / progress.totalBytes : uploadFraction;
-				uploadFraction = Math.max(uploadFraction, Math.min(1, fraction));
-			}
-			const overall = Math.min(1, downloadFraction * downloadWeight + uploadFraction * (1 - downloadWeight));
-			downloadUiStore.updateTrackStage(taskId, overall);
-		};
-	}
-
-	function triggerFileDownload(blob: Blob, filename: string): void {
-		const url = URL.createObjectURL(blob);
-		const link = document.createElement('a');
-		link.href = url;
-		link.download = filename;
-		document.body.appendChild(link);
-		link.click();
-		document.body.removeChild(link);
-		URL.revokeObjectURL(url);
-	}
-
-	function timestampedFilename(extension: string): string {
-		const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-		return `tidal-export-${stamp}.${extension}`;
-	}
-
-	async function downloadQueueAsZip(tracks: PlayableTrack[], quality: AudioQuality): Promise<void> {
-		isZipDownloading = true;
-		try {
-			const exportableTracks = filterExportableQueueTracks(tracks);
-			if (exportableTracks.length === 0) {
-				toasts.warning('No exportable TIDAL tracks in the queue.');
-				return;
-			}
-			if (exportableTracks.length > MAX_QUEUE_ZIP_TRACKS) {
-				toasts.warning(`ZIP export is limited to ${MAX_QUEUE_ZIP_TRACKS} tracks to avoid memory issues.`);
-				return;
-			}
-			const { default: JSZip } = await import('jszip');
-			const zip = new JSZip();
-			for (const [index, track] of exportableTracks.entries()) {
-				const filename = buildQueueFilename(track, index, quality);
-				const { blob } = await losslessAPI.fetchTrackBlob(track.id, quality, filename, {
-					ffmpegAutoTriggered: false,
-					convertAacToMp3,
-					enableExperimentalMusicBrainz: experimentalMusicBrainzTagging,
-					strictMusicBrainzMatching
-				});
-				zip.file(filename, blob);
-			}
-			const zipBlob = await zip.generateAsync({
-				type: 'blob',
-				compression: 'DEFLATE',
-				compressionOptions: { level: 6 },
-				streamFiles: true
-			});
-			triggerFileDownload(zipBlob, timestampedFilename('zip'));
-		} catch (error) {
-			console.error('Failed to build ZIP export', error);
-			toasts.error('Unable to build ZIP export. Please try again.');
-		} finally {
-			isZipDownloading = false;
-		}
-	}
-
-	async function exportQueueAsCsv(tracks: PlayableTrack[], quality: AudioQuality): Promise<void> {
-		isCsvExporting = true;
-		try {
-			const exportableTracks = filterExportableQueueTracks(tracks);
-			if (exportableTracks.length === 0) {
-				toasts.warning('No exportable TIDAL tracks in the queue.');
-				return;
-			}
-			const csvContent = await buildTrackLinksCsv(exportableTracks, quality);
-			const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-			triggerFileDownload(blob, timestampedFilename('csv'));
-		} catch (error) {
-			console.error('Failed to export queue as CSV', error);
-			toasts.error('Unable to export CSV. Please try again.');
-		} finally {
-			isCsvExporting = false;
-		}
-	}
+	});
 
 	async function handleExportQueueCsv(): Promise<void> {
-		const { tracks, quality } = collectQueueState();
-		if (tracks.length === 0) {
-			toasts.warning('Add tracks to the queue before exporting.');
-			return;
-		}
-		await exportQueueAsCsv(tracks, quality);
-	}
-
-	async function downloadQueueIndividually(tracks: PlayableTrack[], quality: AudioQuality): Promise<void> {
-		if (isLegacyQueueDownloading) return;
-		isLegacyQueueDownloading = true;
-		const errors: string[] = [];
-		const storage = get(downloadPreferencesStore).storage;
-
-		try {
-			for (const [index, track] of tracks.entries()) {
-				const trackId = isSonglinkTrack(track) ? track.tidalId : track.id;
-				if (!trackId) continue;
-				const filename = buildQueueFilename(track, index, quality);
-				const { taskId, controller } = downloadUiStore.beginTrackDownload(track as Track, filename, {
-					subtitle: isSonglinkTrack(track)
-						? track.artistName
-						: (track.album?.title ?? formatArtists(track.artists)),
-					storage
-				});
-				downloadUiStore.skipFfmpegCountdown();
-
-				try {
-					if (storage === 'server') {
-						let resolvedTrack = track as Track;
-						if (isSonglinkTrack(track)) {
-							const lookup = await losslessAPI.getTrack(trackId, quality);
-							resolvedTrack = lookup.track;
-						}
-						const progressHandler = createServerProgressHandler(taskId);
-						const serverResult = await downloadTrackToServer(resolvedTrack, quality, {
-							downloadCoverSeperately: downloadCoversSeperately,
-							experimentalMusicBrainzTagging,
-							strictMusicBrainzMatching,
-							conflictResolution: 'overwrite_if_different',
-							signal: controller.signal,
-							onProgress: progressHandler
-						});
-						if (!serverResult.success) {
-							const serverError = serverResult.error ?? 'Server download failed';
-							downloadUiStore.errorTrackDownload(taskId, serverError);
-							const label = `${formatArtists(resolvedTrack.artists)} - ${resolvedTrack.title ?? 'Unknown Track'}`;
-							errors.push(`${label}: ${serverError}`);
-						} else {
-							downloadUiStore.completeTrackDownload(taskId);
-						}
-						continue;
-					}
-
-					await losslessAPI.downloadTrack(trackId, quality, filename, {
-						signal: controller.signal,
-						onProgress: (progress: TrackDownloadProgress) => {
-							if (progress.stage === 'downloading') {
-								downloadUiStore.updateTrackProgress(taskId, progress.receivedBytes, progress.totalBytes);
-							} else {
-								downloadUiStore.updateTrackStage(taskId, progress.progress);
-							}
-						},
-						onFfmpegCountdown: ({ totalBytes }) => {
-							const bytes = typeof totalBytes === 'number' ? totalBytes : 0;
-							downloadUiStore.startFfmpegCountdown(bytes, { autoTriggered: false });
-						},
-						onFfmpegStart: () => downloadUiStore.startFfmpegLoading(),
-						onFfmpegProgress: (value) => downloadUiStore.updateFfmpegProgress(value),
-						onFfmpegComplete: () => downloadUiStore.completeFfmpeg(),
-						onFfmpegError: (error) => downloadUiStore.errorFfmpeg(error),
-						ffmpegAutoTriggered: false,
-						convertAacToMp3,
-						downloadCoverSeperately: downloadCoversSeperately,
-						enableExperimentalMusicBrainz: experimentalMusicBrainzTagging,
-						strictMusicBrainzMatching
-					});
-					downloadUiStore.completeTrackDownload(taskId);
-				} catch (error) {
-					if (error instanceof DOMException && error.name === 'AbortError') {
-						downloadUiStore.completeTrackDownload(taskId);
-						continue;
-					}
-					console.error('Failed to download track from queue:', error);
-					downloadUiStore.errorTrackDownload(taskId, error);
-					const label = `${isSonglinkTrack(track) ? track.artistName : formatArtists(track.artists)} - ${track.title ?? 'Unknown Track'}`;
-					const message =
-						error instanceof Error && error.message
-							? error.message
-							: 'Failed to download track. Please try again.';
-					errors.push(`${label}: ${message}`);
-				}
-			}
-
-			if (errors.length > 0) {
-				const summary = [
-					'Unable to download some tracks individually:',
-					...errors.slice(0, 3),
-					errors.length > 3 ? `…and ${errors.length - 3} more` : undefined
-				]
-					.filter(Boolean)
-					.join('\n');
-				toasts.error(summary, { duration: 10000 });
-			}
-		} finally {
-			isLegacyQueueDownloading = false;
-		}
+		await queueExportController.handleExportQueueCsv();
 	}
 
 	async function handleQueueDownload(): Promise<void> {
-		if (queueActionBusy) return;
-		const { tracks, quality } = collectQueueState();
-		const storage = get(downloadPreferencesStore).storage;
-		if (tracks.length === 0) {
-			toasts.warning('Add tracks to the queue before downloading.');
-			return;
-		}
-		if (storage === 'server' && downloadMode !== 'individual') {
-			setDownloadMode('individual');
-			toasts.info('Server downloads are saved as individual files.');
-		}
-		if (downloadMode === 'csv') {
-			await exportQueueAsCsv(tracks, quality);
-			return;
-		}
-		const useZip = downloadMode === 'zip' && tracks.length > 1;
-		if (useZip) {
-			await downloadQueueAsZip(tracks, quality);
-			return;
-		}
-		await downloadQueueIndividually(tracks, quality);
+		await queueExportController.handleQueueDownload();
 	}
 </script>
 
@@ -1056,7 +440,7 @@
 		<div class="settings-block">
 			<p class="settings-block__label">Preferred download quality</p>
 			<div class="settings-choice-grid settings-choice-grid--quality">
-				{#each QUALITY_OPTIONS as option (option.value)}
+				{#each SETTINGS_QUALITY_OPTIONS as option (option.value)}
 					<button
 						type="button"
 						onclick={() => selectDownloadQuality(option.value)}
@@ -1373,7 +757,7 @@
 			<div class="settings-block">
 				<p class="settings-block__label">Performance mode</p>
 				<div class="settings-choice-grid settings-choice-grid--compact">
-					{#each PERFORMANCE_OPTIONS as option (option.value)}
+					{#each SETTINGS_PERFORMANCE_OPTIONS as option (option.value)}
 						<button
 							type="button"
 							onclick={() => setPerformanceMode(option.value)}
@@ -1508,420 +892,3 @@
 		</div>
 	</ToolPanel>
 </div>
-
-<style>
-	.settings-layout {
-		display: grid;
-		gap: 0.88rem;
-		padding-top: 0.25rem;
-	}
-
-	.settings-summary {
-		display: grid;
-		gap: 0.5rem;
-		grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-		padding: 0.7rem 0.8rem;
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		border-radius: var(--ui-radius-md, 12px);
-		background: var(--ui-surface-base, #0d0d0d);
-	}
-
-	.settings-summary-controls {
-		display: flex;
-		justify-content: flex-end;
-		margin-top: -0.08rem;
-	}
-
-	.settings-summary-controls__toggle {
-		padding: 0.45rem 0.74rem;
-		font-size: 0.82rem;
-	}
-
-	.settings-summary__item {
-		display: flex;
-		flex-direction: column;
-		gap: 0.14rem;
-	}
-
-	.settings-summary__label {
-		margin: 0;
-		font-size: 0.7rem;
-		text-transform: uppercase;
-		letter-spacing: 0.12em;
-		color: rgba(163, 163, 163, 0.8);
-	}
-
-	.settings-summary__value {
-		margin: 0;
-		font-size: 0.96rem;
-		font-weight: 640;
-		color: rgba(245, 245, 245, 0.97);
-	}
-
-	.settings-block {
-		display: flex;
-		flex-direction: column;
-		gap: 0.66rem;
-	}
-
-	.settings-block + .settings-block {
-		padding-top: 0.7rem;
-		border-top: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-	}
-
-	.settings-block--full {
-		grid-column: 1 / -1;
-	}
-
-	.settings-block__label {
-		margin: 0;
-		font-size: 0.8rem;
-		font-weight: 700;
-		text-transform: uppercase;
-		letter-spacing: 0.1em;
-		color: rgba(212, 212, 212, 0.78);
-	}
-
-	.settings-block__note {
-		margin: 0;
-		font-size: 0.9rem;
-		line-height: 1.4;
-		color: rgba(212, 212, 212, 0.72);
-	}
-
-	.settings-choice-grid {
-		display: grid;
-		gap: 0.48rem;
-	}
-
-	.settings-choice-grid--quality {
-		grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-	}
-
-	.settings-choice-grid--compact {
-		grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-	}
-
-	.settings-choice {
-		display: flex;
-		align-items: flex-start;
-		justify-content: space-between;
-		gap: 0.62rem;
-		width: 100%;
-		min-height: 4.5rem;
-		padding: 0.8rem 0.92rem;
-		border-radius: 10px;
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: transparent;
-		color: inherit;
-		text-align: left;
-		cursor: pointer;
-		transition:
-			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
-	}
-
-	.settings-choice--compact {
-		min-height: 3.45rem;
-	}
-
-	.settings-choice:hover:not(:disabled) {
-		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		background: rgba(255, 255, 255, 0.03);
-		transform: translateY(-1px);
-	}
-
-	.settings-choice:active:not(:disabled) {
-		transform: translateY(0);
-	}
-
-	.settings-choice.is-active {
-		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		background: rgba(255, 255, 255, 0.08);
-	}
-
-	.settings-choice.is-disabled {
-		opacity: 0.54;
-		cursor: not-allowed;
-	}
-
-	.settings-choice__copy {
-		display: flex;
-		flex-direction: column;
-		gap: 0.22rem;
-		min-width: 0;
-	}
-
-	.settings-choice__title {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.44rem;
-		font-size: 0.92rem;
-		font-weight: 650;
-		line-height: 1.3;
-		color: rgba(245, 245, 245, 0.95);
-	}
-
-	.settings-choice__description {
-		font-size: 0.86rem;
-		line-height: 1.35;
-		color: rgba(212, 212, 212, 0.78);
-	}
-
-	.settings-choice__check {
-		flex-shrink: 0;
-		margin-top: 0.08rem;
-		color: rgba(245, 245, 245, 0.98);
-	}
-
-	.settings-toggle-list {
-		display: flex;
-		flex-direction: column;
-		gap: 0.52rem;
-	}
-
-	.settings-toggle {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.8rem;
-		width: 100%;
-		min-height: 4.8rem;
-		padding: 0.82rem 0.94rem;
-		border-radius: 10px;
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: transparent;
-		color: inherit;
-		text-align: left;
-		cursor: pointer;
-		transition:
-			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
-	}
-
-	.settings-toggle:hover:not(:disabled) {
-		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		background: rgba(255, 255, 255, 0.03);
-		transform: translateY(-1px);
-	}
-
-	.settings-toggle:active:not(:disabled) {
-		transform: translateY(0);
-	}
-
-	.settings-toggle.is-active {
-		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		background: rgba(255, 255, 255, 0.08);
-	}
-
-	.settings-toggle.is-disabled {
-		opacity: 0.54;
-		cursor: not-allowed;
-	}
-
-	.settings-toggle__copy {
-		display: flex;
-		flex-direction: column;
-		gap: 0.24rem;
-		min-width: 0;
-	}
-
-	.settings-toggle__title {
-		font-size: 0.92rem;
-		font-weight: 650;
-		line-height: 1.3;
-		color: rgba(245, 245, 245, 0.95);
-	}
-
-	.settings-toggle__description {
-		font-size: 0.86rem;
-		line-height: 1.35;
-		color: rgba(212, 212, 212, 0.78);
-	}
-
-	.settings-toggle__control {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		flex-shrink: 0;
-	}
-
-	.settings-toggle__state {
-		min-width: 1.9rem;
-		text-align: right;
-		font-size: 0.78rem;
-		font-weight: 700;
-		letter-spacing: 0.11em;
-		text-transform: uppercase;
-		color: rgba(212, 212, 212, 0.8);
-	}
-
-	.settings-toggle__switch {
-		display: inline-flex;
-		align-items: center;
-		width: 3rem;
-		height: 1.72rem;
-		padding: 0.17rem;
-		border-radius: 999px;
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: rgba(22, 22, 22, 0.75);
-		transition:
-			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
-	}
-
-	.settings-toggle__switch.is-active {
-		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		background: rgba(255, 255, 255, 0.16);
-	}
-
-	.settings-toggle__thumb {
-		display: block;
-		width: 1.3rem;
-		height: 1.3rem;
-		border-radius: 999px;
-		background: rgba(245, 245, 245, 0.95);
-		transition: transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
-		transform: translateX(0);
-	}
-
-	.settings-toggle__switch.is-active .settings-toggle__thumb {
-		transform: translateX(1.24rem);
-	}
-
-	.settings-action-stack {
-		display: flex;
-		flex-direction: column;
-		gap: 0.58rem;
-	}
-
-	.settings-action-stack--maintenance {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-		gap: 0.58rem;
-	}
-
-	.settings-action {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.74rem;
-		width: 100%;
-		padding: 0.9rem 1rem;
-		min-height: 52px;
-		border-radius: 10px;
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: transparent;
-		color: inherit;
-		text-align: left;
-		font-size: 0.94rem;
-		font-weight: 620;
-		cursor: pointer;
-		transition:
-			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-			transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
-	}
-
-	.settings-action--primary {
-		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		background: rgba(255, 255, 255, 0.06);
-	}
-
-	.settings-action:hover:not(:disabled) {
-		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		background: rgba(255, 255, 255, 0.03);
-		transform: translateY(-1px);
-	}
-
-	.settings-action:active:not(:disabled) {
-		transform: translateY(0);
-	}
-
-	.settings-action:disabled {
-		opacity: 0.58;
-		cursor: not-allowed;
-	}
-
-	.settings-action__label {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.settings-action__spinner {
-		flex-shrink: 0;
-		color: rgba(232, 232, 232, 0.9);
-	}
-
-	.settings-system-grid {
-		display: grid;
-		gap: 0.82rem;
-	}
-
-	.settings-feedback {
-		display: flex;
-		flex-direction: column;
-		gap: 0.3rem;
-		padding-top: 0.6rem;
-		border-top: 1px dashed var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-	}
-
-	.settings-feedback p {
-		margin: 0;
-		font-size: 0.88rem;
-		line-height: 1.4;
-		color: rgba(212, 212, 212, 0.74);
-	}
-
-	.settings-layout[data-guidance='off'] .settings-choice__description,
-	.settings-layout[data-guidance='off'] .settings-toggle__description,
-	.settings-layout[data-guidance='off'] .settings-block__note {
-		display: none;
-	}
-
-	.settings-layout[data-guidance='off'] .settings-choice {
-		min-height: 3.5rem;
-		padding: 0.72rem 0.88rem;
-	}
-
-	.settings-layout[data-guidance='off'] .settings-choice--compact {
-		min-height: 3.1rem;
-	}
-
-	.settings-layout[data-guidance='off'] .settings-toggle {
-		min-height: 3.9rem;
-		padding: 0.74rem 0.9rem;
-	}
-
-	.settings-layout[data-guidance='off'] .settings-feedback p:not(:last-child) {
-		display: none;
-	}
-
-	@media (min-width: 1024px) {
-		.settings-layout {
-			grid-template-columns: repeat(2, minmax(280px, 1fr));
-		}
-
-		.settings-system-grid {
-			grid-template-columns: repeat(2, minmax(240px, 1fr));
-		}
-
-		.settings-block--full {
-			grid-column: span 2;
-		}
-	}
-
-	@media (max-width: 560px) {
-		.settings-toggle {
-			min-height: 4.9rem;
-			align-items: flex-start;
-		}
-
-		.settings-toggle__control {
-			align-self: center;
-		}
-	}
-</style>
