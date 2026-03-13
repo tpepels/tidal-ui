@@ -570,6 +570,7 @@
 	async function handleSearch() {
 		const trimmedQuery = $searchStore.query.trim();
 		if (!trimmedQuery) return;
+		if ($searchStore.isLoading || $searchStore.tabLoading[$searchStore.activeTab]) return;
 		const artistFilter = albumArtistFilter.trim();
 
 		await searchOrchestrator.search(trimmedQuery, $searchStore.activeTab as SearchTab, {
@@ -637,78 +638,85 @@
 <div class="search-root" data-ui-block="main-sections">
 	<section class="ui-tool-panel search-panel" aria-label="Catalog search">
 		<p class="search-panel__label">Search</p>
-		<div class="search-panel__row">
-			<input
-				id="catalog-search-input"
-				type="text"
-				value={$searchStore.query}
-				oninput={(event) => {
-					const target = event.currentTarget as HTMLInputElement | null;
-					if (target) {
-						searchStoreActions.setQuery(target.value);
-					}
-				}}
-				placeholder={isQueryATidalUrl
-					? 'TIDAL URL detected'
-					: isQueryASpotifyPlaylist
-						? 'Spotify playlist detected'
-						: isQueryAStreamingUrl
-							? `${getPlatformName($searchStore.query)} URL detected`
-							: 'Album, song, artist, or URL'}
-				class="search-panel__input"
-			/>
-			<button
-				type="button"
-				class="ui-action-button ui-action-button--primary search-panel__submit"
-				onclick={handleSearch}
-				disabled={
-					!$searchStore.query.trim() ||
-					$searchStore.isLoading ||
-					$searchStore.tabLoading[$searchStore.activeTab]
-				}
-				aria-busy={$searchStore.isLoading || $searchStore.tabLoading[$searchStore.activeTab]}
-			>
-				{#if $searchStore.isLoading || $searchStore.tabLoading[$searchStore.activeTab]}
-					<LoaderCircle size={16} class="animate-spin" />
-					Searching
-				{:else}
-					<Search size={16} />
-					Search
-				{/if}
-			</button>
-		</div>
-
-		{#if !isQueryAUrl && $searchStore.activeTab === 'albums'}
-			<div class="search-panel__row search-panel__row--secondary">
-					<input
-						id="album-artist-filter"
-						type="text"
-					value={albumArtistFilter}
+		<form
+			class="search-panel__form"
+			onsubmit={(event) => {
+				event.preventDefault();
+				void handleSearch();
+			}}
+		>
+			<div class="search-panel__row">
+				<input
+					id="catalog-search-input"
+					type="text"
+					value={$searchStore.query}
 					oninput={(event) => {
 						const target = event.currentTarget as HTMLInputElement | null;
 						if (target) {
-							albumArtistFilter = target.value;
+							searchStoreActions.setQuery(target.value);
 						}
 					}}
+					placeholder={isQueryATidalUrl
+						? 'TIDAL URL detected'
+						: isQueryASpotifyPlaylist
+							? 'Spotify playlist detected'
+							: isQueryAStreamingUrl
+								? `${getPlatformName($searchStore.query)} URL detected`
+								: 'Album, song, artist, or URL'}
+					class="search-panel__input"
+				/>
+				<button
+					type="submit"
+					class="ui-action-button ui-action-button--primary search-panel__submit"
+					disabled={
+						!$searchStore.query.trim() ||
+						$searchStore.isLoading ||
+						$searchStore.tabLoading[$searchStore.activeTab]
+					}
+					aria-busy={$searchStore.isLoading || $searchStore.tabLoading[$searchStore.activeTab]}
+				>
+					{#if $searchStore.isLoading || $searchStore.tabLoading[$searchStore.activeTab]}
+						<LoaderCircle size={16} class="animate-spin" />
+						Searching
+					{:else}
+						<Search size={16} />
+						Search
+					{/if}
+				</button>
+			</div>
+
+			{#if !isQueryAUrl && $searchStore.activeTab === 'albums'}
+				<div class="search-panel__row search-panel__row--secondary">
+					<input
+						id="album-artist-filter"
+						type="text"
+						value={albumArtistFilter}
+						oninput={(event) => {
+							const target = event.currentTarget as HTMLInputElement | null;
+							if (target) {
+								albumArtistFilter = target.value;
+							}
+						}}
 						placeholder="Optional artist filter (supports * and ?)"
 						class="search-panel__input"
 					/>
-				<label class="search-panel__strict">
-					<input
-						type="checkbox"
-						checked={strictAlbumArtistMatch}
-						onchange={(event) => {
-							const target = event.currentTarget as HTMLInputElement | null;
-							if (target) {
-								strictAlbumArtistMatch = target.checked;
-							}
-						}}
-						disabled={!albumArtistFilter.trim()}
-					/>
-					<span>Strict full-name match</span>
-				</label>
-			</div>
-		{/if}
+					<label class="search-panel__strict">
+						<input
+							type="checkbox"
+							checked={strictAlbumArtistMatch}
+							onchange={(event) => {
+								const target = event.currentTarget as HTMLInputElement | null;
+								if (target) {
+									strictAlbumArtistMatch = target.checked;
+								}
+							}}
+							disabled={!albumArtistFilter.trim()}
+						/>
+						<span>Strict full-name match</span>
+					</label>
+				</div>
+			{/if}
+		</form>
 	</section>
 
 	{#if $searchStore.error}
@@ -959,6 +967,13 @@
 
 	.search-panel {
 		gap: 0.6rem;
+	}
+
+	.search-panel__form {
+		display: flex;
+		flex-direction: column;
+		gap: 0.6rem;
+		margin: 0;
 	}
 
 	.search-panel__label {
