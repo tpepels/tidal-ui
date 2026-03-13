@@ -46,6 +46,9 @@ export interface SearchOrchestratorOptions {
 
 	/** Fetch all standard result sections (tracks/albums/artists/playlists) in one pass */
 	aggregateAllTabs?: boolean;
+
+	/** Optional subset of tabs to aggregate when aggregateAllTabs is enabled */
+	aggregateTabs?: SearchTab[];
 }
 
 /**
@@ -144,12 +147,16 @@ export class SearchOrchestrator {
 		region?: RegionOption,
 		albumArtistQuery?: string,
 		strictAlbumArtistMatch?: boolean,
-		aggregateAllTabs?: boolean
+		aggregateAllTabs?: boolean,
+		aggregateTabs?: SearchTab[]
 	): string {
 		const normalizedAlbumArtistQuery = tab === 'albums' ? (albumArtistQuery?.trim().toLowerCase() ?? '') : '';
 		const strictFlag = tab === 'albums' && strictAlbumArtistMatch ? 'strict' : 'relaxed';
 		const mode = aggregateAllTabs ? 'aggregate' : 'single';
-		return `${tab}:${region ?? 'auto'}:${query.toLowerCase()}:${normalizedAlbumArtistQuery}:${strictFlag}:${mode}`;
+		const aggregateTabKey = aggregateAllTabs
+			? (aggregateTabs ?? ['tracks', 'albums', 'artists', 'playlists']).join(',')
+			: 'none';
+		return `${tab}:${region ?? 'auto'}:${query.toLowerCase()}:${normalizedAlbumArtistQuery}:${strictFlag}:${mode}:${aggregateTabKey}`;
 	}
 
 	/**
@@ -195,7 +202,8 @@ export class SearchOrchestrator {
 			options?.region,
 			options?.albumArtistQuery,
 			options?.strictAlbumArtistMatch,
-			options?.aggregateAllTabs
+			options?.aggregateAllTabs,
+			options?.aggregateTabs
 		);
 		const inflight = this.inflightSearches.get(searchKey);
 		if (inflight) {
@@ -253,7 +261,22 @@ export class SearchOrchestrator {
 			};
 			let result;
 			if (shouldAggregate) {
-				const aggregateTabs: SearchTab[] = ['tracks', 'albums', 'artists', 'playlists'];
+				const aggregateTabsCandidate = (
+					options?.aggregateTabs?.length
+						? options.aggregateTabs
+						: (['tracks', 'albums', 'artists', 'playlists'] as SearchTab[])
+				).filter(
+					(searchTab, index, allTabs) =>
+						(searchTab === 'tracks' ||
+							searchTab === 'albums' ||
+							searchTab === 'artists' ||
+							searchTab === 'playlists') &&
+						allTabs.indexOf(searchTab) === index
+				);
+				const aggregateTabs =
+					aggregateTabsCandidate.length > 0
+						? aggregateTabsCandidate
+						: (['tracks', 'albums', 'artists', 'playlists'] as SearchTab[]);
 				const settled = await Promise.all(
 					aggregateTabs.map(async (searchTab) => {
 						if (searchTab !== 'albums') {

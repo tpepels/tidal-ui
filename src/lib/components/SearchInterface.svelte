@@ -26,6 +26,12 @@
 	import { searchStore, searchStoreActions, type SearchTab } from '$lib/stores/searchStoreAdapter';
 
 	const SEARCH_TABS: SearchTab[] = ['tracks', 'albums', 'artists', 'playlists'];
+	const SEARCH_SCOPE_OPTIONS: Array<{ tab: SearchTab; label: string }> = [
+		{ tab: 'albums', label: 'Albums' },
+		{ tab: 'artists', label: 'Artists' },
+		{ tab: 'tracks', label: 'Tracks' },
+		{ tab: 'playlists', label: 'Playlists' }
+	];
 
 	function isSearchTab(value: string | null): value is SearchTab {
 		return !!value && SEARCH_TABS.includes(value as SearchTab);
@@ -60,6 +66,7 @@
 	let lastUrlSearchKey = $state('');
 	let albumArtistFilter = $state('');
 	let strictAlbumArtistMatch = $state(false);
+	let selectedSearchScopes = $state<SearchTab[]>(['albums', 'artists']);
 
 	const regionAvailability: Record<RegionOption, boolean> = {
 		auto: hasRegionTargets('auto'),
@@ -96,6 +103,34 @@
 	);
 	const isQueryAUrl = $derived(isQueryATidalUrl || isQueryAStreamingUrl || isQueryASpotifyPlaylist);
 
+	function normalizeScopeSelection(scopes: SearchTab[]): SearchTab[] {
+		const selected = scopes.filter((scope, index) => scopes.indexOf(scope) === index);
+		const ordered = SEARCH_SCOPE_OPTIONS.map((option) => option.tab).filter((tab) =>
+			selected.includes(tab)
+		);
+		return ordered.length > 0 ? ordered : ['albums', 'artists'];
+	}
+
+	function isScopeSelected(scope: SearchTab): boolean {
+		return selectedSearchScopes.includes(scope);
+	}
+
+	function toggleScope(scope: SearchTab): void {
+		const alreadySelected = selectedSearchScopes.includes(scope);
+		if (alreadySelected) {
+			const next = selectedSearchScopes.filter((currentScope) => currentScope !== scope);
+			selectedSearchScopes = normalizeScopeSelection(next);
+			return;
+		}
+		selectedSearchScopes = normalizeScopeSelection([...selectedSearchScopes, scope]);
+	}
+
+	function resolveSearchExecutionScopes(): { primaryTab: SearchTab; aggregateTabs: SearchTab[] } {
+		const aggregateTabs = normalizeScopeSelection(selectedSearchScopes);
+		const primaryTab = aggregateTabs[0] ?? 'albums';
+		return { primaryTab, aggregateTabs };
+	}
+
 	$effect(() => {
 		const queryParam = ($page.url.searchParams.get('q') ?? '').trim();
 		const tabParam = $page.url.searchParams.get('tab');
@@ -119,11 +154,17 @@
 		if (resolvedTab && $searchStore.activeTab !== resolvedTab) {
 			searchStoreActions.commit({ activeTab: resolvedTab });
 		}
+		if (resolvedTab) {
+			selectedSearchScopes = [resolvedTab];
+		}
 		if ($searchStore.query !== queryParam) {
 			searchStoreActions.setQuery(queryParam);
 		}
 
-		const targetTab = resolvedTab ?? $searchStore.activeTab;
+		const scopeSettings = resolvedTab
+			? { primaryTab: resolvedTab, aggregateTabs: [resolvedTab] as SearchTab[] }
+			: resolveSearchExecutionScopes();
+		const targetTab = scopeSettings.primaryTab;
 		if (targetTab === 'albums' && artistParam.length > 0 && artistParam !== albumArtistFilter) {
 			albumArtistFilter = artistParam;
 		}
@@ -139,7 +180,8 @@
 			showErrorToasts: false,
 			albumArtistQuery: targetTab === 'albums' ? albumArtistFilter.trim() : undefined,
 			strictAlbumArtistMatch: targetTab === 'albums' ? strictAlbumArtistMatch : undefined,
-			aggregateAllTabs: !isUrlQuery
+			aggregateAllTabs: !isUrlQuery && scopeSettings.aggregateTabs.length > 1,
+			aggregateTabs: !isUrlQuery ? scopeSettings.aggregateTabs : undefined
 		});
 	});
 
@@ -572,15 +614,42 @@
 		if (!trimmedQuery) return;
 		if ($searchStore.isLoading || $searchStore.tabLoading[$searchStore.activeTab]) return;
 		const artistFilter = albumArtistFilter.trim();
+		const scopeSettings = resolveSearchExecutionScopes();
 
-		await searchOrchestrator.search(trimmedQuery, $searchStore.activeTab as SearchTab, {
+		await searchOrchestrator.search(trimmedQuery, scopeSettings.primaryTab, {
 			region: selectedRegion,
 			showErrorToasts: true,
-			albumArtistQuery: $searchStore.activeTab === 'albums' ? artistFilter : undefined,
-			strictAlbumArtistMatch:
-				$searchStore.activeTab === 'albums' ? strictAlbumArtistMatch : undefined,
-			aggregateAllTabs: !isQueryAUrl
+			albumArtistQuery: scopeSettings.primaryTab === 'albums' ? artistFilter : undefined,
+			strictAlbumArtistMatch: scopeSettings.primaryTab === 'albums' ? strictAlbumArtistMatch : undefined,
+			aggregateAllTabs: !isQueryAUrl && scopeSettings.aggregateTabs.length > 1,
+			aggregateTabs: !isQueryAUrl ? scopeSettings.aggregateTabs : undefined
 		});
+	}
+
+	function getTrackCoverSrc(track: PlayableTrack): string | null {
+		if (isSonglinkTrack(track)) {
+			return track.thumbnailUrl?.trim() || null;
+		}
+		const cover = asTrack(track).album?.cover;
+		if (typeof cover === 'string' && cover.trim().length > 0) {
+			return losslessAPI.getCoverUrl(cover, '160');
+		}
+		return null;
+	}
+
+	function getAlbumCoverSrc(album: Album): string | null {
+		if (typeof album.cover !== 'string' || album.cover.trim().length === 0) {
+			return null;
+		}
+		return losslessAPI.getCoverUrl(album.cover, '160');
+	}
+
+	function getArtistPortraitSrc(artist: { picture?: string | undefined }): string | null {
+		if (typeof artist.picture !== 'string' || artist.picture.trim().length === 0) {
+			return null;
+		}
+		const resolved = losslessAPI.getArtistPictureUrl(artist.picture);
+		return resolved.trim().length > 0 ? resolved : null;
 	}
 
 	function displayTrackTotal(total?: number | null): number {
@@ -685,7 +754,22 @@
 				</button>
 			</div>
 
-			{#if !isQueryAUrl && $searchStore.activeTab === 'albums'}
+			{#if !isQueryAUrl}
+				<div class="search-panel__scope" role="group" aria-label="Search sections">
+					{#each SEARCH_SCOPE_OPTIONS as option (option.tab)}
+						<button
+							type="button"
+							class={`search-scope-chip ${isScopeSelected(option.tab) ? 'is-selected' : ''}`}
+							aria-pressed={isScopeSelected(option.tab)}
+							onclick={() => toggleScope(option.tab)}
+						>
+							{option.label}
+						</button>
+					{/each}
+				</div>
+			{/if}
+
+			{#if !isQueryAUrl && isScopeSelected('albums')}
 				<div class="search-panel__row search-panel__row--secondary">
 					<input
 						id="album-artist-filter"
@@ -741,6 +825,7 @@
 						</header>
 						<div class="search-list">
 							{#each trackResults as track (track.id)}
+								{@const trackCoverSrc = getTrackCoverSrc(track)}
 								<div
 									role="button"
 									tabindex="0"
@@ -755,6 +840,15 @@
 									onkeydown={(event) => handleTrackKeydown(event, track)}
 									class="search-row"
 								>
+									<div class="search-row__media search-row__media--album" aria-hidden="true">
+										{#if trackCoverSrc}
+											<img src={trackCoverSrc} alt="" loading="lazy" />
+										{:else}
+											<span class="search-row__media-fallback">
+												{(track.title?.slice(0, 1) ?? '♪').toUpperCase()}
+											</span>
+										{/if}
+									</div>
 									<div class="search-row__content">
 										<p class="search-row__title">
 											{track.title}
@@ -802,28 +896,40 @@
 									albumDownloadStates[album.id] ??
 									createDefaultAlbumDownloadState(album.numberOfTracks ?? 0)}
 								{@const canCancelAlbumDownload = isAlbumQueueDownloadCancellable(albumDownloadState)}
+								{@const albumCoverSrc = getAlbumCoverSrc(album)}
 								<div class="search-row search-row--album">
 									<a
 										href={`/album/${album.id}`}
-										class="search-row__content search-row__content--link"
+										class="search-row__content search-row__content--link search-row__content--with-media"
 										aria-label={`Open album ${album.title}`}
 										data-sveltekit-preload-data
 									>
-										<p class="search-row__title">{album.title}</p>
-										<p class="search-row__meta">
-											{album.artist?.name ?? 'Unknown artist'}
-											{#if album.releaseDate}
-												• {album.releaseDate.split('-')[0]}
+										<div class="search-row__media search-row__media--album" aria-hidden="true">
+											{#if albumCoverSrc}
+												<img src={albumCoverSrc} alt="" loading="lazy" />
+											{:else}
+												<span class="search-row__media-fallback">
+													{(album.title?.slice(0, 1) ?? 'A').toUpperCase()}
+												</span>
 											{/if}
-											• {displayTrackTotal(album.numberOfTracks)} track{displayTrackTotal(
-												album.numberOfTracks
-											) === 1
-												? ''
-												: 's'}
-											{#if albumStatusText(albumDownloadState)}
-												• {albumStatusText(albumDownloadState)}
-											{/if}
-										</p>
+										</div>
+										<div class="search-row__text">
+											<p class="search-row__title">{album.title}</p>
+											<p class="search-row__meta">
+												{album.artist?.name ?? 'Unknown artist'}
+												{#if album.releaseDate}
+													• {album.releaseDate.split('-')[0]}
+												{/if}
+												• {displayTrackTotal(album.numberOfTracks)} track{displayTrackTotal(
+													album.numberOfTracks
+												) === 1
+													? ''
+													: 's'}
+												{#if albumStatusText(albumDownloadState)}
+													• {albumStatusText(albumDownloadState)}
+												{/if}
+											</p>
+										</div>
 									</a>
 									<button
 										onclick={(event) =>
@@ -866,12 +972,22 @@
 						</header>
 						<div class="search-list">
 							{#each artistResults as artist (artist.id)}
+								{@const artistPortraitSrc = getArtistPortraitSrc(artist)}
 								<a
 									href={`/artist/${artist.id}`}
 									class="search-row search-row--link"
 									aria-label={`Open artist ${artist.name}`}
 									data-sveltekit-preload-data
 								>
+									<div class="search-row__media search-row__media--artist" aria-hidden="true">
+										{#if artistPortraitSrc}
+											<img src={artistPortraitSrc} alt="" loading="lazy" />
+										{:else}
+											<span class="search-row__media-fallback">
+												{(artist.name?.slice(0, 1) ?? 'A').toUpperCase()}
+											</span>
+										{/if}
+									</div>
 									<div class="search-row__content">
 										<p class="search-row__title">{artist.name}</p>
 										<p class="search-row__meta">
@@ -925,12 +1041,12 @@
 				</div>
 			{/if}
 		{:else if !$searchStore.query.trim()}
-			<section class="ui-surface-card search-empty">
-				<h2 class="search-empty__title">Minimal Search</h2>
-				<p class="search-empty__text">
-					Enter a query, optionally add an artist filter for albums, then run search.
-				</p>
-			</section>
+				<section class="ui-surface-card search-empty">
+					<h2 class="search-empty__title">Minimal Search</h2>
+					<p class="search-empty__text">
+						Choose sections, enter a query, optionally add an album artist filter, then run search.
+					</p>
+				</section>
 		{:else if isQueryATidalUrl}
 			<section class="ui-surface-card search-empty">
 				<p class="search-empty__text">TIDAL URL detected. Press Search to load it.</p>
@@ -1038,6 +1154,33 @@
 		opacity: 0.5;
 	}
 
+	.search-panel__scope {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+	}
+
+	.search-scope-chip {
+		min-height: 2.1rem;
+		padding: 0.42rem 0.7rem;
+		border-radius: 999px;
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: var(--ui-surface-0, #0d0d0d);
+		color: rgba(224, 224, 224, 0.86);
+		font-size: 0.86rem;
+		font-weight: 600;
+	}
+
+	.search-scope-chip:hover {
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+	}
+
+	.search-scope-chip.is-selected {
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+		background: var(--ui-surface-interactive, #171717);
+		color: rgba(247, 247, 247, 0.96);
+	}
+
 	.search-status {
 		display: inline-flex;
 		align-items: center;
@@ -1130,6 +1273,50 @@
 		min-width: 0;
 		flex-direction: column;
 		gap: 0.15rem;
+	}
+
+	.search-row__content--with-media {
+		flex-direction: row;
+		align-items: center;
+		gap: 0.68rem;
+	}
+
+	.search-row__text {
+		display: flex;
+		flex: 1;
+		min-width: 0;
+		flex-direction: column;
+		gap: 0.15rem;
+	}
+
+	.search-row__media {
+		flex-shrink: 0;
+		width: 2.8rem;
+		height: 2.8rem;
+		border-radius: var(--ui-radius-sm, 9px);
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		background: var(--ui-surface-0, #0d0d0d);
+		overflow: hidden;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.search-row__media--artist {
+		border-radius: 999px;
+	}
+
+	.search-row__media img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+	}
+
+	.search-row__media-fallback {
+		font-size: 0.9rem;
+		font-weight: 700;
+		color: rgba(216, 216, 216, 0.84);
 	}
 
 	.search-row__content--link {
