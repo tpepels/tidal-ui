@@ -994,6 +994,7 @@
 	{#if pageMode || isOpen}
 		<div
 			class="download-manager-panel ui-tool-panel ui-tool-panel--flush"
+			data-tone="secondary"
 			class:download-manager-panel--page={pageMode}
 			class:compact-mode={isCompactViewport}
 		>

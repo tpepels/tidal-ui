@@ -25,13 +25,19 @@
 	import { Download, RotateCcw, X, LoaderCircle, Search } from 'lucide-svelte';
 	import { searchStore, searchStoreActions, type SearchTab } from '$lib/stores/searchStoreAdapter';
 
+	type UiTone = 'default' | 'secondary' | 'tertiary';
+
 	const SEARCH_TABS: SearchTab[] = ['tracks', 'albums', 'artists', 'playlists'];
-	const SEARCH_SCOPE_OPTIONS: Array<{ tab: SearchTab; label: string }> = [
-		{ tab: 'albums', label: 'Albums' },
-		{ tab: 'artists', label: 'Artists' },
-		{ tab: 'tracks', label: 'Tracks' },
-		{ tab: 'playlists', label: 'Playlists' }
+	const SEARCH_SCOPE_OPTIONS: Array<{ tab: SearchTab; label: string; tone: UiTone }> = [
+		{ tab: 'albums', label: 'Albums', tone: 'default' },
+		{ tab: 'artists', label: 'Artists', tone: 'secondary' },
+		{ tab: 'tracks', label: 'Tracks', tone: 'tertiary' },
+		{ tab: 'playlists', label: 'Playlists', tone: 'secondary' }
 	];
+
+	function toneAttribute(tone: UiTone): Exclude<UiTone, 'default'> | undefined {
+		return tone === 'default' ? undefined : tone;
+	}
 
 	function isSearchTab(value: string | null): value is SearchTab {
 		return !!value && SEARCH_TABS.includes(value as SearchTab);
@@ -705,7 +711,7 @@
 </script>
 
 <div class="search-root" data-ui-block="main-sections">
-	<section class="ui-tool-panel search-panel" aria-label="Catalog search">
+	<section class="ui-tool-panel search-panel" data-tone="secondary" aria-label="Catalog search">
 		<p class="search-panel__label">Search</p>
 		<form
 			class="search-panel__form"
@@ -759,7 +765,8 @@
 					{#each SEARCH_SCOPE_OPTIONS as option (option.tab)}
 						<button
 							type="button"
-							class={`search-scope-chip ${isScopeSelected(option.tab) ? 'is-selected' : ''}`}
+							class={`ui-filter-chip search-scope-chip ${isScopeSelected(option.tab) ? 'is-active is-selected' : ''}`}
+							data-tone={toneAttribute(option.tone)}
 							aria-pressed={isScopeSelected(option.tab)}
 							onclick={() => toggleScope(option.tab)}
 						>
@@ -818,12 +825,12 @@
 		{#if hasAnySearchResults}
 			<div class="search-sections">
 				{#if trackResults.length > 0}
-					<section id="search-section-tracks" class="search-section">
+					<section id="search-section-tracks" class="search-section" data-tone="tertiary">
 						<header class="search-section__header">
 							<h2 class="search-section__title">Songs</h2>
-							<span class="search-section__count">{trackResults.length}</span>
+							<span class="search-section__count" data-tone="tertiary">{trackResults.length}</span>
 						</header>
-						<div class="search-list">
+						<div class="search-list" data-tone="tertiary">
 							{#each trackResults as track (track.id)}
 								{@const trackCoverSrc = getTrackCoverSrc(track)}
 								<div
@@ -839,8 +846,13 @@
 									}}
 									onkeydown={(event) => handleTrackKeydown(event, track)}
 									class="search-row"
+									data-tone="tertiary"
 								>
-									<div class="search-row__media search-row__media--album" aria-hidden="true">
+									<div
+										class="search-row__media search-row__media--album"
+										data-tone="tertiary"
+										aria-hidden="true"
+									>
 										{#if trackCoverSrc}
 											<img src={trackCoverSrc} alt="" loading="lazy" />
 										{:else}
@@ -965,21 +977,26 @@
 				{/if}
 
 				{#if artistResults.length > 0}
-					<section id="search-section-artists" class="search-section">
+					<section id="search-section-artists" class="search-section" data-tone="secondary">
 						<header class="search-section__header">
 							<h2 class="search-section__title">Artists</h2>
-							<span class="search-section__count">{artistResults.length}</span>
+							<span class="search-section__count" data-tone="secondary">{artistResults.length}</span>
 						</header>
-						<div class="search-list">
+						<div class="search-list" data-tone="secondary">
 							{#each artistResults as artist (artist.id)}
 								{@const artistPortraitSrc = getArtistPortraitSrc(artist)}
 								<a
 									href={`/artist/${artist.id}`}
 									class="search-row search-row--link"
+									data-tone="secondary"
 									aria-label={`Open artist ${artist.name}`}
 									data-sveltekit-preload-data
 								>
-									<div class="search-row__media search-row__media--artist" aria-hidden="true">
+									<div
+										class="search-row__media search-row__media--artist"
+										data-tone="secondary"
+										aria-hidden="true"
+									>
 										{#if artistPortraitSrc}
 											<img src={artistPortraitSrc} alt="" loading="lazy" />
 										{:else}
@@ -1001,16 +1018,17 @@
 				{/if}
 
 				{#if playlistResults.length > 0}
-					<section id="search-section-playlists" class="search-section">
+					<section id="search-section-playlists" class="search-section" data-tone="secondary">
 						<header class="search-section__header">
 							<h2 class="search-section__title">Playlists</h2>
-							<span class="search-section__count">{playlistResults.length}</span>
+							<span class="search-section__count" data-tone="secondary">{playlistResults.length}</span>
 						</header>
-						<div class="search-list">
+						<div class="search-list" data-tone="secondary">
 							{#each playlistResults as playlist (playlist.uuid)}
 								<a
 									href={`/playlist/${playlist.uuid}`}
 									class="search-row search-row--link"
+									data-tone="secondary"
 									aria-label={`Open playlist ${playlist.title}`}
 									data-sveltekit-preload-data
 								>
@@ -1162,23 +1180,11 @@
 
 	.search-scope-chip {
 		min-height: 2.1rem;
-		padding: 0.42rem 0.7rem;
+		padding: 0.42rem 0.76rem;
 		border-radius: 999px;
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: var(--ui-surface-0, #0d0d0d);
-		color: rgba(224, 224, 224, 0.86);
 		font-size: 0.86rem;
 		font-weight: 600;
-	}
-
-	.search-scope-chip:hover {
-		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-	}
-
-	.search-scope-chip.is-selected {
-		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		background: var(--ui-surface-interactive, #171717);
-		color: rgba(247, 247, 247, 0.96);
+		letter-spacing: 0.02em;
 	}
 
 	.search-status {
@@ -1219,6 +1225,14 @@
 		color: rgba(245, 245, 245, 0.97);
 	}
 
+	.search-section[data-tone='secondary'] .search-section__title {
+		color: var(--ui-tone-secondary-text, rgba(224, 234, 255, 0.96));
+	}
+
+	.search-section[data-tone='tertiary'] .search-section__title {
+		color: var(--ui-tone-tertiary-text, rgba(220, 244, 233, 0.96));
+	}
+
 	.search-section__count {
 		display: inline-flex;
 		align-items: center;
@@ -1234,6 +1248,18 @@
 		color: rgba(226, 226, 226, 0.9);
 	}
 
+	.search-section__count[data-tone='secondary'] {
+		border-color: var(--ui-tone-secondary-border, rgba(159, 185, 246, 0.42));
+		background: var(--ui-tone-secondary-surface, rgba(104, 136, 210, 0.16));
+		color: var(--ui-tone-secondary-text, rgba(224, 234, 255, 0.96));
+	}
+
+	.search-section__count[data-tone='tertiary'] {
+		border-color: var(--ui-tone-tertiary-border, rgba(159, 215, 190, 0.42));
+		background: var(--ui-tone-tertiary-surface, rgba(96, 156, 130, 0.16));
+		color: var(--ui-tone-tertiary-text, rgba(220, 244, 233, 0.96));
+	}
+
 	.search-list {
 		display: flex;
 		flex-direction: column;
@@ -1241,6 +1267,24 @@
 		border-radius: var(--ui-radius-md, 12px);
 		background: var(--ui-surface-raised, #121212);
 		overflow: hidden;
+	}
+
+	.search-list[data-tone='secondary'] {
+		border-color: var(--ui-tone-secondary-border, rgba(159, 185, 246, 0.42));
+		background: linear-gradient(
+			180deg,
+			var(--ui-tone-secondary-surface, rgba(104, 136, 210, 0.16)) 0%,
+			var(--ui-surface-raised, #121212) 100%
+		);
+	}
+
+	.search-list[data-tone='tertiary'] {
+		border-color: var(--ui-tone-tertiary-border, rgba(159, 215, 190, 0.42));
+		background: linear-gradient(
+			180deg,
+			var(--ui-tone-tertiary-surface, rgba(96, 156, 130, 0.16)) 0%,
+			var(--ui-surface-raised, #121212) 100%
+		);
 	}
 
 	.search-row {
@@ -1265,6 +1309,14 @@
 	.search-row--link:hover,
 	.search-row--album:hover {
 		background: var(--ui-surface-interactive, #171717);
+	}
+
+	.search-row[data-tone='secondary']:hover {
+		background: var(--ui-tone-secondary-surface-hover, rgba(104, 136, 210, 0.24));
+	}
+
+	.search-row[data-tone='tertiary']:hover {
+		background: var(--ui-tone-tertiary-surface-hover, rgba(96, 156, 130, 0.24));
 	}
 
 	.search-row__content {
@@ -1300,6 +1352,16 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
+	}
+
+	.search-row__media[data-tone='secondary'] {
+		border-color: var(--ui-tone-secondary-border, rgba(159, 185, 246, 0.42));
+		background: rgba(159, 185, 246, 0.12);
+	}
+
+	.search-row__media[data-tone='tertiary'] {
+		border-color: var(--ui-tone-tertiary-border, rgba(159, 215, 190, 0.42));
+		background: rgba(159, 215, 190, 0.12);
 	}
 
 	.search-row__media--artist {

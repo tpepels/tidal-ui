@@ -1034,6 +1034,7 @@
 		<button
 			type="button"
 			class="ui-chip-button settings-summary-controls__toggle"
+			data-tone="secondary"
 			onclick={() => {
 				showGuidance = !showGuidance;
 			}}
@@ -1045,6 +1046,7 @@
 
 	<ToolPanel
 		wide={true}
+		tone="secondary"
 		panelRole="audio-metadata"
 		eyebrow="Audio"
 		title="Playback & Metadata"
@@ -1170,6 +1172,7 @@
 	</ToolPanel>
 
 	<ToolPanel
+		tone="tertiary"
 		panelRole="download-behavior"
 		eyebrow="Downloads"
 		title="Download Behavior"
@@ -1288,6 +1291,7 @@
 
 	<div data-ui-block="primary-actions">
 		<ToolPanel
+			tone="secondary"
 			panelRole="queue-actions"
 			eyebrow="Queue"
 			title="Queue Actions"
@@ -1347,6 +1351,7 @@
 
 	<ToolPanel
 		wide={true}
+		tone="tertiary"
 		panelRole="system-maintenance"
 		eyebrow="System"
 		title="System & Maintenance"

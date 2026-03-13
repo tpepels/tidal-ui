@@ -1,6 +1,9 @@
 <script lang="ts">
+	type Tone = 'default' | 'secondary' | 'tertiary';
+
 	export let intent: string | null = null;
 	export let summary: string | null = null;
+	export let tone: Tone = 'default';
 	export let intentful = false;
 	export let className = '';
 	export let panelRole = '';
@@ -13,6 +16,7 @@
 	class={`ui-action-panel ${intentful ? 'ui-action-panel--intentful' : ''} ${className}`.trim()}
 	data-ui-role="action-panel"
 	data-ui-panel-role={panelRole || undefined}
+	data-tone={tone === 'default' ? undefined : tone}
 >
 	{#if hasStructuredHeader}
 		<div class="ui-action-panel__header">

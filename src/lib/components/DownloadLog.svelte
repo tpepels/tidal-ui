@@ -88,7 +88,7 @@
 </script>
 
 <section class="download-log-container" data-ui-block="main-sections">
-	<ToolPanel flush={true} panelRole="download-log">
+	<ToolPanel flush={true} tone="tertiary" panelRole="download-log">
 		<div class="download-log-panel">
 		<div class="download-log-header" data-ui-block="primary-actions">
 			<div class="download-log-heading">

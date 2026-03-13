@@ -4,6 +4,8 @@
 	import { Disc, ListMusic, User } from 'lucide-svelte';
 	import CoverArt from '$lib/components/CoverArt.svelte';
 
+	type Tone = 'default' | 'secondary' | 'tertiary';
+
 	export type EntityCardLink = {
 		href: string;
 		label: string;
@@ -24,6 +26,7 @@
 		coverCandidates?: string[];
 		links?: EntityCardLink[];
 		preload?: boolean;
+		tone?: Tone;
 		badge?: Snippet;
 		action?: Snippet;
 		artwork?: Snippet;
@@ -46,6 +49,7 @@
 		coverCandidates = [],
 		links = [],
 		preload = true,
+		tone = 'default',
 		badge,
 		action,
 		artwork,
@@ -66,7 +70,11 @@
 	}
 </script>
 
-<article {...restProps} class={`ui-media-card ui-entity-card ${className}`.trim()}>
+<article
+	{...restProps}
+	class={`ui-media-card ui-entity-card ${className}`.trim()}
+	data-tone={tone === 'default' ? undefined : tone}
+>
 	{#if badge}
 		{@render badge()}
 	{/if}

@@ -154,6 +154,7 @@
 			<button
 				type="button"
 				class="ui-chip-button status-page__refresh-btn"
+				data-tone="tertiary"
 				onclick={() => void refreshDiagnostics()}
 				disabled={diagnosticsLoading}
 			>
@@ -177,7 +178,7 @@
 
 	<div class="status-page__grid" data-ui-block="main-sections">
 		<div data-ui-block="key-summary">
-			<ToolPanel>
+			<ToolPanel tone="secondary">
 				<p class="section-heading">Health</p>
 				<p class="section-footnote">
 					Status: <strong>{diagnosticsHealth?.status ?? 'unknown'}</strong>
@@ -193,7 +194,7 @@
 			</ToolPanel>
 		</div>
 
-		<ToolPanel>
+		<ToolPanel tone="secondary">
 			<ApiTargetsStatusCard
 				title="API Targets"
 				status={statusTargets}
@@ -204,7 +205,7 @@
 			/>
 		</ToolPanel>
 
-		<ToolPanel>
+		<ToolPanel tone="tertiary">
 			<p class="section-heading">Queue</p>
 			<div class="status-page__metric-grid">
 				<div class="status-page__metric">
@@ -238,7 +239,7 @@
 			</details>
 		</ToolPanel>
 
-		<ToolPanel>
+		<ToolPanel tone="tertiary">
 			<p class="section-heading">Queue Metrics</p>
 			<div class="status-page__metric-grid">
 				<div class="status-page__metric">
@@ -279,7 +280,7 @@
 			</details>
 		</ToolPanel>
 
-		<ToolPanel>
+		<ToolPanel tone="secondary">
 			<p class="section-heading">Errors (Last Hour)</p>
 			<p class="section-footnote">
 				Total: {diagnosticsSummary?.totalErrors ?? 0} ·
@@ -305,7 +306,7 @@
 		<details class="status-page__advanced">
 			<summary>Advanced diagnostics</summary>
 			<div class="status-page__advanced-grid">
-				<ToolPanel>
+				<ToolPanel tone="tertiary">
 					<p class="section-heading">Retry Health</p>
 					<p class="section-footnote">Total retries (last hour): {diagnosticsRetries?.total ?? 0}</p>
 					<p class="section-footnote">Recent retry events: {diagnosticsRetries?.recent?.length ?? 0}</p>
@@ -322,7 +323,7 @@
 					{/if}
 				</ToolPanel>
 
-				<ToolPanel wide={true}>
+				<ToolPanel tone="secondary" wide={true}>
 					<p class="section-heading">Recent Errors</p>
 					{#if diagnosticsErrors && diagnosticsErrors.length > 0}
 						<ul class="status-page__errors">
@@ -351,7 +352,7 @@
 					{/if}
 				</ToolPanel>
 
-				<ToolPanel>
+				<ToolPanel tone="tertiary">
 					<p class="section-heading">Persisted Summary</p>
 					{#if diagnosticsPersisted}
 						<p class="section-footnote">
@@ -389,7 +390,7 @@
 					{/if}
 				</ToolPanel>
 
-				<ToolPanel>
+				<ToolPanel tone="secondary">
 					<p class="section-heading">Tracker Snapshot</p>
 					<div class="status-page__tracker-snapshot">
 						<Gauge size={14} />
