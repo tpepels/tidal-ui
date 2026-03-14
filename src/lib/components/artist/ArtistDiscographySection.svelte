@@ -40,6 +40,9 @@
 		coverHydrationGeneration: number;
 		albumDownloadStates: Record<number, AlbumDownloadState>;
 		albumLibraryPresence: Record<number, { exists: boolean; matchedTracks: number }>;
+		albumMusicBrainzReleaseMatches: Record<number, string>;
+		isDiscographyMusicBrainzLoading: boolean;
+		pendingDiscographyMusicBrainzAlbumIds: Set<number>;
 		displayTrackTotal: (total?: number | null) => number;
 		formatAlbumMeta: (album: Album) => string | null;
 		formatQualityLabel: (quality: AudioQuality) => string;
@@ -77,6 +80,9 @@
 		coverHydrationGeneration,
 		albumDownloadStates,
 		albumLibraryPresence,
+		albumMusicBrainzReleaseMatches,
+		isDiscographyMusicBrainzLoading,
+		pendingDiscographyMusicBrainzAlbumIds,
 		displayTrackTotal,
 		formatAlbumMeta,
 		formatQualityLabel,
@@ -314,6 +320,19 @@
 												No artwork
 											</div>
 										{/if}
+										{#if albumMusicBrainzReleaseMatches[album.id]}
+											<span
+												class="discography-mb-badge"
+												aria-label="Matched with MusicBrainz release"
+												title="Matched with MusicBrainz release"
+											>
+												<img src="/icons/musicbrainz-32.png" alt="" aria-hidden="true" width="14" height="14" />
+											</span>
+										{:else if isDiscographyMusicBrainzLoading && pendingDiscographyMusicBrainzAlbumIds.has(album.id)}
+											<span class="discography-mb-badge discography-mb-badge--searching" aria-label="Searching MusicBrainz…" title="Searching MusicBrainz…">
+												<LoaderCircle size={12} class="animate-spin" />
+											</span>
+										{/if}
 									{/snippet}
 									{#snippet footer()}
 										{#if albumDownloadState.status === 'queued'}
@@ -371,5 +390,25 @@
 	.artist-discography-primary {
 		border-top: 1px solid rgba(255, 255, 255, 0.18);
 		padding-top: 0.9rem;
+	}
+
+	.discography-mb-badge {
+		position: absolute;
+		top: 6px;
+		right: 6px;
+		z-index: 50;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 22px;
+		height: 22px;
+		border-radius: 4px;
+		background: rgba(0, 0, 0, 0.72);
+		border: 1px solid rgba(255, 255, 255, 0.15);
+		pointer-events: none;
+	}
+
+	.discography-mb-badge--searching {
+		color: rgba(180, 180, 180, 0.85);
 	}
 </style>

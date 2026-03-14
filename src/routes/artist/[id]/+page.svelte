@@ -25,6 +25,7 @@
 		buildTopTrackAlbumSignals,
 		filterDiscographyEntries
 	} from '$lib/features/artist/artistDiscographyModel';
+	import { createAlbumMusicBrainzMatchController } from '$lib/features/search/albumMusicBrainzMatchController';
 	import ArtistDiscographySection from '$lib/components/artist/ArtistDiscographySection.svelte';
 	import ArtistDiscographyHighlights from '$lib/components/artist/ArtistDiscographyHighlights.svelte';
 	import ArtistRecommendationsRail from '$lib/components/artist/ArtistRecommendationsRail.svelte';
@@ -193,6 +194,23 @@
 	let hasMusicBrainzArtistLookupAttempted = $state(false);
 	let musicBrainzArtistLookupToken = 0;
 
+	let albumMusicBrainzReleaseMatches = $state<Record<number, string>>({});
+	let isDiscographyMusicBrainzLookupLoading = $state(false);
+	let pendingDiscographyMusicBrainzAlbumIds = $state<Set<number>>(new Set());
+	let discographyMusicBrainzLookupToken = 0;
+
+	const discographyMusicBrainzController = createAlbumMusicBrainzMatchController({
+		hasMatch: (albumId) => Boolean(albumMusicBrainzReleaseMatches[albumId]),
+		onMatch: (albumId, releaseId) => {
+			albumMusicBrainzReleaseMatches = { ...albumMusicBrainzReleaseMatches, [albumId]: releaseId };
+			if (pendingDiscographyMusicBrainzAlbumIds.has(albumId)) {
+				const next = new Set(pendingDiscographyMusicBrainzAlbumIds);
+				next.delete(albumId);
+				pendingDiscographyMusicBrainzAlbumIds = next;
+			}
+		}
+	});
+
 	const selectedMusicBrainzArtist = $derived.by(
 		() =>
 			musicBrainzArtistOptions.find((candidate) => candidate.id === selectedMusicBrainzArtistId) ??
@@ -241,6 +259,11 @@
 			isMusicBrainzArtistLookupLoading = false;
 			musicBrainzArtistLookupError = null;
 			hasMusicBrainzArtistLookupAttempted = false;
+			discographyMusicBrainzLookupToken += 1;
+			albumMusicBrainzReleaseMatches = {};
+			isDiscographyMusicBrainzLookupLoading = false;
+			pendingDiscographyMusicBrainzAlbumIds = new Set();
+			discographyMusicBrainzController.invalidate();
 			error = 'Invalid artist id';
 			isLoading = false;
 			return;
@@ -724,6 +747,31 @@
 			});
 	});
 
+	$effect(() => {
+		const albums = discographyEntries.map((e) => e.representative);
+		if (albums.length === 0) {
+			discographyMusicBrainzLookupToken += 1;
+			isDiscographyMusicBrainzLookupLoading = false;
+			pendingDiscographyMusicBrainzAlbumIds = new Set();
+			discographyMusicBrainzController.invalidate();
+			return;
+		}
+		const token = ++discographyMusicBrainzLookupToken;
+		const pendingIds = albums.map((a) => a.id);
+		isDiscographyMusicBrainzLookupLoading = true;
+		pendingDiscographyMusicBrainzAlbumIds = new Set(pendingIds);
+		void (async () => {
+			try {
+				await discographyMusicBrainzController.hydrate(albums);
+			} finally {
+				if (token === discographyMusicBrainzLookupToken) {
+					isDiscographyMusicBrainzLookupLoading = false;
+					pendingDiscographyMusicBrainzAlbumIds = new Set();
+				}
+			}
+		})();
+	});
+
 	function patchAlbumDownloadState(albumId: number, patch: Partial<AlbumDownloadState>) {
 		const previous = albumDownloadStates[albumId] ?? createDefaultAlbumDownloadState();
 		albumDownloadStates = {
@@ -1045,6 +1093,9 @@
 						coverHydrationGeneration={coverHydrationGeneration}
 						albumDownloadStates={albumDownloadStates}
 						albumLibraryPresence={albumLibraryPresence}
+						albumMusicBrainzReleaseMatches={albumMusicBrainzReleaseMatches}
+						isDiscographyMusicBrainzLoading={isDiscographyMusicBrainzLookupLoading}
+						pendingDiscographyMusicBrainzAlbumIds={pendingDiscographyMusicBrainzAlbumIds}
 						{displayTrackTotal}
 						{formatAlbumMeta}
 						{formatQualityLabel}
