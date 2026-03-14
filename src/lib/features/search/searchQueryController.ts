@@ -3,7 +3,7 @@ import type { RegionOption } from '$lib/stores/region';
 import type { SearchTab } from '$lib/stores/searchStoreAdapter';
 
 export const SEARCH_TABS: SearchTab[] = ['tracks', 'albums', 'artists', 'playlists'];
-const DEFAULT_SCOPES: SearchTab[] = ['albums', 'artists'];
+const DEFAULT_SCOPES: SearchTab[] = ['albums'];
 
 export type SearchExecutionScopes = {
 	primaryTab: SearchTab;

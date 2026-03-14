@@ -15,12 +15,12 @@ describe('searchQueryController', () => {
 			'albums',
 			'playlists'
 		]);
-		expect(normalizeScopeSelection([])).toEqual(['albums', 'artists']);
+		expect(normalizeScopeSelection([])).toEqual(['albums']);
 	});
 
 	it('toggles scopes while keeping at least one default scope', () => {
 		expect(toggleSearchScope(['albums', 'artists'], 'artists')).toEqual(['albums']);
-		expect(toggleSearchScope(['albums'], 'albums')).toEqual(['albums', 'artists']);
+		expect(toggleSearchScope(['albums'], 'albums')).toEqual(['albums']);
 		expect(toggleSearchScope(['albums'], 'tracks')).toEqual(['tracks', 'albums']);
 	});
 

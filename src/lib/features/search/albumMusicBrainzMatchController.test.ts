@@ -3,6 +3,7 @@ import type { Album } from '$lib/types';
 import {
 	createAlbumMusicBrainzMatchController,
 	musicBrainzTitlesLikelyMatch,
+	stripTrailingBracketedSuffix,
 	resolveAlbumMusicBrainzLookupKey,
 	resolveAlbumMusicBrainzReleaseMatch
 } from './albumMusicBrainzMatchController';
@@ -45,7 +46,14 @@ describe('albumMusicBrainzMatchController', () => {
 
 	it('matches equivalent titles with punctuation and token overlap', () => {
 		expect(musicBrainzTitlesLikelyMatch('The Album: Deluxe Edition', 'The Album Deluxe')).toBe(true);
+		expect(musicBrainzTitlesLikelyMatch('Future Nostalgia (The Moonlight Edition)', 'Future Nostalgia')).toBe(true);
 		expect(musicBrainzTitlesLikelyMatch('Completely Different', 'Another Record')).toBe(false);
+	});
+
+	it('strips trailing bracketed suffixes iteratively', () => {
+		expect(stripTrailingBracketedSuffix('Album Name (Deluxe Edition)')).toBe('Album Name');
+		expect(stripTrailingBracketedSuffix('Album Name (Deluxe) [Remastered]')).toBe('Album Name');
+		expect(stripTrailingBracketedSuffix('Album Name')).toBe('Album Name');
 	});
 
 	it('picks the closest compatible MusicBrainz release', async () => {
@@ -102,6 +110,50 @@ describe('albumMusicBrainzMatchController', () => {
 		});
 
 		expect(match).toBe('new');
+	});
+
+	it('retries MusicBrainz lookup with trailing bracket suffix removed when first query does not match', async () => {
+		const album = createAlbum({
+			title: 'Future Nostalgia (The Moonlight Edition)',
+			numberOfTracks: 12
+		});
+		const lookupKey = resolveAlbumMusicBrainzLookupKey(album);
+		expect(lookupKey).toBeTruthy();
+
+		const fetchImpl = vi
+			.fn()
+			.mockResolvedValueOnce({
+				ok: true,
+				json: async () => ({ success: true, releases: [] })
+			})
+			.mockResolvedValueOnce({
+				ok: true,
+				json: async () => ({
+					success: true,
+					releases: [
+						{
+							id: 'moonlight-core',
+							title: 'Future Nostalgia',
+							trackCount: 12,
+							date: '2021-02-12'
+						}
+					]
+				})
+			});
+
+		const match = await resolveAlbumMusicBrainzReleaseMatch(album, lookupKey!, {
+			lookupCache: new Map<string, string | null>(),
+			fetchImpl: fetchImpl as unknown as typeof fetch
+		});
+
+		expect(match).toBe('moonlight-core');
+		expect(fetchImpl).toHaveBeenCalledTimes(2);
+		expect(JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body ?? '{}')).albumTitle).toBe(
+			'Future Nostalgia (The Moonlight Edition)'
+		);
+		expect(JSON.parse(String(fetchImpl.mock.calls[1]?.[1]?.body ?? '{}')).albumTitle).toBe(
+			'Future Nostalgia'
+		);
 	});
 
 	it('hydrates matches and avoids duplicate fetches once matched', async () => {
@@ -197,5 +249,76 @@ describe('albumMusicBrainzMatchController', () => {
 		]);
 
 		expect(matchedByAlbum.size).toBe(4);
+	});
+
+	it('enforces a strict batch limit of five concurrent lookups', async () => {
+		const albums = Array.from({ length: 6 }, (_, index) =>
+			createAlbum({ id: index + 1, title: `Strict Cap Album ${index + 1}` })
+		);
+		const matchedByAlbum = new Map<number, string>();
+		const startedTitles: string[] = [];
+		const deferredByTitle = new Map<string, { resolve: () => void }>();
+
+		const fetchImpl = vi.fn().mockImplementation(async (_url: RequestInfo | URL, init?: RequestInit) => {
+			const body = JSON.parse(String(init?.body ?? '{}')) as { albumTitle?: string };
+			const albumTitle = String(body.albumTitle ?? '');
+			startedTitles.push(albumTitle);
+
+			let resolvePromise: () => void = () => {};
+			const promise = new Promise<void>((resolve) => {
+				resolvePromise = resolve;
+			});
+			deferredByTitle.set(albumTitle, { resolve: resolvePromise });
+			await promise;
+
+			return {
+				ok: true,
+				json: async () => ({
+					success: true,
+					releases: [
+						{
+							id: `release-${albumTitle}`,
+							title: albumTitle,
+							trackCount: 10,
+							date: '2024-01-01'
+						}
+					]
+				})
+			};
+		});
+
+		const controller = createAlbumMusicBrainzMatchController({
+			concurrency: 12,
+			lookupLimit: 10,
+			fetchImpl: fetchImpl as unknown as typeof fetch,
+			hasMatch: (albumId) => matchedByAlbum.has(albumId),
+			onMatch: (albumId, releaseId) => {
+				matchedByAlbum.set(albumId, releaseId);
+			}
+		});
+
+		const hydrationPromise = controller.hydrate(albums);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(startedTitles).toHaveLength(5);
+
+		for (const title of [...startedTitles]) {
+			deferredByTitle.get(title)?.resolve();
+		}
+
+		for (let attempt = 0; attempt < 20 && startedTitles.length < 6; attempt += 1) {
+			await Promise.resolve();
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		}
+
+		expect(startedTitles).toHaveLength(6);
+
+		for (const title of startedTitles) {
+			deferredByTitle.get(title)?.resolve();
+		}
+
+		await hydrationPromise;
+		expect(matchedByAlbum.size).toBe(6);
 	});
 });

@@ -80,7 +80,7 @@
 	let lastUrlSearchKey = $state('');
 	let albumArtistFilter = $state('');
 	let strictAlbumArtistMatch = $state(false);
-	let selectedSearchScopes = $state<SearchTab[]>(['albums', 'artists']);
+	let selectedSearchScopes = $state<SearchTab[]>(['albums']);
 
 	const regionAvailability: Record<RegionOption, boolean> = {
 		auto: hasRegionTargets('auto'),
@@ -181,6 +181,7 @@
 	let isAlbumMusicBrainzLookupLoading = $state(false);
 	let pendingAlbumMusicBrainzAlbumIds = $state<Set<number>>(new Set());
 	let albumMusicBrainzLookupToken = 0;
+	let lastAlbumMusicBrainzLookupBatchKey = $state('');
 
 	const trackResults = $derived($searchStore.results?.tracks ?? []);
 	const albumResults = $derived($searchStore.results?.albums ?? []);
@@ -442,23 +443,40 @@
 	});
 
 	$effect(() => {
-		if (albumResults.length === 0) {
+		if ($searchStore.isLoading) {
 			albumMusicBrainzLookupToken += 1;
 			isAlbumMusicBrainzLookupLoading = false;
 			pendingAlbumMusicBrainzAlbumIds = new Set();
 			albumMusicBrainzController.invalidate();
 			return;
 		}
-		const token = ++albumMusicBrainzLookupToken;
+
+		if (albumResults.length === 0) {
+			albumMusicBrainzLookupToken += 1;
+			isAlbumMusicBrainzLookupLoading = false;
+			pendingAlbumMusicBrainzAlbumIds = new Set();
+			albumMusicBrainzController.invalidate();
+			lastAlbumMusicBrainzLookupBatchKey = '';
+			return;
+		}
+
 		const pendingIds = albumResults
 			.slice(0, ALBUM_MUSICBRAINZ_LOOKUP_LIMIT)
 			.map((album) => album.id);
 		if (pendingIds.length === 0) {
 			isAlbumMusicBrainzLookupLoading = false;
 			pendingAlbumMusicBrainzAlbumIds = new Set();
+			lastAlbumMusicBrainzLookupBatchKey = '';
 			return;
 		}
 
+		const batchKey = pendingIds.join(',');
+		if (batchKey === lastAlbumMusicBrainzLookupBatchKey) {
+			return;
+		}
+		lastAlbumMusicBrainzLookupBatchKey = batchKey;
+
+		const token = ++albumMusicBrainzLookupToken;
 		isAlbumMusicBrainzLookupLoading = true;
 		pendingAlbumMusicBrainzAlbumIds = new Set(pendingIds);
 		void (async () => {

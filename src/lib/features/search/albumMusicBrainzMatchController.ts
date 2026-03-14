@@ -29,6 +29,72 @@ type AlbumMusicBrainzMatchControllerOptions = {
 
 const DEFAULT_LOOKUP_LIMIT = 24;
 const DEFAULT_LOOKUP_CONCURRENCY = 5;
+const MAX_LOOKUP_CONCURRENCY = 5;
+const PERSISTENT_MATCH_CACHE_STORAGE_KEY = 'tidal-ui.musicbrainz.album-match-cache.v1';
+const sharedLookupCache = new Map<string, string | null>();
+const persistentLookupCache = new Map<string, string>();
+let hasLoadedPersistentLookupCache = false;
+
+function canUsePersistentLookupCache(): boolean {
+	if (typeof window === 'undefined' || !window.localStorage) {
+		return false;
+	}
+	if (typeof process !== 'undefined' && process.env?.VITEST) {
+		return false;
+	}
+	return true;
+}
+
+function loadPersistentLookupCacheInto(cache: Map<string, string | null>): void {
+	if (hasLoadedPersistentLookupCache || !canUsePersistentLookupCache()) {
+		return;
+	}
+	hasLoadedPersistentLookupCache = true;
+
+	try {
+		const raw = window.localStorage.getItem(PERSISTENT_MATCH_CACHE_STORAGE_KEY);
+		if (!raw) {
+			return;
+		}
+		const parsed = JSON.parse(raw) as Record<string, unknown>;
+		for (const [key, value] of Object.entries(parsed)) {
+			if (typeof key !== 'string' || typeof value !== 'string' || value.length === 0) {
+				continue;
+			}
+			persistentLookupCache.set(key, value);
+			cache.set(key, value);
+		}
+	} catch {
+		// Ignore malformed persistent cache payloads.
+	}
+}
+
+function persistLookupCacheEntry(lookupKey: string, releaseId: string): void {
+	if (!canUsePersistentLookupCache() || !lookupKey || !releaseId) {
+		return;
+	}
+	persistentLookupCache.set(lookupKey, releaseId);
+	try {
+		window.localStorage.setItem(
+			PERSISTENT_MATCH_CACHE_STORAGE_KEY,
+			JSON.stringify(Object.fromEntries(persistentLookupCache.entries()))
+		);
+	} catch {
+		// Ignore storage quota and serialization failures.
+	}
+}
+
+function clearPersistentLookupCacheStorage(): void {
+	persistentLookupCache.clear();
+	if (!canUsePersistentLookupCache()) {
+		return;
+	}
+	try {
+		window.localStorage.removeItem(PERSISTENT_MATCH_CACHE_STORAGE_KEY);
+	} catch {
+		// Ignore storage failures.
+	}
+}
 
 export function normalizeMusicBrainzText(value: string | undefined): string {
 	if (!value) return '';
@@ -40,16 +106,42 @@ export function normalizeMusicBrainzText(value: string | undefined): string {
 		.trim();
 }
 
+export function stripTrailingBracketedSuffix(value: string | undefined): string {
+	if (!value) {
+		return '';
+	}
+
+	let stripped = value.trim();
+	while (stripped.length > 0) {
+		const next = stripped.replace(/\s*[([{][^()[\]{}]*[)\]}]\s*$/u, '').trim();
+		if (next === stripped) {
+			break;
+		}
+		stripped = next;
+	}
+
+	return stripped;
+}
+
 export function musicBrainzTitlesLikelyMatch(albumTitle: string, releaseTitle: string): boolean {
 	const normalizedAlbumTitle = normalizeMusicBrainzText(albumTitle);
 	const normalizedReleaseTitle = normalizeMusicBrainzText(releaseTitle);
+	const normalizedAlbumTitleWithoutTrailingBracketSuffix = normalizeMusicBrainzText(
+		stripTrailingBracketedSuffix(albumTitle)
+	);
+	const normalizedReleaseTitleWithoutTrailingBracketSuffix = normalizeMusicBrainzText(
+		stripTrailingBracketedSuffix(releaseTitle)
+	);
 	if (!normalizedAlbumTitle || !normalizedReleaseTitle) {
 		return false;
 	}
 	if (
 		normalizedAlbumTitle === normalizedReleaseTitle ||
 		normalizedAlbumTitle.includes(normalizedReleaseTitle) ||
-		normalizedReleaseTitle.includes(normalizedAlbumTitle)
+		normalizedReleaseTitle.includes(normalizedAlbumTitle) ||
+		(normalizedAlbumTitleWithoutTrailingBracketSuffix.length > 0 &&
+			normalizedAlbumTitleWithoutTrailingBracketSuffix ===
+				normalizedReleaseTitleWithoutTrailingBracketSuffix)
 	) {
 		return true;
 	}
@@ -121,61 +213,76 @@ export async function resolveAlbumMusicBrainzReleaseMatch(
 		options.lookupCache.set(lookupKey, null);
 		return null;
 	}
+	const fallbackAlbumTitle = stripTrailingBracketedSuffix(albumTitle);
+	const albumTitlesToSearch =
+		fallbackAlbumTitle && fallbackAlbumTitle !== albumTitle
+			? [albumTitle, fallbackAlbumTitle]
+			: [albumTitle];
 
 	const fetchImpl = options.fetchImpl ?? fetch;
 	try {
-		const response = await fetchImpl('/api/metadata/musicbrainz-release-search', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				albumTitle,
-				artistName,
-				releaseDate: album.releaseDate,
-				upc: album.upc,
-				limit: 16
-			})
-		});
-		const payload = (await response.json().catch(() => null)) as
-			| MusicBrainzReleaseSearchResponse
-			| null;
-		if (!response.ok || !payload?.success || !Array.isArray(payload.releases)) {
-			options.lookupCache.set(lookupKey, null);
-			return null;
-		}
+		let compatibleReleases: MusicBrainzReleaseSearchOption[] = [];
 
-		const compatibleReleases = payload.releases
-			.filter(
-				(release) =>
-					typeof release?.id === 'string' &&
-					release.id.length > 0 &&
-					typeof release.title === 'string' &&
-					musicBrainzTitlesLikelyMatch(albumTitle, release.title)
-			)
-			.filter((release) => {
-				if (trackCount === null) {
-					return true;
-				}
-				const releaseTrackCount = resolveMusicBrainzReleaseTrackCount(release);
-				return releaseTrackCount !== null && releaseTrackCount >= trackCount;
-			})
-			.sort((left, right) => {
-				if (trackCount === null) {
-					return compareMusicBrainzReleaseDateDesc(left, right);
-				}
-				const leftTrackCount =
-					resolveMusicBrainzReleaseTrackCount(left) ?? Number.MAX_SAFE_INTEGER;
-				const rightTrackCount =
-					resolveMusicBrainzReleaseTrackCount(right) ?? Number.MAX_SAFE_INTEGER;
-				const leftDistance = Math.abs(leftTrackCount - trackCount);
-				const rightDistance = Math.abs(rightTrackCount - trackCount);
-				if (leftDistance !== rightDistance) {
-					return leftDistance - rightDistance;
-				}
-				return compareMusicBrainzReleaseDateDesc(left, right);
+		for (const titleToSearch of albumTitlesToSearch) {
+			const response = await fetchImpl('/api/metadata/musicbrainz-release-search', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					albumTitle: titleToSearch,
+					artistName,
+					releaseDate: album.releaseDate,
+					upc: album.upc,
+					limit: 16
+				})
 			});
+			const payload = (await response.json().catch(() => null)) as
+				| MusicBrainzReleaseSearchResponse
+				| null;
+			if (!response.ok || !payload?.success || !Array.isArray(payload.releases)) {
+				continue;
+			}
+
+			compatibleReleases = payload.releases
+				.filter(
+					(release) =>
+						typeof release?.id === 'string' &&
+						release.id.length > 0 &&
+						typeof release.title === 'string' &&
+						musicBrainzTitlesLikelyMatch(albumTitle, release.title)
+				)
+				.filter((release) => {
+					if (trackCount === null) {
+						return true;
+					}
+					const releaseTrackCount = resolveMusicBrainzReleaseTrackCount(release);
+					return releaseTrackCount !== null && releaseTrackCount >= trackCount;
+				})
+				.sort((left, right) => {
+					if (trackCount === null) {
+						return compareMusicBrainzReleaseDateDesc(left, right);
+					}
+					const leftTrackCount =
+						resolveMusicBrainzReleaseTrackCount(left) ?? Number.MAX_SAFE_INTEGER;
+					const rightTrackCount =
+						resolveMusicBrainzReleaseTrackCount(right) ?? Number.MAX_SAFE_INTEGER;
+					const leftDistance = Math.abs(leftTrackCount - trackCount);
+					const rightDistance = Math.abs(rightTrackCount - trackCount);
+					if (leftDistance !== rightDistance) {
+						return leftDistance - rightDistance;
+					}
+					return compareMusicBrainzReleaseDateDesc(left, right);
+				});
+
+			if (compatibleReleases.length > 0) {
+				break;
+			}
+		}
 
 		const matchId = compatibleReleases[0]?.id ?? null;
 		options.lookupCache.set(lookupKey, matchId);
+		if (matchId) {
+			persistLookupCacheEntry(lookupKey, matchId);
+		}
 		return matchId;
 	} catch {
 		options.lookupCache.set(lookupKey, null);
@@ -187,8 +294,12 @@ export function createAlbumMusicBrainzMatchController(
 	options: AlbumMusicBrainzMatchControllerOptions
 ) {
 	const lookupLimit = options.lookupLimit ?? DEFAULT_LOOKUP_LIMIT;
-	const concurrency = Math.max(1, options.concurrency ?? DEFAULT_LOOKUP_CONCURRENCY);
-	const lookupCache = new Map<string, string | null>();
+	const concurrency = Math.min(
+		MAX_LOOKUP_CONCURRENCY,
+		Math.max(1, options.concurrency ?? DEFAULT_LOOKUP_CONCURRENCY)
+	);
+	const lookupCache = sharedLookupCache;
+	loadPersistentLookupCacheInto(lookupCache);
 	let lookupToken = 0;
 
 	async function hydrate(albums: Album[]): Promise<void> {
@@ -205,8 +316,7 @@ export function createAlbumMusicBrainzMatchController(
 			.filter(
 				(entry): entry is { album: Album; lookupKey: string } =>
 					typeof entry.lookupKey === 'string' &&
-					!options.hasMatch(entry.album.id) &&
-					!lookupCache.has(entry.lookupKey)
+					!options.hasMatch(entry.album.id)
 			)
 			.slice(0, lookupLimit);
 
@@ -251,6 +361,7 @@ export function createAlbumMusicBrainzMatchController(
 
 	function clearCache(): void {
 		lookupCache.clear();
+		clearPersistentLookupCacheStorage();
 	}
 
 	return {

@@ -233,7 +233,7 @@
 						count={section.entries.length}
 						className="artist-discography-group"
 					>
-						<div class="grid grid-cols-1 gap-4">
+						<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
 							{#each section.entries as entry (`${entry.key}:${downloadQuality}`)}
 								{@const album = entry.representative}
 								{@const hasOfficialTidalSource = album.discographySource === 'official_tidal'}
@@ -410,5 +410,20 @@
 
 	.discography-mb-badge--searching {
 		color: rgba(180, 180, 180, 0.85);
+	}
+
+	:global(.artist-discography-group .ui-media-card__primary-link) {
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+		gap: 0.58rem;
+	}
+
+	:global(.artist-discography-group .ui-media-card__artwork) {
+		width: 100%;
+	}
+
+	:global(.artist-discography-group .ui-media-card__body) {
+		padding-top: 0.08rem;
 	}
 </style>
