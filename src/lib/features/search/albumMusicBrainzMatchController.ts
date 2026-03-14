@@ -28,7 +28,7 @@ type AlbumMusicBrainzMatchControllerOptions = {
 };
 
 const DEFAULT_LOOKUP_LIMIT = 24;
-const DEFAULT_LOOKUP_CONCURRENCY = 3;
+const DEFAULT_LOOKUP_CONCURRENCY = 5;
 
 export function normalizeMusicBrainzText(value: string | undefined): string {
 	if (!value) return '';
@@ -187,7 +187,7 @@ export function createAlbumMusicBrainzMatchController(
 	options: AlbumMusicBrainzMatchControllerOptions
 ) {
 	const lookupLimit = options.lookupLimit ?? DEFAULT_LOOKUP_LIMIT;
-	const concurrency = options.concurrency ?? DEFAULT_LOOKUP_CONCURRENCY;
+	const concurrency = Math.max(1, options.concurrency ?? DEFAULT_LOOKUP_CONCURRENCY);
 	const lookupCache = new Map<string, string | null>();
 	let lookupToken = 0;
 
@@ -215,29 +215,34 @@ export function createAlbumMusicBrainzMatchController(
 		}
 
 		const token = ++lookupToken;
-		const queue = [...candidates];
-		const workerCount = Math.min(concurrency, queue.length);
 
-		const workers = Array.from({ length: workerCount }, async () => {
-			while (queue.length > 0) {
-				const next = queue.shift();
-				if (!next) return;
+		for (let batchStart = 0; batchStart < candidates.length; batchStart += concurrency) {
+			if (token !== lookupToken) {
+				return;
+			}
 
-				const releaseId = await resolveAlbumMusicBrainzReleaseMatch(next.album, next.lookupKey, {
-					lookupCache,
-					fetchImpl: options.fetchImpl
-				});
-				if (token !== lookupToken) {
-					return;
-				}
-				if (!releaseId || options.hasMatch(next.album.id)) {
+			const batch = candidates.slice(batchStart, batchStart + concurrency);
+			const resolvedBatch = await Promise.all(
+				batch.map(async (entry) => {
+					const releaseId = await resolveAlbumMusicBrainzReleaseMatch(entry.album, entry.lookupKey, {
+						lookupCache,
+						fetchImpl: options.fetchImpl
+					});
+					return { albumId: entry.album.id, releaseId };
+				})
+			);
+
+			if (token !== lookupToken) {
+				return;
+			}
+
+			for (const result of resolvedBatch) {
+				if (!result.releaseId || options.hasMatch(result.albumId)) {
 					continue;
 				}
-				options.onMatch(next.album.id, releaseId);
+				options.onMatch(result.albumId, result.releaseId);
 			}
-		});
-
-		await Promise.all(workers);
+		}
 	}
 
 	function invalidate(): void {

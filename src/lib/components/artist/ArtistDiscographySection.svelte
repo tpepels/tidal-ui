@@ -233,7 +233,7 @@
 						count={section.entries.length}
 						className="artist-discography-group"
 					>
-						<div class="grid gap-4 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+						<div class="grid grid-cols-1 gap-4">
 							{#each section.entries as entry (`${entry.key}:${downloadQuality}`)}
 								{@const album = entry.representative}
 								{@const hasOfficialTidalSource = album.discographySource === 'official_tidal'}

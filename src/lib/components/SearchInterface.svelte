@@ -172,7 +172,7 @@
 	});
 
 	const ALBUM_QUEUE_POLL_INTERVAL_MS = 1000;
-	const ALBUM_MUSICBRAINZ_LOOKUP_CONCURRENCY = 3;
+	const ALBUM_MUSICBRAINZ_LOOKUP_CONCURRENCY = 5;
 	const ALBUM_MUSICBRAINZ_LOOKUP_LIMIT = 24;
 	const MUSICBRAINZ_PENDING_DOWNLOAD_CONFIRMATION =
 		'MusicBrainz matching is still running for this album. Waiting a few seconds can improve metadata. Continue download now?';

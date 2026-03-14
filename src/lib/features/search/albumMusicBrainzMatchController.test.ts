@@ -131,4 +131,71 @@ describe('albumMusicBrainzMatchController', () => {
 		expect(matchedByAlbum.get(album.id)).toBe('release-202');
 		expect(fetchImpl).toHaveBeenCalledTimes(1);
 	});
+
+	it('processes lookup batches sequentially and waits for each batch to finish', async () => {
+		const albums = [
+			createAlbum({ id: 1, title: 'Batch Album 1' }),
+			createAlbum({ id: 2, title: 'Batch Album 2' }),
+			createAlbum({ id: 3, title: 'Batch Album 3' }),
+			createAlbum({ id: 4, title: 'Batch Album 4' })
+		];
+		const matchedByAlbum = new Map<number, string>();
+		const deferredByTitle = new Map<string, { resolve: (value: unknown) => void }>();
+		const startedTitles: string[] = [];
+
+		const fetchImpl = vi.fn().mockImplementation(async (_url: RequestInfo | URL, init?: RequestInit) => {
+			const body = JSON.parse(String(init?.body ?? '{}')) as { albumTitle?: string };
+			const albumTitle = String(body.albumTitle ?? '');
+			startedTitles.push(albumTitle);
+
+			if (albumTitle === 'Batch Album 1' || albumTitle === 'Batch Album 2') {
+				let resolvePromise: (value: unknown) => void = () => {};
+				const promise = new Promise((resolve) => {
+					resolvePromise = resolve;
+				});
+				deferredByTitle.set(albumTitle, { resolve: resolvePromise });
+				await promise;
+			}
+
+			return {
+				ok: true,
+				json: async () => ({
+					success: true,
+					releases: [{ id: `release-${albumTitle}`, title: albumTitle, trackCount: 10, date: '2024-01-01' }]
+				})
+			};
+		});
+
+		const controller = createAlbumMusicBrainzMatchController({
+			concurrency: 2,
+			lookupLimit: 10,
+			fetchImpl: fetchImpl as unknown as typeof fetch,
+			hasMatch: (albumId) => matchedByAlbum.has(albumId),
+			onMatch: (albumId, releaseId) => {
+				matchedByAlbum.set(albumId, releaseId);
+			}
+		});
+
+		const hydrationPromise = controller.hydrate(albums);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(startedTitles).toEqual(['Batch Album 1', 'Batch Album 2']);
+
+		deferredByTitle.get('Batch Album 1')?.resolve(undefined);
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(startedTitles).toEqual(['Batch Album 1', 'Batch Album 2']);
+
+		deferredByTitle.get('Batch Album 2')?.resolve(undefined);
+		await hydrationPromise;
+		expect(startedTitles).toEqual([
+			'Batch Album 1',
+			'Batch Album 2',
+			'Batch Album 3',
+			'Batch Album 4'
+		]);
+
+		expect(matchedByAlbum.size).toBe(4);
+	});
 });
