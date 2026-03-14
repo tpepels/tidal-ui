@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Download, LoaderCircle, RotateCcw, X } from 'lucide-svelte';
 	import ActionPanel from '$lib/components/ui/ActionPanel.svelte';
+	import EntityMediaCard from '$lib/components/ui/EntityMediaCard.svelte';
 	import SectionBlock from '$lib/components/ui/SectionBlock.svelte';
 	import StateBlock from '$lib/components/ui/StateBlock.svelte';
 	import {
@@ -88,37 +89,6 @@
 		onAlbumCoverError,
 		onAlbumCoverLoad
 	}: Props = $props();
-
-	function describeAlbumState(
-		albumDownloadState: AlbumDownloadState,
-		albumInLibrary: boolean,
-		totalTracks: number
-	): string | null {
-		if (albumDownloadState.status === 'queued') {
-			return 'Queued';
-		}
-		if (albumDownloadState.downloading) {
-			return `Downloading ${albumDownloadState.completed ?? 0}/${displayTrackTotal(
-				albumDownloadState.total ?? totalTracks
-			)}`;
-		}
-		if (albumDownloadState.status === 'completed') {
-			return 'Downloaded';
-		}
-		if (albumDownloadState.status === 'cancelled') {
-			return 'Stopped';
-		}
-		if (albumDownloadState.status === 'paused') {
-			return 'Paused';
-		}
-		if (albumDownloadState.error) {
-			return 'Download error';
-		}
-		if (albumInLibrary) {
-			return 'In library';
-		}
-		return null;
-	}
 </script>
 
 <section class="artist-discography-primary" data-ui-block="main-content">
@@ -257,7 +227,7 @@
 						count={section.entries.length}
 						className="artist-discography-group"
 					>
-						<div class="ui-list-surface">
+						<div class="grid gap-4 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
 							{#each section.entries as entry (`${entry.key}:${downloadQuality}`)}
 								{@const album = entry.representative}
 								{@const hasOfficialTidalSource = album.discographySource === 'official_tidal'}
@@ -283,84 +253,90 @@
 									albumDownloadState
 								)}
 								{@const albumInLibrary = albumLibraryPresence[album.id]?.exists === true}
-								<div class="ui-list-row ui-list-row--actionable ui-perf-row" data-window-item>
-									<a
-										href={`/album/${album.id}`}
-										class="ui-list-row__main"
-										data-sveltekit-preload-data
-										aria-label={`Open album ${album.title}`}
-									>
-										<div class="ui-list-row__media" aria-hidden="true">
-											{#if coverImageCandidates.length > 0 && !albumCoverFailures[album.id]}
-												<img
-													src={coverImageUrl}
-													data-album-id={album.id}
-													data-cover-use-proxy={hasOfficialTidalSource ? '1' : '0'}
-													data-cover-candidates={serializeCoverCandidates(coverImageCandidates)}
-													data-cover-index="0"
-													data-cover-generation={coverHydrationGeneration}
-													data-cover-recovery-tried="0"
-													data-cover-cache-key={coverCacheKey}
-													onerror={onAlbumCoverError}
-													onload={onAlbumCoverLoad}
-													alt={album.title}
-													loading="lazy"
-													decoding="async"
-												/>
+								<EntityMediaCard
+									type="album"
+									href={`/album/${album.id}`}
+									title={album.title}
+									subtitle={formatAlbumMeta(album)}
+									class="group"
+								>
+									{#snippet action()}
+										<button
+											onclick={(event) =>
+												canCancelAlbumDownload
+													? onCancelAlbumQueueDownload(album.id, event)
+													: onAlbumDownload(album, event)}
+											type="button"
+											class="absolute top-3 right-3 z-40 flex items-center justify-center rounded-full border border-white/15 bg-black/80 p-2 text-gray-200 transition-[background-color,border-color,color,transform] duration-200 ease-[cubic-bezier(0.2,0,0,1)] hover:-translate-y-px hover:border-white/35 hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+											disabled={isDownloadingDiscography || albumDownloadState.status === 'submitting'}
+											aria-label={
+												canCancelAlbumDownload
+													? `Stop download ${album.title}`
+													: albumDownloadState.status === 'paused'
+														? `Resume download ${album.title}`
+														: `Download ${album.title}`
+											}
+											aria-busy={albumDownloadState.status === 'submitting' ||
+												albumDownloadState.status === 'queued' ||
+												albumDownloadState.downloading}
+										>
+											{#if canCancelAlbumDownload}
+												<X size={16} />
+											{:else if albumDownloadState.status === 'submitting' || albumDownloadState.downloading}
+												<LoaderCircle size={16} class="animate-spin" />
+											{:else if albumDownloadState.status === 'paused'}
+												<RotateCcw size={16} />
 											{:else}
-												<span class="ui-list-row__media-fallback">No art</span>
+												<Download size={16} />
 											{/if}
-										</div>
-										<div class="ui-list-row__text">
-											<p class="ui-list-row__title">
-												<span class="ui-list-row__title-text">{album.title}</span>
-											</p>
-											<p class="ui-list-row__meta ui-list-row__meta--wrap">
-												{formatAlbumMeta(album) ?? 'Release'}
-												{#if describeAlbumState(
-													albumDownloadState,
-													albumInLibrary,
-													album.numberOfTracks ?? 0
-												)}
-													• {describeAlbumState(
-														albumDownloadState,
-														albumInLibrary,
-														album.numberOfTracks ?? 0
-													)}
-												{/if}
-											</p>
-										</div>
-									</a>
-									<button
-										onclick={(event) =>
-											canCancelAlbumDownload
-												? onCancelAlbumQueueDownload(album.id, event)
-												: onAlbumDownload(album, event)}
-										type="button"
-										class="ui-list-row__action"
-										disabled={isDownloadingDiscography || albumDownloadState.status === 'submitting'}
-										aria-label={
-											canCancelAlbumDownload
-												? `Stop download ${album.title}`
-												: albumDownloadState.status === 'paused'
-													? `Resume download ${album.title}`
-													: `Download ${album.title}`
-										}
-										aria-busy={albumDownloadState.status === 'submitting' ||
-											albumDownloadState.status === 'queued' ||
-											albumDownloadState.downloading}
-									>
-										{#if canCancelAlbumDownload}
-											<X size={16} />
-										{:else if albumDownloadState.status === 'submitting' || albumDownloadState.downloading}
-											<LoaderCircle size={16} class="animate-spin" />
-										{:else if albumDownloadState.status === 'paused'}
-											<RotateCcw size={16} />
+										</button>
+									{/snippet}
+									{#snippet artwork()}
+										{#if coverImageCandidates.length > 0 && !albumCoverFailures[album.id]}
+											<img
+												src={coverImageUrl}
+												data-album-id={album.id}
+												data-cover-use-proxy={hasOfficialTidalSource ? '1' : '0'}
+												data-cover-candidates={serializeCoverCandidates(coverImageCandidates)}
+												data-cover-index="0"
+												data-cover-generation={coverHydrationGeneration}
+												data-cover-recovery-tried="0"
+												data-cover-cache-key={coverCacheKey}
+												onerror={onAlbumCoverError}
+												onload={onAlbumCoverLoad}
+												alt={album.title}
+												class="h-full w-full object-cover"
+												loading="lazy"
+												decoding="async"
+											/>
 										{:else}
-											<Download size={16} />
+											<div class="flex h-full w-full items-center justify-center text-sm text-gray-500">
+												No artwork
+											</div>
 										{/if}
-									</button>
-								</div>
+									{/snippet}
+									{#snippet footer()}
+										{#if albumDownloadState.status === 'queued'}
+											<p class="album-card-status">Queued</p>
+										{:else if albumDownloadState.downloading}
+											<p class="album-card-status">
+												Downloading {albumDownloadState.completed ?? 0}/{displayTrackTotal(
+													albumDownloadState.total ?? album.numberOfTracks ?? 0
+												)}
+											</p>
+										{:else if albumDownloadState.status === 'completed'}
+											<p class="album-card-status">Downloaded</p>
+										{:else if albumDownloadState.status === 'cancelled'}
+											<p class="album-card-status">Stopped</p>
+										{:else if albumDownloadState.status === 'paused'}
+											<p class="album-card-status">Paused</p>
+										{:else if albumDownloadState.error}
+											<p class="album-card-status">Download error</p>
+										{:else if albumInLibrary}
+											<p class="album-card-status">In library</p>
+										{/if}
+									{/snippet}
+								</EntityMediaCard>
 							{/each}
 						</div>
 					</SectionBlock>
