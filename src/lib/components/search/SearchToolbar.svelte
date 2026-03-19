@@ -2,6 +2,11 @@
 	import { Search, Square } from 'lucide-svelte';
 	import type { SearchTab } from '$lib/stores/searchStoreAdapter';
 	import { getPlatformName } from '$lib/utils/songlink';
+	import {
+		isSearchSubmitDisabled,
+		resolveSearchSubmitLabel,
+		resolveSearchSubmitMode
+	} from '$lib/features/search/searchSubmitController';
 
 	type UiTone = 'default' | 'secondary' | 'tertiary';
 
@@ -58,6 +63,9 @@
 	}
 
 	const isSearchInProgress = $derived(isLoading || isActiveTabLoading);
+	const searchSubmitMode = $derived(resolveSearchSubmitMode(query, isSearchInProgress));
+	const searchSubmitLabel = $derived(resolveSearchSubmitLabel(searchSubmitMode));
+	const searchSubmitDisabled = $derived(isSearchSubmitDisabled(query, isSearchInProgress));
 </script>
 
 <section class="search-panel" aria-label="Catalog search">
@@ -68,41 +76,50 @@
 			onSubmit();
 		}}
 	>
-		<div class="search-panel__row">
-			<input
-				id="catalog-search-input"
-				type="text"
-				value={query}
-				oninput={(event) => {
-					const target = event.currentTarget as HTMLInputElement | null;
-					if (target) {
-						onQueryInput(target.value);
-					}
-				}}
-				placeholder={isQueryATidalUrl
-					? 'TIDAL URL detected'
-					: isQueryASpotifyPlaylist
-						? 'Spotify playlist detected'
-						: isQueryAStreamingUrl
-							? `${getPlatformName(query)} URL detected`
-							: 'Album, song, artist, or URL'}
-				class="search-panel__input"
-			/>
-			<button
-				type="submit"
-				class="ui-action-button ui-action-button--primary search-panel__submit"
-				disabled={!query.trim() && !isSearchInProgress}
-				aria-busy={isSearchInProgress}
-			>
-				{#if isSearchInProgress}
-					<Square size={16} />
-					Stop
-				{:else}
-					<Search size={16} />
-					Search
-				{/if}
-			</button>
-		</div>
+		<input
+			id="catalog-search-input"
+			type="text"
+			value={query}
+			oninput={(event) => {
+				const target = event.currentTarget as HTMLInputElement | null;
+				if (target) {
+					onQueryInput(target.value);
+				}
+			}}
+			placeholder={isQueryATidalUrl
+				? 'TIDAL URL detected'
+				: isQueryASpotifyPlaylist
+					? 'Spotify playlist detected'
+					: isQueryAStreamingUrl
+						? `${getPlatformName(query)} URL detected`
+						: 'Album, song, artist, or URL'}
+			class="search-panel__input search-panel__input--query"
+		/>
+
+		{#if !isQueryAUrl && isScopeSelected('albums')}
+			<div class="search-panel__field search-panel__field--secondary">
+				<label class="search-panel__field-label" for="album-artist-filter">
+					Album Artist Filter
+					<span>Album search only</span>
+				</label>
+				<input
+					id="album-artist-filter"
+					type="text"
+					value={albumArtistFilter}
+					oninput={(event) => {
+						const target = event.currentTarget as HTMLInputElement | null;
+						if (target) {
+							onAlbumArtistFilterInput(target.value);
+						}
+					}}
+					placeholder="Artist name or wildcard (*, ?)"
+					class="search-panel__input"
+				/>
+				<p class="search-panel__field-hint">
+					Applies only to album results. Artist/track/playlist results stay unfiltered.
+				</p>
+			</div>
+		{/if}
 
 		{#if !isQueryAUrl}
 			<div class="search-panel__scope" role="group" aria-label="Search sections">
@@ -121,45 +138,35 @@
 		{/if}
 
 		{#if !isQueryAUrl && isScopeSelected('albums')}
-			<div class="search-panel__row search-panel__row--secondary">
-				<div class="search-panel__field">
-					<label class="search-panel__field-label" for="album-artist-filter">
-						Album Artist Filter
-						<span>Album search only</span>
-					</label>
-					<input
-						id="album-artist-filter"
-						type="text"
-						value={albumArtistFilter}
-						oninput={(event) => {
-							const target = event.currentTarget as HTMLInputElement | null;
-							if (target) {
-								onAlbumArtistFilterInput(target.value);
-							}
-						}}
-						placeholder="Artist name or wildcard (*, ?)"
-						class="search-panel__input"
-					/>
-					<p class="search-panel__field-hint">
-						Applies only to album results. Artist/track/playlist results stay unfiltered.
-					</p>
-				</div>
-				<label class="search-panel__strict">
-					<input
-						type="checkbox"
-						checked={strictAlbumArtistMatch}
-						onchange={(event) => {
-							const target = event.currentTarget as HTMLInputElement | null;
-							if (target) {
-								onStrictAlbumArtistMatchChange(target.checked);
-							}
-						}}
-						disabled={!albumArtistFilter.trim()}
-					/>
-					<span>Strict album artist match</span>
-				</label>
-			</div>
+			<label class="search-panel__strict">
+				<input
+					type="checkbox"
+					checked={strictAlbumArtistMatch}
+					onchange={(event) => {
+						const target = event.currentTarget as HTMLInputElement | null;
+						if (target) {
+							onStrictAlbumArtistMatchChange(target.checked);
+						}
+					}}
+					disabled={!albumArtistFilter.trim()}
+				/>
+				<span>Strict album artist match</span>
+			</label>
 		{/if}
+
+		<button
+			type="submit"
+			class="ui-action-button ui-action-button--primary search-panel__submit"
+			disabled={searchSubmitDisabled}
+			aria-busy={isSearchInProgress}
+		>
+			{#if searchSubmitMode === 'search'}
+				<Search size={16} />
+			{:else}
+				<Square size={16} />
+			{/if}
+			{searchSubmitLabel}
+		</button>
 	</form>
 </section>
 
@@ -173,20 +180,15 @@
 	}
 
 	.search-panel__form {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-areas:
+			'query submit'
+			'secondary strict'
+			'scope scope';
+		gap: 0.75rem 0.65rem;
+		align-items: start;
 		margin: 0;
-	}
-
-	.search-panel__row {
-		display: flex;
-		align-items: center;
-		gap: 0.65rem;
-	}
-
-	.search-panel__row--secondary {
-		align-items: stretch;
 	}
 
 	.search-panel__field {
@@ -195,6 +197,10 @@
 		min-width: 0;
 		flex-direction: column;
 		gap: 0.34rem;
+	}
+
+	.search-panel__field--secondary {
+		grid-area: secondary;
 	}
 
 	.search-panel__field-label {
@@ -240,13 +246,19 @@
 		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.16));
 	}
 
+	.search-panel__input--query {
+		grid-area: query;
+	}
+
 	.search-panel__submit {
+		grid-area: submit;
 		flex-shrink: 0;
 		min-width: 8.4rem;
 		min-height: 3rem;
 	}
 
 	.search-panel__strict {
+		grid-area: strict;
 		display: inline-flex;
 		align-items: center;
 		gap: 0.42rem;
@@ -268,6 +280,7 @@
 	}
 
 	.search-panel__scope {
+		grid-area: scope;
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.5rem;
@@ -302,10 +315,6 @@
 	}
 
 	@media (max-width: 780px) {
-		.search-panel__row--secondary {
-			flex-direction: column;
-		}
-
 		.search-panel__strict {
 			width: 100%;
 			justify-content: center;
@@ -313,9 +322,14 @@
 	}
 
 	@media (max-width: 640px) {
-		.search-panel__row {
-			flex-direction: column;
-			align-items: stretch;
+		.search-panel__form {
+			grid-template-columns: minmax(0, 1fr);
+			grid-template-areas:
+				'query'
+				'secondary'
+				'scope'
+				'strict'
+				'submit';
 		}
 
 		.search-panel__submit {

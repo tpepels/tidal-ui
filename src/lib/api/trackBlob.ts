@@ -186,13 +186,25 @@ export async function fetchTrackBlobPayload(params: {
 			options?.convertAacToMp3 === true && (quality === 'HIGH' || quality === 'LOW');
 		const shouldEmbedMetadata = options?.skipMetadataEmbedding !== true;
 		const enableExperimentalMusicBrainz = options?.enableExperimentalMusicBrainz ?? true;
+		let preferredMusicBrainzReleaseId = options?.musicBrainzReleaseId;
+		if (!preferredMusicBrainzReleaseId && options?.musicBrainzReleaseIdPromise) {
+			try {
+				const deferredReleaseId = await options.musicBrainzReleaseIdPromise;
+				preferredMusicBrainzReleaseId =
+					typeof deferredReleaseId === 'string' && deferredReleaseId.trim().length > 0
+						? deferredReleaseId.trim()
+						: undefined;
+			} catch {
+				preferredMusicBrainzReleaseId = undefined;
+			}
+		}
 		const experimentalTags =
 			shouldEmbedMetadata && enableExperimentalMusicBrainz
 				? await deps.lookupMusicBrainzTags(
 						metadataLookup.track,
 						options?.signal,
 						options?.strictMusicBrainzMatching,
-						options?.musicBrainzReleaseId
+						preferredMusicBrainzReleaseId
 					)
 				: undefined;
 		const processedBlob = !shouldEmbedMetadata

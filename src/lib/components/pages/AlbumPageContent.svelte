@@ -11,9 +11,11 @@
 	import TrackList from '$lib/components/TrackList.svelte';
 	import ShareButton from '$lib/components/ShareButton.svelte';
 	import DataGrid from '$lib/components/ui/DataGrid.svelte';
+	import MetaStrip from '$lib/components/ui/MetaStrip.svelte';
 	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
 	import SectionBlock from '$lib/components/ui/SectionBlock.svelte';
 	import StateBlock from '$lib/components/ui/StateBlock.svelte';
+	import StateNotice from '$lib/components/ui/StateNotice.svelte';
 	import type { Album, Track } from '$lib/types';
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
 	import {
@@ -60,7 +62,6 @@
 		CLIENT_REDOWNLOAD_CONFIRMATION,
 		createAlbumDownloadController,
 		FORCE_OVERWRITE_CONFIRMATION,
-		MUSICBRAINZ_PENDING_DOWNLOAD_CONFIRMATION,
 		type AlbumRouteDownloadPreferences,
 		type AlbumRouteMaintenanceState,
 		type AlbumRouteQueueState
@@ -108,6 +109,7 @@
 	let musicBrainzReleaseLookupError = $state<string | null>(null);
 	let hasMusicBrainzReleaseLookupAttempted = $state(false);
 	let musicBrainzReleaseLookupToken = 0;
+	let activeMusicBrainzReleaseLookupPromise: Promise<string | undefined> | null = null;
 
 	const hasActiveQueueDownload = $derived(
 		queueStatus === 'submitting' || queueStatus === 'queued' || queueStatus === 'processing'
@@ -197,6 +199,7 @@
 
 	function resetMusicBrainzRouteState(): void {
 		musicBrainzReleaseLookupToken += 1;
+		activeMusicBrainzReleaseLookupPromise = null;
 		musicBrainzReleaseOptions = [];
 		selectedMusicBrainzReleaseId = '';
 		isMusicBrainzReleaseLookupLoading = false;
@@ -213,8 +216,8 @@
 		getMaintenanceState,
 		patchMaintenanceState,
 		isAlbumInLibrary: () => albumInLibrary,
-		isMusicBrainzReleaseLookupLoading: () => isMusicBrainzReleaseLookupLoading,
 		getSelectedMusicBrainzReleaseId: () => selectedMusicBrainzReleaseId,
+		resolveDeferredMusicBrainzReleaseId: () => ensureMusicBrainzReleaseSelectionLoaded(),
 		getDownloadPreferences: (): AlbumRouteDownloadPreferences => ({
 			quality: $downloadPreferencesStore.downloadQuality,
 			mode: albumDownloadMode,
@@ -225,8 +228,6 @@
 		}),
 		confirmServerOverwrite: () => window.confirm(FORCE_OVERWRITE_CONFIRMATION),
 		confirmClientRedownload: () => window.confirm(CLIENT_REDOWNLOAD_CONFIRMATION),
-		confirmProceedWithoutMusicBrainz: () =>
-			window.confirm(MUSICBRAINZ_PENDING_DOWNLOAD_CONFIRMATION),
 		refreshAlbumLibraryState
 	});
 
@@ -316,39 +317,71 @@
 		return items;
 	});
 
-	async function lookupMusicBrainzReleases(options?: { manual?: boolean }): Promise<void> {
+	function ensureMusicBrainzReleaseSelectionLoaded(): Promise<string | undefined> {
+		const selectedReleaseId = selectedMusicBrainzReleaseId.trim();
+		if (selectedReleaseId) {
+			return Promise.resolve(selectedReleaseId);
+		}
+		if (activeMusicBrainzReleaseLookupPromise) {
+			return activeMusicBrainzReleaseLookupPromise;
+		}
+		if (
+			hasMusicBrainzReleaseLookupAttempted &&
+			!isMusicBrainzReleaseLookupLoading &&
+			!musicBrainzReleaseLookupError &&
+			musicBrainzReleaseOptions.length === 0
+		) {
+			return Promise.resolve(undefined);
+		}
+		return lookupMusicBrainzReleases({ manual: true });
+	}
+
+	async function lookupMusicBrainzReleases(
+		options?: { manual?: boolean }
+	): Promise<string | undefined> {
 		if (!album) {
-			return;
+			return undefined;
 		}
 		const lookupToken = ++musicBrainzReleaseLookupToken;
 		const activeAlbum = album;
 		isMusicBrainzReleaseLookupLoading = true;
 		musicBrainzReleaseLookupError = null;
 		hasMusicBrainzReleaseLookupAttempted = true;
-		try {
-			const result = await lookupAlbumMusicBrainzReleases({
-				album: activeAlbum,
-				tracks,
-				currentSelectionId: selectedMusicBrainzReleaseId,
-				fetchImpl: fetch
-			});
-			if (lookupToken !== musicBrainzReleaseLookupToken || album?.id !== activeAlbum.id) {
-				return;
+		const lookupPromise = (async () => {
+			try {
+				const result = await lookupAlbumMusicBrainzReleases({
+					album: activeAlbum,
+					tracks,
+					currentSelectionId: selectedMusicBrainzReleaseId,
+					fetchImpl: fetch
+				});
+				if (lookupToken !== musicBrainzReleaseLookupToken || album?.id !== activeAlbum.id) {
+					return undefined;
+				}
+				musicBrainzReleaseOptions = result.releases;
+				selectedMusicBrainzReleaseId = result.selectedReleaseId;
+				return result.selectedReleaseId || undefined;
+			} catch (lookupError) {
+				const message =
+					lookupError instanceof Error
+						? lookupError.message
+						: 'Failed to search MusicBrainz releases';
+				musicBrainzReleaseOptions = [];
+				selectedMusicBrainzReleaseId = '';
+				musicBrainzReleaseLookupError = message;
+				if (!options?.manual) {
+					console.warn('[MusicBrainz] Release lookup failed on album page:', message);
+				}
+				return undefined;
+			} finally {
+				if (lookupToken === musicBrainzReleaseLookupToken) {
+					isMusicBrainzReleaseLookupLoading = false;
+					activeMusicBrainzReleaseLookupPromise = null;
+				}
 			}
-			musicBrainzReleaseOptions = result.releases;
-			selectedMusicBrainzReleaseId = result.selectedReleaseId;
-		} catch (lookupError) {
-			const message =
-				lookupError instanceof Error ? lookupError.message : 'Failed to search MusicBrainz releases';
-			musicBrainzReleaseLookupError = message;
-			if (!options?.manual) {
-				console.warn('[MusicBrainz] Release lookup failed on album page:', message);
-			}
-		} finally {
-			if (lookupToken === musicBrainzReleaseLookupToken) {
-				isMusicBrainzReleaseLookupLoading = false;
-			}
-		}
+		})();
+		activeMusicBrainzReleaseLookupPromise = lookupPromise;
+		return lookupPromise;
 	}
 
 	$effect(() => {
@@ -488,24 +521,24 @@
 						</div>
 					{/if}
 
-					<div class="ui-detail-meta-strip">
+					<MetaStrip>
 						{#if album.explicit}
 							<span class="ui-inline-tag">Explicit</span>
 						{/if}
 						{#if album.releaseDate}
-							<div class="ui-detail-meta-item">
+							<div class="ui-meta-strip__item">
 								<Calendar size={16} />
 								{new Date(album.releaseDate).getFullYear()}
 							</div>
 						{/if}
 						{#if tracks.length > 0 || album.numberOfTracks}
-							<div class="ui-detail-meta-item">
+							<div class="ui-meta-strip__item">
 								<Disc size={16} />
 								{tracks.length || album.numberOfTracks} tracks
 							</div>
 						{/if}
 						{#if totalDuration > 0}
-							<div class="ui-detail-meta-item">
+							<div class="ui-meta-strip__item">
 								<Clock size={16} />
 								{losslessAPI.formatDuration(totalDuration)} total
 							</div>
@@ -515,7 +548,7 @@
 								<span class="ui-inline-tag">{tag}</span>
 							{/each}
 						{/if}
-					</div>
+					</MetaStrip>
 
 					{#if hasIncompleteTrackList}
 						<p class="ui-action-status" data-tone="warning">
@@ -658,8 +691,8 @@
 								<p class="ui-action-status" data-tone="error">{downloadError}</p>
 							{/if}
 							{#if isMusicBrainzReleaseLookupLoading && !selectedMusicBrainzReleaseId}
-								<p class="ui-action-status" data-tone="warning">
-									MusicBrainz release data is still loading. Waiting briefly can improve metadata quality.
+								<p class="ui-action-status" data-tone="info">
+									MusicBrainz release data is loading in the background and will be applied automatically if it resolves in time.
 								</p>
 							{/if}
 						</SectionBlock>
@@ -687,9 +720,14 @@
 								</button>
 						</svelte:fragment>
 						{#if isMusicBrainzReleaseLookupLoading && musicBrainzReleaseOptions.length === 0}
-							<p class="ui-action-status">Searching MusicBrainz releases…</p>
+							<StateNotice tone="info" message="Searching MusicBrainz releases…" compact={true} />
 						{:else if isMusicBrainzReleaseLookupLoading}
-							<p class="ui-action-status" data-tone="info">Refreshing MusicBrainz releases…</p>
+							<StateNotice
+								tone="info"
+								message="Refreshing MusicBrainz releases…"
+								compact={true}
+								stale={musicBrainzReleaseOptions.length > 0}
+							/>
 						{:else if musicBrainzReleaseOptions.length > 0}
 							<label class="ui-section-block__eyebrow" for="musicbrainz-release-select">
 								Selected Release
@@ -758,10 +796,14 @@
 								</p>
 							{/if}
 						{:else if hasMusicBrainzReleaseLookupAttempted}
-							<p class="ui-action-status">No MusicBrainz release matches found for this album.</p>
+							<StateNotice
+								tone="neutral"
+								message="No MusicBrainz release matches found for this album."
+								compact={true}
+							/>
 						{/if}
 						{#if musicBrainzReleaseLookupError}
-							<p class="ui-action-status" data-tone="error">{musicBrainzReleaseLookupError}</p>
+							<StateNotice tone="error" message={musicBrainzReleaseLookupError} compact={true} />
 						{/if}
 						<p class="ui-action-status">
 							{#if experimentalMusicBrainzTaggingPreference}

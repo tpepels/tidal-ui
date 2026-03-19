@@ -10,6 +10,13 @@ import type {
 	MusicBrainzReleaseCandidate,
 	MusicBrainzReleaseSearchParams
 } from './musicBrainzTypes';
+import type {
+	MusicBrainzEntityArtist,
+	MusicBrainzEntityRelease,
+	MusicBrainzEntityReleaseGroup,
+	MusicBrainzEntityRecording,
+	MusicBrainzTrackMatchDetails
+} from '../features/track/trackMusicBrainzModel';
 import {
 	addTag,
 	artistCreditToText,
@@ -81,10 +88,7 @@ function scoreRecording(
 	if (expectedTitle && recordingTitle) {
 		if (recordingTitle === expectedTitle) {
 			score += 90;
-		} else if (
-			recordingTitle.includes(expectedTitle) ||
-			expectedTitle.includes(recordingTitle)
-		) {
+		} else if (recordingTitle.includes(expectedTitle) || expectedTitle.includes(recordingTitle)) {
 			score += 40;
 		}
 	}
@@ -163,12 +167,97 @@ function chooseBestRelease(
 	return best;
 }
 
-export function buildMusicBrainzTags(
+function mapEntityArtists(
+	credits: MusicBrainzArtistCredit[] | undefined
+): MusicBrainzEntityArtist[] {
+	return dedupeStrings((credits ?? []).map((credit) => credit.artist?.id)).map((id) => ({
+		id,
+		name: sanitizeTagValue(
+			(credits ?? []).find((credit) => credit.artist?.id === id)?.artist?.name ??
+				(credits ?? []).find((credit) => credit.artist?.id === id)?.name
+		)
+	}));
+}
+
+function mapReleaseGroupEntity(
+	releaseGroup: MusicBrainzRelease['release-group']
+): MusicBrainzEntityReleaseGroup | null {
+	const id = sanitizeTagValue(releaseGroup?.id);
+	if (!id) {
+		return null;
+	}
+	return {
+		id,
+		title: sanitizeTagValue(releaseGroup?.title),
+		primaryType: sanitizeTagValue(releaseGroup?.['primary-type']),
+		secondaryTypes: (releaseGroup?.['secondary-types'] ?? [])
+			.map((value) => sanitizeTagValue(value))
+			.filter((value): value is string => Boolean(value))
+	};
+}
+
+function mapRecordingEntity(recording: MusicBrainzRecording): MusicBrainzEntityRecording | null {
+	const id = sanitizeTagValue(recording.id);
+	if (!id) {
+		return null;
+	}
+	return {
+		id,
+		title: sanitizeTagValue(recording.title),
+		artistCredit: artistCreditToText(recording['artist-credit']),
+		artists: mapEntityArtists(recording['artist-credit'])
+	};
+}
+
+function mapReleaseEntity(release: MusicBrainzRelease): MusicBrainzEntityRelease | null {
+	const id = sanitizeTagValue(release.id);
+	if (!id) {
+		return null;
+	}
+	return {
+		id,
+		title: sanitizeTagValue(release.title),
+		artistCredit: artistCreditToText(release['artist-credit']),
+		status: sanitizeTagValue(release.status),
+		country: sanitizeTagValue(release.country),
+		date: sanitizeTagValue(release.date),
+		barcode: sanitizeTagValue(release.barcode),
+		artists: mapEntityArtists(release['artist-credit']),
+		releaseGroup: mapReleaseGroupEntity(release['release-group'])
+	};
+}
+
+export function buildMusicBrainzTrackMatchDetails(
 	track: MusicBrainzLookupTrack,
 	recording: MusicBrainzRecording,
 	options?: MusicBrainzLookupOptions
-): Record<string, string> {
+): MusicBrainzTrackMatchDetails | null {
+	const recordingEntity = mapRecordingEntity(recording);
+	if (!recordingEntity) {
+		return null;
+	}
+	const release = chooseBestRelease(track, recording.releases ?? [], options);
+	const releaseEntity = release ? mapReleaseEntity(release) : null;
+	const releaseGroupEntity = releaseEntity?.releaseGroup ?? null;
+	return {
+		recording: recordingEntity,
+		release: releaseEntity,
+		releaseGroup: releaseGroupEntity,
+		artists: recordingEntity.artists,
+		albumArtists: releaseEntity?.artists ?? []
+	};
+}
+
+export function buildMusicBrainzLookupPayload(
+	track: MusicBrainzLookupTrack,
+	recording: MusicBrainzRecording,
+	options?: MusicBrainzLookupOptions
+): {
+	tags: Record<string, string>;
+	match: MusicBrainzTrackMatchDetails | null;
+} {
 	const tags: Record<string, string> = {};
+	const match = buildMusicBrainzTrackMatchDetails(track, recording, options);
 	const release = chooseBestRelease(track, recording.releases ?? [], options);
 
 	addTag(tags, 'MUSICBRAINZ_TRACKID', recording.id);
@@ -212,7 +301,18 @@ export function buildMusicBrainzTags(
 		addTag(tags, 'BARCODE', track.album?.upc);
 	}
 
-	return tags;
+	return {
+		tags,
+		match
+	};
+}
+
+export function buildMusicBrainzTags(
+	track: MusicBrainzLookupTrack,
+	recording: MusicBrainzRecording,
+	options?: MusicBrainzLookupOptions
+): Record<string, string> {
+	return buildMusicBrainzLookupPayload(track, recording, options).tags;
 }
 
 export function scoreReleaseCandidate(
@@ -452,10 +552,7 @@ export function chooseRecordingFromPreferredRelease(
 			if (recordingTitle === expectedTitle) {
 				score += 220;
 				hasTitleMatch = true;
-			} else if (
-				recordingTitle.includes(expectedTitle) ||
-				expectedTitle.includes(recordingTitle)
-			) {
+			} else if (recordingTitle.includes(expectedTitle) || expectedTitle.includes(recordingTitle)) {
 				score += 110;
 				hasTitleMatch = true;
 			}

@@ -1,12 +1,17 @@
-import type { MusicBrainzLookupOptions, MusicBrainzLookupTrack, MusicBrainzRelease } from './musicBrainzTypes';
+import type {
+	MusicBrainzLookupOptions,
+	MusicBrainzLookupTrack,
+	MusicBrainzRelease
+} from './musicBrainzTypes';
 import { buildMusicBrainzCacheKey } from './musicBrainzHelpers';
+import type { CachedMusicBrainzTrackLookup } from '../features/track/trackMusicBrainzModel';
 
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 800;
 
 interface CacheEntry {
 	expiresAt: number;
-	tags: Record<string, string>;
+	lookup: CachedMusicBrainzTrackLookup;
 }
 
 interface ReleaseCacheEntry {
@@ -26,29 +31,42 @@ function pruneCacheIfNeeded(cache: Map<string, CacheEntry | ReleaseCacheEntry>):
 	}
 }
 
-export function buildCacheKey(track: MusicBrainzLookupTrack, options?: MusicBrainzLookupOptions): string {
+export function buildCacheKey(
+	track: MusicBrainzLookupTrack,
+	options?: MusicBrainzLookupOptions
+): string {
 	return buildMusicBrainzCacheKey(track, options);
 }
 
-export function readLookupCache(cacheKey: string): Record<string, string> | null {
+export function readLookupCache(cacheKey: string): CachedMusicBrainzTrackLookup | null {
 	const cached = lookupCache.get(cacheKey);
 	if (!cached) return null;
 	if (cached.expiresAt <= Date.now()) {
 		lookupCache.delete(cacheKey);
 		return null;
 	}
-	return { ...cached.tags };
+	return {
+		...cached.lookup,
+		tags: { ...cached.lookup.tags },
+		match: cached.lookup.match
+	};
 }
 
-export function writeLookupCache(cacheKey: string, tags: Record<string, string>): void {
+export function writeLookupCache(cacheKey: string, lookup: CachedMusicBrainzTrackLookup): void {
 	lookupCache.set(cacheKey, {
 		expiresAt: Date.now() + CACHE_TTL_MS,
-		tags: { ...tags }
+		lookup: {
+			...lookup,
+			tags: { ...lookup.tags },
+			match: lookup.match
+		}
 	});
 	pruneCacheIfNeeded(lookupCache);
 }
 
-export function readPreferredReleaseCache(releaseId: string): MusicBrainzRelease | null | undefined {
+export function readPreferredReleaseCache(
+	releaseId: string
+): MusicBrainzRelease | null | undefined {
 	const cached = preferredReleaseCache.get(releaseId);
 	if (!cached) return undefined;
 	if (cached.expiresAt <= Date.now()) {

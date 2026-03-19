@@ -147,7 +147,9 @@ export function musicBrainzTitlesLikelyMatch(albumTitle: string, releaseTitle: s
 	}
 
 	const albumTokens = normalizedAlbumTitle.split(' ').filter((token) => token.length > 1);
-	const releaseTokens = new Set(normalizedReleaseTitle.split(' ').filter((token) => token.length > 1));
+	const releaseTokens = new Set(
+		normalizedReleaseTitle.split(' ').filter((token) => token.length > 1)
+	);
 	if (albumTokens.length === 0 || releaseTokens.size === 0) {
 		return false;
 	}
@@ -155,7 +157,9 @@ export function musicBrainzTitlesLikelyMatch(albumTitle: string, releaseTitle: s
 	return matchedTokens >= Math.max(1, Math.ceil(albumTokens.length * 0.75));
 }
 
-export function resolveMusicBrainzReleaseTrackCount(release: MusicBrainzReleaseSearchOption): number | null {
+export function resolveMusicBrainzReleaseTrackCount(
+	release: MusicBrainzReleaseSearchOption
+): number | null {
 	const trackCount = Number(release.trackCount);
 	if (!Number.isFinite(trackCount) || trackCount <= 0) {
 		return null;
@@ -222,6 +226,8 @@ export async function resolveAlbumMusicBrainzReleaseMatch(
 	const fetchImpl = options.fetchImpl ?? fetch;
 	try {
 		let compatibleReleases: MusicBrainzReleaseSearchOption[] = [];
+		let encounteredLookupFailure = false;
+		let hadSuccessfulLookup = false;
 
 		for (const titleToSearch of albumTitlesToSearch) {
 			const response = await fetchImpl('/api/metadata/musicbrainz-release-search', {
@@ -235,12 +241,14 @@ export async function resolveAlbumMusicBrainzReleaseMatch(
 					limit: 16
 				})
 			});
-			const payload = (await response.json().catch(() => null)) as
-				| MusicBrainzReleaseSearchResponse
-				| null;
+			const payload = (await response
+				.json()
+				.catch(() => null)) as MusicBrainzReleaseSearchResponse | null;
 			if (!response.ok || !payload?.success || !Array.isArray(payload.releases)) {
+				encounteredLookupFailure = true;
 				continue;
 			}
+			hadSuccessfulLookup = true;
 
 			compatibleReleases = payload.releases
 				.filter(
@@ -278,14 +286,19 @@ export async function resolveAlbumMusicBrainzReleaseMatch(
 			}
 		}
 
+		if (compatibleReleases.length === 0 && encounteredLookupFailure) {
+			return null;
+		}
+
 		const matchId = compatibleReleases[0]?.id ?? null;
-		options.lookupCache.set(lookupKey, matchId);
+		if (matchId || hadSuccessfulLookup) {
+			options.lookupCache.set(lookupKey, matchId);
+		}
 		if (matchId) {
 			persistLookupCacheEntry(lookupKey, matchId);
 		}
 		return matchId;
 	} catch {
-		options.lookupCache.set(lookupKey, null);
 		return null;
 	}
 }
@@ -299,8 +312,31 @@ export function createAlbumMusicBrainzMatchController(
 		Math.max(1, options.concurrency ?? DEFAULT_LOOKUP_CONCURRENCY)
 	);
 	const lookupCache = sharedLookupCache;
+	const inFlightLookups = new Map<string, Promise<string | null>>();
 	loadPersistentLookupCacheInto(lookupCache);
 	let lookupToken = 0;
+
+	function resolveLookup(album: Album, lookupKey: string): Promise<string | null> {
+		if (lookupCache.has(lookupKey)) {
+			return Promise.resolve(lookupCache.get(lookupKey) ?? null);
+		}
+
+		const existingLookup = inFlightLookups.get(lookupKey);
+		if (existingLookup) {
+			return existingLookup;
+		}
+
+		const pendingLookup = resolveAlbumMusicBrainzReleaseMatch(album, lookupKey, {
+			lookupCache,
+			fetchImpl: options.fetchImpl
+		}).finally(() => {
+			if (inFlightLookups.get(lookupKey) === pendingLookup) {
+				inFlightLookups.delete(lookupKey);
+			}
+		});
+		inFlightLookups.set(lookupKey, pendingLookup);
+		return pendingLookup;
+	}
 
 	async function hydrate(albums: Album[]): Promise<void> {
 		if (albums.length === 0) {
@@ -315,8 +351,7 @@ export function createAlbumMusicBrainzMatchController(
 			})
 			.filter(
 				(entry): entry is { album: Album; lookupKey: string } =>
-					typeof entry.lookupKey === 'string' &&
-					!options.hasMatch(entry.album.id)
+					typeof entry.lookupKey === 'string' && !options.hasMatch(entry.album.id)
 			)
 			.slice(0, lookupLimit);
 
@@ -334,10 +369,7 @@ export function createAlbumMusicBrainzMatchController(
 			const batch = candidates.slice(batchStart, batchStart + concurrency);
 			const resolvedBatch = await Promise.all(
 				batch.map(async (entry) => {
-					const releaseId = await resolveAlbumMusicBrainzReleaseMatch(entry.album, entry.lookupKey, {
-						lookupCache,
-						fetchImpl: options.fetchImpl
-					});
+					const releaseId = await resolveLookup(entry.album, entry.lookupKey);
 					return { albumId: entry.album.id, releaseId };
 				})
 			);
@@ -355,8 +387,34 @@ export function createAlbumMusicBrainzMatchController(
 		}
 	}
 
+	async function ensureMatch(album: Album): Promise<string | undefined> {
+		const lookupKey = resolveAlbumMusicBrainzLookupKey(album);
+		if (!lookupKey) {
+			return undefined;
+		}
+
+		const cached = lookupCache.get(lookupKey);
+		if (typeof cached === 'string' && cached.length > 0) {
+			return cached;
+		}
+		if (cached === null) {
+			return undefined;
+		}
+
+		const releaseId = await resolveLookup(album, lookupKey);
+		if (releaseId && !options.hasMatch(album.id)) {
+			options.onMatch(album.id, releaseId);
+		}
+		return releaseId ?? undefined;
+	}
+
 	function invalidate(): void {
 		lookupToken += 1;
+		for (const [key, value] of lookupCache.entries()) {
+			if (value === null) {
+				lookupCache.delete(key);
+			}
+		}
 	}
 
 	function clearCache(): void {
@@ -366,6 +424,7 @@ export function createAlbumMusicBrainzMatchController(
 
 	return {
 		hydrate,
+		ensureMatch,
 		invalidate,
 		clearCache
 	};

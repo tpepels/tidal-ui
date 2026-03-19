@@ -18,6 +18,8 @@
 		resolveSearchUrlState,
 		toggleSearchScope
 	} from '$lib/features/search/searchQueryController';
+	import { resolveSearchAlbumMusicBrainzReleaseId } from '$lib/features/search/searchMusicBrainzDownload';
+	import { resolveSearchSubmitMode } from '$lib/features/search/searchSubmitController';
 	import StateBlock from '$lib/components/ui/StateBlock.svelte';
 	import SearchAlbumsSection from '$lib/components/search/SearchAlbumsSection.svelte';
 	import SearchArtistsSection from '$lib/components/search/SearchArtistsSection.svelte';
@@ -27,6 +29,7 @@
 	import PageSectionNav, {
 		type PageSectionNavItem
 	} from '$lib/components/ui/PageSectionNav.svelte';
+	import StateNotice from '$lib/components/ui/StateNotice.svelte';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { regionStore, type RegionOption } from '$lib/stores/region';
@@ -174,8 +177,6 @@
 	const ALBUM_QUEUE_POLL_INTERVAL_MS = 1000;
 	const ALBUM_MUSICBRAINZ_LOOKUP_CONCURRENCY = 5;
 	const ALBUM_MUSICBRAINZ_LOOKUP_LIMIT = 24;
-	const MUSICBRAINZ_PENDING_DOWNLOAD_CONFIRMATION =
-		'MusicBrainz matching is still running for this album. Waiting a few seconds can improve metadata. Continue download now?';
 	let albumDownloadStates = $state<Record<number, AlbumDownloadState>>({});
 	let albumMusicBrainzReleaseMatches = $state<Record<number, string>>({});
 	let isAlbumMusicBrainzLookupLoading = $state(false);
@@ -274,14 +275,6 @@
 		}
 	});
 
-	function shouldWarnMusicBrainzStillLoadingForAlbum(albumId: number): boolean {
-		return (
-			isAlbumMusicBrainzLookupLoading &&
-			pendingAlbumMusicBrainzAlbumIds.has(albumId) &&
-			!albumMusicBrainzReleaseMatches[albumId]
-		);
-	}
-
 	async function cancelAlbumQueueDownload(albumId: number, event?: MouseEvent): Promise<void> {
 		event?.preventDefault();
 		event?.stopPropagation();
@@ -326,12 +319,15 @@
 		if (currentState.downloading || currentState.status === 'submitting') {
 			return;
 		}
-		if (shouldWarnMusicBrainzStillLoadingForAlbum(album.id)) {
-			const proceedWithoutWaiting = window.confirm(MUSICBRAINZ_PENDING_DOWNLOAD_CONFIRMATION);
-			if (!proceedWithoutWaiting) {
-				return;
-			}
-		}
+		const musicBrainzReleaseId = resolveSearchAlbumMusicBrainzReleaseId({
+			albumId: album.id,
+			experimentalMusicBrainzTagging: experimentalMusicBrainzTaggingPreference,
+			albumMusicBrainzReleaseMatches
+		});
+		const deferredMusicBrainzReleaseIdPromise =
+			experimentalMusicBrainzTaggingPreference && !musicBrainzReleaseId
+				? albumMusicBrainzController.ensureMatch(album)
+				: undefined;
 
 		patchAlbumDownloadState(album.id, {
 			status: 'submitting',
@@ -366,6 +362,8 @@
 					downloadCoverSeperately: downloadCoverSeperatelyPreference,
 					experimentalMusicBrainzTagging: experimentalMusicBrainzTaggingPreference,
 					strictMusicBrainzMatching: strictMusicBrainzMatchingPreference,
+					musicBrainzReleaseId,
+					musicBrainzReleaseIdPromise: deferredMusicBrainzReleaseIdPromise,
 					storage: $downloadPreferencesStore.storage
 				}
 			);
@@ -517,9 +515,13 @@
 	}
 
 	async function handleSearchSubmit(): Promise<void> {
-		if (isSearchBusy()) {
+		const submitMode = resolveSearchSubmitMode($searchStore.query, isSearchBusy());
+		if (submitMode === 'stop') {
 			searchOrchestrator.cancelActiveSearch();
 			return;
+		}
+		if (submitMode === 'stop_and_search') {
+			searchOrchestrator.cancelActiveSearch();
 		}
 		await runSearch();
 	}
@@ -532,7 +534,7 @@
 </script>
 
 <div class="search-root" data-ui-block="main-sections">
-	<section id="search-controls" class="ui-section-anchor">
+	<section id="search-controls" class="ui-section-anchor search-controls">
 		<SearchToolbar
 			query={$searchStore.query}
 			isLoading={$searchStore.isLoading}
@@ -566,10 +568,7 @@
 	{/if}
 
 	{#if $searchStore.playlistLoadingMessage}
-		<div class="ui-inline-status search-status" aria-live="polite">
-			<LoaderCircle class="animate-spin" size={18} />
-			<span>{$searchStore.playlistLoadingMessage}</span>
-		</div>
+		<StateNotice tone="info" message={$searchStore.playlistLoadingMessage} compact={true} />
 	{/if}
 
 	{#if !$searchStore.error}
@@ -610,35 +609,30 @@
 			</div>
 
 			{#if $searchStore.isLoading}
-				<div class="ui-inline-status search-status" aria-live="polite">
-					<LoaderCircle class="animate-spin" size={18} />
-					<span>Refining results…</span>
-				</div>
+				<StateNotice tone="info" message="Refining results…" compact={true} />
 			{/if}
 		{:else if !$searchStore.query.trim()}
-				<section class="search-empty">
-					<h2 class="search-empty__title">Minimal Search</h2>
-					<p class="search-empty__text">
-						Choose sections, enter a query, optionally add an album artist filter, then run search.
-					</p>
-				</section>
+			<StateNotice
+				title="Ready to search"
+				message="Choose sections, enter a query, optionally add an album artist filter, then run search."
+				embedded={true}
+			/>
 		{:else if isQueryATidalUrl}
-			<section class="search-empty">
-				<p class="search-empty__text">TIDAL URL detected. Press Search to load it.</p>
-			</section>
+			<StateNotice tone="info" message="TIDAL URL detected. Press Search to load it." embedded={true} />
 		{:else if isQueryASpotifyPlaylist}
-			<section class="search-empty">
-				<p class="search-empty__text">Spotify playlist detected. Press Search to convert it.</p>
-			</section>
+			<StateNotice
+				tone="info"
+				message="Spotify playlist detected. Press Search to convert it."
+				embedded={true}
+			/>
 		{:else if isQueryAStreamingUrl}
-			<section class="search-empty">
-				<p class="search-empty__text">Streaming URL detected. Press Search to convert it.</p>
-			</section>
+			<StateNotice
+				tone="info"
+				message="Streaming URL detected. Press Search to convert it."
+				embedded={true}
+			/>
 		{:else if $searchStore.isLoading}
-			<div class="ui-inline-status search-status" aria-live="polite">
-				<LoaderCircle class="animate-spin" size={18} />
-				<span>Searching…</span>
-			</div>
+			<StateNotice tone="info" message="Searching…" compact={true} />
 		{:else}
 			<StateBlock
 				kind="empty"
@@ -660,30 +654,21 @@
 		padding-top: 0.15rem;
 	}
 
+	.search-controls {
+		position: sticky;
+		top: 0;
+		z-index: 10;
+		padding: 0.15rem 0 0.6rem;
+		background:
+			linear-gradient(to bottom, rgba(7, 7, 7, 0.96), rgba(7, 7, 7, 0.9) 74%, transparent);
+		backdrop-filter: blur(10px);
+		-webkit-backdrop-filter: blur(10px);
+	}
+
 	.search-sections {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
 		gap: 1.4rem;
-	}
-
-	.search-empty {
-		display: flex;
-		flex-direction: column;
-		gap: 0.32rem;
-		padding: 1rem 0 0;
-		border-top: 1px solid rgba(255, 255, 255, 0.08);
-	}
-
-	.search-empty__title {
-		margin: 0;
-		font-size: 1.12rem;
-		color: rgba(243, 243, 243, 0.97);
-	}
-
-	.search-empty__text {
-		margin: 0;
-		font-size: 0.94rem;
-		color: rgba(204, 204, 204, 0.78);
 	}
 
 	@media (min-width: 1080px) {

@@ -11,18 +11,24 @@
 	import { artistCacheStore } from '$lib/stores/artistCache';
 	import ShareButton from '$lib/components/ShareButton.svelte';
 	import DataGrid from '$lib/components/ui/DataGrid.svelte';
+	import MetaStrip from '$lib/components/ui/MetaStrip.svelte';
 	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
 	import SectionBlock from '$lib/components/ui/SectionBlock.svelte';
+	import StateNotice from '$lib/components/ui/StateNotice.svelte';
 	import { LoaderCircle, Play, ArrowLeft, Disc, Clock, Download, X } from 'lucide-svelte';
 	import { formatArtists } from '$lib/utils/formatters';
+	import {
+		buildTrackMusicBrainzViewModel,
+		normalizeTrackMusicBrainzLookupResponse,
+		type MusicBrainzTrackLookupResponse
+	} from '$lib/features/track/trackMusicBrainzModel';
 
 	let track = $state<Track | null>(null);
 	let isLoading = $state(true);
 	let error = $state<string | null>(null);
 	let activeRequestToken = 0;
-	let musicBrainzTags = $state<Record<string, string>>({});
+	let musicBrainzLookupResponse = $state<MusicBrainzTrackLookupResponse | null>(null);
 	let isMusicBrainzLookupLoading = $state(false);
-	let musicBrainzLookupError = $state<string | null>(null);
 	let hasMusicBrainzLookupAttempted = $state(false);
 	let musicBrainzLookupToken = 0;
 
@@ -38,15 +44,14 @@
 	const { downloadingIds, cancelledIds, handleCancelDownload, handleDownload } = trackDownloadUi;
 	const isDownloading = $derived(track ? $downloadingIds.has(track.id) : false);
 	const isCancelled = $derived(track ? $cancelledIds.has(track.id) : false);
-	const musicBrainzTrackId = $derived(musicBrainzTags.MUSICBRAINZ_TRACKID ?? '');
-	const musicBrainzReleaseId = $derived(musicBrainzTags.MUSICBRAINZ_ALBUMID ?? '');
-	const musicBrainzReleaseGroupId = $derived(musicBrainzTags.MUSICBRAINZ_RELEASEGROUPID ?? '');
-	const musicBrainzReleaseType = $derived(musicBrainzTags.MUSICBRAINZ_RELEASETYPE ?? '');
-	const musicBrainzArtistIds = $derived.by(() =>
-		(musicBrainzTags.MUSICBRAINZ_ARTISTID ?? '')
-			.split(';')
-			.map((id) => id.trim())
-			.filter((id) => id.length > 0)
+	const musicBrainzView = $derived(
+		buildTrackMusicBrainzViewModel(musicBrainzLookupResponse)
+	);
+	const musicBrainzPrimaryFacts = $derived(
+		musicBrainzView.facts.filter((fact) => !fact.label.endsWith('MBID'))
+	);
+	const musicBrainzIdentifierFacts = $derived(
+		musicBrainzView.facts.filter((fact) => fact.label.endsWith('MBID'))
 	);
 	const sectionNavItems = $derived.by(() => [
 		{ id: 'track-actions', label: 'Actions', tone: 'secondary' as const },
@@ -60,9 +65,8 @@
 			error = 'Invalid track id';
 			isLoading = false;
 			musicBrainzLookupToken += 1;
-			musicBrainzTags = {};
+			musicBrainzLookupResponse = null;
 			isMusicBrainzLookupLoading = false;
-			musicBrainzLookupError = null;
 			hasMusicBrainzLookupAttempted = false;
 			return;
 		}
@@ -73,7 +77,6 @@
 	async function lookupTrackMusicBrainzMetadata(activeTrack: Track): Promise<void> {
 		const lookupToken = ++musicBrainzLookupToken;
 		isMusicBrainzLookupLoading = true;
-		musicBrainzLookupError = null;
 		hasMusicBrainzLookupAttempted = true;
 		try {
 			const response = await fetch('/api/metadata/musicbrainz', {
@@ -83,11 +86,7 @@
 					track: activeTrack
 				})
 			});
-			const payload = (await response.json().catch(() => null)) as {
-				success?: boolean;
-				error?: string;
-				tags?: Record<string, string>;
-			} | null;
+			const payload = await response.json().catch(() => null);
 			if (
 				lookupToken !== musicBrainzLookupToken ||
 				!track ||
@@ -96,30 +95,29 @@
 				return;
 			}
 			if (!response.ok || !payload?.success) {
-				throw new Error(payload?.error || 'Failed to lookup MusicBrainz metadata');
+				throw new Error(
+					payload && typeof payload === 'object' && 'error' in payload
+						? String((payload as { error?: unknown }).error ?? '')
+						: 'Failed to lookup MusicBrainz metadata'
+				);
 			}
-
-			const normalizedTags: Record<string, string> = {};
-			const payloadTags = payload.tags;
-			if (payloadTags && typeof payloadTags === 'object' && !Array.isArray(payloadTags)) {
-				for (const [key, value] of Object.entries(payloadTags)) {
-					if (typeof key !== 'string' || typeof value !== 'string') {
-						continue;
-					}
-					const normalizedValue = value.trim();
-					if (!normalizedValue) {
-						continue;
-					}
-					normalizedTags[key] = normalizedValue;
-				}
+			const normalizedResponse = normalizeTrackMusicBrainzLookupResponse(payload);
+			if (!normalizedResponse) {
+				throw new Error('Unexpected MusicBrainz metadata response');
 			}
-			musicBrainzTags = normalizedTags;
+			musicBrainzLookupResponse = normalizedResponse;
 		} catch (lookupError) {
-			musicBrainzLookupError =
-				lookupError instanceof Error
-					? lookupError.message
-					: 'Failed to lookup MusicBrainz metadata';
-			musicBrainzTags = {};
+			musicBrainzLookupResponse = {
+				success: false,
+				lookupStatus: 'lookup_failed',
+				tags: {},
+				tagCount: 0,
+				match: null,
+				error:
+					lookupError instanceof Error
+						? lookupError.message
+						: 'Failed to lookup MusicBrainz metadata'
+			};
 		} finally {
 			if (lookupToken === musicBrainzLookupToken) {
 				isMusicBrainzLookupLoading = false;
@@ -132,9 +130,8 @@
 			isLoading = true;
 			error = null;
 			musicBrainzLookupToken += 1;
-			musicBrainzTags = {};
+			musicBrainzLookupResponse = null;
 			isMusicBrainzLookupLoading = false;
-			musicBrainzLookupError = null;
 			hasMusicBrainzLookupAttempted = false;
 			const data = await losslessAPI.getTrack(id);
 			if (requestToken !== activeRequestToken) {
@@ -261,19 +258,19 @@
 					<p class="ui-detail-hero__eyebrow">Track</p>
 					<h1 class="ui-detail-hero__title">{track.title}</h1>
 					{#if track.version}
-						<div class="ui-detail-meta-strip">
+						<MetaStrip compact={true}>
 							<span class="ui-inline-tag">{track.version}</span>
-						</div>
+						</MetaStrip>
 					{/if}
-					<div class="ui-detail-meta-strip">
-						<div class="ui-detail-meta-item">
+					<MetaStrip>
+						<div class="ui-meta-strip__item">
 							<Clock size={16} />
 							{formatDuration(track.duration)}
 						</div>
 						{#if track.audioQuality}
 							<span class="ui-inline-tag">{track.audioQuality.replaceAll('_', ' ')}</span>
 						{/if}
-					</div>
+					</MetaStrip>
 					<div class="ui-list-surface ui-link-row-list">
 						<a href={`/artist/${track.artist.id}`} class="ui-link-row" data-sveltekit-preload-data>
 							<div class="ui-link-row__media ui-link-row__media--circle">
@@ -398,96 +395,83 @@
 								{/if}
 							</button>
 						</svelte:fragment>
-				{#if isMusicBrainzLookupLoading && Object.keys(musicBrainzTags).length === 0}
-					<p class="ui-action-status">Resolving MusicBrainz metadata…</p>
-				{:else if Object.keys(musicBrainzTags).length > 0}
+				{#if isMusicBrainzLookupLoading && musicBrainzView.status !== 'matched'}
+					<StateNotice tone="info" message="Resolving MusicBrainz metadata…" compact={true} />
+				{:else if isMusicBrainzLookupLoading}
+					<StateNotice tone="info" message="Refreshing MusicBrainz metadata…" compact={true} stale={true} />
+				{:else if musicBrainzView.status === 'matched'}
 					<DataGrid>
-						{#if musicBrainzTrackId}
+						{#each musicBrainzPrimaryFacts as fact (fact.label)}
 							<div class="ui-data-point">
-								<p class="ui-data-point__label">Track MBID</p>
-								<p class="ui-data-point__value">{musicBrainzTrackId}</p>
+								<p class="ui-data-point__label">{fact.label}</p>
+								<p class="ui-data-point__value">{fact.value}</p>
 							</div>
-						{/if}
-						{#if musicBrainzReleaseId}
-							<div class="ui-data-point">
-								<p class="ui-data-point__label">Release MBID</p>
-								<p class="ui-data-point__value">{musicBrainzReleaseId}</p>
-							</div>
-						{/if}
-						{#if musicBrainzReleaseGroupId}
-							<div class="ui-data-point">
-								<p class="ui-data-point__label">Release Group</p>
-								<p class="ui-data-point__value">{musicBrainzReleaseGroupId}</p>
-							</div>
-						{/if}
-						{#if musicBrainzReleaseType}
-							<div class="ui-data-point">
-								<p class="ui-data-point__label">Release Type</p>
-								<p class="ui-data-point__value">{musicBrainzReleaseType}</p>
-							</div>
-						{/if}
-						{#if musicBrainzTags.MUSICBRAINZ_RELEASESTATUS}
-							<div class="ui-data-point">
-								<p class="ui-data-point__label">Release Status</p>
-								<p class="ui-data-point__value">{musicBrainzTags.MUSICBRAINZ_RELEASESTATUS}</p>
-							</div>
-						{/if}
-						{#if musicBrainzTags.MUSICBRAINZ_RELEASECOUNTRY}
-							<div class="ui-data-point">
-								<p class="ui-data-point__label">Release Country</p>
-								<p class="ui-data-point__value">{musicBrainzTags.MUSICBRAINZ_RELEASECOUNTRY}</p>
-							</div>
-						{/if}
-						{#if musicBrainzTags.BARCODE}
-							<div class="ui-data-point">
-								<p class="ui-data-point__label">Barcode</p>
-								<p class="ui-data-point__value">{musicBrainzTags.BARCODE}</p>
-							</div>
-						{/if}
-						{#if musicBrainzArtistIds.length > 0}
-							<div class="ui-data-point">
-								<p class="ui-data-point__label">Artist MBIDs</p>
-								<p class="ui-data-point__value">{musicBrainzArtistIds.length}</p>
-							</div>
-						{/if}
+						{/each}
 					</DataGrid>
+					{#if musicBrainzView.artistLinks.length > 0}
+						<p class="ui-section-block__eyebrow">Recording Artists</p>
+						<div class="ui-action-row">
+							{#each musicBrainzView.artistLinks as artist (artist.id)}
+								<a
+									href={artist.href}
+									target="_blank"
+									rel="noreferrer"
+									class="ui-chip-button ui-chip-button--compact"
+								>
+									{artist.label}
+								</a>
+							{/each}
+						</div>
+					{/if}
+					{#if musicBrainzView.albumArtistLinks.length > 0}
+						<p class="ui-section-block__eyebrow">Album Artists</p>
+						<div class="ui-action-row">
+							{#each musicBrainzView.albumArtistLinks as artist (artist.id)}
+								<a
+									href={artist.href}
+									target="_blank"
+									rel="noreferrer"
+									class="ui-chip-button ui-chip-button--compact"
+								>
+									{artist.label}
+								</a>
+							{/each}
+						</div>
+					{/if}
 					<div class="ui-action-row">
-						{#if musicBrainzTrackId}
+						{#each musicBrainzView.links as link (link.label)}
 							<a
-								href={`https://musicbrainz.org/recording/${musicBrainzTrackId}`}
+								href={link.href}
 								target="_blank"
 								rel="noreferrer"
 								class="ui-chip-button ui-chip-button--compact"
 							>
-								Open Recording
+								{link.label}
 							</a>
-						{/if}
-						{#if musicBrainzReleaseId}
-							<a
-								href={`https://musicbrainz.org/release/${musicBrainzReleaseId}`}
-								target="_blank"
-								rel="noreferrer"
-								class="ui-chip-button ui-chip-button--compact"
-							>
-								Open Release
-							</a>
-						{/if}
-						{#if musicBrainzArtistIds.length > 0}
-							<a
-								href={`https://musicbrainz.org/artist/${musicBrainzArtistIds[0]}`}
-								target="_blank"
-								rel="noreferrer"
-								class="ui-chip-button ui-chip-button--compact"
-							>
-								Open Artist
-							</a>
-						{/if}
+						{/each}
 					</div>
-				{:else if hasMusicBrainzLookupAttempted}
-					<p class="ui-action-status">No MusicBrainz metadata match found for this track.</p>
+					{#if musicBrainzIdentifierFacts.length > 0}
+						<details class="track-metadata__details">
+							<summary>Show MusicBrainz IDs</summary>
+							<DataGrid>
+								{#each musicBrainzIdentifierFacts as fact (fact.label)}
+									<div class="ui-data-point">
+										<p class="ui-data-point__label">{fact.label}</p>
+										<p class="ui-data-point__value">{fact.value}</p>
+									</div>
+								{/each}
+							</DataGrid>
+						</details>
+					{/if}
+				{:else if hasMusicBrainzLookupAttempted && musicBrainzView.status === 'no_match'}
+					<StateNotice
+						tone="neutral"
+						message="No MusicBrainz metadata match found for this track."
+						compact={true}
+					/>
 				{/if}
-				{#if musicBrainzLookupError}
-					<p class="ui-action-status" data-tone="error">{musicBrainzLookupError}</p>
+				{#if musicBrainzView.errorMessage}
+					<StateNotice tone="error" message={musicBrainzView.errorMessage} compact={true} />
 				{/if}
 					</SectionBlock>
 				</section>
@@ -495,3 +479,19 @@
 		</div>
 	</div>
 {/if}
+
+<style>
+	.track-metadata__details {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		padding-top: 0.35rem;
+		border-top: 1px solid rgba(255, 255, 255, 0.08);
+	}
+
+	.track-metadata__details summary {
+		font-size: 0.9rem;
+		font-weight: 600;
+		color: rgba(220, 220, 220, 0.84);
+	}
+</style>

@@ -289,6 +289,11 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		let completedTracks = 0;
 		let failedTracks = 0;
 		const startTime = Date.now();
+		let preferredMusicBrainzReleaseId =
+			typeof albumJob.musicBrainzReleaseId === 'string' &&
+			albumJob.musicBrainzReleaseId.trim().length > 0
+				? albumJob.musicBrainzReleaseId.trim()
+				: undefined;
 		const expectedTracks: ExpectedAlbumTrack[] = tracks.map((track, idx) => ({
 			trackId: typeof track.id === 'number' ? track.id : 0,
 			trackTitle: (typeof track.title === 'string' ? track.title : undefined) || `Track ${idx + 1}`,
@@ -383,6 +388,16 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 
 				trackProgress[i].status = 'downloading';
 				await updateJobStatus(job.id, { trackProgress });
+				if (!preferredMusicBrainzReleaseId) {
+					const latestJob = await getJob(job.id);
+					if (
+						latestJob?.job.type === 'album' &&
+						typeof latestJob.job.musicBrainzReleaseId === 'string' &&
+						latestJob.job.musicBrainzReleaseId.trim().length > 0
+					) {
+						preferredMusicBrainzReleaseId = latestJob.job.musicBrainzReleaseId.trim();
+					}
+				}
 
 				inFlight += 1;
 				console.log(
@@ -411,7 +426,7 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 						outputBaseDir: stagingRoot,
 						experimentalMusicBrainzTagging: albumJob.experimentalMusicBrainzTagging !== false,
 						strictMusicBrainzMatching: albumJob.strictMusicBrainzMatching === true,
-						musicBrainzReleaseId: albumJob.musicBrainzReleaseId,
+						musicBrainzReleaseId: preferredMusicBrainzReleaseId,
 						forceOverwrite: albumJob.forceOverwrite === true
 					});
 				} finally {

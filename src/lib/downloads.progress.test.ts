@@ -48,13 +48,16 @@ describe('downloadAlbum server progress', () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
 		// Mock fetch for MusicBrainz lookup + queue API
-		global.fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+		global.fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
 			const url = typeof input === 'string' ? input : input.toString();
 			if (url === '/api/metadata/musicbrainz-release-search') {
 				return jsonResponse({ success: true, releases: [] });
 			}
 			if (url === '/api/download-queue') {
 				return jsonResponse({ success: true, jobId: 'test-job-1' });
+			}
+			if (url.startsWith('/api/download-queue/') && init?.method === 'PATCH') {
+				return jsonResponse({ success: true });
 			}
 			return jsonResponse({ success: false }, 404);
 		});
@@ -189,7 +192,7 @@ describe('downloadAlbum server progress', () => {
 		expect(body.job?.forceOverwrite).toBe(true);
 	});
 
-	it('auto-selects MusicBrainz release id when title and track count match', async () => {
+	it('patches a deferred MusicBrainz release id onto queued album jobs when title and track count match', async () => {
 		const album: Album = {
 			id: 21,
 			title: 'Voices of a Generation',
@@ -260,7 +263,18 @@ describe('downloadAlbum server progress', () => {
 			.mocked(global.fetch)
 			.mock.calls.find((call) => call[0] === '/api/download-queue');
 		const body = JSON.parse((queueCall?.[1] as { body?: string } | undefined)?.body ?? '{}');
-		expect(body.job?.musicBrainzReleaseId).toBe('mb-release-match');
+		expect(body.job?.musicBrainzReleaseId).toBeUndefined();
+
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		const patchCall = vi
+			.mocked(global.fetch)
+			.mock.calls.find((call) => call[0] === '/api/download-queue/test-job-1');
+		const patchBody = JSON.parse((patchCall?.[1] as { body?: string } | undefined)?.body ?? '{}');
+		expect(patchBody).toMatchObject({
+			action: 'set_musicbrainz_release',
+			musicBrainzReleaseId: 'mb-release-match'
+		});
 	});
 
 	it('does not auto-select MusicBrainz release id when track count is not compatible', async () => {
@@ -335,5 +349,12 @@ describe('downloadAlbum server progress', () => {
 			.mock.calls.find((call) => call[0] === '/api/download-queue');
 		const body = JSON.parse((queueCall?.[1] as { body?: string } | undefined)?.body ?? '{}');
 		expect(body.job?.musicBrainzReleaseId).toBeUndefined();
+
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(
+			vi
+				.mocked(global.fetch)
+				.mock.calls.find((call) => call[0] === '/api/download-queue/test-job-1')
+		).toBeUndefined();
 	});
 });

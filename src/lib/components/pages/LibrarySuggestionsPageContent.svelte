@@ -19,7 +19,7 @@
 	} from '$lib/features/library-suggestions/librarySuggestionsModel';
 	import PageState from '$lib/components/ui/PageState.svelte';
 	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
-	import EntityMediaCard from '$lib/components/ui/EntityMediaCard.svelte';
+	import MediaRow from '$lib/components/ui/MediaRow.svelte';
 	import type { Album, Artist } from '$lib/types';
 	import { Activity, Disc, Library, LoaderCircle, RefreshCw, User } from 'lucide-svelte';
 
@@ -400,24 +400,30 @@
 						<User size={16} />
 						<h3>Recommended Artists</h3>
 					</div>
-					<ol class="ui-media-grid ui-media-grid--artists">
+					<ol class="library-suggestions-list ui-list-surface">
 						{#each smartArtists as recommendation (`artist:${recommendation.artist.id}`)}
 							<li>
-								<EntityMediaCard
-									type="artist"
+								<MediaRow
 									href={`/artist/${recommendation.artist.id}`}
 									title={recommendation.artist.name}
 									meta={`Score ${recommendation.score.toFixed(1)} · ${recommendation.seedMatches} seed${recommendation.seedMatches === 1 ? '' : 's'}`}
+									description="Open artist or run a scoped search from this recommendation."
 									imageSrc={getArtistPortraitSrc(recommendation.artist.picture)}
 									imageAlt={`Portrait of ${recommendation.artist.name}`}
-									links={[
-										{ href: `/artist/${recommendation.artist.id}`, label: 'Artist Page' },
-										{
-											href: buildSearchHref(recommendation.artist.name, 'artists'),
-											label: 'Search'
-										}
-									]}
-								/>
+									circle={true}
+									tone="secondary"
+								>
+									{#snippet bodyExtra()}
+										<div class="ui-action-row">
+											<a
+												href={buildSearchHref(recommendation.artist.name, 'artists')}
+												class="ui-chip-button ui-chip-button--compact"
+											>
+												Search
+											</a>
+										</div>
+									{/snippet}
+								</MediaRow>
 							</li>
 						{/each}
 					</ol>
@@ -427,7 +433,7 @@
 						<Disc size={16} />
 						<h3>Recommended Albums</h3>
 					</div>
-					<ol class="ui-media-grid ui-media-grid--albums">
+					<ol class="library-suggestions-list ui-list-surface">
 						{#each smartAlbums as recommendation (`album:${recommendation.album.id}`)}
 							{@const recommendedAlbumArtistId =
 								recommendation.album.artist &&
@@ -439,29 +445,33 @@
 							{@const recommendedAlbumCoverCacheKey = getAlbumCoverCacheKey(recommendation.album)}
 							{@const recommendedAlbumCoverCandidates = getAlbumCoverCandidates(recommendation.album.cover)}
 							<li>
-								<EntityMediaCard
-									type="album"
+								<MediaRow
 									href={`/album/${recommendation.album.id}`}
 									title={recommendation.album.title}
 									subtitle={recommendedAlbumArtistName}
 									meta={`Score ${recommendation.score.toFixed(1)} · ${recommendation.seedMatches} seed${recommendation.seedMatches === 1 ? '' : 's'}`}
-									imageSrc={getAlbumCoverSrc(recommendation.album.cover)}
+									description="Open the album or jump to the matching artist/search context."
 									imageAlt={`Cover for ${recommendation.album.title}`}
 									coverCacheKey={recommendedAlbumCoverCacheKey}
 									coverCandidates={recommendedAlbumCoverCandidates}
-									links={[
-										{ href: `/album/${recommendation.album.id}`, label: 'Album Page' },
-										{
-											href: recommendedAlbumArtistId
-												? `/artist/${recommendedAlbumArtistId}`
-												: buildSearchHref(
-														`${recommendedAlbumArtistName} ${recommendation.album.title}`,
-														'albums'
-													),
-											label: recommendedAlbumArtistId ? 'Artist Page' : 'Search'
-										}
-									]}
-								/>
+									tone="tertiary"
+								>
+									{#snippet bodyExtra()}
+										<div class="ui-action-row">
+											<a
+												href={recommendedAlbumArtistId
+													? `/artist/${recommendedAlbumArtistId}`
+													: buildSearchHref(
+															`${recommendedAlbumArtistName} ${recommendation.album.title}`,
+															'albums'
+														)}
+												class="ui-chip-button ui-chip-button--compact"
+											>
+												{recommendedAlbumArtistId ? 'Open Artist' : 'Search'}
+											</a>
+										</div>
+									{/snippet}
+								</MediaRow>
 							</li>
 						{/each}
 					</ol>
@@ -596,6 +606,12 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.65rem;
+	}
+
+	.library-suggestions-list {
+		list-style: none;
+		padding: 0;
+		margin: 0;
 	}
 
 	.library-suggestions-column__header {

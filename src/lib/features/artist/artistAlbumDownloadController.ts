@@ -24,10 +24,7 @@ type DownloadEventLike = {
 
 type ArtistAlbumDownloadControllerOptions = {
 	getAlbumDownloadState: (albumId: number) => ArtistAlbumDownloadState;
-	patchAlbumDownloadState: (
-		albumId: number,
-		patch: Partial<ArtistAlbumDownloadState>
-	) => void;
+	patchAlbumDownloadState: (albumId: number, patch: Partial<ArtistAlbumDownloadState>) => void;
 	isAlbumQueueDownloadCancellable: (state: ArtistAlbumDownloadState) => boolean;
 	requestQueueCancel: (albumId: number) => Promise<QueueActionResult>;
 	requestQueueResume: (albumId: number) => Promise<QueueActionResult>;
@@ -41,6 +38,8 @@ type ArtistAlbumDownloadControllerOptions = {
 	confirmClientRedownload: () => boolean;
 	getDownloadPreferences: () => ArtistAlbumDownloadPreferences;
 	resolveArtistName: () => string | undefined;
+	resolveMusicBrainzReleaseId?: (albumId: number) => string | undefined;
+	ensureMusicBrainzReleaseId?: (album: Album) => Promise<string | undefined>;
 	downloadAlbumFn?: typeof downloadAlbum;
 };
 
@@ -88,6 +87,7 @@ export function createArtistAlbumDownloadController(options: ArtistAlbumDownload
 	async function handleAlbumDownload(album: Album, event?: DownloadEventLike): Promise<void> {
 		stopEvent(event);
 		const currentState = options.getAlbumDownloadState(album.id);
+		const musicBrainzReleaseId = options.resolveMusicBrainzReleaseId?.(album.id);
 		if (options.isDiscographyDownloading()) {
 			return;
 		}
@@ -118,6 +118,10 @@ export function createArtistAlbumDownloadController(options: ArtistAlbumDownload
 		if (currentState.downloading || currentState.status === 'submitting') {
 			return;
 		}
+		const deferredMusicBrainzReleaseIdPromise =
+			preferences.experimentalMusicBrainzTagging && !musicBrainzReleaseId
+				? options.ensureMusicBrainzReleaseId?.(album)
+				: undefined;
 
 		options.patchAlbumDownloadState(album.id, {
 			status: 'submitting',
@@ -159,6 +163,12 @@ export function createArtistAlbumDownloadController(options: ArtistAlbumDownload
 					convertAacToMp3: preferences.convertAacToMp3,
 					experimentalMusicBrainzTagging: preferences.experimentalMusicBrainzTagging,
 					strictMusicBrainzMatching: preferences.strictMusicBrainzMatching,
+					musicBrainzReleaseId: preferences.experimentalMusicBrainzTagging
+						? musicBrainzReleaseId
+						: undefined,
+					musicBrainzReleaseIdPromise: preferences.experimentalMusicBrainzTagging
+						? deferredMusicBrainzReleaseIdPromise
+						: undefined,
 					storage: preferences.storage,
 					forceOverwrite
 				}
@@ -224,6 +234,11 @@ export function createArtistAlbumDownloadController(options: ArtistAlbumDownload
 		for (const album of albums) {
 			let albumEstimate = album.numberOfTracks ?? 0;
 			let albumFailedCount = 0;
+			const musicBrainzReleaseId = options.resolveMusicBrainzReleaseId?.(album.id);
+			const deferredMusicBrainzReleaseIdPromise =
+				preferences.experimentalMusicBrainzTagging && !musicBrainzReleaseId
+					? options.ensureMusicBrainzReleaseId?.(album)
+					: undefined;
 			try {
 				await downloadAlbumFn(
 					album,
@@ -255,6 +270,12 @@ export function createArtistAlbumDownloadController(options: ArtistAlbumDownload
 						convertAacToMp3: preferences.convertAacToMp3,
 						experimentalMusicBrainzTagging: preferences.experimentalMusicBrainzTagging,
 						strictMusicBrainzMatching: preferences.strictMusicBrainzMatching,
+						musicBrainzReleaseId: preferences.experimentalMusicBrainzTagging
+							? musicBrainzReleaseId
+							: undefined,
+						musicBrainzReleaseIdPromise: preferences.experimentalMusicBrainzTagging
+							? deferredMusicBrainzReleaseIdPromise
+							: undefined,
 						storage: preferences.storage
 					}
 				);

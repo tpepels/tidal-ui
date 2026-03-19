@@ -11,9 +11,13 @@ import {
 	normalizeLookupText,
 	normalizeReleaseId
 } from './musicBrainzHelpers';
-import { fetchMusicBrainzJson, MusicBrainzHttpError, MUSICBRAINZ_API_BASE } from './musicBrainzHttp';
 import {
-	buildMusicBrainzTags,
+	fetchMusicBrainzJson,
+	MusicBrainzHttpError,
+	MUSICBRAINZ_API_BASE
+} from './musicBrainzHttp';
+import {
+	buildMusicBrainzLookupPayload,
 	chooseBestRecording,
 	chooseRecordingFromPreferredRelease,
 	clampSearchLimit,
@@ -37,6 +41,10 @@ import type {
 	MusicBrainzReleaseSearchParams,
 	MusicBrainzReleaseSearchResponse
 } from './musicBrainzTypes';
+import type {
+	CachedMusicBrainzTrackLookup,
+	MusicBrainzTrackMatchDetails
+} from '../features/track/trackMusicBrainzModel';
 
 export type {
 	MusicBrainzArtistCandidate,
@@ -46,6 +54,13 @@ export type {
 	MusicBrainzReleaseCandidate,
 	MusicBrainzReleaseSearchParams
 } from './musicBrainzTypes';
+
+export type MusicBrainzTrackLookupResult = {
+	lookupStatus: 'matched' | 'no_match' | 'lookup_failed';
+	tags: Record<string, string>;
+	match: MusicBrainzTrackMatchDetails | null;
+	error?: string;
+};
 
 async function fetchByIsrc(isrc: string): Promise<MusicBrainzRecording[]> {
 	const url = `${MUSICBRAINZ_API_BASE}/isrc/${encodeURIComponent(
@@ -73,10 +88,7 @@ async function fetchPreferredReleaseById(releaseId: string): Promise<MusicBrainz
 		writePreferredReleaseCache(releaseId, payload);
 		return payload;
 	} catch (error) {
-		if (
-			error instanceof MusicBrainzHttpError &&
-			(error.status === 400 || error.status === 404)
-		) {
+		if (error instanceof MusicBrainzHttpError && (error.status === 400 || error.status === 404)) {
 			writePreferredReleaseCache(releaseId, null);
 			return null;
 		}
@@ -202,6 +214,42 @@ export async function lookupMusicBrainzTagsForTrack(
 	track: MusicBrainzLookupTrack,
 	options?: MusicBrainzLookupOptions
 ): Promise<Record<string, string>> {
+	const result = await lookupMusicBrainzMetadataForTrack(track, options);
+	return result.tags;
+}
+
+function buildNoMatchResult(): CachedMusicBrainzTrackLookup {
+	return {
+		lookupStatus: 'no_match',
+		tags: {},
+		match: null
+	};
+}
+
+function buildMatchedResult(
+	tags: Record<string, string>,
+	match: MusicBrainzTrackMatchDetails | null
+): CachedMusicBrainzTrackLookup {
+	return {
+		lookupStatus: 'matched',
+		tags,
+		match
+	};
+}
+
+function buildLookupFailedResult(error: unknown): MusicBrainzTrackLookupResult {
+	return {
+		lookupStatus: 'lookup_failed',
+		tags: {},
+		match: null,
+		error: error instanceof Error ? error.message : String(error)
+	};
+}
+
+export async function lookupMusicBrainzMetadataForTrack(
+	track: MusicBrainzLookupTrack,
+	options?: MusicBrainzLookupOptions
+): Promise<MusicBrainzTrackLookupResult> {
 	const cacheKey = buildCacheKey(track, options);
 	const cached = readLookupCache(cacheKey);
 	if (cached) {
@@ -221,21 +269,24 @@ export async function lookupMusicBrainzTagsForTrack(
 		: Boolean(trackIsrc) || hasTitleAndArtist;
 
 	if (!hasLookupInput) {
-		writeLookupCache(cacheKey, {});
-		return {};
+		const result = buildNoMatchResult();
+		writeLookupCache(cacheKey, result);
+		return result;
 	}
 
 	if (strictIsrcMatch && !trackIsrc) {
-		writeLookupCache(cacheKey, {});
-		return {};
+		const result = buildNoMatchResult();
+		writeLookupCache(cacheKey, result);
+		return result;
 	}
 
 	try {
 		if (preferredReleaseId) {
 			const preferredRelease = await fetchPreferredReleaseById(preferredReleaseId);
 			if (!preferredRelease) {
-				writeLookupCache(cacheKey, {});
-				return {};
+				const result = buildNoMatchResult();
+				writeLookupCache(cacheKey, result);
+				return result;
 			}
 			const preferredRecording = chooseRecordingFromPreferredRelease(
 				track,
@@ -243,15 +294,20 @@ export async function lookupMusicBrainzTagsForTrack(
 				strictIsrcMatch
 			);
 			if (!preferredRecording) {
-				writeLookupCache(cacheKey, {});
-				return {};
+				const result = buildNoMatchResult();
+				writeLookupCache(cacheKey, result);
+				return result;
 			}
-			const tags = buildMusicBrainzTags(track, preferredRecording, {
+			const lookup = buildMusicBrainzLookupPayload(track, preferredRecording, {
 				...options,
 				preferredReleaseId
 			});
-			writeLookupCache(cacheKey, tags);
-			return tags;
+			const result =
+				lookup.match && Object.keys(lookup.tags).length > 0
+					? buildMatchedResult(lookup.tags, lookup.match)
+					: buildNoMatchResult();
+			writeLookupCache(cacheKey, result);
+			return result;
 		}
 
 		const recordingsById = new Map<string, MusicBrainzRecording>();
@@ -275,14 +331,16 @@ export async function lookupMusicBrainzTagsForTrack(
 			}
 		}
 
-		const candidates = strictIsrcMatch && trackIsrc
-			? Array.from(recordingsById.values()).filter((recording) =>
-					hasRecordingIsrc(recording, trackIsrc)
-				)
-			: Array.from(recordingsById.values());
+		const candidates =
+			strictIsrcMatch && trackIsrc
+				? Array.from(recordingsById.values()).filter((recording) =>
+						hasRecordingIsrc(recording, trackIsrc)
+					)
+				: Array.from(recordingsById.values());
 		if (candidates.length === 0) {
-			writeLookupCache(cacheKey, {});
-			return {};
+			const result = buildNoMatchResult();
+			writeLookupCache(cacheKey, result);
+			return result;
 		}
 
 		const bestRecording = chooseBestRecording(track, candidates, {
@@ -290,24 +348,29 @@ export async function lookupMusicBrainzTagsForTrack(
 			preferredReleaseId
 		});
 		if (!bestRecording) {
-			writeLookupCache(cacheKey, {});
-			return {};
+			const result = buildNoMatchResult();
+			writeLookupCache(cacheKey, result);
+			return result;
 		}
 
-		const tags = buildMusicBrainzTags(track, bestRecording, {
+		const lookup = buildMusicBrainzLookupPayload(track, bestRecording, {
 			...options,
 			preferredReleaseId
 		});
-		writeLookupCache(cacheKey, tags);
-		return tags;
+		const result =
+			lookup.match && Object.keys(lookup.tags).length > 0
+				? buildMatchedResult(lookup.tags, lookup.match)
+				: buildNoMatchResult();
+		writeLookupCache(cacheKey, result);
+		return result;
 	} catch (error) {
 		if (error instanceof MusicBrainzHttpError && error.status === 400) {
-			writeLookupCache(cacheKey, {});
-			return {};
+			const result = buildNoMatchResult();
+			writeLookupCache(cacheKey, result);
+			return result;
 		}
 		const message = error instanceof Error ? error.message : String(error);
 		console.warn('[MusicBrainz] Metadata lookup failed:', message);
-		writeLookupCache(cacheKey, {});
-		return {};
+		return buildLookupFailedResult(error);
 	}
 }

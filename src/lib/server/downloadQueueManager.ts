@@ -270,6 +270,39 @@ export async function getJob(jobId: string): Promise<QueuedJob | null> {
 	return readQueueJob(jobId);
 }
 
+export async function setAlbumJobMusicBrainzReleaseId(
+	jobId: string,
+	musicBrainzReleaseId: string
+): Promise<boolean> {
+	const normalizedReleaseId = musicBrainzReleaseId.trim();
+	if (!normalizedReleaseId) {
+		return false;
+	}
+
+	const existingJob = await readQueueJob(jobId);
+	if (!existingJob || existingJob.job.type !== 'album') {
+		return false;
+	}
+	if (
+		existingJob.status === 'completed' ||
+		existingJob.status === 'failed' ||
+		existingJob.status === 'cancelled'
+	) {
+		return false;
+	}
+	if (existingJob.job.musicBrainzReleaseId?.trim() === normalizedReleaseId) {
+		return true;
+	}
+
+	const updated = await patchQueueJob(jobId, {
+		job: {
+			...existingJob.job,
+			musicBrainzReleaseId: normalizedReleaseId
+		}
+	});
+	return updated !== null;
+}
+
 /**
  * Get all jobs
  */

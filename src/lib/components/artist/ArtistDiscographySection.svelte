@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Download, LoaderCircle, RotateCcw, X } from 'lucide-svelte';
 	import ActionPanel from '$lib/components/ui/ActionPanel.svelte';
-	import EntityMediaCard from '$lib/components/ui/EntityMediaCard.svelte';
+	import MediaRow from '$lib/components/ui/MediaRow.svelte';
 	import SectionBlock from '$lib/components/ui/SectionBlock.svelte';
 	import StateBlock from '$lib/components/ui/StateBlock.svelte';
 	import {
@@ -233,7 +233,7 @@
 						count={section.entries.length}
 						className="artist-discography-group"
 					>
-						<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+						<div class="ui-list-surface artist-discography-list">
 							{#each section.entries as entry (`${entry.key}:${downloadQuality}`)}
 								{@const album = entry.representative}
 								{@const hasOfficialTidalSource = album.discographySource === 'official_tidal'}
@@ -259,12 +259,15 @@
 									albumDownloadState
 								)}
 								{@const albumInLibrary = albumLibraryPresence[album.id]?.exists === true}
-								<EntityMediaCard
-									type="album"
+								<MediaRow
 									href={`/album/${album.id}`}
 									title={album.title}
 									subtitle={formatAlbumMeta(album)}
-									class="group"
+									meta={hasOfficialTidalSource ? 'Official discography source' : 'Catalog discography'}
+									coverCacheKey={coverCacheKey}
+									coverCandidates={coverImageCandidates}
+									imageAlt={album.title}
+									tone={section.id === 'album' ? 'secondary' : 'tertiary'}
 								>
 									{#snippet action()}
 										<button
@@ -273,7 +276,7 @@
 													? onCancelAlbumQueueDownload(album.id, event)
 													: onAlbumDownload(album, event)}
 											type="button"
-											class="absolute top-3 right-3 z-40 flex items-center justify-center rounded-full border border-white/15 bg-black/80 p-2 text-gray-200 transition-[background-color,border-color,color,transform] duration-200 ease-[cubic-bezier(0.2,0,0,1)] hover:-translate-y-px hover:border-white/35 hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+											class="ui-list-row__action"
 											disabled={isDownloadingDiscography || albumDownloadState.status === 'submitting'}
 											aria-label={
 												canCancelAlbumDownload
@@ -298,7 +301,7 @@
 										</button>
 									{/snippet}
 									{#snippet artwork()}
-										{#if coverImageCandidates.length > 0 && !albumCoverFailures[album.id]}
+										{#if coverImageCandidates.length > 0 && !albumCoverFailures[album.id] && coverImageUrl}
 											<img
 												src={coverImageUrl}
 												data-album-id={album.id}
@@ -320,17 +323,21 @@
 												No artwork
 											</div>
 										{/if}
+									{/snippet}
+									{#snippet badge()}
 										{#if albumMusicBrainzReleaseMatches[album.id]}
 											<span
-												class="discography-mb-badge"
+												class="discography-mb-inline"
 												aria-label="Matched with MusicBrainz release"
 												title="Matched with MusicBrainz release"
 											>
-												<img src="/icons/musicbrainz-32.png" alt="" aria-hidden="true" width="14" height="14" />
+												<img src="/icons/musicbrainz-32.png" alt="" aria-hidden="true" width="12" height="12" />
+												<span>MusicBrainz</span>
 											</span>
 										{:else if isDiscographyMusicBrainzLoading && pendingDiscographyMusicBrainzAlbumIds.has(album.id)}
-											<span class="discography-mb-badge discography-mb-badge--searching" aria-label="Searching MusicBrainz…" title="Searching MusicBrainz…">
+											<span class="discography-mb-inline discography-mb-inline--searching" aria-label="Searching MusicBrainz…" title="Searching MusicBrainz…">
 												<LoaderCircle size={12} class="animate-spin" />
+												<span>Matching</span>
 											</span>
 										{/if}
 									{/snippet}
@@ -355,7 +362,7 @@
 											<p class="album-card-status">In library</p>
 										{/if}
 									{/snippet}
-								</EntityMediaCard>
+								</MediaRow>
 							{/each}
 						</div>
 					</SectionBlock>
@@ -392,38 +399,25 @@
 		padding-top: 0.9rem;
 	}
 
-	.discography-mb-badge {
-		position: absolute;
-		top: 6px;
-		right: 6px;
-		z-index: 50;
-		display: flex;
+	.artist-discography-list {
+		padding-inline: 0.1rem;
+	}
+
+	.discography-mb-inline {
+		display: inline-flex;
 		align-items: center;
-		justify-content: center;
-		width: 22px;
-		height: 22px;
-		border-radius: 4px;
-		background: rgba(0, 0, 0, 0.72);
-		border: 1px solid rgba(255, 255, 255, 0.15);
-		pointer-events: none;
+		gap: 0.28rem;
+		padding: 0.14rem 0.42rem;
+		border-radius: 999px;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		background: rgba(255, 255, 255, 0.06);
+		font-size: 0.72rem;
+		font-weight: 700;
+		line-height: 1;
+		color: rgba(236, 236, 236, 0.9);
 	}
 
-	.discography-mb-badge--searching {
-		color: rgba(180, 180, 180, 0.85);
-	}
-
-	:global(.artist-discography-group .ui-media-card__primary-link) {
-		display: flex;
-		flex-direction: column;
-		align-items: stretch;
-		gap: 0.58rem;
-	}
-
-	:global(.artist-discography-group .ui-media-card__artwork) {
-		width: 100%;
-	}
-
-	:global(.artist-discography-group .ui-media-card__body) {
-		padding-top: 0.08rem;
+	.discography-mb-inline--searching {
+		color: rgba(210, 210, 210, 0.82);
 	}
 </style>

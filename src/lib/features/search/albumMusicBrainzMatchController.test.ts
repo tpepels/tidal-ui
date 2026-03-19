@@ -45,8 +45,12 @@ describe('albumMusicBrainzMatchController', () => {
 	});
 
 	it('matches equivalent titles with punctuation and token overlap', () => {
-		expect(musicBrainzTitlesLikelyMatch('The Album: Deluxe Edition', 'The Album Deluxe')).toBe(true);
-		expect(musicBrainzTitlesLikelyMatch('Future Nostalgia (The Moonlight Edition)', 'Future Nostalgia')).toBe(true);
+		expect(musicBrainzTitlesLikelyMatch('The Album: Deluxe Edition', 'The Album Deluxe')).toBe(
+			true
+		);
+		expect(
+			musicBrainzTitlesLikelyMatch('Future Nostalgia (The Moonlight Edition)', 'Future Nostalgia')
+		).toBe(true);
 		expect(musicBrainzTitlesLikelyMatch('Completely Different', 'Another Record')).toBe(false);
 	});
 
@@ -156,6 +160,42 @@ describe('albumMusicBrainzMatchController', () => {
 		);
 	});
 
+	it('does not cache transport failures as no-match', async () => {
+		const album = createAlbum({ id: 303, title: 'Retry Album' });
+		const lookupKey = resolveAlbumMusicBrainzLookupKey(album);
+		expect(lookupKey).toBeTruthy();
+
+		const fetchImpl = vi
+			.fn()
+			.mockResolvedValueOnce({
+				ok: false,
+				json: async () => ({ success: false })
+			})
+			.mockResolvedValueOnce({
+				ok: true,
+				json: async () => ({
+					success: true,
+					releases: [
+						{ id: 'release-303', title: 'Retry Album', trackCount: 10, date: '2024-01-01' }
+					]
+				})
+			});
+		const lookupCache = new Map<string, string | null>();
+
+		const firstMatch = await resolveAlbumMusicBrainzReleaseMatch(album, lookupKey!, {
+			lookupCache,
+			fetchImpl: fetchImpl as unknown as typeof fetch
+		});
+		const secondMatch = await resolveAlbumMusicBrainzReleaseMatch(album, lookupKey!, {
+			lookupCache,
+			fetchImpl: fetchImpl as unknown as typeof fetch
+		});
+
+		expect(firstMatch).toBeNull();
+		expect(secondMatch).toBe('release-303');
+		expect(fetchImpl).toHaveBeenCalledTimes(2);
+	});
+
 	it('hydrates matches and avoids duplicate fetches once matched', async () => {
 		const album = createAlbum({ id: 202, title: 'Cache Test Album' });
 		const matchedByAlbum = new Map<number, string>();
@@ -163,7 +203,9 @@ describe('albumMusicBrainzMatchController', () => {
 			ok: true,
 			json: async () => ({
 				success: true,
-				releases: [{ id: 'release-202', title: 'Cache Test Album', trackCount: 10, date: '2024-01-01' }]
+				releases: [
+					{ id: 'release-202', title: 'Cache Test Album', trackCount: 10, date: '2024-01-01' }
+				]
 			})
 		});
 
@@ -184,6 +226,85 @@ describe('albumMusicBrainzMatchController', () => {
 		expect(fetchImpl).toHaveBeenCalledTimes(1);
 	});
 
+	it('supports a high-priority ensureMatch lookup without duplicating in-flight requests', async () => {
+		const album = createAlbum({ id: 203, title: 'Priority Album' });
+		const matchedByAlbum = new Map<number, string>();
+		let resolveFetch = () => {};
+		const fetchImpl = vi.fn().mockImplementation(async () => {
+			await new Promise<void>((resolve) => {
+				resolveFetch = resolve;
+			});
+			return {
+				ok: true,
+				json: async () => ({
+					success: true,
+					releases: [
+						{ id: 'release-203', title: 'Priority Album', trackCount: 10, date: '2024-01-01' }
+					]
+				})
+			};
+		});
+
+		const controller = createAlbumMusicBrainzMatchController({
+			concurrency: 1,
+			lookupLimit: 10,
+			fetchImpl: fetchImpl as unknown as typeof fetch,
+			hasMatch: (albumId) => matchedByAlbum.has(albumId),
+			onMatch: (albumId, releaseId) => {
+				matchedByAlbum.set(albumId, releaseId);
+			}
+		});
+
+		const firstLookup = controller.ensureMatch(album);
+		const secondLookup = controller.ensureMatch(album);
+		await Promise.resolve();
+
+		expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+		resolveFetch();
+		await expect(firstLookup).resolves.toBe('release-203');
+		await expect(secondLookup).resolves.toBe('release-203');
+		expect(matchedByAlbum.get(album.id)).toBe('release-203');
+	});
+
+	it('clears cached no-match entries on invalidate so a retry can recover', async () => {
+		const album = createAlbum({ id: 404, title: 'Invalidate Album' });
+		const matchedByAlbum = new Map<number, string>();
+		const fetchImpl = vi
+			.fn()
+			.mockResolvedValueOnce({
+				ok: true,
+				json: async () => ({ success: true, releases: [] })
+			})
+			.mockResolvedValueOnce({
+				ok: true,
+				json: async () => ({
+					success: true,
+					releases: [
+						{ id: 'release-404', title: 'Invalidate Album', trackCount: 10, date: '2024-01-01' }
+					]
+				})
+			});
+
+		const controller = createAlbumMusicBrainzMatchController({
+			concurrency: 1,
+			lookupLimit: 10,
+			fetchImpl: fetchImpl as unknown as typeof fetch,
+			hasMatch: (albumId) => matchedByAlbum.has(albumId),
+			onMatch: (albumId, releaseId) => {
+				matchedByAlbum.set(albumId, releaseId);
+			}
+		});
+
+		await controller.hydrate([album]);
+		expect(matchedByAlbum.has(album.id)).toBe(false);
+		controller.invalidate();
+		await controller.hydrate([album]);
+
+		expect(matchedByAlbum.get(album.id)).toBe('release-404');
+		expect(fetchImpl).toHaveBeenCalledTimes(2);
+	});
+
 	it('processes lookup batches sequentially and waits for each batch to finish', async () => {
 		const albums = [
 			createAlbum({ id: 1, title: 'Batch Album 1' }),
@@ -195,28 +316,32 @@ describe('albumMusicBrainzMatchController', () => {
 		const deferredByTitle = new Map<string, { resolve: (value: unknown) => void }>();
 		const startedTitles: string[] = [];
 
-		const fetchImpl = vi.fn().mockImplementation(async (_url: RequestInfo | URL, init?: RequestInit) => {
-			const body = JSON.parse(String(init?.body ?? '{}')) as { albumTitle?: string };
-			const albumTitle = String(body.albumTitle ?? '');
-			startedTitles.push(albumTitle);
+		const fetchImpl = vi
+			.fn()
+			.mockImplementation(async (_url: RequestInfo | URL, init?: RequestInit) => {
+				const body = JSON.parse(String(init?.body ?? '{}')) as { albumTitle?: string };
+				const albumTitle = String(body.albumTitle ?? '');
+				startedTitles.push(albumTitle);
 
-			if (albumTitle === 'Batch Album 1' || albumTitle === 'Batch Album 2') {
-				let resolvePromise: (value: unknown) => void = () => {};
-				const promise = new Promise((resolve) => {
-					resolvePromise = resolve;
-				});
-				deferredByTitle.set(albumTitle, { resolve: resolvePromise });
-				await promise;
-			}
+				if (albumTitle === 'Batch Album 1' || albumTitle === 'Batch Album 2') {
+					let resolvePromise: (value: unknown) => void = () => {};
+					const promise = new Promise((resolve) => {
+						resolvePromise = resolve;
+					});
+					deferredByTitle.set(albumTitle, { resolve: resolvePromise });
+					await promise;
+				}
 
-			return {
-				ok: true,
-				json: async () => ({
-					success: true,
-					releases: [{ id: `release-${albumTitle}`, title: albumTitle, trackCount: 10, date: '2024-01-01' }]
-				})
-			};
-		});
+				return {
+					ok: true,
+					json: async () => ({
+						success: true,
+						releases: [
+							{ id: `release-${albumTitle}`, title: albumTitle, trackCount: 10, date: '2024-01-01' }
+						]
+					})
+				};
+			});
 
 		const controller = createAlbumMusicBrainzMatchController({
 			concurrency: 2,
@@ -259,33 +384,35 @@ describe('albumMusicBrainzMatchController', () => {
 		const startedTitles: string[] = [];
 		const deferredByTitle = new Map<string, { resolve: () => void }>();
 
-		const fetchImpl = vi.fn().mockImplementation(async (_url: RequestInfo | URL, init?: RequestInit) => {
-			const body = JSON.parse(String(init?.body ?? '{}')) as { albumTitle?: string };
-			const albumTitle = String(body.albumTitle ?? '');
-			startedTitles.push(albumTitle);
+		const fetchImpl = vi
+			.fn()
+			.mockImplementation(async (_url: RequestInfo | URL, init?: RequestInit) => {
+				const body = JSON.parse(String(init?.body ?? '{}')) as { albumTitle?: string };
+				const albumTitle = String(body.albumTitle ?? '');
+				startedTitles.push(albumTitle);
 
-			let resolvePromise: () => void = () => {};
-			const promise = new Promise<void>((resolve) => {
-				resolvePromise = resolve;
+				let resolvePromise: () => void = () => {};
+				const promise = new Promise<void>((resolve) => {
+					resolvePromise = resolve;
+				});
+				deferredByTitle.set(albumTitle, { resolve: resolvePromise });
+				await promise;
+
+				return {
+					ok: true,
+					json: async () => ({
+						success: true,
+						releases: [
+							{
+								id: `release-${albumTitle}`,
+								title: albumTitle,
+								trackCount: 10,
+								date: '2024-01-01'
+							}
+						]
+					})
+				};
 			});
-			deferredByTitle.set(albumTitle, { resolve: resolvePromise });
-			await promise;
-
-			return {
-				ok: true,
-				json: async () => ({
-					success: true,
-					releases: [
-						{
-							id: `release-${albumTitle}`,
-							title: albumTitle,
-							trackCount: 10,
-							date: '2024-01-01'
-						}
-					]
-				})
-			};
-		});
 
 		const controller = createAlbumMusicBrainzMatchController({
 			concurrency: 12,

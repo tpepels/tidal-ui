@@ -19,7 +19,9 @@ function createAlbum(id: number, title: string, trackCount = 0): Album {
 	};
 }
 
-function createPreferences(overrides?: Partial<ArtistAlbumDownloadPreferences>): ArtistAlbumDownloadPreferences {
+function createPreferences(
+	overrides?: Partial<ArtistAlbumDownloadPreferences>
+): ArtistAlbumDownloadPreferences {
 	return {
 		quality: 'LOSSLESS',
 		mode: 'individual',
@@ -37,10 +39,12 @@ describe('artistAlbumDownloadController', () => {
 		const stateByAlbum = new Map<number, ArtistAlbumDownloadState>();
 		const getAlbumDownloadState = (albumId: number) =>
 			stateByAlbum.get(albumId) ?? createDefaultArtistAlbumDownloadState();
-		const patchAlbumDownloadState = vi.fn((albumId: number, patch: Partial<ArtistAlbumDownloadState>) => {
-			const previous = getAlbumDownloadState(albumId);
-			stateByAlbum.set(albumId, { ...previous, ...patch });
-		});
+		const patchAlbumDownloadState = vi.fn(
+			(albumId: number, patch: Partial<ArtistAlbumDownloadState>) => {
+				const previous = getAlbumDownloadState(albumId);
+				stateByAlbum.set(albumId, { ...previous, ...patch });
+			}
+		);
 		const startQueuePolling = vi.fn();
 		const downloadAlbumFn = vi.fn().mockResolvedValue({
 			storage: 'server',
@@ -81,15 +85,105 @@ describe('artistAlbumDownloadController', () => {
 		});
 	});
 
+	it('forwards the resolved MusicBrainz release id for single-album downloads', async () => {
+		const album = createAlbum(88, 'Matched Album', 8);
+		const downloadAlbumFn = vi.fn().mockResolvedValue({
+			storage: 'server',
+			totalTracks: 8,
+			completedTracks: 0,
+			failedTracks: 0,
+			jobId: 'job-88'
+		});
+
+		const controller = createArtistAlbumDownloadController({
+			getAlbumDownloadState: () => createDefaultArtistAlbumDownloadState(),
+			patchAlbumDownloadState: () => undefined,
+			isAlbumQueueDownloadCancellable: () => false,
+			requestQueueCancel: async () => ({ success: true }),
+			requestQueueResume: async () => ({ success: true }),
+			startQueuePolling: () => undefined,
+			isDiscographyDownloading: () => false,
+			setDiscographyDownloading: () => undefined,
+			setDiscographyProgress: () => undefined,
+			setDiscographyError: () => undefined,
+			resolveAlbumInLibrary: () => false,
+			confirmServerOverwrite: () => true,
+			confirmClientRedownload: () => true,
+			getDownloadPreferences: () => createPreferences(),
+			resolveArtistName: () => 'Artist',
+			resolveMusicBrainzReleaseId: () => 'release-88',
+			downloadAlbumFn
+		});
+
+		await controller.handleAlbumDownload(album);
+
+		expect(downloadAlbumFn).toHaveBeenCalledWith(
+			album,
+			'LOSSLESS',
+			expect.any(Object),
+			'Artist',
+			expect.objectContaining({
+				musicBrainzReleaseId: 'release-88'
+			})
+		);
+	});
+
+	it('starts a deferred MusicBrainz release lookup when no match is loaded yet', async () => {
+		const album = createAlbum(89, 'Deferred Album', 8);
+		const deferredReleaseLookup = Promise.resolve('release-89');
+		const downloadAlbumFn = vi.fn().mockResolvedValue({
+			storage: 'server',
+			totalTracks: 8,
+			completedTracks: 0,
+			failedTracks: 0,
+			jobId: 'job-89'
+		});
+
+		const controller = createArtistAlbumDownloadController({
+			getAlbumDownloadState: () => createDefaultArtistAlbumDownloadState(),
+			patchAlbumDownloadState: () => undefined,
+			isAlbumQueueDownloadCancellable: () => false,
+			requestQueueCancel: async () => ({ success: true }),
+			requestQueueResume: async () => ({ success: true }),
+			startQueuePolling: () => undefined,
+			isDiscographyDownloading: () => false,
+			setDiscographyDownloading: () => undefined,
+			setDiscographyProgress: () => undefined,
+			setDiscographyError: () => undefined,
+			resolveAlbumInLibrary: () => false,
+			confirmServerOverwrite: () => true,
+			confirmClientRedownload: () => true,
+			getDownloadPreferences: () => createPreferences(),
+			resolveArtistName: () => 'Artist',
+			ensureMusicBrainzReleaseId: () => deferredReleaseLookup,
+			downloadAlbumFn
+		});
+
+		await controller.handleAlbumDownload(album);
+
+		expect(downloadAlbumFn).toHaveBeenCalledWith(
+			album,
+			'LOSSLESS',
+			expect.any(Object),
+			'Artist',
+			expect.objectContaining({
+				musicBrainzReleaseId: undefined,
+				musicBrainzReleaseIdPromise: deferredReleaseLookup
+			})
+		);
+	});
+
 	it('aborts download when overwrite confirmation is declined', async () => {
 		const album = createAlbum(5, 'Already Local', 5);
 		const stateByAlbum = new Map<number, ArtistAlbumDownloadState>();
 		const getAlbumDownloadState = (albumId: number) =>
 			stateByAlbum.get(albumId) ?? createDefaultArtistAlbumDownloadState();
-		const patchAlbumDownloadState = vi.fn((albumId: number, patch: Partial<ArtistAlbumDownloadState>) => {
-			const previous = getAlbumDownloadState(albumId);
-			stateByAlbum.set(albumId, { ...previous, ...patch });
-		});
+		const patchAlbumDownloadState = vi.fn(
+			(albumId: number, patch: Partial<ArtistAlbumDownloadState>) => {
+				const previous = getAlbumDownloadState(albumId);
+				stateByAlbum.set(albumId, { ...previous, ...patch });
+			}
+		);
 		const downloadAlbumFn = vi.fn();
 
 		const controller = createArtistAlbumDownloadController({
@@ -121,10 +215,12 @@ describe('artistAlbumDownloadController', () => {
 		const stateByAlbum = new Map<number, ArtistAlbumDownloadState>();
 		const getAlbumDownloadState = (albumId: number) =>
 			stateByAlbum.get(albumId) ?? createDefaultArtistAlbumDownloadState();
-		const patchAlbumDownloadState = vi.fn((albumId: number, patch: Partial<ArtistAlbumDownloadState>) => {
-			const previous = getAlbumDownloadState(albumId);
-			stateByAlbum.set(albumId, { ...previous, ...patch });
-		});
+		const patchAlbumDownloadState = vi.fn(
+			(albumId: number, patch: Partial<ArtistAlbumDownloadState>) => {
+				const previous = getAlbumDownloadState(albumId);
+				stateByAlbum.set(albumId, { ...previous, ...patch });
+			}
+		);
 
 		const controller = createArtistAlbumDownloadController({
 			getAlbumDownloadState,
@@ -205,5 +301,45 @@ describe('artistAlbumDownloadController', () => {
 		expect(errorCalls.at(-1)).toBe('Failed to download part of the discography.');
 		expect(progressCalls.some((progress) => progress.completed === 2)).toBe(true);
 		consoleErrorSpy.mockRestore();
+	});
+
+	it('forwards per-album MusicBrainz release ids during discography downloads', async () => {
+		const firstAlbum = createAlbum(1, 'Part 1', 2);
+		const secondAlbum = createAlbum(2, 'Part 2', 1);
+		const downloadAlbumFn = vi.fn().mockResolvedValue({
+			storage: 'client' as const,
+			totalTracks: 1,
+			completedTracks: 1,
+			failedTracks: 0
+		});
+
+		const controller = createArtistAlbumDownloadController({
+			getAlbumDownloadState: () => createDefaultArtistAlbumDownloadState(),
+			patchAlbumDownloadState: () => undefined,
+			isAlbumQueueDownloadCancellable: () => false,
+			requestQueueCancel: async () => ({ success: true }),
+			requestQueueResume: async () => ({ success: true }),
+			startQueuePolling: () => undefined,
+			isDiscographyDownloading: () => false,
+			setDiscographyDownloading: () => undefined,
+			setDiscographyProgress: () => undefined,
+			setDiscographyError: () => undefined,
+			resolveAlbumInLibrary: () => false,
+			confirmServerOverwrite: () => true,
+			confirmClientRedownload: () => true,
+			getDownloadPreferences: () => createPreferences({ storage: 'client' }),
+			resolveArtistName: () => 'Artist',
+			resolveMusicBrainzReleaseId: (albumId) => `release-${albumId}`,
+			downloadAlbumFn
+		});
+
+		await controller.handleDownloadDiscography([firstAlbum, secondAlbum]);
+
+		expect(downloadAlbumFn.mock.calls[0]?.[4]).toEqual(
+			expect.objectContaining({ musicBrainzReleaseId: 'release-1' })
+		);
+		expect(downloadAlbumFn.mock.calls[1]?.[4]).toEqual(
+			expect.objectContaining({ musicBrainzReleaseId: 'release-2' })
+		);
 	});
 });

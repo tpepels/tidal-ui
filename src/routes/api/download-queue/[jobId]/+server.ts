@@ -13,6 +13,7 @@ import {
 	requestPause,
 	requestResume,
 	requestRetry,
+	setAlbumJobMusicBrainzReleaseId,
 	deleteJob
 } from '$lib/server/downloadQueueManager';
 
@@ -50,13 +51,16 @@ export const GET: RequestHandler = async ({ params }) => {
  * PATCH /api/download-queue/:jobId
  * Request cancellation or retry of a job
  * 
- * Body: { action: 'cancel' | 'pause' | 'resume' | 'retry' }
+ * Body: { action: 'cancel' | 'pause' | 'resume' | 'retry' | 'set_musicbrainz_release', musicBrainzReleaseId?: string }
  */
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	try {
 		const { jobId } = params;
 		const body = await request.json();
-		const { action } = body as { action: string };
+		const { action, musicBrainzReleaseId } = body as {
+			action: string;
+			musicBrainzReleaseId?: string;
+		};
 
 		if (action === 'cancel') {
 			const cancelled = await requestCancellation(jobId);
@@ -124,6 +128,38 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			return json({
 				success: true,
 				message: 'Retry requested',
+				jobId
+			});
+		}
+
+		if (action === 'set_musicbrainz_release') {
+			if (
+				typeof musicBrainzReleaseId !== 'string' ||
+				musicBrainzReleaseId.trim().length === 0
+			) {
+				return json(
+					{
+						success: false,
+						error: 'musicBrainzReleaseId must be a non-empty string'
+					},
+					{ status: 400 }
+				);
+			}
+
+			const updated = await setAlbumJobMusicBrainzReleaseId(jobId, musicBrainzReleaseId);
+			if (!updated) {
+				return json(
+					{
+						success: false,
+						error: 'Could not update MusicBrainz release for this job'
+					},
+					{ status: 400 }
+				);
+			}
+
+			return json({
+				success: true,
+				message: 'MusicBrainz release updated',
 				jobId
 			});
 		}

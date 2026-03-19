@@ -32,4 +32,17 @@ test.describe('UI matrix smoke', () => {
 			expect(box?.height ?? 0).toBeGreaterThanOrEqual(40);
 		}
 	});
+
+	test('mobile primary navigation stays available when the sidebar is hidden', async ({ page }) => {
+		await page.setViewportSize({ width: 390, height: 844 });
+		await page.goto('/settings');
+
+		const mobileNav = page.locator('.mobile-primary-nav');
+		await expect(mobileNav).toBeVisible();
+		await expect(mobileNav.getByRole('link', { name: 'Browse & Search' })).toBeVisible();
+		await expect(mobileNav.getByRole('link', { name: 'Download Center' })).toBeVisible();
+
+		await mobileNav.getByRole('link', { name: 'History' }).click();
+		await expect(page.getByRole('heading', { level: 1, name: 'History' })).toBeVisible();
+	});
 });

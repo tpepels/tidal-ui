@@ -128,6 +128,8 @@
 		return getRouteMeta(path)?.navLabel ?? fallback;
 	}
 
+	const currentPageNavLabel = $derived(routeNavLabel($page.url.pathname, pageTitle));
+
 	function handleSidebarNavKeydown(event: KeyboardEvent): void {
 		if (!sidebarNavContainer) return;
 		const keys = ['ArrowDown', 'ArrowUp', 'Home', 'End'];
@@ -504,6 +506,88 @@
 						style={`min-height: ${mainMinHeight}px; margin-bottom: ${mainMarginBottom}px;`}
 					>
 						<div class="app-main__inner">
+							<div class="mobile-topbar">
+								<div class="mobile-topbar__brand">
+									<p class="mobile-topbar__eyebrow">BiniLossless</p>
+									<p class="mobile-topbar__title">{currentPageNavLabel}</p>
+								</div>
+							</div>
+							<nav class="mobile-primary-nav" aria-label="Primary navigation">
+								<div class="mobile-primary-nav__scroll">
+									<a
+										class={`mobile-primary-nav__link ${isRouteActive('/') ? 'is-active' : ''}`}
+										href="/"
+										aria-current={isRouteActive('/') ? 'page' : undefined}
+									>
+										<Search size={15} />
+										<span>{routeNavLabel('/', 'Browse & Search')}</span>
+									</a>
+									<button
+										type="button"
+										class={`mobile-primary-nav__link ${currentTrackRoute && isRouteActive(currentTrackRoute) ? 'is-active' : ''}`}
+										onclick={() => {
+											if (!currentTrackRoute) return;
+											void goto(currentTrackRoute);
+										}}
+										disabled={!currentTrackRoute}
+										aria-current={currentTrackRoute && isRouteActive(currentTrackRoute) ? 'page' : undefined}
+									>
+										<Music2 size={15} />
+										<span>{currentTrackRoute ? 'Now Playing' : 'No Track'}</span>
+									</button>
+									<a
+										class={`mobile-primary-nav__link ${isRouteActive('/history') ? 'is-active' : ''}`}
+										href="/history"
+										aria-current={isRouteActive('/history') ? 'page' : undefined}
+									>
+										<History size={15} />
+										<span>{routeNavLabel('/history', 'History')}</span>
+									</a>
+									<a
+										class={`mobile-primary-nav__link ${isRouteActive('/library-suggestions') ? 'is-active' : ''}`}
+										href="/library-suggestions"
+										aria-current={isRouteActive('/library-suggestions') ? 'page' : undefined}
+									>
+										<Library size={15} />
+										<span>{routeNavLabel('/library-suggestions', 'Library Suggestions')}</span>
+									</a>
+									<a
+										class={`mobile-primary-nav__link ${isRouteActive('/settings') ? 'is-active' : ''}`}
+										href="/settings"
+										aria-current={isRouteActive('/settings') ? 'page' : undefined}
+									>
+										<Settings size={15} />
+										<span>{routeNavLabel('/settings', 'Settings')}</span>
+									</a>
+									<a
+										class={`mobile-primary-nav__link ${isRouteActive('/download-center') ? 'is-active' : ''}`}
+										href="/download-center"
+										aria-current={isRouteActive('/download-center') ? 'page' : undefined}
+									>
+										<Download size={15} />
+										<span>{routeNavLabel('/download-center', 'Download Center')}</span>
+										{#if showDownloadCenterBadge}
+											<span class="mobile-primary-nav__badge">{downloadCenterBadgeLabel}</span>
+										{/if}
+									</a>
+									<a
+										class={`mobile-primary-nav__link ${isRouteActive('/download-log') ? 'is-active' : ''}`}
+										href="/download-log"
+										aria-current={isRouteActive('/download-log') ? 'page' : undefined}
+									>
+										<Logs size={15} />
+										<span>{routeNavLabel('/download-log', 'Download Log')}</span>
+									</a>
+									<a
+										class={`mobile-primary-nav__link ${isRouteActive('/status') ? 'is-active' : ''}`}
+										href="/status"
+										aria-current={isRouteActive('/status') ? 'page' : undefined}
+									>
+										<Activity size={15} />
+										<span>{routeNavLabel('/status', 'Status')}</span>
+									</a>
+								</div>
+							</nav>
 							<Breadcrumb />
 								{@render children?.()}
 						</div>
@@ -615,7 +699,7 @@
 		top: clamp(0.8rem, 1.6vw, 1.4rem);
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
+		gap: 0.95rem;
 		padding: 0 1rem 0 0;
 		border-radius: 0;
 		max-height: calc(100vh - clamp(1.6rem, 3.2vw, 2.8rem) - var(--player-height, 0px));
@@ -648,10 +732,10 @@
 
 	.app-sidebar__subtitle {
 		margin: 0.15rem 0 0;
-		font-size: 0.8rem;
-		letter-spacing: 0.1em;
+		font-size: 0.82rem;
+		letter-spacing: 0.08em;
 		text-transform: uppercase;
-		color: rgba(212, 212, 212, 0.62);
+		color: rgba(212, 212, 212, 0.68);
 	}
 
 	.app-sidebar__section {
@@ -663,11 +747,11 @@
 
 	.app-sidebar__section-title {
 		margin: 0;
-		font-size: 0.72rem;
+		font-size: 0.76rem;
 		font-weight: 700;
-		letter-spacing: 0.14em;
+		letter-spacing: 0.08em;
 		text-transform: uppercase;
-		color: rgba(161, 161, 161, 0.6);
+		color: rgba(188, 188, 188, 0.68);
 	}
 
 	.sidebar-icon-btn {
@@ -701,13 +785,13 @@
 		display: flex;
 		align-items: center;
 		gap: 0.55rem;
-		padding: 0.74rem 0.82rem;
+		padding: 0.72rem 0.82rem;
 		border-radius: var(--ui-radius-sm, 9px);
 		border: 1px solid rgba(255, 255, 255, 0.08);
-		background: rgba(255, 255, 255, 0.02);
+		background: rgba(255, 255, 255, 0.03);
 		color: rgba(236, 236, 236, 0.9);
 		text-decoration: none;
-		font-size: 0.92rem;
+		font-size: 0.95rem;
 		font-weight: 600;
 		line-height: 1.1;
 		cursor: pointer;
@@ -731,7 +815,7 @@
 	.sidebar-action:hover:not(:disabled) {
 		transform: none;
 		border-color: rgba(255, 255, 255, 0.16);
-		background: rgba(255, 255, 255, 0.045);
+		background: rgba(255, 255, 255, 0.08);
 	}
 
 	.sidebar-action:hover::after {
@@ -743,8 +827,8 @@
 	}
 
 	.sidebar-action.is-active {
-		border-color: rgba(255, 255, 255, 0.22);
-		background: rgba(255, 255, 255, 0.08);
+		border-color: rgba(255, 255, 255, 0.26);
+		background: rgba(255, 255, 255, 0.12);
 		box-shadow: none;
 	}
 
@@ -772,7 +856,7 @@
 		padding: 0.22rem 0.45rem;
 		border-radius: var(--ui-radius-sm, 9px);
 		border: 1px solid rgba(255, 255, 255, 0.16);
-		background: rgba(255, 255, 255, 0.08);
+		background: rgba(255, 255, 255, 0.1);
 		color: rgba(245, 245, 245, 0.96);
 		font-size: 0.84rem;
 		font-weight: 700;
@@ -843,7 +927,7 @@
 
 	.app-main {
 		flex: 1;
-		padding: clamp(1rem, 1.9vw, 1.6rem);
+		padding: clamp(0.9rem, 1.7vw, 1.45rem);
 		margin: 0;
 		border-radius: 0;
 		position: relative;
@@ -858,6 +942,106 @@
 
 	.app-main__inner {
 		width: 100%;
+	}
+
+	.mobile-topbar,
+	.mobile-primary-nav {
+		display: none;
+	}
+
+	.mobile-topbar {
+		position: sticky;
+		top: 0;
+		z-index: 12;
+		padding: 0.1rem 0 0.42rem;
+		background:
+			linear-gradient(to bottom, rgba(7, 7, 7, 0.96), rgba(7, 7, 7, 0.9) 72%, transparent);
+		backdrop-filter: blur(10px);
+		-webkit-backdrop-filter: blur(10px);
+	}
+
+	.mobile-topbar__brand {
+		display: flex;
+		flex-direction: column;
+		gap: 0.08rem;
+	}
+
+	.mobile-topbar__eyebrow {
+		margin: 0;
+		font-size: 0.76rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: rgba(198, 198, 198, 0.72);
+	}
+
+	.mobile-topbar__title {
+		margin: 0;
+		font-size: 1.14rem;
+		font-weight: 700;
+		line-height: 1.2;
+		color: rgba(247, 247, 247, 0.97);
+	}
+
+	.mobile-primary-nav {
+		position: sticky;
+		top: 3rem;
+		z-index: 11;
+		padding-bottom: 0.65rem;
+		background:
+			linear-gradient(to bottom, rgba(7, 7, 7, 0.92), rgba(7, 7, 7, 0.86) 74%, transparent);
+		backdrop-filter: blur(10px);
+		-webkit-backdrop-filter: blur(10px);
+	}
+
+	.mobile-primary-nav__scroll {
+		display: flex;
+		gap: 0.5rem;
+		overflow-x: auto;
+		padding-bottom: 0.15rem;
+		scrollbar-width: none;
+	}
+
+	.mobile-primary-nav__scroll::-webkit-scrollbar {
+		display: none;
+	}
+
+	.mobile-primary-nav__link {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.38rem;
+		flex-shrink: 0;
+		min-height: 40px;
+		padding: 0.46rem 0.72rem;
+		border-radius: 999px;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		background: rgba(255, 255, 255, 0.04);
+		font-size: 0.88rem;
+		font-weight: 600;
+		color: rgba(238, 238, 238, 0.9);
+		text-decoration: none;
+	}
+
+	.mobile-primary-nav__link.is-active {
+		border-color: rgba(255, 255, 255, 0.28);
+		background: rgba(255, 255, 255, 0.12);
+		color: rgba(255, 255, 255, 0.98);
+	}
+
+	.mobile-primary-nav__link:disabled {
+		opacity: 0.58;
+	}
+
+	.mobile-primary-nav__badge {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0.16rem 0.4rem;
+		border-radius: 999px;
+		background: rgba(255, 255, 255, 0.12);
+		font-size: 0.72rem;
+		font-weight: 700;
+		line-height: 1;
 	}
 
 	.app-workspace.is-sidebar-collapsed .app-sidebar {
@@ -977,6 +1161,11 @@
 			display: none;
 		}
 
+		.mobile-topbar,
+		.mobile-primary-nav {
+			display: block;
+		}
+
 		.app-main--workspace {
 			margin: 0;
 		}
@@ -984,7 +1173,7 @@
 
 	@media (max-width: 640px) {
 		.app-main {
-			padding: 1rem;
+			padding: 0.95rem;
 			margin: 0;
 		}
 	}

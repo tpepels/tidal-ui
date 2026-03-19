@@ -41,6 +41,8 @@
 	import DataGrid from '$lib/components/ui/DataGrid.svelte';
 	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
 	import SectionBlock from '$lib/components/ui/SectionBlock.svelte';
+	import MetaStrip from '$lib/components/ui/MetaStrip.svelte';
+	import StateNotice from '$lib/components/ui/StateNotice.svelte';
 	import {
 		groupDiscography,
 		type DiscographyBestEditionRule
@@ -351,6 +353,8 @@
 			}
 			selectedMusicBrainzArtistId = pickDefaultMusicBrainzArtistId(candidates, activeArtist.name);
 		} catch (lookupError) {
+			musicBrainzArtistOptions = [];
+			selectedMusicBrainzArtistId = '';
 			musicBrainzArtistLookupError =
 				lookupError instanceof Error
 					? lookupError.message
@@ -823,6 +827,8 @@
 			storage: downloadStoragePreference
 		}),
 		resolveArtistName: () => artist?.name,
+		resolveMusicBrainzReleaseId: (albumId) => albumMusicBrainzReleaseMatches[albumId],
+		ensureMusicBrainzReleaseId: (album) => discographyMusicBrainzController.ensureMatch(album),
 		downloadAlbumFn: downloadAlbum
 	});
 
@@ -1041,9 +1047,9 @@
 					<p class="ui-detail-hero__eyebrow">Artist</p>
 					<h1 class="ui-detail-hero__title">{artist.name}</h1>
 
-					<div class="ui-detail-meta-strip">
+					<MetaStrip>
 						{#if artist.popularity}
-							<div class="ui-detail-meta-item">
+							<div class="ui-meta-strip__item">
 								Popularity {artist.popularity}
 							</div>
 						{/if}
@@ -1057,7 +1063,7 @@
 								<span class="ui-inline-tag">{role.category}</span>
 							{/each}
 						{/if}
-					</div>
+					</MetaStrip>
 				</div>
 			</div>
 		</section>
@@ -1100,7 +1106,7 @@
 						{formatAlbumMeta}
 						{formatQualityLabel}
 						onDownloadDiscography={handleDownloadDiscography}
-						onBestEditionRuleChange={(rule) => {
+						onBestEditionRuleChange={(rule: DiscographyBestEditionRule) => {
 							bestEditionRule = rule;
 						}}
 						onToggleDiscographyFilter={toggleDiscographyFilter}
@@ -1139,7 +1145,14 @@
 								</button>
 						</svelte:fragment>
 						{#if isMusicBrainzArtistLookupLoading && musicBrainzArtistOptions.length === 0}
-							<p class="ui-action-status">Searching MusicBrainz artists…</p>
+							<StateNotice tone="info" message="Searching MusicBrainz artists…" compact={true} />
+						{:else if isMusicBrainzArtistLookupLoading}
+							<StateNotice
+								tone="info"
+								message="Refreshing MusicBrainz artist match…"
+								compact={true}
+								stale={true}
+							/>
 						{:else if musicBrainzArtistOptions.length > 0}
 							<label class="ui-section-block__eyebrow" for="musicbrainz-artist-select">
 								Selected Artist
@@ -1197,7 +1210,11 @@
 									{/if}
 								</DataGrid>
 								{#if selectedMusicBrainzArtist.disambiguation}
-									<p class="ui-action-status">{selectedMusicBrainzArtist.disambiguation}</p>
+									<StateNotice
+										tone="neutral"
+										message={selectedMusicBrainzArtist.disambiguation}
+										compact={true}
+									/>
 								{/if}
 								<p class="ui-action-status">
 									<a
@@ -1211,10 +1228,14 @@
 								</p>
 							{/if}
 						{:else if hasMusicBrainzArtistLookupAttempted}
-							<p class="ui-action-status">No MusicBrainz artist match found for this artist.</p>
+							<StateNotice
+								tone="neutral"
+								message="No MusicBrainz artist match found for this artist."
+								compact={true}
+							/>
 						{/if}
 						{#if musicBrainzArtistLookupError}
-							<p class="ui-action-status" data-tone="error">{musicBrainzArtistLookupError}</p>
+							<StateNotice tone="error" message={musicBrainzArtistLookupError} compact={true} />
 						{/if}
 					</SectionBlock>
 				</section>

@@ -31,14 +31,12 @@ describe('lookupMusicBrainzTagsForTrack', () => {
 	});
 
 	it('falls back to query search when ISRC is invalid in flexible mode', async () => {
-		const fetchSpy = vi
-			.fn()
-			.mockResolvedValue(
-				new Response(JSON.stringify({ recordings: [] }), {
-					status: 200,
-					headers: { 'Content-Type': 'application/json' }
-				})
-			);
+		const fetchSpy = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ recordings: [] }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		);
 		vi.stubGlobal('fetch', fetchSpy as unknown as typeof fetch);
 
 		const { lookupMusicBrainzTagsForTrack } = await import('./musicBrainzLookup');
@@ -56,14 +54,12 @@ describe('lookupMusicBrainzTagsForTrack', () => {
 	});
 
 	it('normalizes valid ISRC values before request', async () => {
-		const fetchSpy = vi
-			.fn()
-			.mockResolvedValue(
-				new Response(JSON.stringify({ recordings: [] }), {
-					status: 200,
-					headers: { 'Content-Type': 'application/json' }
-				})
-			);
+		const fetchSpy = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ recordings: [] }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' }
+			})
+		);
 		vi.stubGlobal('fetch', fetchSpy as unknown as typeof fetch);
 
 		const { lookupMusicBrainzTagsForTrack } = await import('./musicBrainzLookup');
@@ -83,9 +79,7 @@ describe('lookupMusicBrainzTagsForTrack', () => {
 	});
 
 	it('treats MusicBrainz HTTP 400 as non-fatal without warning noise', async () => {
-		const fetchSpy = vi
-			.fn()
-			.mockResolvedValue(new Response('Bad request', { status: 400 }));
+		const fetchSpy = vi.fn().mockResolvedValue(new Response('Bad request', { status: 400 }));
 		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 		vi.stubGlobal('fetch', fetchSpy as unknown as typeof fetch);
 
@@ -125,12 +119,68 @@ describe('lookupMusicBrainzTagsForTrack', () => {
 		expect(fetchSpy).toHaveBeenCalledTimes(2);
 	});
 
+	it('does not cache lookup_failed results as no-match', async () => {
+		const fetchSpy = vi
+			.fn()
+			.mockRejectedValueOnce(new TypeError('network down'))
+			.mockRejectedValueOnce(new TypeError('network down'))
+			.mockRejectedValueOnce(new TypeError('network down'))
+			.mockResolvedValueOnce(
+				new Response(
+					JSON.stringify({
+						recordings: [
+							{
+								id: 'recording-1',
+								title: 'Track',
+								'artist-credit': [{ name: 'Artist', artist: { id: 'artist-1', name: 'Artist' } }],
+								releases: [
+									{
+										id: '11111111-2222-4333-8444-555555555555',
+										title: 'Album',
+										status: 'Official',
+										'artist-credit': [
+											{ name: 'Artist', artist: { id: 'artist-1', name: 'Artist' } }
+										]
+									}
+								]
+							}
+						]
+					}),
+					{
+						status: 200,
+						headers: { 'Content-Type': 'application/json' }
+					}
+				)
+			);
+		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+		vi.stubGlobal('fetch', fetchSpy as unknown as typeof fetch);
+
+		const { lookupMusicBrainzMetadataForTrack } = await import('./musicBrainzLookup');
+		const firstResult = await lookupMusicBrainzMetadataForTrack({
+			title: 'Track',
+			artist: { name: 'Artist' },
+			album: { title: 'Album' }
+		});
+		const secondResult = await lookupMusicBrainzMetadataForTrack({
+			title: 'Track',
+			artist: { name: 'Artist' },
+			album: { title: 'Album' }
+		});
+
+		expect(firstResult.lookupStatus).toBe('lookup_failed');
+		expect(secondResult.lookupStatus).toBe('matched');
+		expect(secondResult.tags.MUSICBRAINZ_TRACKID).toBe('recording-1');
+		expect(fetchSpy).toHaveBeenCalledTimes(4);
+		expect(warnSpy).toHaveBeenCalled();
+	});
+
 	it('includes track and disc in cache keys to avoid cross-track collisions', async () => {
-		const fetchSpy = vi.fn().mockImplementation(async () =>
-			new Response(JSON.stringify({ recordings: [] }), {
-				status: 200,
-				headers: { 'Content-Type': 'application/json' }
-			})
+		const fetchSpy = vi.fn().mockImplementation(
+			async () =>
+				new Response(JSON.stringify({ recordings: [] }), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' }
+				})
 		);
 		vi.stubGlobal('fetch', fetchSpy as unknown as typeof fetch);
 
@@ -155,50 +205,46 @@ describe('lookupMusicBrainzTagsForTrack', () => {
 
 	it('uses selected release directly and skips flex recording lookup', async () => {
 		const preferredReleaseId = '11111111-2222-4333-8444-555555555555';
-		const fetchSpy = vi
-			.fn()
-			.mockResolvedValue(
-				new Response(
-					JSON.stringify({
-						id: preferredReleaseId,
-						title: 'Album B',
-						status: 'Official',
-						country: 'US',
-						barcode: '1234567890123',
-						'artist-credit': [{ name: 'Sample Artist', artist: { id: 'artist-1' } }],
-						'release-group': { id: 'release-group-1', 'primary-type': 'Album' },
-						media: [
-							{
-								position: 1,
-								'track-count': 2,
-								tracks: [
-									{
-										number: '1',
+		const fetchSpy = vi.fn().mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					id: preferredReleaseId,
+					title: 'Album B',
+					status: 'Official',
+					country: 'US',
+					barcode: '1234567890123',
+					'artist-credit': [{ name: 'Sample Artist', artist: { id: 'artist-1' } }],
+					'release-group': { id: 'release-group-1', 'primary-type': 'Album' },
+					media: [
+						{
+							position: 1,
+							'track-count': 2,
+							tracks: [
+								{
+									number: '1',
+									title: 'Autumn Leaves',
+									recording: {
+										id: 'recording-1',
 										title: 'Autumn Leaves',
-										recording: {
-											id: 'recording-1',
-											title: 'Autumn Leaves',
-											isrcs: ['USABC2400001'],
-											'artist-credit': [
-												{ name: 'Sample Artist', artist: { id: 'artist-1' } }
-											]
-										}
-									},
-									{
-										number: '2',
-										title: 'Another Song',
-										recording: { id: 'recording-2', title: 'Another Song' }
+										isrcs: ['USABC2400001'],
+										'artist-credit': [{ name: 'Sample Artist', artist: { id: 'artist-1' } }]
 									}
-								]
-							}
-						]
-					}),
-					{
-						status: 200,
-						headers: { 'Content-Type': 'application/json' }
-					}
-				)
-			);
+								},
+								{
+									number: '2',
+									title: 'Another Song',
+									recording: { id: 'recording-2', title: 'Another Song' }
+								}
+							]
+						}
+					]
+				}),
+				{
+					status: 200,
+					headers: { 'Content-Type': 'application/json' }
+				}
+			)
+		);
 		vi.stubGlobal('fetch', fetchSpy as unknown as typeof fetch);
 
 		const { lookupMusicBrainzTagsForTrack } = await import('./musicBrainzLookup');
@@ -220,6 +266,64 @@ describe('lookupMusicBrainzTagsForTrack', () => {
 		expect(firstUrl).toContain(`/release/${preferredReleaseId}`);
 		expect(firstUrl).not.toContain('/recording?query=');
 		expect(firstUrl).not.toContain('/isrc/');
+	});
+
+	it('returns structured match details alongside tags', async () => {
+		const fetchSpy = vi.fn().mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					recordings: [
+						{
+							id: 'recording-1',
+							title: 'Autumn Leaves',
+							'artist-credit': [
+								{ name: 'Sample Artist', artist: { id: 'artist-1', name: 'Sample Artist' } }
+							],
+							releases: [
+								{
+									id: '11111111-2222-4333-8444-555555555555',
+									title: 'Portrait in Jazz',
+									status: 'Official',
+									date: '1960-12-01',
+									country: 'US',
+									barcode: '1234567890123',
+									'artist-credit': [
+										{
+											name: 'Sample Artist',
+											artist: { id: 'artist-1', name: 'Sample Artist' }
+										}
+									],
+									'release-group': {
+										id: 'release-group-1',
+										title: 'Portrait in Jazz',
+										'primary-type': 'Album',
+										'secondary-types': ['Remaster']
+									}
+								}
+							]
+						}
+					]
+				}),
+				{
+					status: 200,
+					headers: { 'Content-Type': 'application/json' }
+				}
+			)
+		);
+		vi.stubGlobal('fetch', fetchSpy as unknown as typeof fetch);
+
+		const { lookupMusicBrainzMetadataForTrack } = await import('./musicBrainzLookup');
+		const result = await lookupMusicBrainzMetadataForTrack({
+			title: 'Autumn Leaves',
+			artist: { name: 'Sample Artist' },
+			album: { title: 'Portrait in Jazz' }
+		});
+
+		expect(result.lookupStatus).toBe('matched');
+		expect(result.match?.recording.title).toBe('Autumn Leaves');
+		expect(result.match?.release?.title).toBe('Portrait in Jazz');
+		expect(result.match?.releaseGroup?.title).toBe('Portrait in Jazz');
+		expect(result.match?.artists[0]?.name).toBe('Sample Artist');
 	});
 });
 

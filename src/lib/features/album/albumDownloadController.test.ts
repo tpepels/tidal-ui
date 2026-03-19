@@ -93,12 +93,10 @@ describe('albumDownloadController', () => {
 				maintenanceState = { ...maintenanceState, ...patch };
 			},
 			isAlbumInLibrary: () => false,
-			isMusicBrainzReleaseLookupLoading: () => false,
 			getSelectedMusicBrainzReleaseId: () => '',
 			getDownloadPreferences: () => createPreferences(),
 			confirmServerOverwrite: () => true,
 			confirmClientRedownload: () => true,
-			confirmProceedWithoutMusicBrainz: () => true,
 			downloadAlbumFn,
 			fetchImpl: async () =>
 				new Response(
@@ -120,6 +118,74 @@ describe('albumDownloadController', () => {
 			isDownloadingAll: false
 		});
 		controller.destroy();
+	});
+
+	it('passes a deferred MusicBrainz release lookup into album downloads instead of blocking', async () => {
+		let album: Album | null = createAlbum(15, 'Deferred Match', 2);
+		const tracks = [createTrack(151, 'One', 1), createTrack(152, 'Two', 2)];
+		let queueState: AlbumRouteQueueState = {
+			queueStatus: 'idle',
+			queueJobId: null,
+			queueCompletedTracks: 0,
+			queueTotalTracks: 0,
+			isDownloadingAll: false,
+			downloadedCount: 0,
+			downloadError: null
+		};
+		let maintenanceState: AlbumRouteMaintenanceState = {
+			isRepairingAlbum: false,
+			repairMessage: null
+		};
+		const deferredReleaseLookup = Promise.resolve('release-15');
+		const downloadAlbumFn = vi.fn().mockResolvedValue({
+			storage: 'server',
+			totalTracks: 2,
+			completedTracks: 0,
+			failedTracks: 0,
+			jobId: 'job-15'
+		});
+
+		const controller = createAlbumDownloadController({
+			getAlbum: () => album,
+			getTracks: () => tracks,
+			getCurrentAlbumId: () => album?.id ?? null,
+			getQueueState: () => queueState,
+			patchQueueState: (patch) => {
+				queueState = { ...queueState, ...patch };
+			},
+			getMaintenanceState: () => maintenanceState,
+			patchMaintenanceState: (patch) => {
+				maintenanceState = { ...maintenanceState, ...patch };
+			},
+			isAlbumInLibrary: () => false,
+			getSelectedMusicBrainzReleaseId: () => '',
+			resolveDeferredMusicBrainzReleaseId: () => deferredReleaseLookup,
+			getDownloadPreferences: () => createPreferences(),
+			confirmServerOverwrite: () => true,
+			confirmClientRedownload: () => true,
+			downloadAlbumFn,
+			fetchImpl: async () =>
+				new Response(
+					JSON.stringify({
+						success: true,
+						job: { status: 'queued', trackCount: 2, completedTracks: 0 }
+					}),
+					{ status: 200, headers: { 'Content-Type': 'application/json' } }
+				)
+		});
+
+		await controller.handleDownloadAll();
+
+		expect(downloadAlbumFn).toHaveBeenCalledWith(
+			album,
+			'LOSSLESS',
+			expect.any(Object),
+			'Artist 15',
+			expect.objectContaining({
+				musicBrainzReleaseId: undefined,
+				musicBrainzReleaseIdPromise: deferredReleaseLookup
+			})
+		);
 	});
 
 	it('refreshes album library state when a queued server download completes', async () => {
@@ -156,12 +222,10 @@ describe('albumDownloadController', () => {
 					maintenanceState = { ...maintenanceState, ...patch };
 				},
 				isAlbumInLibrary: () => false,
-				isMusicBrainzReleaseLookupLoading: () => false,
 				getSelectedMusicBrainzReleaseId: () => '',
 				getDownloadPreferences: () => createPreferences(),
 				confirmServerOverwrite: () => true,
 				confirmClientRedownload: () => true,
-				confirmProceedWithoutMusicBrainz: () => true,
 				refreshAlbumLibraryState,
 				downloadAlbumFn: vi.fn().mockResolvedValue({
 					storage: 'server',
@@ -240,12 +304,10 @@ describe('albumDownloadController', () => {
 				maintenanceState = { ...maintenanceState, ...patch };
 			},
 			isAlbumInLibrary: () => false,
-			isMusicBrainzReleaseLookupLoading: () => false,
 			getSelectedMusicBrainzReleaseId: () => '',
 			getDownloadPreferences: () => createPreferences({ storage: 'client' }),
 			confirmServerOverwrite: () => true,
 			confirmClientRedownload: () => true,
-			confirmProceedWithoutMusicBrainz: () => true,
 			downloadAlbumFn: vi.fn(() => downloadResult.promise)
 		});
 
@@ -301,12 +363,10 @@ describe('albumDownloadController', () => {
 				maintenanceState = { ...maintenanceState, ...patch };
 			},
 			isAlbumInLibrary: () => true,
-			isMusicBrainzReleaseLookupLoading: () => false,
 			getSelectedMusicBrainzReleaseId: () => '',
 			getDownloadPreferences: () => createPreferences(),
 			confirmServerOverwrite: () => true,
 			confirmClientRedownload: () => true,
-			confirmProceedWithoutMusicBrainz: () => true,
 			refreshAlbumLibraryState,
 			repairAlbumInLibraryFn: vi.fn().mockResolvedValue({
 				success: true,

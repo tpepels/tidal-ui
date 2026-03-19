@@ -90,6 +90,7 @@ export interface DownloadTrackOptions {
 	enableExperimentalMusicBrainz?: boolean;
 	strictMusicBrainzMatching?: boolean;
 	musicBrainzReleaseId?: string;
+	musicBrainzReleaseIdPromise?: Promise<string | undefined>;
 	skipMetadataEmbedding?: boolean;
 }
 
@@ -341,7 +342,8 @@ class LosslessAPI {
 	private async resolveHiResStreamFromDash(trackId: number): Promise<string> {
 		return resolveHiResStreamFromDashHelper({
 			trackId,
-			getDashManifest: (candidateTrackId, quality) => this.getDashManifest(candidateTrackId, quality),
+			getDashManifest: (candidateTrackId, quality) =>
+				this.getDashManifest(candidateTrackId, quality),
 			parseFlacUrlFromMpd: (manifestText) => parseFlacUrlFromMpdHelper(manifestText)
 		});
 	}
@@ -668,8 +670,10 @@ class LosslessAPI {
 			trackId,
 			quality,
 			isHiResQuality: (candidateQuality) => this.isHiResQuality(candidateQuality),
-			getTrack: (candidateTrackId, candidateQuality) => this.getTrack(candidateTrackId, candidateQuality),
-			resolveHiResStreamFromDash: (candidateTrackId) => this.resolveHiResStreamFromDash(candidateTrackId),
+			getTrack: (candidateTrackId, candidateQuality) =>
+				this.getTrack(candidateTrackId, candidateQuality),
+			resolveHiResStreamFromDash: (candidateTrackId) =>
+				this.resolveHiResStreamFromDash(candidateTrackId),
 			extractStreamUrlFromManifest: (manifest) => this.extractStreamUrlFromManifest(manifest),
 			delay: (ms) => this.delay(ms),
 			isDev: import.meta.env.DEV
@@ -856,13 +860,29 @@ class LosslessAPI {
 			}
 			const payload = (await response.json()) as {
 				success?: boolean;
+				lookupStatus?: 'matched' | 'no_match' | 'lookup_failed';
 				tags?: Record<string, string>;
+				error?: string;
 			};
-			const tags = payload.success ? (payload.tags ?? {}) : {};
-			const hasTags = Object.keys(tags).length > 0;
-			this.musicBrainzTagCache.set(cacheKey, hasTags ? tags : null);
-			this.trimMusicBrainzCache();
-			return hasTags ? tags : undefined;
+			if (!payload.success) {
+				throw new Error(payload.error || 'MusicBrainz lookup failed');
+			}
+			const tags = payload.tags ?? {};
+			if (payload.lookupStatus === 'matched') {
+				this.musicBrainzTagCache.set(cacheKey, tags);
+				this.trimMusicBrainzCache();
+				return Object.keys(tags).length > 0 ? tags : undefined;
+			}
+			if (payload.lookupStatus === 'no_match') {
+				this.musicBrainzTagCache.set(cacheKey, null);
+				this.trimMusicBrainzCache();
+				return undefined;
+			}
+			if (payload.lookupStatus === 'lookup_failed') {
+				console.warn('[MusicBrainz] Client lookup failed:', payload.error || 'lookup failed');
+				return undefined;
+			}
+			throw new Error('Unexpected MusicBrainz lookup response');
 		} catch (error) {
 			if (error instanceof DOMException && error.name === 'AbortError') {
 				throw error;
@@ -983,7 +1003,8 @@ class LosslessAPI {
 			trackId,
 			quality,
 			isHiResQuality: (candidateQuality) => this.isHiResQuality(candidateQuality),
-			getTrack: (candidateTrackId, candidateQuality) => this.getTrack(candidateTrackId, candidateQuality),
+			getTrack: (candidateTrackId, candidateQuality) =>
+				this.getTrack(candidateTrackId, candidateQuality),
 			extractStreamUrlFromManifest: (manifest) => this.extractStreamUrlFromManifest(manifest)
 		});
 	}

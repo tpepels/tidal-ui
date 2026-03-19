@@ -2,7 +2,7 @@
 	import { navigationHistoryStore } from '$lib/stores/navigationHistory';
 	import PageState from '$lib/components/ui/PageState.svelte';
 	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
-	import EntityMediaCard from '$lib/components/ui/EntityMediaCard.svelte';
+	import MediaRow from '$lib/components/ui/MediaRow.svelte';
 	import { Library, User, Trash2, Clock3 } from 'lucide-svelte';
 	import { getRouteMeta } from '$lib/config/routeMeta';
 	import { losslessAPI } from '$lib/api';
@@ -89,16 +89,15 @@
 			</div>
 			{#if latestAlbum}
 				{@const latestAlbumCoverSrc = getAlbumCoverSrc(latestAlbum.cover)}
-				<EntityMediaCard
-					type="album"
+				<MediaRow
 					href={latestAlbum.href}
 					title={latestAlbum.title}
 					subtitle={latestAlbum.artistName}
 					meta={formatVisitedAt(latestAlbum.visitedAt)}
 					imageSrc={latestAlbumCoverSrc}
 					imageAlt={`Cover for ${latestAlbum.title}`}
-					class="history-overview-entity"
-					links={[{ href: latestAlbum.href, label: 'Open Album' }]}
+					tone="secondary"
+					className="history-overview-entity"
 				/>
 			{:else}
 				<PageState
@@ -116,15 +115,15 @@
 			</div>
 			{#if latestArtist}
 				{@const latestArtistPortraitSrc = getArtistPortraitSrc(latestArtist.picture)}
-				<EntityMediaCard
-					type="artist"
+				<MediaRow
 					href={latestArtist.href}
 					title={latestArtist.name}
 					meta={formatVisitedAt(latestArtist.visitedAt)}
 					imageSrc={latestArtistPortraitSrc}
 					imageAlt={`Portrait of ${latestArtist.name}`}
-					class="history-overview-entity"
-					links={[{ href: latestArtist.href, label: 'Open Artist' }]}
+					circle={true}
+					tone="tertiary"
+					className="history-overview-entity"
 				/>
 			{:else}
 				<PageState
@@ -160,20 +159,19 @@
 			{#if !hasAlbumHistory}
 				<PageState kind="empty" title="No album visits yet" message="Visited albums will appear here." />
 			{:else}
-				<ol class="history-media-grid ui-media-grid ui-media-grid--albums">
+				<ol class="history-media-grid ui-list-surface">
 					{#each $navigationHistoryStore.albums as entry, index (entry.id)}
 						{@const entryCoverSrc = getAlbumCoverSrc(entry.cover)}
 						<li>
-							<EntityMediaCard
-								type="album"
+							<MediaRow
 								href={entry.href}
 								title={entry.title}
 								subtitle={entry.artistName}
-								meta={`#${index + 1}`}
-								description={formatVisitedAt(entry.visitedAt)}
+								meta={formatVisitedAt(entry.visitedAt)}
+								description={`Viewed #${index + 1}`}
 								imageSrc={entryCoverSrc}
 								imageAlt={`Cover for ${entry.title}`}
-								links={[{ href: entry.href, label: 'Album Page' }]}
+								tone="secondary"
 							/>
 						</li>
 					{/each}
@@ -204,19 +202,19 @@
 			{#if !hasArtistHistory}
 				<PageState kind="empty" title="No artist visits yet" message="Visited artists will appear here." />
 			{:else}
-				<ol class="history-media-grid ui-media-grid ui-media-grid--artists">
+				<ol class="history-media-grid ui-list-surface">
 					{#each $navigationHistoryStore.artists as entry, index (entry.id)}
 						{@const entryPortraitSrc = getArtistPortraitSrc(entry.picture)}
 						<li>
-							<EntityMediaCard
-								type="artist"
+							<MediaRow
 								href={entry.href}
 								title={entry.name}
-								meta={`#${index + 1}`}
-								description={formatVisitedAt(entry.visitedAt)}
+								meta={formatVisitedAt(entry.visitedAt)}
+								description={`Viewed #${index + 1}`}
 								imageSrc={entryPortraitSrc}
 								imageAlt={`Portrait of ${entry.name}`}
-								links={[{ href: entry.href, label: 'Artist Page' }]}
+								circle={true}
+								tone="tertiary"
 							/>
 						</li>
 					{/each}
@@ -239,6 +237,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.72rem;
+		padding-inline: 0.9rem;
 	}
 
 	.history-overview-card[data-tone='secondary'] .history-overview-card__heading {
@@ -262,40 +261,9 @@
 		margin: 0;
 	}
 
-	:global(.history-overview-entity) {
-		padding: 0.68rem;
-		gap: 0.42rem;
-	}
-
-	:global(.history-overview-entity .ui-media-card__primary-link) {
-		display: grid;
-		grid-template-columns: 86px minmax(0, 1fr);
-		gap: 0.62rem;
-		align-items: center;
-	}
-
-	:global(.history-overview-entity .ui-media-card__artwork) {
+	:global(.history-overview-entity .ui-media-row__artwork) {
 		width: 86px;
 		height: 86px;
-		aspect-ratio: 1 / 1;
-		margin: 0;
-	}
-
-	:global(.history-overview-entity .ui-media-card__body) {
-		gap: 0.16rem;
-	}
-
-	:global(.history-overview-entity .ui-media-card__title) {
-		font-size: 0.98rem;
-	}
-
-	:global(.history-overview-entity .ui-media-card__meta) {
-		font-size: 0.8rem;
-		line-height: 1.3;
-	}
-
-	:global(.history-overview-entity .ui-media-card__links) {
-		margin-top: 0.2rem;
 	}
 
 	.history-page__columns {

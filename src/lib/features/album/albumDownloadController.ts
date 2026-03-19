@@ -46,12 +46,11 @@ type AlbumDownloadControllerOptions = {
 	getMaintenanceState: () => AlbumRouteMaintenanceState;
 	patchMaintenanceState: (patch: Partial<AlbumRouteMaintenanceState>) => void;
 	isAlbumInLibrary: () => boolean;
-	isMusicBrainzReleaseLookupLoading: () => boolean;
 	getSelectedMusicBrainzReleaseId: () => string;
+	resolveDeferredMusicBrainzReleaseId?: () => Promise<string | undefined>;
 	getDownloadPreferences: () => AlbumRouteDownloadPreferences;
 	confirmServerOverwrite: () => boolean;
 	confirmClientRedownload: () => boolean;
-	confirmProceedWithoutMusicBrainz: () => boolean;
 	refreshAlbumLibraryState?: (options?: { force?: boolean }) => Promise<void>;
 	downloadAlbumFn?: typeof downloadAlbum;
 	repairAlbumInLibraryFn?: typeof repairAlbumInLibrary;
@@ -78,8 +77,6 @@ export const FORCE_OVERWRITE_CONFIRMATION =
 	'This album is already in your local library. Redownload it and overwrite existing files?';
 export const CLIENT_REDOWNLOAD_CONFIRMATION =
 	'This album is already in your local library. Browser downloads cannot overwrite existing files and may append (2) to filenames. Continue anyway?';
-export const MUSICBRAINZ_PENDING_DOWNLOAD_CONFIRMATION =
-	'MusicBrainz release matching is still running. Waiting a few seconds can improve tagging metadata. Continue download now?';
 
 function hasActiveQueueDownload(state: AlbumRouteQueueState): boolean {
 	return (
@@ -369,13 +366,11 @@ export function createAlbumDownloadController(options: AlbumDownloadControllerOp
 		if (queueState.isDownloadingAll || hasActiveQueueDownload(queueState)) {
 			return;
 		}
-		if (
-			options.isMusicBrainzReleaseLookupLoading() &&
-			!options.getSelectedMusicBrainzReleaseId() &&
-			!options.confirmProceedWithoutMusicBrainz()
-		) {
-			return;
-		}
+		const selectedMusicBrainzReleaseId = options.getSelectedMusicBrainzReleaseId();
+		const deferredMusicBrainzReleaseIdPromise =
+			preferences.experimentalMusicBrainzTagging && !selectedMusicBrainzReleaseId
+				? options.resolveDeferredMusicBrainzReleaseId?.()
+				: undefined;
 
 		const currentToken = lifecycleToken;
 		const albumId = album.id;
@@ -427,10 +422,10 @@ export function createAlbumDownloadController(options: AlbumDownloadControllerOp
 					experimentalMusicBrainzTagging: preferences.experimentalMusicBrainzTagging,
 					strictMusicBrainzMatching: preferences.strictMusicBrainzMatching,
 					musicBrainzReleaseId:
-						preferences.experimentalMusicBrainzTagging &&
-						options.getSelectedMusicBrainzReleaseId()
-							? options.getSelectedMusicBrainzReleaseId()
+						preferences.experimentalMusicBrainzTagging && selectedMusicBrainzReleaseId
+							? selectedMusicBrainzReleaseId
 							: undefined,
+					musicBrainzReleaseIdPromise: deferredMusicBrainzReleaseIdPromise,
 					storage: preferences.storage,
 					forceOverwrite
 				}

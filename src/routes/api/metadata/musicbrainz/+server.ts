@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
 import { TrackSchema, safeValidateApiResponse } from '$lib/utils/schemas';
-import { lookupMusicBrainzTagsForTrack } from '$lib/server/musicBrainzLookup';
+import { lookupMusicBrainzMetadataForTrack } from '$lib/server/musicBrainzLookup';
 
 const MusicBrainzRequestSchema = z.object({
 	track: TrackSchema,
@@ -22,17 +22,21 @@ export const POST: RequestHandler = async ({ request }) => {
 			return json({ success: false, error: validation.error }, { status: 400 });
 		}
 
-		const tags = await lookupMusicBrainzTagsForTrack(validation.data.track, {
+		const result = await lookupMusicBrainzMetadataForTrack(validation.data.track, {
 			strictIsrcMatch: validation.data.strictIsrcMatch === true,
 			preferredReleaseId: validation.data.preferredReleaseId
 		});
 		return json({
 			success: true,
-			tags,
-			tagCount: Object.keys(tags).length
+			lookupStatus: result.lookupStatus,
+			tags: result.tags,
+			tagCount: Object.keys(result.tags).length,
+			match: result.match,
+			error: result.error
 		});
 	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Failed to lookup MusicBrainz metadata';
+		const message =
+			error instanceof Error ? error.message : 'Failed to lookup MusicBrainz metadata';
 		return json({ success: false, error: message }, { status: 500 });
 	}
 };

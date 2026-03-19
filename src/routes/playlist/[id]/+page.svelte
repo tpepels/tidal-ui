@@ -5,6 +5,7 @@
 	import TrackList from '$lib/components/TrackList.svelte';
 	import ShareButton from '$lib/components/ShareButton.svelte';
 	import DataGrid from '$lib/components/ui/DataGrid.svelte';
+	import MetaStrip from '$lib/components/ui/MetaStrip.svelte';
 	import StateBlock from '$lib/components/ui/StateBlock.svelte';
 	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
 	import SectionBlock from '$lib/components/ui/SectionBlock.svelte';
@@ -155,8 +156,8 @@
 						<p class="ui-detail-hero__description">{playlist.description}</p>
 					{/if}
 
-					<div class="ui-detail-meta-strip">
-						<div class="ui-detail-meta-item">
+					<MetaStrip>
+						<div class="ui-meta-strip__item">
 							{#if playlist.creator.picture}
 								<img
 									src={losslessAPI.getCoverUrl(playlist.creator.picture, '80')}
@@ -170,9 +171,9 @@
 							{/if}
 							{playlist.creator.name}
 						</div>
-						<div class="ui-detail-meta-item">{playlist.numberOfTracks} tracks</div>
+						<div class="ui-meta-strip__item">{playlist.numberOfTracks} tracks</div>
 						{#if playlist.duration}
-							<div class="ui-detail-meta-item">
+							<div class="ui-meta-strip__item">
 								<Clock size={16} />
 								{formatDuration(playlist.duration)}
 							</div>
@@ -180,7 +181,7 @@
 						{#if playlist.type}
 							<span class="ui-inline-tag">{playlist.type}</span>
 						{/if}
-					</div>
+					</MetaStrip>
 				</div>
 			</div>
 		</section>
