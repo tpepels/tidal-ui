@@ -16,6 +16,7 @@
 	import SectionBlock from '$lib/components/ui/SectionBlock.svelte';
 	import StateBlock from '$lib/components/ui/StateBlock.svelte';
 	import StateNotice from '$lib/components/ui/StateNotice.svelte';
+	import { confirm as requestConfirmation } from '$lib/stores/dialogs';
 	import type { Album, Track } from '$lib/types';
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
 	import {
@@ -226,8 +227,22 @@
 			strictMusicBrainzMatching: strictMusicBrainzMatchingPreference,
 			storage: downloadStoragePreference
 		}),
-		confirmServerOverwrite: () => window.confirm(FORCE_OVERWRITE_CONFIRMATION),
-		confirmClientRedownload: () => window.confirm(CLIENT_REDOWNLOAD_CONFIRMATION),
+		confirmServerOverwrite: () =>
+			requestConfirmation({
+				title: 'Overwrite album files?',
+				body: FORCE_OVERWRITE_CONFIRMATION,
+				confirmLabel: 'Overwrite files',
+				cancelLabel: 'Keep existing files',
+				tone: 'danger'
+			}),
+		confirmClientRedownload: () =>
+			requestConfirmation({
+				title: 'Download album again?',
+				body: CLIENT_REDOWNLOAD_CONFIRMATION,
+				confirmLabel: 'Download again',
+				cancelLabel: 'Cancel',
+				tone: 'warning'
+			}),
 		refreshAlbumLibraryState
 	});
 
@@ -441,13 +456,17 @@
 
 {#if isLoading}
 	<div class="ui-page flex items-center justify-center py-24" data-ui-archetype="detail" data-ui-route="album">
-		<LoaderCircle size={16} class="h-16 w-16 animate-spin text-white/80" />
+		<StateNotice
+			tone="info"
+			title="Loading album"
+			message="Fetching album details, artwork, and track metadata."
+			busy={true}
+		/>
 	</div>
 {:else if error}
 	<div class="ui-page py-12" data-ui-archetype="detail" data-ui-route="album">
 		<div class="ui-surface-card border-red-500/40 bg-red-950/20 p-6">
-			<h2 class="mb-2 text-xl font-semibold text-red-200">Error Loading Album</h2>
-			<p class="text-red-100/85">{error}</p>
+			<StateNotice tone="error" title="Error loading album" message={error} />
 			<a
 				href="/"
 				class="ui-action-button mt-4 inline-flex"
@@ -551,10 +570,12 @@
 					</MetaStrip>
 
 					{#if hasIncompleteTrackList}
-						<p class="ui-action-status" data-tone="warning">
-							Tracklist may be incomplete from source metadata: showing {tracks.length}/{expectedTrackCount}
-							tracks{#if missingTrackLabel} (missing {missingTrackLabel}){/if}.
-						</p>
+						<StateNotice
+							tone="warning"
+							message={`Tracklist may be incomplete from source metadata: showing ${tracks.length}/${expectedTrackCount} tracks${missingTrackLabel ? ` (missing ${missingTrackLabel})` : ''}.`}
+							compact={true}
+							liveRegion="off"
+						/>
 					{/if}
 				</div>
 			</div>
@@ -658,42 +679,49 @@
 								<ShareButton type="album" id={album.id} variant="secondary" />
 							</div>
 							{#if queueStatus === 'queued'}
-								<p class="ui-action-status" data-tone="info">
-									Queued on server. Open Download Manager for live progress.
-								</p>
+								<StateNotice
+									tone="info"
+									message="Queued on server. Open Download Manager for live progress."
+									compact={true}
+								/>
 							{:else if queueStatus === 'processing'}
-								<p class="ui-action-status" data-tone="info">
-									Downloading on server
-									{#if queueTotalTracks > 0}
-										({queueCompletedTracks}/{queueTotalTracks} tracks)
-									{/if}
-									…
-								</p>
+								<StateNotice
+									tone="info"
+									message={`Downloading on server${queueTotalTracks > 0 ? ` (${queueCompletedTracks}/${queueTotalTracks} tracks)` : ''}…`}
+									compact={true}
+									busy={true}
+								/>
 							{:else if queueStatus === 'completed'}
-								<p class="ui-action-status" data-tone="success">Album download completed.</p>
+								<StateNotice tone="success" message="Album download completed." compact={true} />
 							{:else if queueStatus === 'cancelled'}
-								<p class="ui-action-status" data-tone="warning">Album download stopped.</p>
+								<StateNotice tone="warning" message="Album download stopped." compact={true} />
 							{:else if queueStatus === 'paused'}
-								<p class="ui-action-status" data-tone="warning">Album download paused.</p>
+								<StateNotice tone="warning" message="Album download paused." compact={true} />
 							{:else if albumInLibrary}
-								<p class="ui-action-status" data-tone="success">
-									{#if downloadStoragePreference === 'server'}
-										Already in local library ({albumLibraryTrackCount} track{albumLibraryTrackCount === 1 ? '' : 's'} found). Click "Redownload Album" to overwrite.
-									{:else}
-										Already in local library ({albumLibraryTrackCount} track{albumLibraryTrackCount === 1 ? '' : 's'} found). Browser redownloads may append (2) to filenames.
-									{/if}
-								</p>
+								<StateNotice
+									tone="success"
+									compact={true}
+									liveRegion="off"
+									message={
+										downloadStoragePreference === 'server'
+											? `Already in local library (${albumLibraryTrackCount} track${albumLibraryTrackCount === 1 ? '' : 's'} found). Click "Redownload Album" to overwrite.`
+											: `Already in local library (${albumLibraryTrackCount} track${albumLibraryTrackCount === 1 ? '' : 's'} found). Browser redownloads may append (2) to filenames.`
+									}
+								/>
 							{/if}
 							{#if repairMessage}
-								<p class="ui-action-status" data-tone="success">{repairMessage}</p>
+								<StateNotice tone="success" message={repairMessage} compact={true} />
 							{/if}
 							{#if downloadError}
-								<p class="ui-action-status" data-tone="error">{downloadError}</p>
+								<StateNotice tone="error" message={downloadError} compact={true} />
 							{/if}
 							{#if isMusicBrainzReleaseLookupLoading && !selectedMusicBrainzReleaseId}
-								<p class="ui-action-status" data-tone="info">
-									MusicBrainz release data is loading in the background and will be applied automatically if it resolves in time.
-								</p>
+								<StateNotice
+									tone="info"
+									message="MusicBrainz release data is loading in the background and will be applied automatically if it resolves in time."
+									compact={true}
+									busy={true}
+								/>
 							{/if}
 						</SectionBlock>
 					</section>
@@ -788,7 +816,8 @@
 									<a
 										href={`https://musicbrainz.org/release/${selectedMusicBrainzRelease.id}`}
 										target="_blank"
-										rel="noreferrer"
+										rel="noopener noreferrer"
+										aria-label="Open release in MusicBrainz in a new tab"
 										class="text-gray-300 underline decoration-dotted underline-offset-2 transition-colors hover:text-white"
 									>
 										Open release in MusicBrainz

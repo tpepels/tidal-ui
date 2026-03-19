@@ -402,7 +402,8 @@
 								<a
 									href={artist.href}
 									target="_blank"
-									rel="noreferrer"
+									rel="noopener noreferrer"
+									aria-label={`${artist.label} (opens in a new tab)`}
 									class="ui-chip-button ui-chip-button--compact"
 								>
 									{artist.label}
@@ -417,7 +418,8 @@
 								<a
 									href={artist.href}
 									target="_blank"
-									rel="noreferrer"
+									rel="noopener noreferrer"
+									aria-label={`${artist.label} (opens in a new tab)`}
 									class="ui-chip-button ui-chip-button--compact"
 								>
 									{artist.label}
@@ -430,7 +432,8 @@
 							<a
 								href={link.href}
 								target="_blank"
-								rel="noreferrer"
+								rel="noopener noreferrer"
+								aria-label={`${link.label} (opens in a new tab)`}
 								class="ui-chip-button ui-chip-button--compact"
 							>
 								{link.label}

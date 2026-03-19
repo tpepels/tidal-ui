@@ -10,8 +10,9 @@
 		machineDuration
 	} from '$lib/stores/playerDerived';
 	import { playbackFacade } from '$lib/controllers/playbackFacade';
-	import { LoaderCircle, Play, Pause, ExternalLink } from 'lucide-svelte';
+	import { Play, Pause, ExternalLink } from 'lucide-svelte';
 	import { formatArtists } from '$lib/utils/formatters';
+	import StateNotice from '$lib/components/ui/StateNotice.svelte';
 
 
 	let track = $state<Track | null>(null);
@@ -119,11 +120,22 @@
 >
     {#if isLoading}
         <div class="loading">
-            <LoaderCircle class="animate-spin" size={32} />
+            <StateNotice
+                tone="info"
+                title="Loading track"
+                message="Fetching track metadata for this embed."
+                busy={true}
+                liveRegion="polite"
+            />
         </div>
     {:else if error}
         <div class="error">
-            <p>{error}</p>
+            <StateNotice
+                tone="error"
+                title="Track unavailable"
+                message={error}
+                liveRegion="assertive"
+            />
         </div>
     {:else if track}
         <div class="track-info" data-ui-block="entity-hero">
@@ -148,8 +160,14 @@
                     {/if}
                 {/if}
 
-                <a href="/track/{track.id}" target="_blank" class="open-link">
-                    <span>Open in BiniLossless</span>
+                <a
+                    href="/track/{track.id}"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="open-link"
+                    aria-label="Open track in BiniLossless in a new tab"
+                >
+                    <span>Open in BiniLossless (opens in a new tab)</span>
                     <ExternalLink size={12} />
                 </a>
             </div>
@@ -170,15 +188,17 @@
 <style>
     :global(html), :global(body) {
         margin: 0;
-        overflow: hidden;
+        min-height: 100%;
+        overflow: auto;
         background: transparent;
     }
 
     .embed-card {
         position: relative;
         width: 100%;
-        height: 100vh;
-        overflow: hidden;
+        min-height: 100dvh;
+        height: 100%;
+        overflow: auto;
         display: flex;
         flex-direction: column;
         color: white;
@@ -214,7 +234,8 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        height: 100%;
+        min-height: 100dvh;
+        padding: 1rem;
     }
 
     .track-info {
@@ -314,6 +335,12 @@
 
     .open-link:hover {
         color: white;
+    }
+
+    .play-button:focus-visible,
+    .open-link:focus-visible {
+        outline: 2px solid rgba(255, 255, 255, 0.92);
+        outline-offset: 2px;
     }
 
 	@media (prefers-reduced-motion: reduce) {

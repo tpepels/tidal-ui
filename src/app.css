@@ -1352,6 +1352,15 @@ textarea {
 	color: inherit;
 }
 
+.ui-list-row__main--button {
+	width: 100%;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	text-align: left;
+	cursor: pointer;
+}
+
 .ui-list-row__main:focus-visible {
 	outline: 2px solid rgba(255, 255, 255, 0.78);
 	outline-offset: 3px;
@@ -1529,6 +1538,18 @@ textarea {
 	background: var(--ui-layer-section-strong, rgba(255, 255, 255, 0.03));
 }
 
+.ui-state-notice__busy-indicator {
+	display: inline-flex;
+	width: 0.82rem;
+	height: 0.82rem;
+	flex-shrink: 0;
+	margin-top: 0.26rem;
+	border-radius: 999px;
+	border: 2px solid rgba(255, 255, 255, 0.18);
+	border-top-color: rgba(255, 255, 255, 0.88);
+	animation: ui-spin 0.9s linear infinite;
+}
+
 .ui-state-notice--embedded {
 	padding: 0.8rem 0 0;
 	border: 0;
@@ -1604,6 +1625,32 @@ textarea {
 	letter-spacing: 0.04em;
 	text-transform: uppercase;
 	color: rgba(248, 248, 248, 0.94);
+}
+
+.track-list__title-button,
+.top-tracks-card__primary,
+.audio-player-queue-panel__track-button {
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: inherit;
+}
+
+.track-list__title-button,
+.audio-player-queue-panel__track-button,
+.top-tracks-card__primary {
+	cursor: pointer;
+}
+
+.top-tracks-card__primary {
+	display: block;
+	width: 100%;
+}
+
+.track-list__title-button:hover,
+.audio-player-queue-panel__track-button:hover,
+.top-tracks-card__primary:hover {
+	color: rgba(255, 255, 255, 0.98);
 }
 
 .ui-media-row {

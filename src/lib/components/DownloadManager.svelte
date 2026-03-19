@@ -28,6 +28,7 @@
 	import DownloadManagerDetailedSections from '$lib/components/download-manager/DownloadManagerDetailedSections.svelte';
 	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
 	import { createAdaptivePollingController } from '$lib/utils/adaptivePolling';
+	import { confirm as requestConfirmation } from '$lib/stores/dialogs';
 	import { RefreshCw } from 'lucide-svelte';
 
 	let { pageMode = false } = $props();
@@ -569,6 +570,16 @@
 			logDownloadEvent('info', '[Queue Action] Stop active requested with no active jobs.');
 			return;
 		}
+		const shouldStop = await requestConfirmation({
+			title: 'Stop active downloads?',
+			body: `Stop ${stoppableJobs.length} active or queued download job${stoppableJobs.length === 1 ? '' : 's'}?`,
+			confirmLabel: 'Stop downloads',
+			cancelLabel: 'Keep running',
+			tone: 'danger'
+		});
+		if (!shouldStop) {
+			return;
+		}
 		await runWithPendingAction(actionKeys.bulkStop, async () => {
 			const results = await Promise.all(stoppableJobs.map((job) => runJobAction(job.id, 'cancel')));
 			const succeeded = results.filter((result) => result.success).length;
@@ -706,10 +717,20 @@
 		};
 
 	const handleClearFailed = async () => {
-		if (!confirm('Clear all failed and cancelled downloads from history?')) {
+		const removable = queueJobs.filter((job) => job.status === 'failed' || job.status === 'cancelled');
+		const shouldClear = await requestConfirmation({
+			title: 'Clear failed download history?',
+			body:
+				removable.length === 0
+					? 'Clear failed and cancelled download history?'
+					: `Remove ${removable.length} failed or cancelled download entr${removable.length === 1 ? 'y' : 'ies'} from history?`,
+			confirmLabel: 'Clear history',
+			cancelLabel: 'Keep history',
+			tone: 'danger'
+		});
+		if (!shouldClear) {
 			return;
 		}
-		const removable = queueJobs.filter((job) => job.status === 'failed' || job.status === 'cancelled');
 		if (removable.length === 0) {
 			setActionNotice('info', 'No failed jobs to clear.');
 			logDownloadEvent('info', '[Queue Action] Clear history requested with no failed jobs.');

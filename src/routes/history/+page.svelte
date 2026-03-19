@@ -6,6 +6,7 @@
 	import { Library, User, Trash2, Clock3 } from 'lucide-svelte';
 	import { getRouteMeta } from '$lib/config/routeMeta';
 	import { losslessAPI } from '$lib/api';
+	import { confirm as requestConfirmation } from '$lib/stores/dialogs';
 
 	const meta = getRouteMeta('/history');
 
@@ -43,15 +44,51 @@
 		{ id: 'history-artists', label: 'Artists', tone: 'tertiary' as const }
 	]);
 
-	function clearHistory(): void {
+	async function clearHistory(): Promise<void> {
+		if (
+			!(
+				await requestConfirmation({
+					title: 'Clear navigation history?',
+					body: 'Remove all saved album and artist history entries?',
+					confirmLabel: 'Clear history',
+					cancelLabel: 'Keep history',
+					tone: 'danger'
+				})
+			)
+		)
+			return;
 		navigationHistoryStore.clear();
 	}
 
-	function clearAlbumHistory(): void {
+	async function clearAlbumHistory(): Promise<void> {
+		if (
+			!(
+				await requestConfirmation({
+					title: 'Clear album history?',
+					body: `Remove ${$navigationHistoryStore.albums.length} saved album history entr${$navigationHistoryStore.albums.length === 1 ? 'y' : 'ies'}?`,
+					confirmLabel: 'Clear albums',
+					cancelLabel: 'Keep history',
+					tone: 'danger'
+				})
+			)
+		)
+			return;
 		navigationHistoryStore.clearAlbums();
 	}
 
-	function clearArtistHistory(): void {
+	async function clearArtistHistory(): Promise<void> {
+		if (
+			!(
+				await requestConfirmation({
+					title: 'Clear artist history?',
+					body: `Remove ${$navigationHistoryStore.artists.length} saved artist history entr${$navigationHistoryStore.artists.length === 1 ? 'y' : 'ies'}?`,
+					confirmLabel: 'Clear artists',
+					cancelLabel: 'Keep history',
+					tone: 'danger'
+				})
+			)
+		)
+			return;
 		navigationHistoryStore.clearArtists();
 	}
 </script>

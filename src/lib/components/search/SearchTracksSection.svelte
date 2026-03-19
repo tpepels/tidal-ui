@@ -59,13 +59,6 @@
 	function handleTrackActivation(track: PlayableTrack) {
 		onTrackSelect?.(track);
 	}
-
-	function handleTrackKeydown(event: KeyboardEvent, track: PlayableTrack) {
-		if (event.key === 'Enter' || event.key === ' ') {
-			event.preventDefault();
-			handleTrackActivation(track);
-		}
-	}
 </script>
 
 <SectionBlock
@@ -88,22 +81,16 @@
 			{@const track = item as PlayableTrack}
 			{@const trackCoverSrc = getTrackCoverSrc(track)}
 			<div
-				role="button"
-				tabindex="0"
-				onclick={(event) => {
-					if (
-						event.target instanceof Element &&
-						(event.target.closest('a') || event.target.closest('button'))
-					)
-						return;
-					handleTrackActivation(track);
-				}}
-				onkeydown={(event) => handleTrackKeydown(event, track)}
 				class="ui-list-row ui-list-row--actionable ui-perf-row"
 				data-tone="tertiary"
 				data-window-item
 			>
-				<div class="ui-list-row__main">
+				<button
+					type="button"
+					class="ui-list-row__main ui-list-row__main--button"
+					onclick={() => handleTrackActivation(track)}
+					aria-label={`Play ${track.title}`}
+				>
 					<div class="ui-list-row__media" aria-hidden="true">
 						{#if trackCoverSrc}
 							<img src={trackCoverSrc} alt="" loading="lazy" decoding="async" />
@@ -132,7 +119,7 @@
 							{/if}
 						</p>
 					</div>
-				</div>
+				</button>
 				<TrackDownloadButton
 					isDownloading={downloadingIds.has(track.id)}
 					isCancelled={cancelledIds.has(track.id)}

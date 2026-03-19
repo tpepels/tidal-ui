@@ -103,12 +103,6 @@
 	function isPlaying(track: Track): boolean {
 		return isCurrentTrack(track) && $machineIsPlaying;
 	}
-
-	function handleRowActivation(event: Event, track: Track, index: number) {
-		const target = event.target as Element | null;
-		if (target?.closest('a') || target?.closest('button')) return;
-		handlePlayTrack(track, index);
-	}
 </script>
 
 <div class="w-full">
@@ -120,16 +114,7 @@
 		<div class="space-y-1">
 			{#each tracks as track, index (track.id)}
 				<div
-					role="button"
-					tabindex="0"
-					onclick={(event) => handleRowActivation(event, track, index)}
-					onkeydown={(event) => {
-						if (event.key === 'Enter' || event.key === ' ') {
-							event.preventDefault();
-							handleRowActivation(event, track, index);
-						}
-					}}
-					class="track-glass group flex w-full items-center gap-2 sm:gap-3 rounded-lg p-2 sm:p-3 text-left transition-colors overflow-hidden cursor-pointer {activeMenuId === track.id ? 'relative z-20' : ''} {isCurrentTrack(
+					class="track-glass group flex w-full items-center gap-2 sm:gap-3 rounded-lg p-2 sm:p-3 text-left transition-colors overflow-hidden {activeMenuId === track.id ? 'relative z-20' : ''} {isCurrentTrack(
 						track
 					)
 						? 'bg-white/10 border-white/35'
@@ -137,8 +122,9 @@
 				>
 					<!-- Track Number / Play Button -->
 					<button
+						type="button"
 						onclick={() => isPlaying(track) ? playbackFacade.pause() : handlePlayTrack(track, index)}
-							class="group flex w-6 sm:w-8 flex-shrink-0 items-center justify-center transition-colors hover:text-white"
+						class="group flex w-6 sm:w-8 flex-shrink-0 items-center justify-center transition-colors hover:text-white"
 						aria-label={isPlaying(track) ? 'Pause' : 'Play'}
 					>
 						{#if isPlaying(track)}
@@ -161,10 +147,11 @@
 					<!-- Track Info -->
 					<div class="min-w-0 flex-1">
 						<button
+							type="button"
 							onclick={() => handlePlayTrack(track, index)}
-								class="w-full text-left text-sm font-medium leading-tight break-words whitespace-normal sm:text-base sm:truncate {isCurrentTrack(track)
-									? 'text-white'
-									: 'text-white hover:text-gray-200'}"
+							class="track-list__title-button w-full text-left text-sm font-medium leading-tight break-words whitespace-normal sm:text-base sm:truncate {isCurrentTrack(track)
+								? 'text-white'
+								: 'text-white hover:text-gray-200'}"
 							title="Play track"
 						>
 							{track.title}
@@ -206,6 +193,7 @@
 					<div class="flex flex-shrink-0 items-center gap-1 sm:gap-2">
 						<div class="relative">
 							<button
+								type="button"
 								onclick={(event) => {
 									event.stopPropagation();
 									activeMenuId = activeMenuId === track.id ? null : track.id;
@@ -218,9 +206,10 @@
 							</button>
 							{#if activeMenuId === track.id}
 								<div
-										class="track-menu-container absolute top-full right-0 z-10 mt-1 w-48 rounded-lg border border-white/20 bg-black/90 shadow-none"
+									class="track-menu-container absolute top-full right-0 z-10 mt-1 w-48 rounded-lg border border-white/20 bg-black/90 shadow-none"
 								>
 									<button
+										type="button"
 										onclick={(event) => {
 											handlePlayNext(track, event);
 											activeMenuId = null;
@@ -231,6 +220,7 @@
 										Play Next
 									</button>
 									<button
+										type="button"
 										onclick={(event) => {
 											handleAddToQueue(track, event);
 											activeMenuId = null;

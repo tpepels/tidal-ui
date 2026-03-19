@@ -7,11 +7,12 @@
 	import DataGrid from '$lib/components/ui/DataGrid.svelte';
 	import MetaStrip from '$lib/components/ui/MetaStrip.svelte';
 	import StateBlock from '$lib/components/ui/StateBlock.svelte';
+	import StateNotice from '$lib/components/ui/StateNotice.svelte';
 	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
 	import SectionBlock from '$lib/components/ui/SectionBlock.svelte';
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 	import type { Playlist, Track } from '$lib/types';
-	import { ArrowLeft, Play, User, Clock, LoaderCircle } from 'lucide-svelte';
+	import { ArrowLeft, Play, User, Clock } from 'lucide-svelte';
 	import { playbackFacade } from '$lib/controllers/playbackFacade';
 
 	let playlist = $state<Playlist | null>(null);
@@ -105,13 +106,17 @@
 		data-ui-archetype="detail"
 		data-ui-route="playlist"
 	>
-		<LoaderCircle class="h-16 w-16 animate-spin text-white/80" />
+		<StateNotice
+			tone="info"
+			title="Loading playlist"
+			message="Fetching playlist details and playable tracks."
+			busy={true}
+		/>
 	</div>
 {:else if error}
 	<div class="ui-page py-12" data-ui-archetype="detail" data-ui-route="playlist">
 		<div class="ui-surface-card border-red-500/40 bg-red-950/20 p-6">
-			<h2 class="mb-2 text-xl font-semibold text-red-200">Error Loading Playlist</h2>
-			<p class="text-red-100/85">{error}</p>
+			<StateNotice tone="error" title="Error loading playlist" message={error} />
 			<a
 				href="/"
 				class="ui-action-button mt-4 inline-flex"

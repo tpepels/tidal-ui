@@ -20,7 +20,7 @@
 		onPlayFromQueue: (index: number) => void;
 		onRemoveFromQueue: (index: number, event?: MouseEvent) => void;
 		onShuffleQueue: () => void;
-		onClearQueue: () => void;
+		onClearQueue: () => void | Promise<void>;
 		onClose: () => void;
 	}>();
 
@@ -63,6 +63,7 @@
 				Clear Queue
 			</button>
 			<button
+				type="button"
 				onclick={onClose}
 				class="rounded-full p-1 text-gray-400 transition-colors hover:text-white"
 				aria-label="Close queue panel"
@@ -77,26 +78,22 @@
 			{#each queue as queuedTrack, index (queuedTrack.id)}
 				<li>
 					<div
-						onclick={() => onPlayFromQueue(index)}
-						onkeydown={(event) => {
-							if (event.key === 'Enter' || event.key === ' ') {
-								event.preventDefault();
-								onPlayFromQueue(index);
-							}
-						}}
-						tabindex="0"
-						role="button"
-						class="group flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors {index === queueIndex ? 'bg-white/10 text-white' : 'text-gray-200 hover:bg-gray-800/70'}"
+						class="group flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors {index === queueIndex ? 'bg-white/10 text-white' : 'text-gray-200 hover:bg-gray-800/70'}"
 					>
 						<span class="w-6 text-xs font-semibold text-gray-500 group-hover:text-gray-300">
 							{index + 1}
 						</span>
 						<div class="min-w-0 flex-1">
-							<p class="truncate text-sm font-medium">
+							<button
+								type="button"
+								class="audio-player-queue-panel__track-button truncate text-left text-sm font-medium"
+								onclick={() => onPlayFromQueue(index)}
+								aria-label={`Play ${queuedTrack.title} from queue`}
+							>
 								{queuedTrack.title}{!isSonglinkTrack(queuedTrack) && asTrack(queuedTrack).version
 									? ` (${asTrack(queuedTrack).version})`
 									: ''}
-							</p>
+							</button>
 							{#if isSonglinkTrack(queuedTrack)}
 								<p class="truncate text-xs text-gray-400">{queuedTrack.artistName}</p>
 							{:else}
@@ -111,10 +108,10 @@
 							{/if}
 						</div>
 						<button
+							type="button"
 							onclick={(event) => onRemoveFromQueue(index, event)}
 							class="rounded-full p-1 text-gray-500 transition-colors hover:text-red-400"
 							aria-label={`Remove ${queuedTrack.title} from queue`}
-							type="button"
 						>
 							<X size={14} />
 						</button>

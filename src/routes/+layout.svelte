@@ -4,6 +4,8 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import LyricsPopup from '$lib/components/LyricsPopup.svelte';
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
+	import ConfirmDialogHost from '$lib/components/ConfirmDialogHost.svelte';
+	import ErrorBoundary from '$lib/components/ErrorBoundary.svelte';
 	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 	import { machineCurrentTrack, machineIsPlaying, machineQueue } from '$lib/stores/playerDerived';
@@ -360,6 +362,7 @@
 	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 </svelte:head>
 
+	<div data-dialog-app-shell>
 	{#if isEmbed}
 		{@render children?.()}
 		{#if AudioPlayerComponent}
@@ -608,6 +611,9 @@
 	<LyricsPopup />
 	<ToastContainer />
 {/if}
+	</div>
+	<ConfirmDialogHost />
+	<ErrorBoundary />
 
 
 <style>

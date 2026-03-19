@@ -49,8 +49,8 @@ type AlbumDownloadControllerOptions = {
 	getSelectedMusicBrainzReleaseId: () => string;
 	resolveDeferredMusicBrainzReleaseId?: () => Promise<string | undefined>;
 	getDownloadPreferences: () => AlbumRouteDownloadPreferences;
-	confirmServerOverwrite: () => boolean;
-	confirmClientRedownload: () => boolean;
+	confirmServerOverwrite: () => boolean | Promise<boolean>;
+	confirmClientRedownload: () => boolean | Promise<boolean>;
 	refreshAlbumLibraryState?: (options?: { force?: boolean }) => Promise<void>;
 	downloadAlbumFn?: typeof downloadAlbum;
 	repairAlbumInLibraryFn?: typeof repairAlbumInLibrary;
@@ -354,11 +354,11 @@ export function createAlbumDownloadController(options: AlbumDownloadControllerOp
 			queueState.queueStatus !== 'cancelled'
 		) {
 			if (preferences.storage === 'server') {
-				forceOverwrite = options.confirmServerOverwrite();
+				forceOverwrite = await options.confirmServerOverwrite();
 				if (!forceOverwrite) {
 					return;
 				}
-			} else if (!options.confirmClientRedownload()) {
+			} else if (!(await options.confirmClientRedownload())) {
 				return;
 			}
 		}

@@ -34,8 +34,8 @@ type ArtistAlbumDownloadControllerOptions = {
 	setDiscographyProgress: (progress: { completed: number; total: number }) => void;
 	setDiscographyError: (error: string | null) => void;
 	resolveAlbumInLibrary: (albumId: number) => boolean;
-	confirmServerOverwrite: () => boolean;
-	confirmClientRedownload: () => boolean;
+	confirmServerOverwrite: () => boolean | Promise<boolean>;
+	confirmClientRedownload: () => boolean | Promise<boolean>;
 	getDownloadPreferences: () => ArtistAlbumDownloadPreferences;
 	resolveArtistName: () => string | undefined;
 	resolveMusicBrainzReleaseId?: (albumId: number) => string | undefined;
@@ -106,11 +106,11 @@ export function createArtistAlbumDownloadController(options: ArtistAlbumDownload
 		const preferences = options.getDownloadPreferences();
 		if (inLibrary && currentState.status === 'idle') {
 			if (preferences.storage === 'server') {
-				forceOverwrite = options.confirmServerOverwrite();
+				forceOverwrite = await options.confirmServerOverwrite();
 				if (!forceOverwrite) {
 					return;
 				}
-			} else if (!options.confirmClientRedownload()) {
+			} else if (!(await options.confirmClientRedownload())) {
 				return;
 			}
 		}

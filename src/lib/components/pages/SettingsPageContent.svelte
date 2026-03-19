@@ -26,6 +26,7 @@
 	} from 'lucide-svelte';
 	import ApiTargetsStatusCard from '$lib/components/status/ApiTargetsStatusCard.svelte';
 	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
+	import StateNotice from '$lib/components/ui/StateNotice.svelte';
 	import ToolPanel from '$lib/components/ui/ToolPanel.svelte';
 	import { onDestroy } from 'svelte';
 	import { createAdaptivePollingController } from '$lib/utils/adaptivePolling';
@@ -42,6 +43,7 @@
 		SETTINGS_PERFORMANCE_OPTIONS,
 		SETTINGS_QUALITY_OPTIONS
 	} from '$lib/features/settings/options';
+	import { confirm as requestConfirmation } from '$lib/stores/dialogs';
 
 	const MAX_QUEUE_ZIP_TRACKS = 75;
 
@@ -302,7 +304,7 @@
 	}
 
 	const maintenanceController = createSettingsMaintenanceController({
-		confirm: (message) => (typeof window === 'undefined' ? true : window.confirm(message)),
+		confirm: (request) => requestConfirmation(request),
 		getDownloadQuality: () => get(downloadPreferencesStore).downloadQuality,
 		isFullLibraryRepairing: () => isFullLibraryRepairing,
 		setFullLibraryRepairing: (value) => {
@@ -886,25 +888,25 @@
 
 				<div class="settings-feedback">
 					{#if fullLibraryRepairSummary}
-						<p>{fullLibraryRepairSummary}</p>
+						<StateNotice tone="success" message={fullLibraryRepairSummary} compact={true} />
 					{/if}
 					{#if fullLibraryRepairProgress}
-						<p>{fullLibraryRepairProgress}</p>
+						<StateNotice tone="info" message={fullLibraryRepairProgress} compact={true} busy={true} />
 					{/if}
 					{#if libraryTransientSweepSummary}
-						<p>{libraryTransientSweepSummary}</p>
+						<StateNotice tone="success" message={libraryTransientSweepSummary} compact={true} />
 					{/if}
 					{#if correctionDedupSummary}
-						<p>{correctionDedupSummary}</p>
+						<StateNotice tone="success" message={correctionDedupSummary} compact={true} />
 					{/if}
 					{#if correctionDedupProgress}
-						<p>{correctionDedupProgress}</p>
+						<StateNotice tone="info" message={correctionDedupProgress} compact={true} busy={true} />
 					{/if}
 					{#if libraryDeduplicateSummary}
-						<p>{libraryDeduplicateSummary}</p>
+						<StateNotice tone="success" message={libraryDeduplicateSummary} compact={true} />
 					{/if}
 					{#if libraryDeduplicateProgress}
-						<p>{libraryDeduplicateProgress}</p>
+						<StateNotice tone="info" message={libraryDeduplicateProgress} compact={true} busy={true} />
 					{/if}
 				</div>
 			</div>

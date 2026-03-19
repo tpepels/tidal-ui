@@ -1,5 +1,6 @@
 <script lang="ts">
 	type Tone = 'neutral' | 'info' | 'success' | 'warning' | 'error';
+	type LiveRegion = 'off' | 'polite' | 'assertive';
 
 	let {
 		tone = 'neutral',
@@ -8,6 +9,8 @@
 		stale = false,
 		embedded = false,
 		compact = false,
+		liveRegion = tone === 'error' ? 'assertive' : 'polite',
+		busy = false,
 		actionLabel = null,
 		onAction = null,
 		className = ''
@@ -18,19 +21,30 @@
 		stale?: boolean;
 		embedded?: boolean;
 		compact?: boolean;
+		liveRegion?: LiveRegion;
+		busy?: boolean;
 		actionLabel?: string | null;
 		onAction?: (() => void) | null;
 		className?: string;
 	} = $props();
 
-	const role = $derived(tone === 'error' ? 'alert' : 'status');
+	const role = $derived(
+		liveRegion === 'off' ? undefined : liveRegion === 'assertive' ? 'alert' : 'status'
+	);
+	const ariaLive = $derived(liveRegion === 'off' ? undefined : liveRegion);
 </script>
 
 <div
 	class={`ui-state-notice ${embedded ? 'ui-state-notice--embedded' : ''} ${compact ? 'ui-state-notice--compact' : ''} ${className}`.trim()}
 	data-tone={tone === 'neutral' ? undefined : tone}
 	role={role}
+	aria-live={ariaLive}
+	aria-atomic={liveRegion === 'off' ? undefined : 'true'}
+	aria-busy={busy ? 'true' : undefined}
 >
+	{#if busy}
+		<span class="ui-state-notice__busy-indicator" aria-hidden="true"></span>
+	{/if}
 	<div class="ui-state-notice__copy">
 		{#if title || stale}
 			<div class="ui-state-notice__header">

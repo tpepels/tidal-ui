@@ -88,30 +88,6 @@
 		playbackFacade.enqueueNext(track);
 	}
 
-	function shouldIgnoreActivation(event: Event): boolean {
-		if (!(event.target instanceof Element)) {
-			return false;
-		}
-		return Boolean(event.target.closest('a') || event.target.closest('button'));
-	}
-
-	function handleCardActivation(event: Event, track: Track, index: number) {
-		if (shouldIgnoreActivation(event)) {
-			return;
-		}
-		handlePlayTrack(track, index);
-	}
-
-	function handleCardKeydown(event: KeyboardEvent, track: Track, index: number) {
-		if (shouldIgnoreActivation(event)) {
-			return;
-		}
-		if (event.key === 'Enter' || event.key === ' ') {
-			event.preventDefault();
-			handlePlayTrack(track, index);
-		}
-	}
-
 	function isCurrentTrack(track: Track): boolean {
 		return $machineCurrentTrack?.id === track.id;
 	}
@@ -130,14 +106,11 @@
 	{:else}
 		{#each displayedTracks as track, index (track.id)}
 			<div
-				role="button"
-				tabindex="0"
-				onclick={(event) => handleCardActivation(event, track, index)}
-				onkeydown={(event) => handleCardKeydown(event, track, index)}
-				class="top-tracks-card group flex h-full cursor-pointer flex-col gap-5 rounded-xl border border-white/10 bg-white/[0.03] p-5 transition-[background-color,border-color,transform] duration-200 ease-[cubic-bezier(0.2,0,0,1)] hover:-translate-y-px hover:border-white/25 hover:bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-white/35 {activeMenuId === track.id ? 'relative z-20' : ''}"
+				class="top-tracks-card group flex h-full flex-col gap-5 rounded-xl border border-white/10 bg-white/[0.03] p-5 transition-[background-color,border-color,transform] duration-200 ease-[cubic-bezier(0.2,0,0,1)] hover:-translate-y-px hover:border-white/25 hover:bg-white/[0.06] {activeMenuId === track.id ? 'relative z-20' : ''}"
 			>
 				<div class="flex items-start gap-4">
 					<button
+						type="button"
 						onclick={(event) => {
 							event.stopPropagation();
 							handlePlayTrack(track, index);
@@ -154,41 +127,51 @@
 						{/if}
 					</button>
 
-					{#if track.album?.cover}
-						<LazyImage
-							src={losslessAPI.getCoverUrl(track.album.cover, '320')}
-							alt={track.title}
-							class="h-24 w-24 flex-shrink-0 rounded-lg border border-white/12 object-cover"
-						/>
-					{/if}
+					<button
+						type="button"
+						class="top-tracks-card__primary min-w-0 flex-1 text-left"
+						onclick={() => handlePlayTrack(track, index)}
+						aria-label={`Play ${track.title}`}
+					>
+						<div class="flex items-start gap-4">
+							{#if track.album?.cover}
+								<LazyImage
+									src={losslessAPI.getCoverUrl(track.album.cover, '320')}
+									alt={track.title}
+									class="h-24 w-24 flex-shrink-0 rounded-lg border border-white/12 object-cover"
+								/>
+							{/if}
 
-					<div class="min-w-0 flex-1">
-						<h3
-							class="text-lg font-semibold leading-tight break-words whitespace-normal sm:text-xl sm:truncate {isCurrentTrack(track)
-								? 'text-white'
-								: 'text-gray-100 group-hover:text-white'}"
-						>
-							{track.title}
-							{#if track.explicit}
-								<span class="ml-1 text-sm text-gray-500">[E]</span>
-							{/if}
-						</h3>
-						<div class="mt-1 space-y-1 text-base text-gray-400">
-							<p class="truncate">
-								<ArtistLinks artists={track.artists} />
-							</p>
-							{#if track.album}
-								<p class="truncate text-sm text-gray-500">
-									<AlbumLink album={track.album} />
-								</p>
-							{/if}
+							<div class="min-w-0 flex-1">
+								<h3
+									class="text-lg font-semibold leading-tight break-words whitespace-normal sm:text-xl sm:truncate {isCurrentTrack(track)
+										? 'text-white'
+										: 'text-gray-100 group-hover:text-white'}"
+								>
+									{track.title}
+									{#if track.explicit}
+										<span class="ml-1 text-sm text-gray-500">[E]</span>
+									{/if}
+								</h3>
+								{#if getDisplayTags(track.mediaMetadata?.tags).length > 0}
+									<p class="mt-2 text-sm text-gray-500">
+										{getDisplayTags(track.mediaMetadata?.tags).join(', ')}
+									</p>
+								{/if}
+							</div>
 						</div>
-						{#if getDisplayTags(track.mediaMetadata?.tags).length > 0}
-							<p class="mt-2 text-sm text-gray-500">
-								{getDisplayTags(track.mediaMetadata?.tags).join(', ')}
-							</p>
-						{/if}
-					</div>
+					</button>
+				</div>
+
+				<div class="space-y-1 text-base text-gray-400">
+					<p class="truncate">
+						<ArtistLinks artists={track.artists} />
+					</p>
+					{#if track.album}
+						<p class="truncate text-sm text-gray-500">
+							<AlbumLink album={track.album} />
+						</p>
+					{/if}
 				</div>
 
 				<div
@@ -197,6 +180,7 @@
 					<div class="flex items-center gap-2">
 						<div class="relative">
 							<button
+								type="button"
 								onclick={(event) => {
 									event.stopPropagation();
 									activeMenuId = activeMenuId === track.id ? null : track.id;
@@ -212,6 +196,7 @@
 									class="track-menu-container absolute top-full right-0 z-10 mt-1 w-48 rounded-lg border border-white/15 bg-black/95 shadow-none"
 								>
 									<button
+										type="button"
 										onclick={(event) => {
 											handlePlayNext(track, event);
 											activeMenuId = null;
@@ -222,6 +207,7 @@
 										Play Next
 									</button>
 									<button
+										type="button"
 										onclick={(event) => {
 											handleAddToQueue(track, event);
 											activeMenuId = null;

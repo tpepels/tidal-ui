@@ -27,7 +27,7 @@
 					</button>
 				{/if}
 			</div>
-			<button class="toast-close" on:click={() => toasts.remove(toast.id)}>
+			<button class="toast-close" aria-label="Dismiss notification" on:click={() => toasts.remove(toast.id)}>
 				<X size={16} />
 			</button>
 		</div>

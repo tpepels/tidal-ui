@@ -13,8 +13,16 @@ export const settingsMaintenancePrompts = {
 
 type DownloadLogLevel = 'info' | 'success' | 'warning' | 'error';
 
+export type MaintenanceConfirmation = {
+	title: string;
+	body: string;
+	confirmLabel?: string;
+	cancelLabel?: string;
+	tone?: 'default' | 'warning' | 'danger';
+};
+
 type SettingsMaintenanceControllerOptions = {
-	confirm: (message: string) => boolean;
+	confirm: (request: MaintenanceConfirmation) => boolean | Promise<boolean>;
 	getDownloadQuality: () => AudioQuality;
 	isFullLibraryRepairing: () => boolean;
 	setFullLibraryRepairing: (value: boolean) => void;
@@ -49,7 +57,18 @@ type SettingsMaintenanceControllerOptions = {
 export function createSettingsMaintenanceController(options: SettingsMaintenanceControllerOptions) {
 	async function handleFullLibraryRepair(): Promise<void> {
 		if (options.isFullLibraryRepairing()) return;
-		if (!options.confirm(settingsMaintenancePrompts.FULL_LIBRARY_REPAIR)) return;
+		if (
+			!(
+				await options.confirm({
+					title: 'Auto-repair full library',
+					body: settingsMaintenancePrompts.FULL_LIBRARY_REPAIR,
+					confirmLabel: 'Start repair',
+					cancelLabel: 'Cancel',
+					tone: 'warning'
+				})
+			)
+		)
+			return;
 
 		options.setFullLibraryRepairing(true);
 		options.setFullLibraryRepairSummary(null);
@@ -97,7 +116,18 @@ export function createSettingsMaintenanceController(options: SettingsMaintenance
 
 	async function handleSweepTransientArtifacts(): Promise<void> {
 		if (options.isLibraryTransientSweeping()) return;
-		if (!options.confirm(settingsMaintenancePrompts.LIBRARY_TRANSIENT_SWEEP)) return;
+		if (
+			!(
+				await options.confirm({
+					title: 'Sweep temporary folders',
+					body: settingsMaintenancePrompts.LIBRARY_TRANSIENT_SWEEP,
+					confirmLabel: 'Run sweep',
+					cancelLabel: 'Cancel',
+					tone: 'warning'
+				})
+			)
+		)
+			return;
 
 		options.setLibraryTransientSweeping(true);
 		options.setLibraryTransientSweepSummary(null);
@@ -140,7 +170,18 @@ export function createSettingsMaintenanceController(options: SettingsMaintenance
 		) {
 			return;
 		}
-		if (!options.confirm(settingsMaintenancePrompts.LIBRARY_CORRECTION_DEDUP)) return;
+		if (
+			!(
+				await options.confirm({
+					title: 'Correction sweep + dedupe',
+					body: settingsMaintenancePrompts.LIBRARY_CORRECTION_DEDUP,
+					confirmLabel: 'Run dry-run',
+					cancelLabel: 'Cancel',
+					tone: 'warning'
+				})
+			)
+		)
+			return;
 
 		options.setCorrectionDedupRunning(true);
 		options.setCorrectionDedupSummary(null);
@@ -189,7 +230,17 @@ export function createSettingsMaintenanceController(options: SettingsMaintenance
 				return;
 			}
 
-			if (!options.confirm(`${previewSummary}\n\nRun execute pass now?`)) {
+			if (
+				!(
+					await options.confirm({
+						title: 'Run execute pass',
+						body: `${previewSummary}\n\nRun execute pass now?`,
+						confirmLabel: 'Run execute pass',
+						cancelLabel: 'Keep dry-run only',
+						tone: 'danger'
+					})
+				)
+			) {
 				options.setCorrectionDedupProgress(null);
 				options.setCorrectionDedupSummary(`${previewSummary} Execute pass cancelled.`);
 				toasts.info('Correction dry-run complete. Execute pass cancelled.');
@@ -263,7 +314,18 @@ export function createSettingsMaintenanceController(options: SettingsMaintenance
 
 	async function handleLibraryDeduplicate(): Promise<void> {
 		if (options.isLibraryDeduplicating() || options.isCorrectionDedupRunning()) return;
-		if (!options.confirm(settingsMaintenancePrompts.LIBRARY_DEDUP)) return;
+		if (
+			!(
+				await options.confirm({
+					title: 'Consolidate duplicate album files',
+					body: settingsMaintenancePrompts.LIBRARY_DEDUP,
+					confirmLabel: 'Run dry-run',
+					cancelLabel: 'Cancel',
+					tone: 'warning'
+				})
+			)
+		)
+			return;
 
 		options.setLibraryDeduplicating(true);
 		options.setLibraryDeduplicateSummary(null);
@@ -301,7 +363,17 @@ export function createSettingsMaintenanceController(options: SettingsMaintenance
 				);
 				return;
 			}
-			if (!options.confirm(`${previewSummary}\n\nRun execute pass now?`)) {
+			if (
+				!(
+					await options.confirm({
+						title: 'Run dedupe execute pass',
+						body: `${previewSummary}\n\nRun execute pass now?`,
+						confirmLabel: 'Run execute pass',
+						cancelLabel: 'Keep dry-run only',
+						tone: 'danger'
+					})
+				)
+			) {
 				options.setLibraryDeduplicateProgress(null);
 				options.setLibraryDeduplicateSummary(`${previewSummary} Execute pass cancelled.`);
 				toasts.info('Dedupe dry-run complete. Execute pass cancelled.');

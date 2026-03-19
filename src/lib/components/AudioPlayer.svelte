@@ -46,6 +46,7 @@
 	import { playbackMachine } from '$lib/stores/playbackMachine.svelte';
 	import { detectAudioSupport } from '$lib/utils/audioSupport';
 	import { areTestHooksEnabled } from '$lib/utils/testHooks';
+	import { confirm as requestConfirmation } from '$lib/stores/dialogs';
 	import {
 		Play,
 		Pause,
@@ -283,7 +284,20 @@
 		playbackFacade.removeFromQueue(index);
 	}
 
-	function clearQueue() {
+	async function clearQueue() {
+		if ($machineQueue.length === 0) {
+			return;
+		}
+		const shouldClear = await requestConfirmation({
+			title: 'Clear playback queue?',
+			body: `Remove ${$machineQueue.length} queued track${$machineQueue.length === 1 ? '' : 's'} from the playback queue?`,
+			confirmLabel: 'Clear queue',
+			cancelLabel: 'Keep queue',
+			tone: 'danger'
+		});
+		if (!shouldClear) {
+			return;
+		}
 		playbackTransitions.clearQueue();
 	}
 
@@ -983,4 +997,3 @@
 		<Music size={16} />
 	</button>
 {/if}
-

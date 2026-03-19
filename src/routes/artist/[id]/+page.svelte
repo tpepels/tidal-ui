@@ -44,6 +44,7 @@
 	import SectionBlock from '$lib/components/ui/SectionBlock.svelte';
 	import MetaStrip from '$lib/components/ui/MetaStrip.svelte';
 	import StateNotice from '$lib/components/ui/StateNotice.svelte';
+	import { confirm as requestConfirmation } from '$lib/stores/dialogs';
 	import {
 		groupDiscography,
 		type DiscographyBestEditionRule
@@ -829,9 +830,21 @@
 		},
 		resolveAlbumInLibrary: (albumId) => albumLibraryPresence[albumId]?.exists === true,
 		confirmServerOverwrite: () =>
-			window.confirm(artistAlbumDownloadPrompts.FORCE_OVERWRITE_CONFIRMATION),
+			requestConfirmation({
+				title: 'Overwrite album files?',
+				body: artistAlbumDownloadPrompts.FORCE_OVERWRITE_CONFIRMATION,
+				confirmLabel: 'Overwrite files',
+				cancelLabel: 'Keep existing files',
+				tone: 'danger'
+			}),
 		confirmClientRedownload: () =>
-			window.confirm(artistAlbumDownloadPrompts.CLIENT_REDOWNLOAD_CONFIRMATION),
+			requestConfirmation({
+				title: 'Download album again?',
+				body: artistAlbumDownloadPrompts.CLIENT_REDOWNLOAD_CONFIRMATION,
+				confirmLabel: 'Download again',
+				cancelLabel: 'Cancel',
+				tone: 'warning'
+			}),
 		getDownloadPreferences: () => ({
 			quality: downloadQuality,
 			mode: downloadMode,
@@ -1235,6 +1248,7 @@
 										href={`https://musicbrainz.org/artist/${selectedMusicBrainzArtist.id}`}
 										target="_blank"
 										rel="noopener noreferrer"
+										aria-label="Open artist in MusicBrainz in a new tab"
 										class="text-gray-300 underline decoration-dotted underline-offset-2 transition-colors hover:text-white"
 									>
 										Open artist in MusicBrainz

@@ -7,6 +7,7 @@
 	import WindowedList from '$lib/components/ui/WindowedList.svelte';
 	import { Copy, Trash2, Heart } from 'lucide-svelte';
 	import { onMount, tick } from 'svelte';
+	import { confirm as requestConfirmation } from '$lib/stores/dialogs';
 
 	let scrollContainer = $state<HTMLDivElement | null>(null);
 	let healthData = $state<{
@@ -93,6 +94,24 @@
 		navigator.clipboard.writeText(logText);
 	}
 
+	async function clearLogs() {
+		const lineCount = $downloadLogStore.entries.length;
+		const shouldClear = await requestConfirmation({
+			title: 'Clear download logs?',
+			body:
+				lineCount === 0
+					? 'Clear the current download log view?'
+					: `Remove ${lineCount} log line${lineCount === 1 ? '' : 's'} from the current download log view?`,
+			confirmLabel: 'Clear logs',
+			cancelLabel: 'Keep logs',
+			tone: 'danger'
+		});
+		if (!shouldClear) {
+			return;
+		}
+		downloadLogStore.clear();
+	}
+
 	function formatBytes(bytes?: number): string {
 		if (!bytes || !Number.isFinite(bytes)) return '—';
 		const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -153,17 +172,31 @@
 			</div>
 			<div class="download-log-actions">
 				<span class="download-log-count" title="Current log lines">{$downloadLogStore.entries.length}</span>
-				<button type="button" class="download-log-btn" title="Check server health" onclick={fetchHealth} disabled={loadingHealth}>
+				<button
+					type="button"
+					class="download-log-btn"
+					title="Check server health"
+					aria-label="Check server health"
+					onclick={fetchHealth}
+					disabled={loadingHealth}
+				>
 					<Heart size={16} />
 				</button>
-				<button type="button" class="download-log-btn" title="Copy logs" onclick={copyLogs}>
+				<button
+					type="button"
+					class="download-log-btn"
+					title="Copy logs"
+					aria-label="Copy logs"
+					onclick={copyLogs}
+				>
 					<Copy size={16} />
 				</button>
 				<button
 					type="button"
 					class="download-log-btn"
 					title="Clear logs"
-					onclick={() => downloadLogStore.clear()}
+					aria-label="Clear logs"
+					onclick={() => void clearLogs()}
 				>
 					<Trash2 size={16} />
 				</button>

@@ -11,7 +11,8 @@
 		machineQuality
 	} from '$lib/stores/playerDerived';
 	import { playbackFacade } from '$lib/controllers/playbackFacade';
-	import { LoaderCircle, Play, Pause, ExternalLink } from 'lucide-svelte';
+	import { Play, Pause, ExternalLink } from 'lucide-svelte';
+	import StateNotice from '$lib/components/ui/StateNotice.svelte';
 
 	import { isSonglinkTrack } from '$lib/types';
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
@@ -121,11 +122,22 @@
 <div class="embed-card" data-ui-archetype="embed" data-ui-route="embed-album">
     {#if isLoading}
         <div class="loading">
-            <LoaderCircle class="animate-spin" size={32} />
+            <StateNotice
+                tone="info"
+                title="Loading album"
+                message="Fetching album artwork and tracks for this embed."
+                busy={true}
+                liveRegion="polite"
+            />
         </div>
     {:else if error}
         <div class="error">
-            <p>{error}</p>
+            <StateNotice
+                tone="error"
+                title="Album unavailable"
+                message={error}
+                liveRegion="assertive"
+            />
         </div>
     {:else if album}
         <div class="header" data-ui-block="entity-hero">
@@ -148,8 +160,14 @@
 						<ArtistLinks artists={[album.artist]} />
 					{/if}
 				</p>
-                <a href="/album/{album.id}" target="_blank" class="open-link">
-                    <span>Open Album in BiniLossless</span>
+                <a
+                    href="/album/{album.id}"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="open-link"
+                    aria-label="Open album in BiniLossless in a new tab"
+                >
+                    <span>Open Album in BiniLossless (opens in a new tab)</span>
                     <ExternalLink size={12} />
                 </a>
             </div>
@@ -193,7 +211,11 @@
                         </span>
                     </div>
                 </div>
-				<button class="np-play-button" onclick={() => playbackFacade.toggle()}>
+				<button
+					class="np-play-button"
+					onclick={() => playbackFacade.toggle()}
+					aria-label={$machineIsPlaying ? 'Pause now playing' : 'Play now playing'}
+				>
                     {#if $machineIsPlaying}
                         <Pause size={20} fill="currentColor" />
                     {:else}
@@ -208,15 +230,17 @@
 <style>
     :global(html), :global(body) {
         margin: 0;
-        overflow: hidden;
+        min-height: 100%;
+        overflow: auto;
         background: transparent;
     }
 
     .embed-card {
         position: relative;
         width: 100%;
-        height: 100vh;
-        overflow: hidden;
+        min-height: 100dvh;
+        height: 100%;
+        overflow: auto;
         display: flex;
         flex-direction: column;
         color: white;
@@ -253,7 +277,8 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        height: 100%;
+        min-height: 100dvh;
+        padding: 1rem;
     }
 
     .header {
@@ -290,16 +315,10 @@
         align-items: center;
         justify-content: center;
         color: white;
-        opacity: 0;
-        transition:
-            opacity var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
-            background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
+        opacity: 1;
+        transition: background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
         border: none;
         cursor: pointer;
-    }
-
-    .cover-art:hover .play-button {
-        opacity: 1;
     }
 
     .play-button:hover {
@@ -344,6 +363,14 @@
 
     .open-link:hover {
         color: white;
+    }
+
+    .play-button:focus-visible,
+    .open-link:focus-visible,
+    .track-item:focus-visible,
+    .np-play-button:focus-visible {
+        outline: 2px solid rgba(255, 255, 255, 0.92);
+        outline-offset: 2px;
     }
 
     .track-list {

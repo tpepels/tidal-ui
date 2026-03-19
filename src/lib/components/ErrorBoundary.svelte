@@ -1,21 +1,22 @@
 <script lang="ts">
 	import { onMount, type Snippet } from 'svelte';
-	import { toasts } from '$lib/stores/toasts';
 	import { InvariantViolationError } from '$lib/core/invariants';
 	import { logger } from '$lib/core/logger';
 	import { errorTracker } from '$lib/core/errorTracker';
+	import AppDialog from '$lib/components/ui/AppDialog.svelte';
 
 	interface Props {
-		children: Snippet;
+		children?: Snippet;
 		showDetails?: boolean;
 	}
 
 	let { children, showDetails = false }: Props = $props();
 	let error = $state<Error | null>(null);
 	let errorId = $state('');
+	let errorTitle = $state('Something went wrong');
 
 	function generateErrorId(): string {
-		return `error-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+		return `error-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 	}
 
 	function handleError(err: unknown, context?: unknown) {
@@ -31,6 +32,12 @@
 			url: window.location.href,
 			boundaryId: errorId
 		});
+
+		error = processedError;
+		errorTitle =
+			processedError instanceof InvariantViolationError
+				? 'Application state inconsistency detected'
+				: 'Something went wrong';
 
 		// Structured logging
 		logger.error('Error boundary caught error', {
@@ -52,37 +59,21 @@
 				error: processedError,
 				invariantContext: processedError.context
 			});
-
-			toasts.error('Application state inconsistency detected', {
-				action: {
-					label: 'Reload',
-					handler: () => window.location.reload()
-				}
-			});
-		} else {
-			error = processedError;
-
-			logger.error('Application error occurred', {
-				component: 'ErrorBoundary',
-				errorId: trackedErrorId,
-				boundaryId: errorId,
-				error: processedError,
-				context
-			});
-
-			toasts.error(`Application error: ${processedError.message}`, {
-				action: {
-					label: 'Reload',
-					handler: () => window.location.reload()
-				}
-			});
 		}
 
+		logger.error('Application error occurred', {
+			component: 'ErrorBoundary',
+			errorId: trackedErrorId,
+			boundaryId: errorId,
+			error: processedError,
+			context
+		});
 	}
 
 	function resetError() {
 		error = null;
 		errorId = '';
+		errorTitle = 'Something went wrong';
 	}
 
 	// Catch unhandled errors and promise rejections
@@ -109,39 +100,44 @@
 	});
 </script>
 
-{#if error}
-	<div class="error-boundary">
-		<h2>Something went wrong</h2>
-		<p>{error.message}</p>
-		<p>Check the console for details.</p>
-		{#if showDetails}
-			<details class="error-details">
-				<summary>Error Details (for developers)</summary>
-				<pre class="error-stack">{error.stack}</pre>
-				<p class="error-id">Error ID: {errorId}</p>
-			</details>
-		{/if}
-		<div class="error-actions">
-			<button onclick={resetError}>Try Again</button>
-			<button onclick={() => window.location.reload()}>Reload App</button>
-		</div>
-	</div>
-{:else}
+{#if children}
 	{@render children()}
 {/if}
 
-<style>
-	.error-boundary {
-		position: fixed;
-		inset: 0;
-		background: rgba(0, 0, 0, 0.9);
-		color: white;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		z-index: 10000;
-		padding: 2rem;
-		text-align: center;
-	}
-</style>
+<AppDialog
+	open={Boolean(error)}
+	title={errorTitle}
+	description={error ? `${error.message} Check the console for details.` : null}
+	tone="danger"
+	dialogRole="alertdialog"
+	initialFocusSelector='[data-dialog-action="reload"]'
+	closeOnEscape={false}
+	onClose={resetError}
+>
+	{#if showDetails && error}
+		<details class="error-details">
+			<summary>Error Details (for developers)</summary>
+			<pre class="error-stack">{error.stack}</pre>
+			<p class="error-id">Error ID: {errorId}</p>
+		</details>
+	{/if}
+	{#snippet actions()}
+		<button
+			type="button"
+			class="ui-chip-button"
+			data-dialog-action="retry"
+			onclick={resetError}
+		>
+			Try Again
+		</button>
+		<button
+			type="button"
+			class="ui-chip-button"
+			data-tone="secondary"
+			data-dialog-action="reload"
+			onclick={() => window.location.reload()}
+		>
+			Reload App
+		</button>
+	{/snippet}
+</AppDialog>
