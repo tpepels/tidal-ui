@@ -37,13 +37,16 @@
 <style>
 	.toast-container {
 		position: fixed;
-		top: 20px;
-		left: 20px;
-		z-index: 10000;
+		top: calc(var(--ui-top-stack-offset, 0px) + 12px);
+		right: clamp(12px, 2vw, 20px);
+		left: auto;
+		z-index: var(--ui-z-utility, 48);
 		display: flex;
 		flex-direction: column;
 		gap: 10px;
 		pointer-events: none;
+		width: min(100vw - 24px, 500px);
+		align-items: stretch;
 	}
 
 	@media (min-width: 768px) {
@@ -51,7 +54,16 @@
 			display: grid;
 			grid-template-columns: repeat(2, 1fr);
 			gap: 10px;
-			max-width: 600px;
+			width: min(100vw - 40px, 600px);
+		}
+	}
+
+	@media (max-width: 767px) {
+		.toast-container {
+			top: calc(var(--ui-top-stack-offset, 0px) + 8px);
+			right: 12px;
+			left: 12px;
+			width: auto;
 		}
 	}
 
@@ -63,8 +75,8 @@
 		border-radius: var(--ui-radius-sm, 8px);
 		border: 1px solid rgba(255, 255, 255, 0.22);
 		box-shadow: none;
-		min-width: 300px;
-		max-width: 500px;
+		min-width: 0;
+		max-width: 100%;
 		pointer-events: auto;
 		font-size: 14px;
 		line-height: 1.4;

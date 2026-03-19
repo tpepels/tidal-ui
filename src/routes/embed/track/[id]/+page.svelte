@@ -176,10 +176,11 @@
         <!-- Background blur -->
         <div class="background" style="background-image: url({losslessAPI.getCoverUrl(track.album.cover, '320')})"></div>
         
-        <!-- Progress Bar -->
         {#if isCurrentTrack}
-            <div class="progress-container">
-                <div class="progress-bar" style="width: {progress}%"></div>
+            <div class="embed-footer" data-ui-block="footer">
+                <div class="progress-container" aria-hidden="true">
+                    <div class="progress-bar" style="width: {progress}%"></div>
+                </div>
             </div>
         {/if}
     {/if}
@@ -216,10 +217,8 @@
     }
 
     .progress-container {
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        right: 0;
+        position: relative;
+        width: 100%;
         height: 2px;
         background: rgba(255, 255, 255, 0.12);
     }
@@ -241,9 +240,9 @@
     .track-info {
         display: flex;
         align-items: center;
+        flex: 1;
         padding: 1rem;
         gap: 1rem;
-        height: 100%;
         background: rgba(8, 8, 8, 0.74);
         border: 1px solid rgba(255, 255, 255, 0.12);
         border-radius: 0.75rem;
@@ -286,6 +285,7 @@
 
     .details {
         flex: 1;
+        gap: 0.18rem;
         min-width: 0;
         display: flex;
         flex-direction: column;
@@ -326,6 +326,8 @@
     .open-link {
         display: inline-flex;
         align-items: center;
+        align-self: flex-start;
+        flex-wrap: wrap;
         gap: 0.25rem;
         font-size: 0.75rem;
         color: rgba(255,255,255,0.6);
@@ -341,6 +343,31 @@
     .open-link:focus-visible {
         outline: 2px solid rgba(255, 255, 255, 0.92);
         outline-offset: 2px;
+    }
+
+    .embed-footer {
+        display: flex;
+        flex-direction: column;
+        flex-shrink: 0;
+        background: rgba(8, 8, 8, 0.96);
+        border-top: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    @media (max-width: 640px) {
+        .track-info {
+            flex-wrap: wrap;
+            align-items: flex-start;
+        }
+
+        .title,
+        .artist {
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }
+
+        .open-link {
+            white-space: normal;
+        }
     }
 
 	@media (prefers-reduced-motion: reduce) {

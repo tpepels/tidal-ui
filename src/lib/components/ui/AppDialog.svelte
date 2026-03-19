@@ -217,7 +217,7 @@
 	.ui-dialog-layer {
 		position: fixed;
 		inset: 0;
-		z-index: 10020;
+		z-index: var(--ui-z-modal, 100);
 		display: flex;
 		align-items: center;
 		justify-content: center;

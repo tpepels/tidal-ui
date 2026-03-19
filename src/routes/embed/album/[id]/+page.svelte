@@ -188,40 +188,43 @@
         <!-- Background blur -->
         <div class="background" style="background-image: url({losslessAPI.getCoverUrl(album.cover, '320')})"></div>
         
-        <!-- Progress Bar -->
-        {#if isCurrentContext}
-            <div class="progress-container">
-                <div class="progress-bar" style="width: {progress}%"></div>
-            </div>
-        {/if}
-
-        {#if $machineCurrentTrack && !isSonglinkTrack($machineCurrentTrack) && $machineCurrentTrack.album}
-            <div class="now-playing-bar">
-                <img
-                    src={losslessAPI.getCoverUrl($machineCurrentTrack.album.cover, '80')}
-                    alt={$machineCurrentTrack.title}
-                    class="np-cover"
-                />
-                <div class="np-info">
-                    <div class="np-title">{$machineCurrentTrack.title}</div>
-                    <div class="np-meta">
-                        <span class="np-quality">
-                            {$machineQuality === 'HI_RES_LOSSLESS' ? 'Hi-Res' : 
-                             $machineQuality === 'LOSSLESS' ? 'CD' : $machineQuality}
-                        </span>
+        {#if isCurrentContext || ($machineCurrentTrack && !isSonglinkTrack($machineCurrentTrack) && $machineCurrentTrack.album)}
+            <div class="embed-footer" data-ui-block="footer">
+                {#if isCurrentContext}
+                    <div class="progress-container" aria-hidden="true">
+                        <div class="progress-bar" style="width: {progress}%"></div>
                     </div>
-                </div>
-				<button
-					class="np-play-button"
-					onclick={() => playbackFacade.toggle()}
-					aria-label={$machineIsPlaying ? 'Pause now playing' : 'Play now playing'}
-				>
-                    {#if $machineIsPlaying}
-                        <Pause size={20} fill="currentColor" />
-                    {:else}
-                        <Play size={20} fill="currentColor" />
-                    {/if}
-                </button>
+                {/if}
+
+                {#if $machineCurrentTrack && !isSonglinkTrack($machineCurrentTrack) && $machineCurrentTrack.album}
+                    <div class="now-playing-bar" data-embed-footer="now-playing">
+                        <img
+                            src={losslessAPI.getCoverUrl($machineCurrentTrack.album.cover, '80')}
+                            alt={$machineCurrentTrack.title}
+                            class="np-cover"
+                        />
+                        <div class="np-info">
+                            <div class="np-title">{$machineCurrentTrack.title}</div>
+                            <div class="np-meta">
+                                <span class="np-quality">
+                                    {$machineQuality === 'HI_RES_LOSSLESS' ? 'Hi-Res' : 
+                                     $machineQuality === 'LOSSLESS' ? 'CD' : $machineQuality}
+                                </span>
+                            </div>
+                        </div>
+						<button
+							class="np-play-button"
+							onclick={() => playbackFacade.toggle()}
+							aria-label={$machineIsPlaying ? 'Pause now playing' : 'Play now playing'}
+						>
+                            {#if $machineIsPlaying}
+                                <Pause size={20} fill="currentColor" />
+                            {:else}
+                                <Play size={20} fill="currentColor" />
+                            {/if}
+                        </button>
+                    </div>
+                {/if}
             </div>
         {/if}
     {/if}
@@ -258,13 +261,11 @@
     }
 
     .progress-container {
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        right: 0;
+        position: relative;
+        width: 100%;
         height: 2px;
         background: rgba(255, 255, 255, 0.1);
-        z-index: 10;
+        flex-shrink: 0;
     }
 
     .progress-bar {
@@ -284,6 +285,7 @@
     .header {
         display: flex;
         align-items: center;
+        flex-wrap: wrap;
         padding: 1rem;
         gap: 1rem;
         flex-shrink: 0;
@@ -327,6 +329,7 @@
 
     .details {
         flex: 1;
+        gap: 0.18rem;
         min-width: 0;
         display: flex;
         flex-direction: column;
@@ -354,6 +357,8 @@
     .open-link {
         display: inline-flex;
         align-items: center;
+        align-self: flex-start;
+        flex-wrap: wrap;
         gap: 0.25rem;
         font-size: 0.75rem;
         color: rgba(255,255,255,0.6);
@@ -375,6 +380,7 @@
 
     .track-list {
         flex: 1;
+        min-height: 0;
         overflow-y: auto;
         padding: 0.5rem 0;
         background: rgba(8, 8, 8, 0.64);
@@ -434,18 +440,20 @@
         font-size: 0.75rem;
         color: rgba(255, 255, 255, 0.5);
     }
-    .now-playing-bar {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
+    .embed-footer {
+        display: flex;
+        flex-direction: column;
+        flex-shrink: 0;
         background: rgba(8, 8, 8, 0.96);
         border-top: 1px solid rgba(255, 255, 255, 0.12);
-        padding: 0.75rem;
+    }
+
+    .now-playing-bar {
+        background: transparent;
+        padding: 0.75rem 1rem;
         display: flex;
         align-items: center;
         gap: 0.75rem;
-        z-index: 50;
     }
 
     .np-cover {
@@ -505,9 +513,26 @@
     .np-play-button:hover {
         transform: scale(1.05);
     }
-    
-    .track-list {
-        padding-bottom: 4.5rem;
+    @media (max-width: 640px) {
+        .title,
+        .artist {
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }
+
+        .track-meta {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.18rem;
+        }
+
+        .open-link {
+            white-space: normal;
+        }
+
+        .np-title {
+            white-space: normal;
+        }
     }
 
 	@media (prefers-reduced-motion: reduce) {

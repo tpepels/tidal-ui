@@ -7,11 +7,13 @@
 	import ConfirmDialogHost from '$lib/components/ConfirmDialogHost.svelte';
 	import ErrorBoundary from '$lib/components/ErrorBoundary.svelte';
 	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
+	import DownloadManager from '$lib/components/DownloadManager.svelte';
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 	import { machineCurrentTrack, machineIsPlaying, machineQueue } from '$lib/stores/playerDerived';
 	import { queueStats, serverQueue, workerStatus } from '$lib/stores/serverQueue.svelte';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { effectivePerformanceLevel } from '$lib/stores/performance';
+	import { layoutChrome } from '$lib/stores/layoutChrome';
 	import { formatArtists } from '$lib/utils/formatters';
 	import { navigating, page } from '$app/stores';
 	import { goto } from '$app/navigation';
@@ -35,15 +37,19 @@
 
 	let { children, data } = $props();
 	const pageTitle = $derived(data?.title ?? 'BiniLossless');
-	let headerHeight = $state(0);
 	let playerHeight = $state(0);
 	let isPlayerVisible = $state(false);
 	let AudioPlayerComponent = $state<typeof import('$lib/components/AudioPlayer.svelte').default | null>(
 		null
 	);
 	let viewportHeight = $state(0);
+	let viewportWidth = $state(0);
 	let isSidebarCollapsed = $state(false);
 	let sidebarNavContainer = $state<HTMLElement | null>(null);
+	let mobileTopbarElement = $state<HTMLElement | null>(null);
+	let mobilePrimaryNavElement = $state<HTMLElement | null>(null);
+	let mobileTopbarHeight = $state(0);
+	let mobilePrimaryNavHeight = $state(0);
 
 	const isServerStorage = $derived($downloadPreferencesStore.storage === 'server');
 	const isEmbed = $derived($page.url.pathname.startsWith('/embed'));
@@ -68,7 +74,11 @@
 			}
 		}
 	});
-	const mainMinHeight = $derived(() => Math.max(0, viewportHeight - headerHeight - playerHeight));
+	const isTightViewport = $derived(viewportWidth < 640 || viewportHeight < 760);
+	const mobileChromeHeight = $derived(viewportWidth <= 1023 ? mobileTopbarHeight + mobilePrimaryNavHeight : 0);
+	const mainMinHeight = $derived(
+		() => Math.max(0, viewportHeight - mobileChromeHeight - playerHeight)
+	);
 	const queueTrackCount = $derived(Array.isArray($machineQueue) ? $machineQueue.length : 0);
 	const DOWNLOAD_CENTER_BADGE_POLL_MS = 1_000;
 	const downloadCenterCurrentDownloads = $derived.by(() => {
@@ -97,7 +107,31 @@
 		return `/track/${parsedId}`;
 	});
 
-	const mainMarginBottom = $derived(() => Math.max(playerHeight, 128));
+	const utilitySlotReserve = $derived.by(() => {
+		switch ($layoutChrome.floatingUtilitySlot) {
+			case 'download-panel':
+				return isTightViewport ? 320 : 176;
+			case 'download-summary':
+				return isTightViewport ? 120 : 96;
+			case 'download-toggle':
+				return 72;
+			default:
+				return 0;
+		}
+	});
+	const pageBottomClearance = $derived.by(() =>
+		Math.max(playerHeight + utilitySlotReserve + (isTightViewport ? 24 : 16), 128)
+	);
+	const rootChromeStyle = $derived.by(() =>
+		[
+			`--ui-mobile-topbar-height: ${mobileTopbarHeight}px`,
+			`--ui-mobile-primary-nav-height: ${mobilePrimaryNavHeight}px`,
+			`--ui-top-stack-offset: calc(var(--ui-safe-top, 0px) + ${mobileChromeHeight}px)`,
+			`--ui-player-clearance: ${playerHeight}px`,
+			`--ui-bottom-stack-offset: calc(var(--ui-safe-bottom, 0px) + ${playerHeight}px + 20px)`,
+			`--ui-page-bottom-clearance: ${pageBottomClearance}px`
+		].join('; ')
+	);
 
 	const ensureAudioPlayerLoaded = async () => {
 		if (AudioPlayerComponent) return;
@@ -181,6 +215,43 @@
 		}
 	});
 
+	function observeElementHeight(node: HTMLElement, setHeight: (height: number) => void): () => void {
+		const updateHeight = () => {
+			setHeight(node.offsetHeight ?? 0);
+		};
+		updateHeight();
+		if (typeof ResizeObserver === 'undefined') {
+			return () => {};
+		}
+		const resizeObserver = new ResizeObserver(() => {
+			updateHeight();
+		});
+		resizeObserver.observe(node);
+		return () => {
+			resizeObserver.disconnect();
+		};
+	}
+
+	$effect(() => {
+		if (!mobileTopbarElement) {
+			mobileTopbarHeight = 0;
+			return;
+		}
+		return observeElementHeight(mobileTopbarElement, (height) => {
+			mobileTopbarHeight = height;
+		});
+	});
+
+	$effect(() => {
+		if (!mobilePrimaryNavElement) {
+			mobilePrimaryNavHeight = 0;
+			return;
+		}
+		return observeElementHeight(mobilePrimaryNavElement, (height) => {
+			mobilePrimaryNavHeight = height;
+		});
+	});
+
 	$effect(() => {
 		if (typeof window === 'undefined' || isEmbed) {
 			serverQueue.stopPolling();
@@ -233,11 +304,12 @@
 				}
 			});
 
-		const updateViewportHeight = () => {
+		const updateViewportMetrics = () => {
+			viewportWidth = window.innerWidth;
 			viewportHeight = window.innerHeight;
 		};
-		updateViewportHeight();
-		window.addEventListener('resize', updateViewportHeight);
+		updateViewportMetrics();
+		window.addEventListener('resize', updateViewportMetrics);
 
 		// Check if we're in a local/dev environment where SW should be disabled
 		const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
@@ -338,7 +410,7 @@
 			navigator.serviceWorker.addEventListener('controllerchange', controllerChangeHandler);
 		}
 		return () => {
-			window.removeEventListener('resize', updateViewportHeight);
+			window.removeEventListener('resize', updateViewportMetrics);
 			unsubPerf();
 			if (controllerChangeHandler) {
 				navigator.serviceWorker.removeEventListener('controllerchange', controllerChangeHandler);
@@ -362,7 +434,7 @@
 	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 </svelte:head>
 
-	<div data-dialog-app-shell>
+	<div data-dialog-app-shell style={rootChromeStyle}>
 	{#if isEmbed}
 		{@render children?.()}
 		{#if AudioPlayerComponent}
@@ -370,7 +442,10 @@
 		{/if}
 	{:else}
 		<div class="app-root" data-sveltekit-preload-data="hover">
-		<div class="app-shell">
+		<div
+			class="app-shell"
+			data-ui-tight-viewport={isTightViewport ? 'true' : 'false'}
+		>
 					<div class={`app-workspace ${isSidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}>
 					<aside
 						class="app-sidebar"
@@ -506,16 +581,20 @@
 
 					<main
 						class="app-main app-main--workspace !sm:mb-40 !mb-56"
-						style={`min-height: ${mainMinHeight}px; margin-bottom: ${mainMarginBottom}px;`}
+						style={`min-height: ${mainMinHeight}px; margin-bottom: var(--ui-page-bottom-clearance);`}
 					>
 						<div class="app-main__inner">
-							<div class="mobile-topbar">
+							<div class="mobile-topbar" bind:this={mobileTopbarElement}>
 								<div class="mobile-topbar__brand">
 									<p class="mobile-topbar__eyebrow">BiniLossless</p>
 									<p class="mobile-topbar__title">{currentPageNavLabel}</p>
 								</div>
 							</div>
-							<nav class="mobile-primary-nav" aria-label="Primary navigation">
+							<nav
+								class="mobile-primary-nav"
+								aria-label="Primary navigation"
+								bind:this={mobilePrimaryNavElement}
+							>
 								<div class="mobile-primary-nav__scroll">
 									<a
 										class={`mobile-primary-nav__link ${isRouteActive('/') ? 'is-active' : ''}`}
@@ -608,6 +687,9 @@
 		</div>
 	</div>
 
+	{#if !$page.url.pathname.startsWith('/download-center')}
+		<DownloadManager />
+	{/if}
 	<LyricsPopup />
 	<ToastContainer />
 {/if}
@@ -618,6 +700,13 @@
 
 <style>
 	:global(:root) {
+		--ui-safe-top: env(safe-area-inset-top, 0px);
+		--ui-safe-bottom: env(safe-area-inset-bottom, 0px);
+		--ui-z-page: 1;
+		--ui-z-sticky: 12;
+		--ui-z-utility: 48;
+		--ui-z-overlay: 80;
+		--ui-z-modal: 100;
 		--bloom-primary: var(--ui-surface-base, #100d0c);
 		--bloom-secondary: var(--ui-surface-raised, #171210);
 		--bloom-accent: var(--ui-accent, #c58b3a);
@@ -632,7 +721,7 @@
 
 	:global(body) {
 		margin: 0;
-		min-height: 100vh;
+		min-height: 100dvh;
 		font-family: var(--ui-font-sans, 'Figtree', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif);
 		background: var(--ui-app-background);
 		background-attachment: fixed;
@@ -641,7 +730,7 @@
 
 	.app-root {
 		position: relative;
-		min-height: 100vh;
+		min-height: 100dvh;
 		color: inherit;
 		overflow: clip;
 	}
@@ -680,8 +769,8 @@
 		z-index: 1;
 		display: flex;
 		flex-direction: column;
-		min-height: 100vh;
-		padding-bottom: env(safe-area-inset-bottom, 0px);
+		min-height: 100dvh;
+		padding-bottom: var(--ui-safe-bottom, 0px);
 	}
 
 	.app-workspace {
@@ -706,7 +795,7 @@
 		gap: 0.95rem;
 		padding: 0 1rem 0 0;
 		border-radius: 0;
-		max-height: calc(100vh - clamp(1.6rem, 3.2vw, 2.8rem) - var(--player-height, 0px));
+		max-height: calc(100dvh - clamp(1.6rem, 3.2vw, 2.8rem) - var(--player-height, 0px));
 		overflow-y: auto;
 		background: transparent;
 		border-right: 1px solid var(--ui-divider, rgba(255, 255, 255, 0.08));
@@ -895,8 +984,8 @@
 	.diagnostics-toggle {
 		position: fixed;
 		left: 1.5rem;
-		bottom: calc(1.5rem + var(--player-height, 0px));
-		z-index: 110;
+		bottom: var(--ui-bottom-stack-offset, 20px);
+		z-index: var(--ui-z-utility);
 		border-radius: var(--ui-radius-sm, 9px);
 		padding: 0.45rem 1rem;
 		background: var(--ui-accent-surface, rgba(255, 255, 255, 0.14));
@@ -955,8 +1044,8 @@
 
 	.mobile-topbar {
 		position: sticky;
-		top: 0;
-		z-index: 12;
+		top: var(--ui-safe-top, 0px);
+		z-index: var(--ui-z-sticky);
 		padding: 0.1rem 0 0.42rem;
 		background:
 			linear-gradient(
@@ -994,8 +1083,8 @@
 
 	.mobile-primary-nav {
 		position: sticky;
-		top: 3rem;
-		z-index: 11;
+		top: calc(var(--ui-safe-top, 0px) + var(--ui-mobile-topbar-height, 0px));
+		z-index: var(--ui-z-sticky);
 		padding-bottom: 0.65rem;
 		background:
 			linear-gradient(
@@ -1094,7 +1183,7 @@
 		background: rgb(var(--ui-color-coal-rgb, 20 17 15) / 0.78);
 		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
 		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
-		z-index: 50;
+		z-index: var(--ui-z-overlay);
 	}
 
 	.navigation-overlay__progress {
@@ -1183,6 +1272,17 @@
 		.app-main--workspace {
 			margin: 0;
 		}
+	}
+
+	.app-shell[data-ui-tight-viewport='true'] .app-sidebar {
+		position: static;
+		top: auto;
+		max-height: none;
+		overflow: visible;
+	}
+
+	.app-shell[data-ui-tight-viewport='true'] .diagnostics-toggle {
+		display: none;
 	}
 
 	@media (max-width: 640px) {

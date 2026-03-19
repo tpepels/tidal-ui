@@ -889,7 +889,7 @@ textarea {
 }
 
 .ui-section-anchor {
-	scroll-margin-top: 8.6rem;
+	scroll-margin-top: calc(var(--ui-top-stack-offset, 0px) + 5rem);
 }
 
 .ui-select {

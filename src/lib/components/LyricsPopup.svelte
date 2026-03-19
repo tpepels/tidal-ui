@@ -572,14 +572,14 @@
 	.lyrics-overlay {
 		position: fixed;
 		inset: 0;
-		bottom: var(--player-height, 120px);
+		bottom: var(--ui-player-clearance, var(--player-height, 120px));
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		padding: 1rem;
 		padding-bottom: 0.5rem;
 		background: rgba(8, 8, 8, 0.58);
-		z-index: 60;
+		z-index: var(--ui-z-overlay, 80);
 		pointer-events: none;
 	}
 
@@ -785,8 +785,8 @@
 			border-radius: 0;
 			border: 1px solid rgba(255, 255, 255, 0.12);
 			width: 100vw;
-			height: 100vh;
-			max-height: 100vh;
+			height: 100dvh;
+			max-height: 100dvh;
 		}
 
 		.lyrics-header {

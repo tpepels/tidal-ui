@@ -211,8 +211,8 @@
 
 	.ui-section-nav--sticky {
 		position: sticky;
-		top: 0;
-		z-index: 9;
+		top: calc(var(--ui-top-stack-offset, 0px) + 0.72rem);
+		z-index: var(--ui-z-sticky, 12);
 		padding: 0.2rem 0 0.15rem;
 		background:
 			linear-gradient(to bottom, rgba(7, 7, 7, 0.96), rgba(7, 7, 7, 0.88) 70%, transparent);
@@ -277,14 +277,13 @@
 	@media (min-width: 960px) {
 		.ui-section-nav--sticky {
 			position: sticky;
-			top: 0.72rem;
 			background: rgb(var(--ui-color-coal-rgb, 20 17 15) / 0.94);
 		}
 	}
 
 	@media (min-width: 640px) and (max-width: 1023px) {
 		.ui-section-nav--sticky {
-			top: 5.4rem;
+			top: calc(var(--ui-top-stack-offset, 0px) + 0.4rem);
 		}
 	}
 
@@ -315,6 +314,16 @@
 			flex: 0 0 auto;
 			white-space: nowrap;
 		}
+	}
+
+	:global([data-ui-tight-viewport='true']) .ui-section-nav--sticky {
+		position: static;
+		top: auto;
+		z-index: auto;
+		padding: 0;
+		background: transparent;
+		backdrop-filter: none;
+		-webkit-backdrop-filter: none;
 	}
 
 	@media (prefers-reduced-motion: reduce) {

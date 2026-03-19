@@ -29,12 +29,108 @@
 		width: 100%;
 	}
 
+	.download-manager-summary {
+		all: unset;
+		position: fixed;
+		right: clamp(12px, 2vw, 20px);
+		bottom: var(--ui-bottom-stack-offset, 20px);
+		z-index: var(--ui-z-utility, 48);
+		display: flex;
+		align-items: flex-start;
+		gap: 0.9rem;
+		width: min(360px, calc(100vw - 24px));
+		padding: 0.95rem 1rem;
+		border-radius: var(--ui-radius-md, 14px);
+		border: 1px solid var(--color-border);
+		background: var(--color-bg-primary);
+		box-shadow: var(--ui-shadow-soft, 0 10px 28px rgba(0, 0, 0, 0.22));
+		color: var(--color-text-primary);
+		cursor: pointer;
+		transition:
+			border-color var(--dm-motion-fast) var(--dm-ease-standard),
+			background var(--dm-motion-fast) var(--dm-ease-standard),
+			transform var(--dm-motion-fast) var(--dm-ease-emphasis);
+	}
+
+	.download-manager-summary:hover {
+		transform: translateY(var(--ui-lift-y, -1px));
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+		background: var(--dm-surface-1);
+	}
+
+	.download-manager-summary:active {
+		transform: translateY(var(--ui-press-y, 0px));
+	}
+
+	.download-manager-summary__body {
+		min-width: 0;
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+	}
+
+	.download-manager-summary__eyebrow {
+		margin: 0;
+		font-size: 0.72rem;
+		font-weight: 700;
+		letter-spacing: 0.11em;
+		text-transform: uppercase;
+		color: var(--color-text-secondary);
+	}
+
+	.download-manager-summary__headline {
+		margin: 0;
+		font-size: 1rem;
+		font-weight: 700;
+		line-height: 1.25;
+		color: var(--color-text-primary);
+	}
+
+	.download-manager-summary__meta {
+		margin: 0;
+		font-size: 0.82rem;
+		line-height: 1.4;
+		color: var(--color-text-secondary);
+		overflow-wrap: anywhere;
+	}
+
+	.download-manager-summary__meter {
+		height: 4px;
+		width: 100%;
+		border-radius: 999px;
+		background: var(--ui-accent-surface, rgba(197, 139, 58, 0.12));
+		overflow: hidden;
+	}
+
+	.download-manager-summary__meter-fill {
+		height: 100%;
+		border-radius: inherit;
+		background: var(--color-primary);
+		transition: width var(--dm-motion-medium) var(--dm-ease-standard);
+	}
+
+	.download-manager-summary__badge {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 2.5rem;
+		padding: 0.3rem 0.55rem;
+		border-radius: 999px;
+		border: 1px solid var(--ui-accent-border, rgba(255, 255, 255, 0.16));
+		background: var(--ui-accent-surface, rgba(255, 255, 255, 0.1));
+		font-size: 0.9rem;
+		font-weight: 700;
+		line-height: 1;
+		color: var(--color-text-primary);
+	}
+
 	.download-manager-toggle {
 		all: unset;
 		position: fixed;
-		bottom: calc(20px + var(--player-height, 0px) + env(safe-area-inset-bottom, 0px));
-		right: 20px;
-		z-index: 99999;
+		bottom: var(--ui-bottom-stack-offset, 20px);
+		right: clamp(12px, 2vw, 20px);
+		z-index: var(--ui-z-utility, 48);
 		cursor: pointer;
 
 		display: flex;
@@ -84,9 +180,9 @@
 
 	.download-manager-panel {
 		position: fixed;
-		bottom: calc(20px + var(--player-height, 0px) + 80px + env(safe-area-inset-bottom, 0px));
-		right: 20px;
-		z-index: 99998;
+		bottom: calc(var(--ui-bottom-stack-offset, 20px) + 12px);
+		right: clamp(12px, 2vw, 20px);
+		z-index: var(--ui-z-utility, 48);
 		width: 680px;
 		max-height: 80vh;
 		max-height: 80dvh;
@@ -1760,9 +1856,14 @@
 
 	/* Responsive */
 	@media (max-width: 1024px) {
+		.download-manager-summary {
+			width: min(420px, calc(100vw - 24px));
+		}
+
 		.download-manager-panel {
 			width: min(760px, calc(100vw - 24px));
 			max-height: 74vh;
+			max-height: 74dvh;
 		}
 
 		.download-manager-top-strip {
@@ -1774,11 +1875,44 @@
 		}
 	}
 
+	@media (max-width: 899px), (max-height: 759px) {
+		.download-manager-summary {
+			left: 12px;
+			right: 12px;
+			width: auto;
+		}
+
+		.download-manager-panel:not(.download-manager-panel--page) {
+			left: 12px;
+			right: 12px;
+			bottom: var(--ui-bottom-stack-offset, 20px);
+			width: auto;
+			max-height: min(72dvh, 560px);
+			border-radius: 18px 18px 0 0;
+		}
+	}
+
 	@media (max-width: 640px) {
+		.download-manager-summary {
+			left: 12px;
+			right: 12px;
+			width: auto;
+			padding: 0.9rem 0.95rem;
+		}
+
+		.download-manager-summary__headline {
+			font-size: 0.95rem;
+		}
+
+		.download-manager-summary__meta {
+			font-size: 0.78rem;
+		}
+
 		.download-manager-panel {
 			left: 8px;
 			right: 8px;
 			width: auto;
+			bottom: var(--ui-bottom-stack-offset, 20px);
 			max-height: 68vh;
 			max-height: 68dvh;
 		}
@@ -1890,6 +2024,8 @@
 
 		.download-status-hero__meter-fill,
 		.progress-fill,
+		.download-manager-summary,
+		.download-manager-summary__meter-fill,
 		.section-toggle,
 		.queue-item-click,
 		.failed-item-click,
@@ -1900,6 +2036,7 @@
 		}
 
 		.download-manager-toggle,
+		.download-manager-summary,
 		.download-manager-close,
 		.section-toggle,
 		.queue-item-click,

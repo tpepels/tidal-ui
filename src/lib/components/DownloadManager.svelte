@@ -29,6 +29,7 @@
 	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
 	import { createAdaptivePollingController } from '$lib/utils/adaptivePolling';
 	import { confirm as requestConfirmation } from '$lib/stores/dialogs';
+	import { layoutChrome } from '$lib/stores/layoutChrome';
 	import { RefreshCw } from 'lucide-svelte';
 
 	let { pageMode = false } = $props();
@@ -191,6 +192,18 @@
 	let canPauseAny = $derived(pausableJobs.length > 0);
 	let canResumeAny = $derived(resumableJobs.length > 0);
 	let hasFailuresToReport = $derived(failedJobs.length > 0 || cancelledJobs.length > 0);
+	let floatingSlotMode = $derived.by(() => {
+		if (pageMode) {
+			return 'none' as const;
+		}
+		if (isOpen) {
+			return 'download-panel' as const;
+		}
+		if (hasActivity) {
+			return 'download-summary' as const;
+		}
+		return 'none' as const;
+	});
 	const toggleSection = (section: CollapsibleSection) => {
 		sectionExpanded = {
 			...sectionExpanded,
@@ -369,11 +382,18 @@
 	$effect(() => {
 		if (typeof window === 'undefined') return;
 		const updateViewportMode = () => {
-			isCompactViewport = window.innerWidth <= 1024;
+			isCompactViewport = window.innerWidth <= 1024 || window.innerHeight < 760;
 		};
 		updateViewportMode();
 		window.addEventListener('resize', updateViewportMode);
 		return () => window.removeEventListener('resize', updateViewportMode);
+	});
+
+	$effect(() => {
+		layoutChrome.setFloatingUtilitySlot(floatingSlotMode);
+		return () => {
+			layoutChrome.setFloatingUtilitySlot('none');
+		};
 	});
 
 	$effect(() => {
@@ -765,26 +785,35 @@
 </script>
 
 <div class="download-manager-container" class:download-manager-container--page={pageMode}>
-	{#if !pageMode}
+	{#if !pageMode && floatingSlotMode === 'download-summary'}
 		<button
-			onclick={() => (isOpen = !isOpen)}
 			type="button"
-			class="download-manager-toggle"
-			class:has-activity={hasActivity}
-			title={isOpen ? 'Hide download center' : 'Show download center'}
+			class="download-manager-summary"
+			data-floating-surface="download-summary"
+			aria-label="Open download center"
+			onclick={() => (isOpen = true)}
 		>
-			{#if hasActivity}
-				<div class="download-manager-badge">
-					{badgeCount}
-				</div>
-			{/if}
-			<span class="download-manager-icon">⬇</span>
+			<div class="download-manager-summary__body">
+				<p class="download-manager-summary__eyebrow">Downloads</p>
+				<h3 class="download-manager-summary__headline">{statusHeadline}</h3>
+				<p class="download-manager-summary__meta">{statusSubline}</p>
+				{#if activeAverageProgress > 0}
+					<div class="download-manager-summary__meter" aria-hidden="true">
+						<div
+							class="download-manager-summary__meter-fill"
+							style={`width: ${activeAverageProgress}%`}
+						></div>
+					</div>
+				{/if}
+			</div>
+			<div class="download-manager-summary__badge">{badgeCount}</div>
 		</button>
 	{/if}
 
 	{#if pageMode || isOpen}
 		<div
 			class="download-manager-panel ui-tool-panel ui-tool-panel--flush"
+			data-floating-surface={pageMode ? undefined : 'download-panel'}
 			data-tone="secondary"
 			class:download-manager-panel--page={pageMode}
 			class:compact-mode={isCompactViewport}

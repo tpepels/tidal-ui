@@ -23,6 +23,7 @@
 	import { lyricsStore } from '$lib/stores/lyrics';
 	import { downloadUiStore } from '$lib/stores/downloadUi';
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
+	import { layoutChrome } from '$lib/stores/layoutChrome';
 	import { formatArtists } from '$lib/utils/formatters';
 	import { losslessAPI } from '$lib/api';
 	import type { Track, AudioQuality, PlayableTrack } from '$lib/types';
@@ -87,6 +88,7 @@
 	const sampleRateLabel = $derived(formatSampleRate($machineSampleRate));
 	const bitDepthLabel = $derived(formatBitDepth($machineBitDepth));
 	const machineStreamUrl = $derived(playbackMachine.streamUrl || streamUrl);
+	const canShowRestoreIndicator = $derived($layoutChrome.floatingUtilitySlot === 'none');
 	const isFirefox = typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent);
 	let supportsLosslessPlayback = true;
 	let streamingFallbackQuality: AudioQuality = 'HIGH';
@@ -712,7 +714,9 @@
 {#if !headless && shouldShowPlayer}
 	<div
 		class="audio-player-backdrop fixed inset-x-0 bottom-0 z-50 px-4 pt-16 pb-5 sm:px-6 sm:pt-16 sm:pb-6"
+		data-floating-surface="player"
 		bind:this={containerElement}
+		style="z-index: var(--ui-z-utility, 48); padding-bottom: calc(1.25rem + var(--ui-safe-bottom, 0px));"
 	>
 		<div class="relative mx-auto w-full max-w-screen-2xl">
 
@@ -989,8 +993,14 @@
 	</div>
 {/if}
 
-{#if !headless && playerDismissed && hasTrack}
-	<button class="playback-indicator" type="button" onclick={restorePlayer} aria-label="Show player - music is playing">
+{#if !headless && playerDismissed && hasTrack && canShowRestoreIndicator}
+	<button
+		class="playback-indicator"
+		data-floating-surface="player-restore"
+		type="button"
+		onclick={restorePlayer}
+		aria-label="Show player - music is playing"
+	>
 		{#if $machineIsPlaying}
 			<div class="playback-indicator-pulse"></div>
 		{/if}
