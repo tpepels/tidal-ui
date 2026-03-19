@@ -6,6 +6,7 @@ import path from 'node:path';
 type SvelteNode = {
 	type?: string;
 	name?: string;
+	data?: string;
 	attributes?: Array<{
 		type?: string;
 		name?: string;

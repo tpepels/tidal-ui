@@ -1,6 +1,5 @@
 import { writable } from 'svelte/store';
-
-export type DialogTone = 'default' | 'warning' | 'danger';
+import type { DialogTone } from '$lib/presentation/viewModels';
 
 export type ConfirmDialogOptions = {
 	title: string;

@@ -14,7 +14,7 @@ describe('MusicBrainz detail stale-state handling', () => {
 
 	it('clears stale artist matches when refresh fails', () => {
 		const source = readFileSync(
-			resolve(__dirname, '..', '..', 'routes/artist/[id]/+page.svelte'),
+			resolve(__dirname, '..', 'screens/artist/ArtistScreenContainer.svelte'),
 			'utf8'
 		);
 		expect(source).toContain('musicBrainzArtistOptions = [];');

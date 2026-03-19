@@ -2,7 +2,7 @@
 	import { browser } from '$app/environment';
 	import { tick } from 'svelte';
 	import type { Snippet } from 'svelte';
-	import type { DialogTone } from '$lib/stores/dialogs';
+	import type { DialogTone } from '$lib/presentation/viewModels';
 
 	type DialogRole = 'dialog' | 'alertdialog';
 

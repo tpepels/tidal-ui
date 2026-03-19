@@ -1,5 +1,5 @@
 <script lang="ts">
-	import AlbumPageContent from '$lib/components/pages/AlbumPageContent.svelte';
+	import AlbumScreenContainer from '$lib/screens/album/AlbumScreenContainer.svelte';
 </script>
 
-<AlbumPageContent />
+<AlbumScreenContainer />

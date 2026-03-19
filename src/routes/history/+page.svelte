@@ -5,7 +5,7 @@
 	import MediaRow from '$lib/components/ui/MediaRow.svelte';
 	import { Library, User, Trash2, Clock3 } from 'lucide-svelte';
 	import { getRouteMeta } from '$lib/config/routeMeta';
-	import { losslessAPI } from '$lib/api';
+	import { resolveAlbumCoverUrl, resolveArtistPictureUrl } from '$lib/presentation/catalogPresentation';
 	import { confirm as requestConfirmation } from '$lib/stores/dialogs';
 
 	const meta = getRouteMeta('/history');
@@ -19,16 +19,14 @@
 		if (typeof cover !== 'string' || cover.trim().length === 0) {
 			return null;
 		}
-		const src = losslessAPI.getCoverUrl(cover, '640');
-		return src || null;
+		return resolveAlbumCoverUrl(cover, '640');
 	};
 
 	const getArtistPortraitSrc = (picture: string | null | undefined): string | null => {
 		if (typeof picture !== 'string' || picture.trim().length === 0) {
 			return null;
 		}
-		const src = losslessAPI.getArtistPictureUrl(picture);
-		return src || null;
+		return resolveArtistPictureUrl(picture);
 	};
 
 	const hasHistory = $derived(

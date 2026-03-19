@@ -1,5 +1,5 @@
 <script lang="ts">
-	import LibrarySuggestionsPageContent from '$lib/components/pages/LibrarySuggestionsPageContent.svelte';
+	import LibrarySuggestionsScreenContainer from '$lib/screens/library-suggestions/LibrarySuggestionsScreenContainer.svelte';
 </script>
 
-<LibrarySuggestionsPageContent />
+<LibrarySuggestionsScreenContainer />

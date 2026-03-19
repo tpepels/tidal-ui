@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { ChevronLeft, ChevronRight, User } from 'lucide-svelte';
-	import { losslessAPI } from '$lib/api';
 	import EntityMediaCard from '$lib/components/ui/EntityMediaCard.svelte';
 	import StateBlock from '$lib/components/ui/StateBlock.svelte';
 	import ToolPanel from '$lib/components/ui/ToolPanel.svelte';
+	import { resolveArtistPictureUrl } from '$lib/presentation/catalogPresentation';
 	import { getCoverCacheKey, getUnifiedCoverCandidates } from '$lib/utils/coverPipeline';
 	import type { Album, Artist, ArtistRecommendations } from '$lib/types';
 
@@ -125,7 +125,7 @@
 									{#snippet artwork()}
 										{#if recommendationArtist.picture}
 											<img
-												src={losslessAPI.getArtistPictureUrl(recommendationArtist.picture)}
+												src={resolveArtistPictureUrl(recommendationArtist.picture) ?? ''}
 												alt={recommendationArtist.name}
 												loading="lazy"
 											/>

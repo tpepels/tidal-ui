@@ -22,7 +22,7 @@ describe('StateNotice source contract', () => {
 	});
 
 	it('announces polite busy states by default', () => {
-		render(StateNotice, {
+		render(StateNotice as never, {
 			props: {
 				title: 'Loading album',
 				message: 'Fetching metadata.',
@@ -31,19 +31,19 @@ describe('StateNotice source contract', () => {
 		});
 
 		const notice = screen.getByRole('status');
-		expect(notice).toHaveAttribute('aria-live', 'polite');
-		expect(notice).toHaveAttribute('aria-busy', 'true');
+		expect(notice.getAttribute('aria-live')).toBe('polite');
+		expect(notice.getAttribute('aria-busy')).toBe('true');
 	});
 
 	it('supports opting out of live announcements', () => {
-		render(StateNotice, {
+		render(StateNotice as never, {
 			props: {
 				message: 'Already in library.',
 				liveRegion: 'off'
 			}
 		});
 
-		expect(screen.queryByRole('status')).not.toBeInTheDocument();
-		expect(screen.getByText('Already in library.')).toBeInTheDocument();
+		expect(screen.queryByRole('status')).toBeNull();
+		expect(screen.getByText('Already in library.')).not.toBeNull();
 	});
 });

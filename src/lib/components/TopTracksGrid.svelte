@@ -1,6 +1,5 @@
 <script lang="ts">
 	import type { Track } from '$lib/types';
-	import { losslessAPI } from '$lib/api';
 	import { onMount } from 'svelte';
 	import { machineCurrentTrack, machineIsPaused, machineIsPlaying } from '$lib/stores/playerDerived';
 	import { playbackFacade } from '$lib/controllers/playbackFacade';
@@ -11,6 +10,7 @@
 	import ArtistLinks from '$lib/components/ArtistLinks.svelte';
 	import AlbumLink from '$lib/components/AlbumLink.svelte';
 	import LazyImage from '$lib/components/LazyImage.svelte';
+	import { formatTrackDurationLabel, resolveAlbumCoverUrl } from '$lib/presentation/catalogPresentation';
 
 	interface Props {
 		tracks: Track[];
@@ -136,7 +136,7 @@
 						<div class="flex items-start gap-4">
 							{#if track.album?.cover}
 								<LazyImage
-									src={losslessAPI.getCoverUrl(track.album.cover, '320')}
+									src={resolveAlbumCoverUrl(track.album.cover, '320') ?? ''}
 									alt={track.title}
 									class="h-24 w-24 flex-shrink-0 rounded-lg border border-white/12 object-cover"
 								/>
@@ -234,7 +234,7 @@
 					</div>
 					<div class="flex items-center gap-1 text-sm text-gray-400">
 						<Clock size={14} />
-						<span>{losslessAPI.formatDuration(track.duration)}</span>
+						<span>{formatTrackDurationLabel(track.duration)}</span>
 					</div>
 				</div>
 			</div>

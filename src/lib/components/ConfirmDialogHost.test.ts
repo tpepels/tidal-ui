@@ -36,26 +36,26 @@ describe('ConfirmDialogHost', () => {
 		});
 
 		const dialog = await screen.findByRole('dialog');
-		expect(dialog).toHaveTextContent('Clear queue?');
-		expect(dialog).toHaveTextContent('Remove all queued tracks?');
+		expect(dialog.textContent).toContain('Clear queue?');
+		expect(dialog.textContent).toContain('Remove all queued tracks?');
 
 		const cancelButton = screen.getByRole('button', { name: 'Keep queue' });
 		const confirmButton = screen.getByRole('button', { name: 'Clear queue' });
 
 		await waitFor(() => {
-			expect(cancelButton).toHaveFocus();
+			expect(document.activeElement).toBe(cancelButton);
 		});
 		await user.tab();
-		expect(confirmButton).toHaveFocus();
+		expect(document.activeElement).toBe(confirmButton);
 		await user.tab();
-		expect(cancelButton).toHaveFocus();
+		expect(document.activeElement).toBe(cancelButton);
 
 		await user.click(cancelButton);
 		await expect(pending).resolves.toBe(false);
 		await waitFor(() => {
-			expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+			expect(screen.queryByRole('dialog')).toBeNull();
 		});
-		expect(trigger).toHaveFocus();
+		expect(document.activeElement).toBe(trigger);
 	});
 
 	it('resolves true on confirm', async () => {

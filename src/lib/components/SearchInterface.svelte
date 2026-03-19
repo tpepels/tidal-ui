@@ -21,10 +21,10 @@
 	import { resolveSearchAlbumMusicBrainzReleaseId } from '$lib/features/search/searchMusicBrainzDownload';
 	import { resolveSearchSubmitMode } from '$lib/features/search/searchSubmitController';
 	import StateBlock from '$lib/components/ui/StateBlock.svelte';
-	import SearchAlbumsSection from '$lib/components/search/SearchAlbumsSection.svelte';
-	import SearchArtistsSection from '$lib/components/search/SearchArtistsSection.svelte';
-	import SearchPlaylistsSection from '$lib/components/search/SearchPlaylistsSection.svelte';
-	import SearchTracksSection from '$lib/components/search/SearchTracksSection.svelte';
+	import SearchAlbumResultsSection from '$lib/screens/search/sections/SearchAlbumResultsSection.svelte';
+	import SearchArtistResultsSection from '$lib/screens/search/sections/SearchArtistResultsSection.svelte';
+	import SearchPlaylistResultsSection from '$lib/screens/search/sections/SearchPlaylistResultsSection.svelte';
+	import SearchTrackResultsSection from '$lib/screens/search/sections/SearchTrackResultsSection.svelte';
 	import SearchToolbar from '$lib/components/search/SearchToolbar.svelte';
 	import PageSectionNav, {
 		type PageSectionNavItem
@@ -43,6 +43,13 @@
 	import type { Album, AudioQuality, PlayableTrack } from '$lib/types';
 	import { isSonglinkTrack } from '$lib/types';
 	import { searchStore, searchStoreActions, type SearchTab } from '$lib/stores/searchStoreAdapter';
+	import {
+		buildSearchAlbumRowViewModel,
+		buildSearchArtistRowViewModel,
+		buildSearchPlaylistRowViewModel,
+		buildSearchTrackRowViewModel,
+		type SearchAlbumRowVM
+	} from '$lib/screens/search/searchViewModel';
 
 	type UiTone = 'default' | 'secondary' | 'tertiary';
 
@@ -187,6 +194,32 @@
 	const albumResults = $derived($searchStore.results?.albums ?? []);
 	const artistResults = $derived($searchStore.results?.artists ?? []);
 	const playlistResults = $derived($searchStore.results?.playlists ?? []);
+	const trackRowVms = $derived(
+		trackResults.map((track) =>
+			buildSearchTrackRowViewModel({
+				track,
+				downloadingIds: $downloadingIds,
+				cancelledIds: $cancelledIds,
+				downloadActionLabel
+			})
+		)
+	);
+	const albumRowVms = $derived(
+		albumResults.map((album) =>
+			buildSearchAlbumRowViewModel({
+				album,
+				downloadState: albumDownloadStates[album.id],
+				hasMusicBrainzMatch: Boolean(albumMusicBrainzReleaseMatches[album.id]),
+				isMusicBrainzLoading: isAlbumMusicBrainzLookupLoading,
+				pendingMusicBrainzAlbumIds: pendingAlbumMusicBrainzAlbumIds,
+				downloadActionLabel
+			})
+		)
+	);
+	const artistRowVms = $derived(artistResults.map((artist) => buildSearchArtistRowViewModel(artist)));
+	const playlistRowVms = $derived(
+		playlistResults.map((playlist) => buildSearchPlaylistRowViewModel(playlist))
+	);
 	const visibleResultSectionCount = $derived(
 		(trackResults.length > 0 ? 1 : 0) +
 			(albumResults.length > 0 ? 1 : 0) +
@@ -249,6 +282,14 @@
 
 	function getAlbumDownloadState(albumId: number): AlbumDownloadState {
 		return albumDownloadStates[albumId] ?? createDefaultAlbumDownloadState();
+	}
+
+	async function handleAlbumRowAction(row: SearchAlbumRowVM, event: MouseEvent) {
+		if (row.canCancel) {
+			await cancelAlbumQueueDownload(row.album.id, event);
+			return;
+		}
+		await handleAlbumDownloadClick(row.album, event);
 	}
 
 	const albumQueueController = createAlbumQueueController({
@@ -573,11 +614,8 @@
 		{#if hasAnySearchResults}
 			<div class={`search-sections ${shouldUseSingleColumnResults ? 'search-sections--single' : ''}`}>
 				{#if trackResults.length > 0}
-					<SearchTracksSection
-						tracks={trackResults}
-						downloadingIds={$downloadingIds}
-						cancelledIds={$cancelledIds}
-						downloadActionLabel={downloadActionLabel}
+					<SearchTrackResultsSection
+						rows={trackRowVms}
 						onTrackSelect={onTrackSelect}
 						onDownload={handleDownloadWithFallback}
 						onCancel={handleCancelDownload}
@@ -585,24 +623,19 @@
 				{/if}
 
 				{#if albumResults.length > 0}
-					<SearchAlbumsSection
-						albums={albumResults}
-						albumDownloadStates={albumDownloadStates}
-						albumMusicBrainzReleaseMatches={albumMusicBrainzReleaseMatches}
+					<SearchAlbumResultsSection
+						rows={albumRowVms}
 						isMusicBrainzLoading={isAlbumMusicBrainzLookupLoading}
-						pendingMusicBrainzAlbumIds={pendingAlbumMusicBrainzAlbumIds}
-						downloadActionLabel={downloadActionLabel}
-						onDownloadClick={handleAlbumDownloadClick}
-						onCancelQueueDownload={cancelAlbumQueueDownload}
+						onAction={handleAlbumRowAction}
 					/>
 				{/if}
 
 				{#if artistResults.length > 0}
-					<SearchArtistsSection artists={artistResults} />
+					<SearchArtistResultsSection rows={artistRowVms} />
 				{/if}
 
 				{#if playlistResults.length > 0}
-					<SearchPlaylistsSection playlists={playlistResults} />
+					<SearchPlaylistResultsSection rows={playlistRowVms} />
 				{/if}
 			</div>
 
