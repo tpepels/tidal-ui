@@ -1,11 +1,7 @@
+import { musicBrainzClient, type MusicBrainzReleaseOption } from '$lib/clients/musicBrainzClient';
 import type { Album } from '$lib/types';
 
-export type MusicBrainzReleaseSearchOption = {
-	id: string;
-	title?: string;
-	trackCount?: number;
-	date?: string;
-};
+export type MusicBrainzReleaseSearchOption = MusicBrainzReleaseOption;
 
 export type MusicBrainzReleaseSearchResponse = {
 	success?: boolean;
@@ -223,34 +219,33 @@ export async function resolveAlbumMusicBrainzReleaseMatch(
 			? [albumTitle, fallbackAlbumTitle]
 			: [albumTitle];
 
-	const fetchImpl = options.fetchImpl ?? fetch;
 	try {
 		let compatibleReleases: MusicBrainzReleaseSearchOption[] = [];
 		let encounteredLookupFailure = false;
 		let hadSuccessfulLookup = false;
 
 		for (const titleToSearch of albumTitlesToSearch) {
-			const response = await fetchImpl('/api/metadata/musicbrainz-release-search', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					albumTitle: titleToSearch,
-					artistName,
-					releaseDate: album.releaseDate,
-					upc: album.upc,
-					limit: 16
-				})
-			});
-			const payload = (await response
-				.json()
-				.catch(() => null)) as MusicBrainzReleaseSearchResponse | null;
-			if (!response.ok || !payload?.success || !Array.isArray(payload.releases)) {
+			let releases: MusicBrainzReleaseSearchOption[] = [];
+			try {
+				releases = await musicBrainzClient.searchReleases(
+					{
+						albumTitle: titleToSearch,
+						artistName,
+						releaseDate: album.releaseDate,
+						upc: album.upc,
+						limit: 16
+					},
+					{
+						fetchImpl: options.fetchImpl
+					}
+				);
+			} catch {
 				encounteredLookupFailure = true;
 				continue;
 			}
 			hadSuccessfulLookup = true;
 
-			compatibleReleases = payload.releases
+			compatibleReleases = releases
 				.filter(
 					(release) =>
 						typeof release?.id === 'string' &&

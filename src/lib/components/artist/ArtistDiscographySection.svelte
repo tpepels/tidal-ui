@@ -104,7 +104,7 @@
 			<h2 class="artist-discography-primary__title">Discography</h2>
 			<p class="artist-discography-primary__subtitle">Albums, EPs, and more from {artistName}.</p>
 		</div>
-		<div class="ui-action-row ui-action-row--progressive">
+		<div class="ui-action-row ui-action-row--progressive" data-ui-block="primary-actions">
 			<button
 				onclick={onDownloadDiscography}
 				type="button"

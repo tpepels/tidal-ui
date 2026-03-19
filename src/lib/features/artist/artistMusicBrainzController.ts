@@ -1,22 +1,8 @@
-export type MusicBrainzArtistOption = {
-	id: string;
-	name?: string;
-	type?: string;
-	country?: string;
-	area?: string;
-	disambiguation?: string;
-	lifeSpanBegin?: string;
-	lifeSpanEnd?: string;
-	score?: number;
-};
-
-type MusicBrainzArtistSearchResponse = {
-	success?: boolean;
-	error?: string;
-	artists?: MusicBrainzArtistOption[];
-};
+import { musicBrainzClient, type MusicBrainzArtistOption } from '$lib/clients/musicBrainzClient';
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+export type { MusicBrainzArtistOption } from '$lib/clients/musicBrainzClient';
 
 export function normalizeArtistToken(value: string | null | undefined): string {
 	if (!value) return '';
@@ -80,22 +66,13 @@ export async function searchMusicBrainzArtistsByName(
 		fetchImpl?: FetchLike;
 	}
 ): Promise<MusicBrainzArtistOption[]> {
-	const fetchImpl = options?.fetchImpl ?? fetch;
-	const response = await fetchImpl('/api/metadata/musicbrainz-artist-search', {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({
+	return musicBrainzClient.searchArtists(
+		{
 			artistName,
 			limit: options?.limit ?? 10
-		})
-	});
-	const payload = (await response.json().catch(() => null)) as MusicBrainzArtistSearchResponse | null;
-	if (!response.ok || !payload?.success) {
-		throw new Error(payload?.error || 'Failed to search MusicBrainz artists');
-	}
-	return Array.isArray(payload.artists)
-		? payload.artists.filter(
-				(candidate) => typeof candidate?.id === 'string' && candidate.id.length > 0
-			)
-		: [];
+		},
+		{
+			fetchImpl: options?.fetchImpl
+		}
+	);
 }

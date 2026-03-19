@@ -3,6 +3,19 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { createHash } from 'crypto';
 
+const audioIntegrityMocks = vi.hoisted(() => ({
+	validateAudioFileIntegrity: vi.fn(async () => ({
+		ok: true,
+		durationSeconds: 1,
+		codecName: 'flac',
+		formatName: 'flac'
+	}))
+}));
+
+vi.mock('$lib/server/download/audioIntegrity', () => ({
+	validateAudioFileIntegrity: audioIntegrityMocks.validateAudioFileIntegrity
+}));
+
 const CHECKSUM_SAMPLE_BYTES = 1024 * 1024;
 
 const createMockRequestEvent = (

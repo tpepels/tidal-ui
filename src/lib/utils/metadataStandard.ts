@@ -50,6 +50,15 @@ const STANDARD_METADATA_KEY_SET = new Set<string>(STANDARD_METADATA_KEY_ORDER as
 const MAX_METADATA_VALUE_LENGTH = 1024;
 const STANDARD_METADATA_COMMENT = 'Downloaded from music.binimum.org/tidal.squid.wtf';
 
+function replaceControlCharacters(value: string): string {
+	let result = '';
+	for (const char of value) {
+		const code = char.charCodeAt(0);
+		result += code < 32 || code === 127 ? ' ' : char;
+	}
+	return result;
+}
+
 function isFiniteNumber(value: unknown): value is number {
 	return typeof value === 'number' && Number.isFinite(value);
 }
@@ -74,10 +83,7 @@ function sanitizeMetadataValue(value: unknown): string | undefined {
 		normalizedValue = value;
 	}
 	// Remove control characters to prevent malformed tags or accidental multi-line values.
-	const sanitized = normalizedValue
-		.replace(/[\u0000-\u001f\u007f]/g, ' ')
-		.replace(/\s+/g, ' ')
-		.trim();
+	const sanitized = replaceControlCharacters(normalizedValue).replace(/\s+/g, ' ').trim();
 	if (!sanitized) {
 		return undefined;
 	}

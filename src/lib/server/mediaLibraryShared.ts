@@ -1,6 +1,6 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { sanitizeDirName } from '../../routes/api/download-track/_shared';
+import { sanitizeDirName } from '$lib/server/download/shared';
 
 export const AUDIO_EXTENSIONS = new Set([
 	'.flac',

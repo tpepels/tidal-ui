@@ -470,17 +470,14 @@ export function createAlbumDownloadController(options: AlbumDownloadControllerOp
 						? error.message
 						: 'Failed to download one or more tracks.'
 			});
-		} finally {
-			if (!isCurrentAlbumContext(albumId, currentToken)) {
-				return;
-			}
-			if (!options.getQueueState().queueJobId) {
-				options.patchQueueState({
-					isDownloadingAll: false
-				});
+			} finally {
+				if (isCurrentAlbumContext(albumId, currentToken) && !options.getQueueState().queueJobId) {
+					options.patchQueueState({
+						isDownloadingAll: false
+					});
+				}
 			}
 		}
-	}
 
 	async function handleRepairAlbum(): Promise<void> {
 		const album = options.getAlbum();
@@ -529,15 +526,14 @@ export function createAlbumDownloadController(options: AlbumDownloadControllerOp
 						? error.message
 						: 'Failed to inspect and repair this album.'
 			});
-		} finally {
-			if (!isCurrentAlbumContext(albumId, currentToken)) {
-				return;
+			} finally {
+				if (isCurrentAlbumContext(albumId, currentToken)) {
+					options.patchMaintenanceState({
+						isRepairingAlbum: false
+					});
+				}
 			}
-			options.patchMaintenanceState({
-				isRepairingAlbum: false
-			});
 		}
-	}
 
 	function destroy(): void {
 		reset();

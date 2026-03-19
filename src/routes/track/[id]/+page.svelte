@@ -2,6 +2,7 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { losslessAPI } from '$lib/api';
+	import { musicBrainzClient } from '$lib/clients/musicBrainzClient';
 	import type { Track } from '$lib/types';
 	import { playbackFacade } from '$lib/controllers/playbackFacade';
 	import { createTrackDownloadUi } from '$lib/controllers/trackDownloadUi';
@@ -79,27 +80,13 @@
 		isMusicBrainzLookupLoading = true;
 		hasMusicBrainzLookupAttempted = true;
 		try {
-			const response = await fetch('/api/metadata/musicbrainz', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					track: activeTrack
-				})
-			});
-			const payload = await response.json().catch(() => null);
+			const payload = await musicBrainzClient.lookupTrackMetadata(activeTrack);
 			if (
 				lookupToken !== musicBrainzLookupToken ||
 				!track ||
 				track.id !== activeTrack.id
 			) {
 				return;
-			}
-			if (!response.ok || !payload?.success) {
-				throw new Error(
-					payload && typeof payload === 'object' && 'error' in payload
-						? String((payload as { error?: unknown }).error ?? '')
-						: 'Failed to lookup MusicBrainz metadata'
-				);
 			}
 			const normalizedResponse = normalizeTrackMusicBrainzLookupResponse(payload);
 			if (!normalizedResponse) {

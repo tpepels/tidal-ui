@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { queueClient, type QueueDashboardPayload } from '$lib/clients/queueClient';
 	import { onDestroy } from 'svelte';
 	import {
 		errorTracker,
@@ -36,11 +37,11 @@
 		};
 	} | null>(null);
 	let statusQueueMetrics = $state<{
-		source?: string;
+		queueSource?: string;
 		queue?: Record<string, unknown>;
 		metrics?: Record<string, unknown>;
 		error?: string;
-	} | null>(null);
+	} | QueueDashboardPayload | null>(null);
 	let statusLastUpdatedAt = $state<number | null>(null);
 	let statusPollController = createAdaptivePollingController({
 		run: async () => {
@@ -110,14 +111,14 @@
 		diagnosticsErrors = errorTracker.getErrors({ limit: 50 });
 
 		try {
-			const [healthResponse, targetsResponse, queueMetricsResponse] = await Promise.all([
+			const [healthResponse, targetsResponse, queueDashboard] = await Promise.all([
 				fetch('/api/health'),
 				fetch('/api/targets/status'),
-				fetch('/api/download-queue/metrics')
+				queueClient.getDashboard()
 			]);
 			diagnosticsHealth = (await healthResponse.json()) as typeof diagnosticsHealth;
 			statusTargets = (await targetsResponse.json()) as typeof statusTargets;
-			statusQueueMetrics = (await queueMetricsResponse.json()) as typeof statusQueueMetrics;
+			statusQueueMetrics = queueDashboard;
 			statusLastUpdatedAt = Date.now();
 		} catch (error) {
 			diagnosticsHealth = null;

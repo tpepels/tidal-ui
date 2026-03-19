@@ -33,7 +33,6 @@
 	let { pageMode = false } = $props();
 
 	let isOpen = $state(false);
-	let queueJobs = $state<QueueJob[]>([]);
 	let isCompactViewport = $state(false);
 	let showDetailedSections = $state(false);
 	let actionNotice = $state<{ tone: 'success' | 'error' | 'info'; message: string } | null>(null);
@@ -48,7 +47,6 @@
 	let lastPollingErrorLogged = $state<string | null>(null);
 	let lastBackendErrorLogged = $state<string | null>(null);
 	let lastBackendWarningLogged = $state<string | null>(null);
-	let lastQueueFetchErrorLogged = $state<string | null>(null);
 	let countdownController = createAdaptivePollingController({
 		run: async () => {
 			nowTs = Date.now();
@@ -56,16 +54,16 @@
 		visibleIntervalMs: 1_000,
 		pauseWhenHidden: true
 	});
-	let queueRefreshController = createAdaptivePollingController({
-		run: async () => {
-			await fetchQueueJobs();
-		},
-		visibleIntervalMs: 5_000,
-		hiddenIntervalMs: 20_000,
-		pauseWhenHidden: true
-	});
 
 	const DEBUG_LOG_LIMIT = 250;
+	const statusPriority: Record<QueueJob['status'], number> = {
+		processing: 0,
+		queued: 1,
+		paused: 2,
+		failed: 3,
+		cancelled: 4,
+		completed: 5
+	};
 
 	// Use server queue data
 	let stats = $derived.by(() => {
@@ -81,6 +79,18 @@
 	});
 
 	let workerWarning = $derived(!$workerStatus.running && (stats.running > 0 || stats.queued > 0));
+	let queueJobs = $derived.by(() =>
+		[...$serverQueue.jobs].sort((a, b) => {
+			const priorityDiff = statusPriority[a.status] - statusPriority[b.status];
+			if (priorityDiff !== 0) {
+				return priorityDiff;
+			}
+			return (
+				(b.lastUpdatedAt ?? b.completedAt ?? b.createdAt) -
+				(a.lastUpdatedAt ?? a.completedAt ?? a.createdAt)
+			);
+		})
+	);
 	let processingJobs = $derived(queueJobs.filter(j => j.status === 'processing'));
 	let queuedJobs = $derived(queueJobs.filter(j => j.status === 'queued'));
 	let pausedJobs = $derived(queueJobs.filter(j => j.status === 'paused'));
@@ -432,6 +442,13 @@
 	});
 
 	$effect(() => {
+		if (!pageMode && !isOpen) {
+			return;
+		}
+		lifecycleTracker.trackQueueLifecycleEvents(queueJobs);
+	});
+
+	$effect(() => {
 		const unsubscribe = logger.addListener((entry) => {
 			recentLogEntries = [...recentLogEntries.slice(-(DEBUG_LOG_LIMIT - 1)), entry];
 		});
@@ -471,61 +488,6 @@
 		};
 	});
 
-	// Fetch queue jobs details
-	const fetchQueueJobs = async () => {
-		try {
-			const response = await fetch('/api/download-queue');
-			if (!response.ok) throw new Error('Failed to fetch jobs');
-			
-			const data = await response.json() as { success: boolean; jobs: QueueJob[] };
-			if (data.success) {
-				const statusPriority: Record<QueueJob['status'], number> = {
-					processing: 0,
-					queued: 1,
-					paused: 2,
-					failed: 3,
-					cancelled: 4,
-					completed: 5
-				};
-				queueJobs = data.jobs
-					.slice()
-					.sort((a, b) => {
-						const priorityDiff = statusPriority[a.status] - statusPriority[b.status];
-						if (priorityDiff !== 0) {
-							return priorityDiff;
-						}
-						return (b.lastUpdatedAt ?? b.completedAt ?? b.createdAt) - (a.lastUpdatedAt ?? a.completedAt ?? a.createdAt);
-					});
-				lifecycleTracker.trackQueueLifecycleEvents(queueJobs);
-				lastQueueFetchErrorLogged = null;
-			}
-		} catch (err) {
-			console.error('Failed to fetch queue jobs:', err);
-			const message = err instanceof Error ? err.message : 'Unknown queue fetch error';
-			if (message !== lastQueueFetchErrorLogged) {
-				logDownloadEvent('warning', `[Queue] Failed to refresh jobs: ${message}`);
-				lastQueueFetchErrorLogged = message;
-			}
-		}
-	};
-
-	// Auto-refresh jobs while the panel is open
-	$effect(() => {
-		if (pageMode || isOpen) {
-			queueRefreshController.stop();
-			queueRefreshController = createAdaptivePollingController({
-				run: async () => {
-					await fetchQueueJobs();
-				},
-				visibleIntervalMs: 5_000,
-				hiddenIntervalMs: 20_000,
-				pauseWhenHidden: true
-			});
-			queueRefreshController.start();
-			return () => queueRefreshController.stop();
-		}
-	});
-
 	const handleCancelJob = async (job: QueueJob) => {
 		const key = cancelActionKey(job.id);
 		await runWithPendingAction(key, async () => {
@@ -533,7 +495,7 @@
 			if (result.success) {
 				setActionNotice('success', `Stopped ${summarizeJob(job)}`);
 				logDownloadEvent('success', `[Queue Action] Stopped ${summarizeJob(job)}.`);
-				await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
+				await serverQueue.poll();
 				return;
 			}
 			setActionNotice('error', result.error ?? `Failed to stop ${summarizeJob(job)}`);
@@ -548,7 +510,7 @@
 			if (result.success) {
 				setActionNotice('success', `Paused ${summarizeJob(job)}`);
 				logDownloadEvent('success', `[Queue Action] Paused ${summarizeJob(job)}.`);
-				await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
+				await serverQueue.poll();
 				return;
 			}
 			setActionNotice('error', result.error ?? `Failed to pause ${summarizeJob(job)}`);
@@ -563,7 +525,7 @@
 			if (result.success) {
 				setActionNotice('success', `Resumed ${summarizeJob(job)}`);
 				logDownloadEvent('success', `[Queue Action] Resumed ${summarizeJob(job)}.`);
-				await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
+				await serverQueue.poll();
 				return;
 			}
 			setActionNotice('error', result.error ?? `Failed to resume ${summarizeJob(job)}`);
@@ -578,7 +540,7 @@
 			if (result.success) {
 				setActionNotice('success', `Resumed ${summarizeJob(job)}`);
 				logDownloadEvent('success', `[Queue Action] Retried ${summarizeJob(job)}.`);
-				await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
+				await serverQueue.poll();
 				return;
 			}
 			setActionNotice('error', result.error ?? `Failed to resume ${summarizeJob(job)}`);
@@ -593,7 +555,7 @@
 			if (result.success) {
 				setActionNotice('success', `Removed ${summarizeJob(job)}`);
 				logDownloadEvent('success', `[Queue Action] Removed ${summarizeJob(job)} from history.`);
-				await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
+				await serverQueue.poll();
 				return;
 			}
 			setActionNotice('error', result.error ?? `Failed to remove ${summarizeJob(job)}`);
@@ -623,7 +585,7 @@
 					? `[Queue Action] Stop active completed with partial success (${succeeded} succeeded, ${failed} failed).`
 					: `[Queue Action] Stopped ${succeeded} active/queued job(s).`
 			);
-			await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
+			await serverQueue.poll();
 		});
 	};
 
@@ -649,7 +611,7 @@
 					? `[Queue Action] Pause active completed with partial success (${succeeded} succeeded, ${failed} failed).`
 					: `[Queue Action] Paused ${succeeded} active/queued job(s).`
 			);
-			await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
+			await serverQueue.poll();
 		});
 	};
 
@@ -682,7 +644,7 @@
 					? `[Queue Action] Resume all completed with partial success (${succeeded} succeeded, ${failed} failed).`
 					: `[Queue Action] Resumed ${succeeded} paused/failed/cancelled job(s).`
 			);
-			await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
+			await serverQueue.poll();
 		});
 	};
 
@@ -769,14 +731,13 @@
 					? `[Queue Action] Clear history completed with partial success (${succeeded} cleared, ${failed} failed).`
 					: `[Queue Action] Cleared ${succeeded} failed/cancelled entries.`
 			);
-			await Promise.all([serverQueue.poll(), fetchQueueJobs()]);
+			await serverQueue.poll();
 		});
 	};
 
 	const handleManualRefresh = async () => {
 		await runWithPendingAction(actionKeys.refresh, async () => {
 			await serverQueue.poll();
-			await fetchQueueJobs();
 			logDownloadEvent('info', '[Queue Action] Manual queue refresh completed.');
 		});
 	};
@@ -940,14 +901,7 @@
 						{handleRetryJob}
 						{handleCopyFailureReport}
 						{handleRemoveJob}
-						{handlePauseAllActive}
-						{handleStopAllActive}
-						{handleResumeAll}
-						{handleManualRefresh}
 						{handleClearFailed}
-						{canPauseAny}
-						{canStopAny}
-						{canResumeAny}
 						{actionKeys}
 						{isActionPending}
 					/>

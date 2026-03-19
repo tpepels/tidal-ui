@@ -22,13 +22,19 @@ import {
 } from '$lib/server/observability';
 import { finalizeTrack } from '$lib/server/download/finalizeTrack';
 
-// Ensure state is loaded before processing chunks
-const initPromise = startCleanupInterval();
+let initPromise: Promise<void> | null = null;
+
+function ensureUploadStateInitialized(): Promise<void> {
+	if (!initPromise) {
+		initPromise = startCleanupInterval();
+	}
+	return initPromise;
+}
 
 export const POST: RequestHandler = async ({ request, params }) => {
-	// Wait for initialization to complete
-	await initPromise;
-	
+	// Initialize upload state lazily so the route does not perform work during build analysis.
+	await ensureUploadStateInitialized();
+
 	const uploadId = params.uploadId;
 	const chunkIndex = parseInt(request.headers.get('x-chunk-index') || '0');
 	const totalChunks = parseInt(request.headers.get('x-total-chunks') || '0');

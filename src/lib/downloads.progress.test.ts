@@ -263,18 +263,7 @@ describe('downloadAlbum server progress', () => {
 			.mocked(global.fetch)
 			.mock.calls.find((call) => call[0] === '/api/download-queue');
 		const body = JSON.parse((queueCall?.[1] as { body?: string } | undefined)?.body ?? '{}');
-		expect(body.job?.musicBrainzReleaseId).toBeUndefined();
-
-		await new Promise((resolve) => setTimeout(resolve, 0));
-
-		const patchCall = vi
-			.mocked(global.fetch)
-			.mock.calls.find((call) => call[0] === '/api/download-queue/test-job-1');
-		const patchBody = JSON.parse((patchCall?.[1] as { body?: string } | undefined)?.body ?? '{}');
-		expect(patchBody).toMatchObject({
-			action: 'set_musicbrainz_release',
-			musicBrainzReleaseId: 'mb-release-match'
-		});
+		expect(body.job?.musicBrainzReleaseId).toBe('mb-release-match');
 	});
 
 	it('does not auto-select MusicBrainz release id when track count is not compatible', async () => {

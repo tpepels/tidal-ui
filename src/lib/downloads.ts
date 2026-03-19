@@ -1,4 +1,6 @@
 import { losslessAPI } from './api';
+import { musicBrainzClient } from './clients/musicBrainzClient';
+import { queueClient } from './clients/queueClient';
 import type { Album, Track, AudioQuality } from './types';
 import type { DownloadMode, DownloadStorage } from './stores/downloadPreferences';
 
@@ -234,26 +236,16 @@ async function resolveAutomaticMusicBrainzReleaseId(
 	}
 
 	try {
-		const response = await fetch('/api/metadata/musicbrainz-release-search', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				albumTitle,
-				artistName,
-				releaseDate: album.releaseDate,
-				upc: album.upc,
-				limit: 18
-			})
+		const releases = await musicBrainzClient.searchReleases({
+			albumTitle,
+			artistName,
+			releaseDate: album.releaseDate,
+			upc: album.upc,
+			limit: 18
 		});
-		const payload = (await response.json().catch(() => null)) as
-			| { success?: boolean; releases?: MusicBrainzReleaseSearchOption[] }
-			| null;
-		if (!response.ok || !payload?.success || !Array.isArray(payload.releases)) {
-			return undefined;
-		}
 
 		const normalizedTrackCount = Math.trunc(trackCount);
-		const compatibleReleases = payload.releases
+		const compatibleReleases = releases
 			.filter(
 				(release) =>
 					typeof release?.id === 'string' &&
@@ -280,54 +272,6 @@ async function resolveAutomaticMusicBrainzReleaseId(
 	} catch {
 		return undefined;
 	}
-}
-
-async function resolveDeferredMusicBrainzReleaseId(
-	releaseIdPromise: Promise<string | undefined> | undefined
-): Promise<string | undefined> {
-	if (!releaseIdPromise) {
-		return undefined;
-	}
-	try {
-		return normalizeMusicBrainzReleaseId(await releaseIdPromise);
-	} catch {
-		return undefined;
-	}
-}
-
-function patchQueuedAlbumMusicBrainzReleaseId(
-	jobId: string,
-	releaseIdPromise: Promise<string | undefined> | undefined
-): void {
-	if (!jobId || !releaseIdPromise || typeof fetch !== 'function') {
-		return;
-	}
-
-	void (async () => {
-		const releaseId = await resolveDeferredMusicBrainzReleaseId(releaseIdPromise);
-		if (!releaseId) {
-			return;
-		}
-
-		try {
-			const response = await fetch(`/api/download-queue/${jobId}`, {
-				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					action: 'set_musicbrainz_release',
-					musicBrainzReleaseId: releaseId
-				})
-			});
-			if (!response.ok) {
-				throw new Error(`Queue patch failed (${response.status})`);
-			}
-		} catch (error) {
-			console.warn(
-				`[MusicBrainz] Unable to attach deferred release ${releaseId} to queued album job ${jobId}.`,
-				error
-			);
-		}
-	})();
 }
 
 export interface AlbumDownloadCallbacks {
@@ -680,50 +624,37 @@ export async function downloadAlbum(
 		const artistName = preferredArtistName ?? canonicalAlbum.artist?.name ?? 'Unknown Artist';
 		const albumTitle = canonicalAlbum.title ?? 'Unknown Album';
 		const trackCount = tracks.length;
-		const deferredMusicBrainzReleaseIdPromise =
+		const resolvedQueueMusicBrainzReleaseId = normalizeMusicBrainzReleaseId(
 			explicitMusicBrainzReleaseId ||
-			!experimentalMusicBrainzTagging
-				? undefined
-				: options?.musicBrainzReleaseIdPromise ??
-					resolveAutomaticMusicBrainzReleaseId(canonicalAlbum, trackCount, {
-						experimentalMusicBrainzTagging,
-						explicitMusicBrainzReleaseId
-					});
+				(!experimentalMusicBrainzTagging
+					? undefined
+					: await (options?.musicBrainzReleaseIdPromise ??
+						resolveAutomaticMusicBrainzReleaseId(canonicalAlbum, trackCount, {
+							experimentalMusicBrainzTagging,
+							explicitMusicBrainzReleaseId
+						})))
+		);
 
 		// Submit album job to server queue
-		const response = await fetch('/api/download-queue', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				job: {
-					type: 'album',
-					albumId: album.id,
-					quality,
-					artistName,
-					albumTitle,
-					trackCount,
-					experimentalMusicBrainzTagging,
-					strictMusicBrainzMatching,
-					musicBrainzReleaseId: explicitMusicBrainzReleaseId,
-					forceOverwrite: options?.forceOverwrite === true
-				},
+		const payload = await queueClient.submitJob({
+			job: {
+				type: 'album',
+				albumId: album.id,
+				quality,
+				artistName,
+				albumTitle,
+				trackCount,
+				experimentalMusicBrainzTagging,
+				strictMusicBrainzMatching,
+				musicBrainzReleaseId: resolvedQueueMusicBrainzReleaseId,
 				forceOverwrite: options?.forceOverwrite === true
-			})
+			},
+			forceOverwrite: options?.forceOverwrite === true
 		});
-
-		if (!response.ok) {
-			const error = await response.text();
-			throw new Error(`Failed to queue album: ${error}`);
-		}
-
-		const payload = (await response.json()) as { success?: boolean; jobId?: string };
 		if (!payload.success || !payload.jobId) {
 			throw new Error('Failed to queue album: missing job id');
 		}
 		callbacks?.onTotalResolved?.(tracks.length);
-		if (!explicitMusicBrainzReleaseId) {
-			patchQueuedAlbumMusicBrainzReleaseId(payload.jobId, deferredMusicBrainzReleaseIdPromise);
-		}
 
 		// Note: Individual track progress callbacks won't work with queue system
 		// User should monitor via DownloadManager UI instead

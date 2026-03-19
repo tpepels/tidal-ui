@@ -29,7 +29,10 @@ const ROUTE_COMPLIANCE_SPECS: RouteComplianceSpec[] = [
 	{
 		route: '/library-suggestions',
 		archetype: 'collection',
-		files: ['src/routes/library-suggestions/+page.svelte'],
+		files: [
+			'src/routes/library-suggestions/+page.svelte',
+			'src/lib/components/pages/LibrarySuggestionsPageContent.svelte'
+		],
 		requiredBlocks: ['page-header', 'filters-actions', 'results']
 	},
 	{
@@ -41,7 +44,11 @@ const ROUTE_COMPLIANCE_SPECS: RouteComplianceSpec[] = [
 	{
 		route: '/download-center',
 		archetype: 'tool',
-		files: ['src/routes/download-center/+page.svelte', 'src/lib/components/DownloadManager.svelte'],
+		files: [
+			'src/routes/download-center/+page.svelte',
+			'src/lib/components/DownloadManager.svelte',
+			'src/lib/components/download-manager/DownloadManagerPanelIntro.svelte'
+		],
 		requiredBlocks: ['page-header', 'key-summary', 'primary-actions', 'main-sections']
 	},
 	{
@@ -59,7 +66,7 @@ const ROUTE_COMPLIANCE_SPECS: RouteComplianceSpec[] = [
 	{
 		route: '/album/[id]',
 		archetype: 'detail',
-		files: ['src/routes/album/[id]/+page.svelte'],
+		files: ['src/routes/album/[id]/+page.svelte', 'src/lib/components/pages/AlbumPageContent.svelte'],
 		requiredBlocks: [
 			'back-nav',
 			'entity-hero',
@@ -72,7 +79,7 @@ const ROUTE_COMPLIANCE_SPECS: RouteComplianceSpec[] = [
 	{
 		route: '/artist/[id]',
 		archetype: 'detail',
-		files: ['src/routes/artist/[id]/+page.svelte'],
+		files: ['src/routes/artist/[id]/+page.svelte', 'src/lib/components/artist/ArtistDiscographySection.svelte'],
 		requiredBlocks: [
 			'back-nav',
 			'entity-hero',

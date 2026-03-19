@@ -7,6 +7,7 @@
  */
 
 import type { PlayableTrack, AudioQuality, Album } from '$lib/types';
+import { queueClient } from '$lib/clients/queueClient';
 import { buildDownloadFilename, type DownloadError } from '$lib/services/playback/downloadService';
 import { downloadPreferencesStore, type DownloadStorage } from '$lib/stores/downloadPreferences';
 import { userPreferencesStore } from '$lib/stores/userPreferences';
@@ -223,29 +224,29 @@ export class DownloadOrchestrator {
 		// For server downloads, submit directly to server queue API
 		if (effectiveOptions.storage === 'server' && effectiveOptions.useCoordinator !== false) {
 			try {
+				const trackId = Number(track.id);
+				if (!Number.isFinite(trackId) || trackId <= 0) {
+					throw new Error('Track is missing a numeric id');
+				}
+
 				// Get artist name - handle both Track and SonglinkTrack types
 				const artistName =
 					'artistName' in track ? track.artistName : track.artists?.[0]?.name || 'Unknown Artist';
 
 				// Submit track job to server queue
-				const response = await fetch('/api/download-queue', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({
-						job: {
-							type: 'track',
-							trackId: track.id,
-							quality: effectiveOptions.quality || 'LOSSLESS',
-							albumTitle: 'album' in track ? track.album?.title : undefined,
-							artistName,
-							experimentalMusicBrainzTagging: effectiveOptions.experimentalMusicBrainzTagging,
-							strictMusicBrainzMatching: effectiveOptions.strictMusicBrainzMatching
-						}
-					})
+				const result = await queueClient.submitJob({
+					job: {
+						type: 'track',
+						trackId,
+						quality: effectiveOptions.quality || 'LOSSLESS',
+						albumTitle: 'album' in track ? track.album?.title : undefined,
+						artistName,
+						experimentalMusicBrainzTagging: effectiveOptions.experimentalMusicBrainzTagging,
+						strictMusicBrainzMatching: effectiveOptions.strictMusicBrainzMatching
+					}
 				});
-
-				if (!response.ok) {
-					const error = await response.text();
+				if (!result.success || !result.jobId) {
+					const error = result.error ?? 'Unknown queue submission failure';
 					this.log.error(`Failed to queue track "${track.title}" for server download: ${error}`);
 					return {
 						success: false,
@@ -258,7 +259,6 @@ export class DownloadOrchestrator {
 					};
 				}
 
-				const result = (await response.json()) as { success: boolean; jobId: string };
 				this.log.log(
 					`Queued track "${track.title}" for server download (job ${result.jobId.slice(0, 8)}).`
 				);

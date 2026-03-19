@@ -134,19 +134,24 @@
 	});
 
 	$effect(() => {
-		items.length;
-		itemHeightMobile;
-		mobileBreakpoint;
-		overscan;
-		threshold;
-		scheduleUpdate();
+		const dependencyKey = [
+			items.length,
+			itemHeightMobile ?? 'default',
+			mobileBreakpoint,
+			overscan,
+			threshold
+		].join(':');
+		if (dependencyKey.length > 0) {
+			scheduleUpdate();
+		}
 	});
 
 	$effect(() => {
-		range.startIndex;
-		range.endIndex;
-		items.length;
-		void tick().then(measureRenderedItemHeight);
+		const shouldMeasure =
+			range.startIndex >= 0 && range.endIndex >= range.startIndex && items.length >= 0;
+		if (shouldMeasure) {
+			void tick().then(measureRenderedItemHeight);
+		}
 	});
 
 	onMount(() => {

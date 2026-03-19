@@ -5,7 +5,6 @@ import {
 	type DashManifestWithMetadata,
 	DASH_MANIFEST_UNAVAILABLE_CODE
 } from '$lib/api';
-import { API_CONFIG } from '$lib/config';
 import { deriveTrackQuality } from '$lib/utils/audioQuality';
 import type { AudioQuality, PlayableTrack, Track } from '$lib/types';
 import { isSonglinkTrack } from '$lib/types';
@@ -90,6 +89,10 @@ export const createTrackLoadController = (
 	let shakaNetworkingConfigured = false;
 
 	const getCacheKey = (trackId: number, quality: AudioQuality) => `${trackId}:${quality}`;
+	const resolvePlaybackUrl = (url: string): string =>
+		typeof losslessAPI.resolvePlaybackUrl === 'function'
+			? losslessAPI.resolvePlaybackUrl(url)
+			: url;
 
 	/**
 	 * Helper to check if an attempt is still current before and after an async operation.
@@ -169,12 +172,10 @@ export const createTrackLoadController = (
 					}
 					if (Array.isArray(request.uris)) {
 						request.uris = request.uris.map((uri) => {
-							if (uri.startsWith('blob:') || uri.startsWith('data:') || uri.includes('/api/proxy')) {
+							if (uri.startsWith('blob:') || uri.startsWith('data:') || uri.startsWith('/api/')) {
 								return uri;
 							}
-							return API_CONFIG.useProxy && API_CONFIG.proxyUrl
-								? `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(uri)}`
-								: uri;
+							return resolvePlaybackUrl(uri);
 						});
 					}
 				});
@@ -221,11 +222,8 @@ export const createTrackLoadController = (
 		if (!fallbackUrl) {
 			return;
 		}
-		const proxied = API_CONFIG.useProxy && API_CONFIG.proxyUrl
-			? `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(fallbackUrl)}`
-			: fallbackUrl;
 		streamCache.set(getCacheKey(trackId, 'LOSSLESS'), {
-			url: proxied,
+			url: resolvePlaybackUrl(fallbackUrl),
 			replayGain: trackInfo?.replayGain ?? null,
 			sampleRate: trackInfo?.sampleRate ?? null,
 			bitDepth: trackInfo?.bitDepth ?? null
@@ -253,11 +251,8 @@ export const createTrackLoadController = (
 		}
 
 		const data = await losslessAPI.getStreamData(track.id, quality);
-		const url = API_CONFIG.useProxy && API_CONFIG.proxyUrl
-			? `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(data.url)}`
-			: data.url;
 		const entry = {
-			url,
+			url: resolvePlaybackUrl(data.url),
 			replayGain: data.replayGain,
 			sampleRate: data.sampleRate,
 			bitDepth: data.bitDepth

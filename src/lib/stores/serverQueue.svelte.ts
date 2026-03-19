@@ -1,29 +1,23 @@
 /**
- * Server queue store - polls /api/download-queue/stats for real-time queue status
- * Replaces client-side queue polling with server-side state
+ * Server queue store - polls the queue dashboard projection for real-time queue status
  */
 
 import { writable, derived } from 'svelte/store';
+import {
+	queueClient,
+	type QueueDashboardPayload,
+	type QueueJobRecord,
+	type QueueMetrics,
+	type QueueStats,
+	type QueueWorkerStatus
+} from '$lib/clients/queueClient';
 import { createAdaptivePollingController } from '$lib/utils/adaptivePolling';
 
-export interface ServerQueueStatus {
-	queued: number;
-	processing: number;
-	paused: number;
-	completed: number;
-	failed: number;
-	total: number;
-}
-
-export interface WorkerStatus {
-	running: boolean;
-	activeDownloads: number;
-	maxConcurrent: number;
-}
-
 export interface ServerQueueState {
-	queue: ServerQueueStatus;
-	worker: WorkerStatus;
+	jobs: QueueJobRecord[];
+	queue: QueueStats;
+	metrics: QueueMetrics;
+	worker: QueueWorkerStatus;
 	queueSource?: 'redis' | 'memory';
 	lastUpdated: number;
 	lastAttemptAt: number;
@@ -38,6 +32,7 @@ export interface ServerQueueState {
 }
 
 const initialState: ServerQueueState = {
+	jobs: [],
 	queue: {
 		queued: 0,
 		processing: 0,
@@ -45,6 +40,20 @@ const initialState: ServerQueueState = {
 		completed: 0,
 		failed: 0,
 		total: 0
+	},
+	metrics: {
+		total_jobs: 0,
+		queued: 0,
+		processing: 0,
+		paused: 0,
+		completed: 0,
+		failed: 0,
+		cancelled: 0,
+		avg_success_rate: 0,
+		avg_retry_count: 0,
+		total_download_time_ms: 0,
+		avg_job_duration_ms: 0,
+		failure_by_code: {}
 	},
 	worker: {
 		running: false,
@@ -98,12 +107,7 @@ function createServerQueueStore() {
 		}));
 
 		try {
-			const response = await fetch('/api/download-queue/stats');
-			if (!response.ok) {
-				throw new Error(`HTTP ${response.status}`);
-			}
-
-			const data = await response.json();
+			const data = await queueClient.getDashboard();
 
 			if (data.success) {
 				update(() => ({
@@ -119,21 +123,21 @@ function createServerQueueStore() {
 					warning: data.warning
 				}));
 			} else {
-				update(state => ({
+				update((state) => ({
 					...state,
 					lastAttemptAt: attemptAt,
 					nextPollAt: Date.now() + pollingIntervalMs,
 					pollIntervalMs: pollingIntervalMs,
-					backendError: data.error || 'Queue polling failed',
+					backendError: (data as QueueDashboardPayload).error || 'Queue polling failed',
 					pollingError: undefined,
-					backendWarning: data.warning,
-					error: data.error || 'Queue polling failed',
-					warning: data.warning
+					backendWarning: (data as QueueDashboardPayload).warning,
+					error: (data as QueueDashboardPayload).error || 'Queue polling failed',
+					warning: (data as QueueDashboardPayload).warning
 				}));
 			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			update(state => ({
+			update((state) => ({
 				...state,
 				lastAttemptAt: attemptAt,
 				nextPollAt: Date.now() + pollingIntervalMs,
@@ -196,14 +200,14 @@ function createServerQueueStore() {
 export const serverQueue = createServerQueueStore();
 
 // Derived stores for easier access
-export const queueStats = derived(serverQueue, $sq => $sq.queue);
-export const workerStatus = derived(serverQueue, $sq => $sq.worker);
+export const queueStats = derived(serverQueue, ($sq) => $sq.queue);
+export const workerStatus = derived(serverQueue, ($sq) => $sq.worker);
 export const hasActiveDownloads = derived(
 	queueStats,
-	$stats => $stats.processing > 0 || $stats.queued > 0
+	($stats) => $stats.processing > 0 || $stats.queued > 0
 );
-export const hasFailed = derived(queueStats, $stats => $stats.failed > 0);
+export const hasFailed = derived(queueStats, ($stats) => $stats.failed > 0);
 export const totalDownloads = derived(
 	queueStats,
-	$stats => $stats.processing + $stats.queued
+	($stats) => $stats.processing + $stats.queued
 );

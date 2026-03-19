@@ -1,3 +1,5 @@
+import { queueClient } from '$lib/clients/queueClient';
+
 export type RemoteQueueStatus =
 	| 'queued'
 	| 'processing'
@@ -29,29 +31,15 @@ export async function pollAlbumQueueJob(options: {
 	completedTracks: number;
 	error: string | null;
 } | null> {
-	const fetchImpl = options.fetchImpl ?? fetch;
-	const response = await fetchImpl(`/api/download-queue/${options.jobId}`);
-	if (!response.ok) {
-		return null;
-	}
-	const payload = (await response.json()) as {
-		success?: boolean;
-		job?: {
-			status?: RemoteQueueStatus;
-			trackCount?: number;
-			completedTracks?: number;
-			progress?: number;
-			error?: string;
-		};
-	};
-	if (!payload.success || !payload.job || !payload.job.status) {
+	const job = await queueClient.getJob(options.jobId, options.fetchImpl);
+	if (!job?.status) {
 		return null;
 	}
 
-	const total = Number(payload.job.trackCount);
-	const completed = Number(payload.job.completedTracks);
+	const total = Number(job.trackCount);
+	const completed = Number(job.completedTracks);
 	const fallbackCompleted =
-		Number(payload.job.progress) * (options.currentTotalTracks || options.fallbackTrackCount || 0);
+		Number(job.progress) * (options.currentTotalTracks || options.fallbackTrackCount || 0);
 	const progress = resolveQueueProgress(
 		total,
 		Number.isFinite(completed) ? completed : fallbackCompleted,
@@ -59,10 +47,10 @@ export async function pollAlbumQueueJob(options: {
 	);
 
 	return {
-		status: payload.job.status,
+		status: job.status,
 		totalTracks: progress.total,
 		completedTracks: progress.completed,
-		error: payload.job.error ?? null
+		error: job.error ?? null
 	};
 }
 
@@ -71,16 +59,10 @@ export async function requestAlbumQueueAction(options: {
 	action: 'cancel' | 'resume';
 	fetchImpl?: typeof fetch;
 }): Promise<void> {
-	const fetchImpl = options.fetchImpl ?? fetch;
-	const response = await fetchImpl(`/api/download-queue/${options.jobId}`, {
-		method: 'PATCH',
-		headers: {
-			'Content-Type': 'application/json'
-		},
-		body: JSON.stringify({ action: options.action })
+	const result = await queueClient.requestJobAction(options.jobId, options.action, {
+		fetchImpl: options.fetchImpl
 	});
-	if (!response.ok) {
-		const body = await response.text();
-		throw new Error(body || `Failed to ${options.action} download`);
+	if (!result.success) {
+		throw new Error(result.error || `Failed to ${options.action} download`);
 	}
 }

@@ -2,7 +2,7 @@ import * as fs from 'node:fs/promises';
 import type { Dirent } from 'node:fs';
 import * as path from 'node:path';
 import { parseFile } from 'music-metadata';
-import { getTempDir, moveFile } from '../../routes/api/download-track/_shared';
+import { getTempDir, moveFile } from '$lib/server/download/shared';
 import { validateAudioFileIntegrity } from './download/audioIntegrity';
 import { clearMediaLibraryScanCache } from './mediaLibraryCache';
 import { scanLocalMediaLibrary } from './mediaLibraryScan';

@@ -123,8 +123,9 @@
 	}
 
 	$effect(() => {
-		activeSrc;
-		isLoaded = false;
+		if (activeSrc === null || typeof activeSrc === 'string') {
+			isLoaded = false;
+		}
 	});
 </script>
 

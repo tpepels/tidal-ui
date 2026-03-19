@@ -1,4 +1,4 @@
-import { sanitizeDirName } from '../../routes/api/download-track/_shared';
+import { sanitizeDirName } from '$lib/server/download/shared';
 import { getEmbeddedTags, getLibraryAlbumLookupIndex } from './mediaLibraryIndex';
 import { scanLocalMediaLibrary } from './mediaLibraryScan';
 import {

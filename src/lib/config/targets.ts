@@ -297,7 +297,14 @@ async function defaultIsTrustedHostname(hostname: string): Promise<boolean> {
 	}
 
 	try {
-		const dns = await import('node:dns/promises');
+		const dns = await loadNodeDnsPromises();
+		if (!dns) {
+			hostnameTrustCache.set(normalized, {
+				trusted: false,
+				expiresAt: Date.now() + DYNAMIC_HOSTNAME_CACHE_TTL_MS
+			});
+			return false;
+		}
 		const records = await dns.lookup(normalized, { all: true, verbatim: true });
 		if (!Array.isArray(records) || records.length === 0) {
 			hostnameTrustCache.set(normalized, {
@@ -319,6 +326,37 @@ async function defaultIsTrustedHostname(hostname: string): Promise<boolean> {
 		});
 		return false;
 	}
+}
+
+type NodeDnsPromisesModule = {
+	lookup(
+		hostname: string,
+		options: { all: true; verbatim: true }
+	): Promise<Array<{ address: string }>>;
+};
+
+async function loadNodeDnsPromises(): Promise<NodeDnsPromisesModule | null> {
+	const nodeProcess = process as typeof process & {
+		getBuiltinModule?: (id: string) => unknown;
+	};
+	const builtinModule = nodeProcess.getBuiltinModule?.('node:dns/promises');
+	if (builtinModule && typeof builtinModule === 'object') {
+		return builtinModule as NodeDnsPromisesModule;
+	}
+
+	try {
+		const dynamicImport = new Function(
+			'return import("node:dns/promises")'
+		) as () => Promise<unknown>;
+		const loadedModule = await dynamicImport();
+		if (loadedModule && typeof loadedModule === 'object') {
+			return loadedModule as NodeDnsPromisesModule;
+		}
+	} catch {
+		return null;
+	}
+
+	return null;
 }
 
 async function filterTrustedDynamicTargets(

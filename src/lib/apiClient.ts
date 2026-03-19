@@ -1,8 +1,10 @@
+import { z } from 'zod';
 import { API_CONFIG, fetchWithCORS, selectApiTargetForRegion } from '$lib/config';
+import { musicBrainzClient } from '$lib/clients/musicBrainzClient';
 import type { RegionOption } from '$lib/stores/region';
 import { parseTidalUrl } from './utils/urlParser';
 import { buildStandardMetadataEntries, type StandardMetadataKey } from './utils/metadataStandard';
-import { prepareAlbum, prepareArtist, prepareTrack } from './api/normalizers';
+import { normalizeSearchResponse, prepareAlbum, prepareArtist, prepareTrack } from './api/normalizers';
 import {
 	getAlbum,
 	getArtist,
@@ -27,7 +29,21 @@ import {
 	resolveHiResStreamFromDash as resolveHiResStreamFromDashHelper,
 	resolveTrackStreamUrl
 } from './api/streamDownload';
-import { TrackInfoSchema, StreamDataSchema, safeValidateApiResponse } from './utils/schemas';
+import {
+	AlbumSchema,
+	AlbumSearchResponseSchema,
+	AlbumWithTracksSchema,
+	ArtistDetailsSchema,
+	ArtistSchema,
+	ArtistSearchResponseSchema,
+	PlaylistSearchResponseSchema,
+	PlaylistWithTracksSchema,
+	StreamDataSchema,
+	TrackInfoSchema,
+	TrackSchema,
+	TrackSearchResponseSchema,
+	safeValidateApiResponse
+} from './utils/schemas';
 import type {
 	Track,
 	Artist,
@@ -47,6 +63,20 @@ import type {
 const API_BASE = API_CONFIG.baseUrl;
 const RATE_LIMIT_ERROR_MESSAGE = 'Too Many Requests. Please wait a moment and try again.';
 export const DASH_MANIFEST_UNAVAILABLE_CODE = 'DASH_MANIFEST_UNAVAILABLE';
+const TrackLookupSchema = z.object({
+	track: TrackSchema,
+	info: TrackInfoSchema,
+	originalTrackUrl: z.string().optional()
+});
+const ArtistRecommendationsSchema = z.object({
+	source: z.union([z.literal('artist-mix'), z.literal('none')]),
+	reason: z.string().optional(),
+	mixId: z.string().optional(),
+	mixTitle: z.string().optional(),
+	mixSubtitle: z.string().optional(),
+	artists: z.array(ArtistSchema),
+	albums: z.array(AlbumSchema)
+});
 
 type CodedError = Error & { code?: string };
 
@@ -135,6 +165,114 @@ class LosslessAPI {
 			fetch: (url: string, options?: RequestInit) => this.fetch(url, options),
 			ensureNotRateLimited: this.ensureNotRateLimited.bind(this)
 		};
+	}
+
+	private isBrowserRuntime(): boolean {
+		return typeof window !== 'undefined' && typeof window.document !== 'undefined';
+	}
+
+	private getAppErrorMessage(payload: unknown, status: number): string {
+		if (status === 429) {
+			return RATE_LIMIT_ERROR_MESSAGE;
+		}
+		if (payload && typeof payload === 'object') {
+			const candidate = payload as Record<string, unknown>;
+			if (typeof candidate.error === 'string' && candidate.error.trim().length > 0) {
+				return candidate.error;
+			}
+			if (typeof candidate.detail === 'string' && candidate.detail.trim().length > 0) {
+				return candidate.detail;
+			}
+			if (typeof candidate.userMessage === 'string' && candidate.userMessage.trim().length > 0) {
+				return candidate.userMessage;
+			}
+		}
+		return `Request failed (${status})`;
+	}
+
+	private validateAppPayload<T>(payload: unknown, schema: z.ZodTypeAny, endpoint: string): T {
+		const validation = safeValidateApiResponse(payload, schema, {
+			endpoint,
+			allowUnvalidated: false
+		});
+		if (!validation.success) {
+			throw new Error(`Malformed ${endpoint} response`);
+		}
+		return payload as T;
+	}
+
+	private async fetchAppPayload(path: string, init?: RequestInit): Promise<unknown> {
+		const response = await fetch(path, init);
+		let payload: unknown;
+		try {
+			payload = await response.json();
+		} catch (error) {
+			if (!response.ok) {
+				throw new Error(this.getAppErrorMessage(undefined, response.status));
+			}
+			throw error instanceof Error ? error : new Error('Invalid JSON response');
+		}
+		if (!response.ok) {
+			throw new Error(this.getAppErrorMessage(payload, response.status));
+		}
+		return payload;
+	}
+
+	private async fetchAppJson<T>(path: string, init?: RequestInit): Promise<T> {
+		return (await this.fetchAppPayload(path, init)) as T;
+	}
+
+	private async fetchValidatedAppJson<T>(
+		path: string,
+		schema: z.ZodTypeAny,
+		endpoint: string,
+		init?: RequestInit
+	): Promise<T> {
+		const payload = await this.fetchAppPayload(path, init);
+		return this.validateAppPayload(payload, schema, endpoint);
+	}
+
+	private parseBrowserSearchResponse<T>(
+		payload: unknown,
+		key: 'tracks' | 'artists' | 'albums' | 'playlists',
+		schema: z.ZodTypeAny,
+		endpoint: string
+	): SearchResponse<T> {
+		const normalized = normalizeSearchResponse<T>(payload, key);
+		return this.validateAppPayload<SearchResponse<T>>(normalized, schema, endpoint);
+	}
+
+	private async parseBrowserTrackLookupPayload(
+		trackId: number,
+		payload: unknown
+	): Promise<TrackLookup> {
+		const validation = safeValidateApiResponse(payload, TrackLookupSchema, {
+			endpoint: 'catalog.track',
+			allowUnvalidated: false
+		});
+		if (validation.success) {
+			return {
+				track: prepareTrack(validation.data.track as Track),
+				info: validation.data.info as TrackInfo,
+				originalTrackUrl: validation.data.originalTrackUrl
+			};
+		}
+		try {
+			if (this.isV2ApiContainer(payload)) {
+				return await this.parseTrackLookupV2(trackId, payload, 'v2');
+			}
+			return this.parseTrackLookup(payload);
+		} catch {
+			throw new Error('Malformed catalog.track response');
+		}
+	}
+
+	private serializeArtworkIdForRoute(artworkId: string): string | null {
+		const normalized = this.normalizeArtworkId(artworkId);
+		if (!normalized) {
+			return null;
+		}
+		return normalized.replace(/\//g, '-');
 	}
 
 	private ensureNotRateLimited(response: Response): void {
@@ -362,10 +500,47 @@ class LosslessAPI {
 		return fetchWithCORS(url, options);
 	}
 
+	resolvePlaybackUrl(url: string): string {
+		const trimmed = url.trim();
+		if (!trimmed) {
+			return '';
+		}
+		if (
+			trimmed.startsWith('blob:') ||
+			trimmed.startsWith('data:') ||
+			trimmed.startsWith('/api/')
+		) {
+			return trimmed;
+		}
+		if (!API_CONFIG.useProxy || !API_CONFIG.proxyUrl) {
+			return trimmed;
+		}
+		return `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(trimmed)}`;
+	}
+
 	/**
 	 * Search for tracks
 	 */
 	async searchTracks(query: string, region: RegionOption = 'auto'): Promise<SearchResponse<Track>> {
+		if (this.isBrowserRuntime()) {
+			const payload = await this.fetchAppPayload(
+				`/api/catalog/search?${new URLSearchParams({
+					type: 'tracks',
+					q: query,
+					region
+				}).toString()}`
+			);
+			const result = this.parseBrowserSearchResponse<Track>(
+				payload,
+				'tracks',
+				TrackSearchResponseSchema,
+				'catalog.search.tracks'
+			);
+			return {
+				...result,
+				items: result.items.map((track) => prepareTrack(track))
+			};
+		}
 		return searchTracks(this.getSearchContext(), query, region);
 	}
 
@@ -376,6 +551,25 @@ class LosslessAPI {
 		query: string,
 		region: RegionOption = 'auto'
 	): Promise<SearchResponse<Artist>> {
+		if (this.isBrowserRuntime()) {
+			const payload = await this.fetchAppPayload(
+				`/api/catalog/search?${new URLSearchParams({
+					type: 'artists',
+					q: query,
+					region
+				}).toString()}`
+			);
+			const result = this.parseBrowserSearchResponse<Artist>(
+				payload,
+				'artists',
+				ArtistSearchResponseSchema,
+				'catalog.search.artists'
+			);
+			return {
+				...result,
+				items: result.items.map((artist) => prepareArtist(artist))
+			};
+		}
 		return searchArtists(this.getSearchContext(), query, region);
 	}
 
@@ -387,6 +581,27 @@ class LosslessAPI {
 		region: RegionOption = 'auto',
 		artistQuery?: string
 	): Promise<SearchResponse<Album>> {
+		if (this.isBrowserRuntime()) {
+			const params = new URLSearchParams({
+				type: 'albums',
+				q: query,
+				region
+			});
+			if (artistQuery?.trim()) {
+				params.set('artistQuery', artistQuery.trim());
+			}
+			const payload = await this.fetchAppPayload(`/api/catalog/search?${params.toString()}`);
+			const result = this.parseBrowserSearchResponse<Album>(
+				payload,
+				'albums',
+				AlbumSearchResponseSchema,
+				'catalog.search.albums'
+			);
+			return {
+				...result,
+				items: result.items.map((album) => prepareAlbum(album))
+			};
+		}
 		return searchAlbums(this.getSearchContext(), query, region, artistQuery);
 	}
 
@@ -397,6 +612,21 @@ class LosslessAPI {
 		query: string,
 		region: RegionOption = 'auto'
 	): Promise<SearchResponse<Playlist>> {
+		if (this.isBrowserRuntime()) {
+			const payload = await this.fetchAppPayload(
+				`/api/catalog/search?${new URLSearchParams({
+					type: 'playlists',
+					q: query,
+					region
+				}).toString()}`
+			);
+			return this.parseBrowserSearchResponse<Playlist>(
+				payload,
+				'playlists',
+				PlaylistSearchResponseSchema,
+				'catalog.search.playlists'
+			);
+		}
 		return searchPlaylists(this.getSearchContext(), query, region);
 	}
 
@@ -475,6 +705,12 @@ class LosslessAPI {
 		quality: AudioQuality = 'LOSSLESS',
 		options?: { skipTarget?: string }
 	): Promise<TrackLookup> {
+		if (this.isBrowserRuntime()) {
+			const payload = await this.fetchAppPayload(
+				`/api/catalog/track/${id}?${new URLSearchParams({ quality }).toString()}`
+			);
+			return this.parseBrowserTrackLookupPayload(id, payload);
+		}
 		const url = `${this.baseUrl}/track/?id=${id}&quality=${quality}`;
 		let lastError: Error | null = null;
 
@@ -542,6 +778,11 @@ class LosslessAPI {
 		trackId: number,
 		quality: AudioQuality = 'HI_RES_LOSSLESS'
 	): Promise<DashManifestWithMetadata> {
+		if (this.isBrowserRuntime()) {
+			return this.fetchAppJson<DashManifestWithMetadata>(
+				`/api/playback/track/${trackId}/dash?${new URLSearchParams({ quality }).toString()}`
+			);
+		}
 		let lastError: Error | null = null;
 
 		for (let attempt = 1; attempt <= 3; attempt += 1) {
@@ -595,6 +836,20 @@ class LosslessAPI {
 		id: number,
 		options?: { signal?: AbortSignal }
 	): Promise<{ album: Album; tracks: Track[] }> {
+		if (this.isBrowserRuntime()) {
+			const result = await this.fetchValidatedAppJson<{ album: Album; tracks: Track[] }>(
+				`/api/catalog/album/${id}`,
+				AlbumWithTracksSchema,
+				'catalog.album',
+				{
+					signal: options?.signal
+				}
+			);
+			return {
+				album: prepareAlbum(result.album),
+				tracks: result.tracks.map((track) => prepareTrack(track))
+			};
+		}
 		return getAlbum(this.getCatalogContext(), id, options);
 	}
 
@@ -602,6 +857,13 @@ class LosslessAPI {
 	 * Get playlist details
 	 */
 	async getPlaylist(uuid: string): Promise<{ playlist: Playlist; items: Array<{ item: Track }> }> {
+		if (this.isBrowserRuntime()) {
+			return this.fetchValidatedAppJson<{ playlist: Playlist; items: Array<{ item: Track }> }>(
+				`/api/catalog/playlist/${encodeURIComponent(uuid)}`,
+				PlaylistWithTracksSchema,
+				'catalog.playlist'
+			);
+		}
 		return getPlaylist(this.getCatalogContext(), uuid);
 	}
 
@@ -619,13 +881,22 @@ class LosslessAPI {
 			signal?: AbortSignal;
 		}
 	): Promise<ArtistDetails> {
-		const officialOrigin =
-			typeof window !== 'undefined' && window.location?.origin ? window.location.origin : undefined;
-		return getArtist(this.getCatalogContext(), id, {
-			...options,
-			officialEnrichment: Boolean(officialOrigin),
-			officialOrigin
-		});
+		if (this.isBrowserRuntime()) {
+			const result = await this.fetchValidatedAppJson<ArtistDetails>(
+				`/api/catalog/artist/${id}`,
+				ArtistDetailsSchema,
+				'catalog.artist',
+				{
+					signal: options?.signal
+				}
+			);
+			return {
+				...prepareArtist(result),
+				albums: (result.albums ?? []).map((album) => prepareAlbum(album)),
+				tracks: (result.tracks ?? []).map((track) => prepareTrack(track))
+			};
+		}
+		return getArtist(this.getCatalogContext(), id, options);
 	}
 
 	/**
@@ -637,6 +908,19 @@ class LosslessAPI {
 			signal?: AbortSignal;
 		}
 	): Promise<ArtistRecommendations> {
+		if (this.isBrowserRuntime()) {
+			const result = await this.fetchValidatedAppJson<ArtistRecommendations>(
+				`/api/catalog/artist/${id}/recommendations`,
+				ArtistRecommendationsSchema,
+				'catalog.artistRecommendations',
+				{ signal: options?.signal }
+			);
+			return {
+				...result,
+				artists: result.artists.map((artist) => prepareArtist(artist)),
+				albums: result.albums.map((album) => prepareAlbum(album))
+			};
+		}
 		return getArtistRecommendations(this.getCatalogContext(), id, options);
 	}
 
@@ -666,6 +950,14 @@ class LosslessAPI {
 		sampleRate: number | null;
 		bitDepth: number | null;
 	}> {
+		if (this.isBrowserRuntime()) {
+			return this.fetchAppJson<{
+				url: string;
+				replayGain: number | null;
+				sampleRate: number | null;
+				bitDepth: number | null;
+			}>(`/api/playback/track/${trackId}/stream?${new URLSearchParams({ quality }).toString()}`);
+		}
 		return getStreamDataForTrack({
 			trackId,
 			quality,
@@ -845,28 +1137,11 @@ class LosslessAPI {
 		}
 
 		try {
-			const response = await fetch('/api/metadata/musicbrainz', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					track,
-					strictIsrcMatch,
-					preferredReleaseId: musicBrainzReleaseId
-				}),
+			const payload = await musicBrainzClient.lookupTrackMetadata(track, {
+				strictIsrcMatch,
+				preferredReleaseId: musicBrainzReleaseId,
 				signal
 			});
-			if (!response.ok) {
-				throw new Error(`MusicBrainz lookup failed (${response.status})`);
-			}
-			const payload = (await response.json()) as {
-				success?: boolean;
-				lookupStatus?: 'matched' | 'no_match' | 'lookup_failed';
-				tags?: Record<string, string>;
-				error?: string;
-			};
-			if (!payload.success) {
-				throw new Error(payload.error || 'MusicBrainz lookup failed');
-			}
 			const tags = payload.tags ?? {};
 			if (payload.lookupStatus === 'matched') {
 				this.musicBrainzTagCache.set(cacheKey, tags);
@@ -919,7 +1194,7 @@ class LosslessAPI {
 					this.inferMimeFromExtension(extension, fallbackType),
 				buildMetadataEntries: (candidateLookup, extra) =>
 					this.buildMetadataEntries(candidateLookup, extra),
-				getCoverUrl: (coverId, size, coverOptions) => this.getCoverUrl(coverId, size, coverOptions)
+				getCoverUrl: (coverId, size) => this.getCoverUrl(coverId, size)
 			}
 		});
 	}
@@ -1028,7 +1303,7 @@ class LosslessAPI {
 				this.fetchTrackBlob(candidateTrackId, candidateQuality, candidateFilename, downloadOptions),
 			getPreferredTrackMetadata: (candidateTrackId, candidateQuality) =>
 				this.getPreferredTrackMetadata(candidateTrackId, candidateQuality),
-			getCoverUrl: (coverId, size, coverOptions) => this.getCoverUrl(coverId, size, coverOptions),
+			getCoverUrl: (coverId, size) => this.getCoverUrl(coverId, size),
 			rateLimitErrorMessage: RATE_LIMIT_ERROR_MESSAGE
 		});
 	}
@@ -1146,18 +1421,13 @@ class LosslessAPI {
 
 	getCoverUrl(
 		coverId: string,
-		size: '1280' | '640' | '320' | '160' | '80' = '640',
-		options?: { proxy?: boolean }
+		size: '1280' | '640' | '320' | '160' | '80' = '640'
 	): string {
-		const normalizedCoverId = this.normalizeArtworkId(coverId);
-		if (!normalizedCoverId) {
+		const routeId = this.serializeArtworkIdForRoute(coverId);
+		if (!routeId) {
 			return '';
 		}
-		const url = `https://resources.tidal.com/images/${normalizedCoverId.replace(/-/g, '/')}/${size}x${size}.jpg`;
-		if (!options?.proxy || !API_CONFIG.proxyUrl) {
-			return url;
-		}
-		return `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(url)}`;
+		return `/api/artwork/cover/${encodeURIComponent(routeId)}/${size}`;
 	}
 
 	getCoverUrlFallbacks(
@@ -1168,18 +1438,12 @@ class LosslessAPI {
 		const sizes = options?.includeLowerSizes ? LosslessAPI.getFallbackCoverSizes(size) : [size];
 		const candidates: string[] = [];
 		for (const candidateSize of sizes) {
-			const directUrl = this.getCoverUrl(coverId, candidateSize, { proxy: false });
+			const directUrl = this.getCoverUrl(coverId, candidateSize);
 			if (!directUrl) {
 				continue;
 			}
 			if (!candidates.includes(directUrl)) {
 				candidates.push(directUrl);
-			}
-			if (options?.proxy && API_CONFIG.proxyUrl) {
-				const proxyUrl = `${API_CONFIG.proxyUrl}?url=${encodeURIComponent(directUrl)}`;
-				if (!candidates.includes(proxyUrl)) {
-					candidates.push(proxyUrl);
-				}
 			}
 		}
 		return candidates;
@@ -1192,7 +1456,11 @@ class LosslessAPI {
 		videoCoverId: string,
 		size: '1280' | '640' | '320' | '160' | '80' = '640'
 	): string {
-		return `https://resources.tidal.com/videos/${videoCoverId.replace(/-/g, '/')}/${size}x${size}.mp4`;
+		const routeId = this.serializeArtworkIdForRoute(videoCoverId);
+		if (!routeId) {
+			return '';
+		}
+		return `/api/artwork/video/${encodeURIComponent(routeId)}/${size}`;
 	}
 
 	/**
@@ -1204,9 +1472,9 @@ class LosslessAPI {
 			return '';
 		}
 
-		const normalizedPictureId = this.normalizeArtworkId(trimmed);
-		if (normalizedPictureId) {
-			return `https://resources.tidal.com/images/${normalizedPictureId.replace(/-/g, '/')}/${size}x${size}.jpg`;
+		const routeId = this.serializeArtworkIdForRoute(trimmed);
+		if (routeId) {
+			return `/api/artwork/artist/${encodeURIComponent(routeId)}/${size}`;
 		}
 
 		if (/^https?:\/\//i.test(trimmed)) {

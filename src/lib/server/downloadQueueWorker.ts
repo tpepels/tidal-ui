@@ -40,7 +40,12 @@ import {
 } from './downloadQueueWorkerStaging';
 import { processTrackJob, downloadAlbumTrackWithPolicy } from './downloadQueueWorkerTrack';
 import { shouldStopJob } from './downloadQueueWorkerControl';
-import { downloadCoverToDir, ensureDir, getDownloadDir, sanitizeDirName } from '../../routes/api/download-track/_shared';
+import {
+	downloadCoverToDir,
+	ensureDir,
+	getDownloadDir,
+	sanitizeDirName
+} from '$lib/server/download/shared';
 
 let isRunning = false;
 let stopRequested = false;

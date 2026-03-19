@@ -6,7 +6,7 @@ describe('LosslessAPI artwork URL helpers', () => {
 		const pictureUrl =
 			'https://resources.tidal.com/images/19f754b8/4882/4cef/86e6/440e7dd57afb/320x320.jpg';
 		expect(losslessAPI.getArtistPictureUrl(pictureUrl, '750')).toBe(
-			'https://resources.tidal.com/images/19f754b8/4882/4cef/86e6/440e7dd57afb/750x750.jpg'
+			'/api/artwork/artist/19f754b8-4882-4cef-86e6-440e7dd57afb/750'
 		);
 	});
 
@@ -16,19 +16,13 @@ describe('LosslessAPI artwork URL helpers', () => {
 	});
 
 	it('returns direct cover URL candidates before proxy fallbacks', () => {
-		const expectedDirectUrl =
-			'https://resources.tidal.com/images/19f754b8/4882/4cef/86e6/440e7dd57afb/640x640.jpg';
+		const expectedDirectUrl = '/api/artwork/cover/19f754b8-4882-4cef-86e6-440e7dd57afb/640';
 		const candidates = losslessAPI.getCoverUrlFallbacks(
 			'19f754b8-4882-4cef-86e6-440e7dd57afb',
 			'640',
 			{ proxy: true, includeLowerSizes: false }
 		);
 		expect(candidates[0]).toBe(expectedDirectUrl);
-
-		const proxyCandidate = candidates.find((candidate) => candidate.includes('/api/proxy?url='));
-		if (proxyCandidate) {
-			expect(candidates.indexOf(proxyCandidate)).toBeGreaterThan(0);
-			expect(proxyCandidate).toBe(`/api/proxy?url=${encodeURIComponent(expectedDirectUrl)}`);
-		}
+		expect(candidates).toHaveLength(1);
 	});
 });

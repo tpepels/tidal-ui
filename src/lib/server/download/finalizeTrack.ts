@@ -27,7 +27,7 @@ import {
 	ERROR_CODES,
 	type ConflictResolution,
 	type DownloadError
-} from '../../../routes/api/download-track/_shared';
+} from '$lib/server/download/shared';
 
 export interface FinalizeTrackParams {
 	trackId: number;

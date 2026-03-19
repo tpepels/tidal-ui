@@ -20,7 +20,7 @@
 	import PageState from '$lib/components/ui/PageState.svelte';
 	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
 	import MediaRow from '$lib/components/ui/MediaRow.svelte';
-	import type { Album, Artist } from '$lib/types';
+	import type { Album } from '$lib/types';
 	import { Activity, Disc, Library, LoaderCircle, RefreshCw, User } from 'lucide-svelte';
 
 	const meta = getRouteMeta('/library-suggestions');
@@ -123,13 +123,6 @@
 			console.warn('[Library Suggestions] Failed to restore cache:', error);
 			return false;
 		}
-	}
-
-	function getAlbumCoverSrc(cover: string | null | undefined): string | null {
-		if (typeof cover !== 'string' || cover.trim().length === 0) {
-			return null;
-		}
-		return losslessAPI.getCoverUrl(cover, '640') || null;
 	}
 
 	function getAlbumCoverCacheKey(album: Album): string | null {

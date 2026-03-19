@@ -1,21 +1,7 @@
+import { musicBrainzClient, type MusicBrainzReleaseOption } from '$lib/clients/musicBrainzClient';
 import type { Album, Track } from '$lib/types';
 
-export type MusicBrainzReleaseOption = {
-	id: string;
-	title?: string;
-	artistCredit?: string;
-	status?: string;
-	country?: string;
-	date?: string;
-	trackCount?: number;
-	barcode?: string;
-};
-
-type MusicBrainzReleaseSearchPayload = {
-	success?: boolean;
-	error?: string;
-	releases?: MusicBrainzReleaseOption[];
-} | null;
+export type { MusicBrainzReleaseOption } from '$lib/clients/musicBrainzClient';
 
 export function formatMusicBrainzReleaseOption(release: MusicBrainzReleaseOption): string {
 	const trackCountLabel =
@@ -92,26 +78,18 @@ export async function lookupAlbumMusicBrainzReleases(options: {
 	releases: MusicBrainzReleaseOption[];
 	selectedReleaseId: string;
 }> {
-	const fetchImpl = options.fetchImpl ?? fetch;
-	const response = await fetchImpl('/api/metadata/musicbrainz-release-search', {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({
+	const releases = await musicBrainzClient.searchReleases(
+		{
 			albumTitle: options.album.title,
 			artistName: options.album.artist?.name,
 			releaseDate: options.album.releaseDate,
 			upc: options.album.upc,
 			limit: 12
-		})
-	});
-	const payload = (await response.json().catch(() => null)) as MusicBrainzReleaseSearchPayload;
-	if (!response.ok || !payload?.success) {
-		throw new Error(payload?.error || 'Failed to search MusicBrainz releases');
-	}
-
-	const releases = Array.isArray(payload.releases)
-		? payload.releases.filter((release) => typeof release?.id === 'string' && release.id.length > 0)
-		: [];
+		},
+		{
+			fetchImpl: options.fetchImpl
+		}
+	);
 	if (releases.length === 0) {
 		return {
 			releases: [],

@@ -23,14 +23,7 @@
 		handleRetryJob,
 		handleCopyFailureReport,
 		handleRemoveJob,
-		handlePauseAllActive,
-		handleStopAllActive,
-		handleResumeAll,
-		handleManualRefresh,
 		handleClearFailed,
-		canPauseAny,
-		canStopAny,
-		canResumeAny,
 		actionKeys,
 		isActionPending
 	} = $props();
@@ -47,7 +40,6 @@
 	let filteredCompletedJobs = $derived(
 		completedJobs.filter((job: QueueJob) => matchesTypeFilter(job, completedTypeFilter))
 	);
-	let queuedPreviewJobs = $derived(queuedJobs.slice(0, 4));
 	let completedAlbums = $derived(completedJobs.filter((j: QueueJob) => j.job.type === 'album').length);
 	let completedFiles = $derived(
 		completedJobs.reduce((sum: number, job: QueueJob) => {

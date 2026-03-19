@@ -24,8 +24,14 @@ import { finalizeTrack } from '$lib/server/download/finalizeTrack';
 import { z } from 'zod';
 import { TrackInfoSchema, TrackSchema, safeValidateApiResponse } from '$lib/utils/schemas';
 
-// Start the cleanup interval when the module loads (with await to ensure state is loaded)
-const initPromise = startCleanupInterval();
+let initPromise: Promise<void> | null = null;
+
+function ensureUploadStateInitialized(): Promise<void> {
+	if (!initPromise) {
+		initPromise = startCleanupInterval();
+	}
+	return initPromise;
+}
 
 const UploadTrackLookupSchema = z.object({
 	track: TrackSchema,
@@ -62,8 +68,8 @@ function validateTrackMetadataInput(
 }
 
 export const POST: RequestHandler = async ({ request, url }) => {
-	// Ensure initialization completes before processing requests
-	await initPromise;
+	// Initialize upload state lazily so the route does not perform work during build analysis.
+	await ensureUploadStateInitialized();
 
 	let startedUploadId: string | undefined;
 	const pathParts = url.pathname.split('/');

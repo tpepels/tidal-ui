@@ -23,8 +23,9 @@
 	const resolvedSrc = $derived(isInView ? src : placeholder);
 
 	$effect(() => {
-		resolvedSrc;
-		isLoaded = false;
+		if (resolvedSrc === src || resolvedSrc === placeholder) {
+			isLoaded = false;
+		}
 	});
 
 	$effect(() => {

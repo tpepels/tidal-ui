@@ -1,6 +1,6 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { ensureDir, getDownloadDir, getTempDir } from '../../routes/api/download-track/_shared';
+import { ensureDir, getDownloadDir, getTempDir } from '$lib/server/download/shared';
 
 function randomSuffix(): string {
 	return Math.random().toString(36).slice(2, 10);

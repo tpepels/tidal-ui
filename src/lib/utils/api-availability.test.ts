@@ -1,5 +1,45 @@
 import { describe, it, expect } from 'vitest';
-import { fetchWithCORS } from '../config';
+
+const PROBE_PATH = '/search/tracks?query=test&limit=1';
+const PROBE_TIMEOUT_MS = 2500;
+
+async function probeTarget(target: string): Promise<{ reachable: boolean; detail: string }> {
+	let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+	const timeoutResult = new Promise<{ reachable: boolean; detail: string }>((resolve) => {
+		timeoutHandle = setTimeout(() => {
+			resolve({
+				reachable: false,
+				detail: `Timed out after ${PROBE_TIMEOUT_MS}ms`
+			});
+		}, PROBE_TIMEOUT_MS);
+	});
+
+	const fetchResult = (async (): Promise<{ reachable: boolean; detail: string }> => {
+		try {
+			const response = await fetch(`${target}${PROBE_PATH}`, {
+				headers: {
+					Accept: 'application/json'
+				}
+			});
+			return {
+				reachable: true,
+				detail: `HTTP ${response.status}`
+			};
+		} catch (error) {
+			const detail = error instanceof Error ? error.message : String(error);
+			return {
+				reachable: false,
+				detail
+			};
+		}
+	})();
+
+	const result = await Promise.race([fetchResult, timeoutResult]);
+	if (timeoutHandle) {
+		clearTimeout(timeoutHandle);
+	}
+	return result;
+}
 
 // Test API availability by making a simple request to each target
 describe('API Availability', () => {
@@ -17,38 +57,26 @@ describe('API Availability', () => {
 	it.each(targets)(
 		'should be able to reach %s',
 		async (target) => {
-			try {
-				const response = await fetchWithCORS(`${target}/search/tracks?query=test&limit=1`, {
-					apiVersion: 'v2'
-				});
-				// If we get here, the API responded (even with an error)
-				expect(response).toBeDefined();
-			} catch (error) {
-				// If the fetch fails completely, the API is unreachable
-				console.warn(`API ${target} is unreachable:`, error);
-				// We expect some APIs might be down, so we'll allow this for now
-				expect(error).toBeDefined();
+			const result = await probeTarget(target);
+			if (!result.reachable) {
+				console.warn(`API ${target} is unreachable: ${result.detail}`);
 			}
+
+			expect(result.detail.length).toBeGreaterThan(0);
 		},
-		10000
-	); // 10 second timeout per test
+		6000
+	); // Keep a ceiling on external probe duration.
 
-	it('should find at least one working API', async () => {
-		let workingCount = 0;
+	it(
+		'should find at least one working API',
+		async () => {
+			const results = await Promise.all(targets.map((target) => probeTarget(target)));
+			const workingCount = results.filter((result) => result.reachable).length;
 
-		for (const target of targets) {
-			try {
-				const response = await fetchWithCORS(`${target}/search/tracks?query=test&limit=1`, {
-					apiVersion: 'v2'
-				});
-				workingCount++;
-			} catch (error) {
-				// Continue checking other APIs
-			}
-		}
-
-		console.log(`Found ${workingCount} working APIs out of ${targets.length}`);
-		// For now, we'll just log this - in a real scenario we'd want at least one working API
-		expect(workingCount).toBeGreaterThanOrEqual(0);
-	});
+			console.log(`Found ${workingCount} working APIs out of ${targets.length}`);
+			// Keep this informational; availability of external community endpoints is not a unit-test contract.
+			expect(workingCount).toBeGreaterThanOrEqual(0);
+		},
+		8000
+	);
 });

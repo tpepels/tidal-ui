@@ -1,7 +1,7 @@
 import * as fs from 'node:fs/promises';
 import type { Dirent } from 'node:fs';
 import * as path from 'node:path';
-import { getDownloadDir } from '../../routes/api/download-track/_shared';
+import { getDownloadDir } from '$lib/server/download/shared';
 import { clearMediaLibraryScanCache } from './mediaLibraryCache';
 import {
 	type MediaLibraryTransientSweepSummary,

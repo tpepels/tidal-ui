@@ -1,7 +1,6 @@
 import { checkAlbumInLibrary, checkTrackInLibrary } from './mediaLibrary';
 import {
 	buildQueueMetrics,
-	categorizeError,
 	isDuplicateJobMatch,
 	resetTrackProgressForRetry,
 	selectNextQueuedJob,
@@ -22,14 +21,10 @@ import {
 	writeQueueJob
 } from './downloadQueueRepository';
 import type {
-	AlbumJob,
 	DownloadJob,
 	JobPriority,
-	QueueMetrics,
 	QueuedJob,
 	QueueSource,
-	QueueStats,
-	TrackJob
 } from './downloadQueueTypes';
 
 export type {

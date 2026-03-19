@@ -1,4 +1,5 @@
 import { isAlbumDownloadQueueActive, type AlbumDownloadStatus } from '$lib/controllers/albumDownloadUi';
+import { queueClient } from '$lib/clients/queueClient';
 import {
 	createAdaptivePollingController,
 	type AdaptivePollingController
@@ -62,11 +63,14 @@ function actionFailureMessage(action: AlbumQueueAction): string {
 
 async function defaultFetchQueueJob(jobId: string): Promise<DownloadQueuePayload | null> {
 	try {
-		const response = await fetch(`/api/download-queue/${jobId}`);
-		if (!response.ok) {
+		const job = await queueClient.getJob(jobId);
+		if (!job) {
 			return null;
 		}
-		return (await response.json()) as DownloadQueuePayload;
+		return {
+			success: true,
+			job
+		};
 	} catch {
 		return null;
 	}
@@ -76,37 +80,10 @@ async function defaultSendQueueAction(
 	jobId: string,
 	action: AlbumQueueAction
 ): Promise<QueueActionResponse> {
-	try {
-		const response = await fetch(`/api/download-queue/${jobId}`, {
-			method: 'PATCH',
-			headers: {
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify({ action })
-		});
-		if (!response.ok) {
-			const body = await response.text();
-			return {
-				success: false,
-				error: body || actionFailureMessage(action)
-			};
-		}
-		const payload = (await response.json().catch(() => null)) as
-			| { success?: boolean; error?: string }
-			| null;
-		if (payload && payload.success === false) {
-			return {
-				success: false,
-				error: payload.error || actionFailureMessage(action)
-			};
-		}
-		return { success: true };
-	} catch (error) {
-		return {
-			success: false,
-			error: error instanceof Error && error.message ? error.message : actionFailureMessage(action)
-		};
-	}
+	const result = await queueClient.requestJobAction(jobId, action);
+	return result.success
+		? { success: true }
+		: { success: false, error: result.error || actionFailureMessage(action) };
 }
 
 export function createDefaultAlbumDownloadState(total = 0): AlbumDownloadState {

@@ -8,6 +8,15 @@ const ISRC_PATTERN = /^[A-Z]{2}[A-Z0-9]{3}\d{7}$/;
 const MBID_PATTERN =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+function replaceControlCharacters(value: string): string {
+	let result = '';
+	for (const char of value) {
+		const code = char.charCodeAt(0);
+		result += code < 32 || code === 127 ? ' ' : char;
+	}
+	return result;
+}
+
 export function delay(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -20,10 +29,7 @@ export function normalizeLookupText(value: string | undefined | null): string {
 	if (typeof value !== 'string') {
 		return '';
 	}
-	return value
-		.replace(/[\u0000-\u001f\u007f]/g, ' ')
-		.replace(/\s+/g, ' ')
-		.trim();
+	return replaceControlCharacters(value).replace(/\s+/g, ' ').trim();
 }
 
 export function normalizeIsrc(value: string | undefined | null): string | null {
@@ -60,10 +66,7 @@ export function yearFromDate(value: string | undefined | null): string | undefin
 
 export function sanitizeTagValue(value: unknown): string | undefined {
 	if (typeof value !== 'string') return undefined;
-	const sanitized = value
-		.replace(/[\u0000-\u001f\u007f]/g, ' ')
-		.replace(/\s+/g, ' ')
-		.trim();
+	const sanitized = replaceControlCharacters(value).replace(/\s+/g, ' ').trim();
 	if (!sanitized) return undefined;
 	return sanitized.slice(0, 1024);
 }

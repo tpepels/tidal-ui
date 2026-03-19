@@ -2,7 +2,7 @@ import * as fs from 'node:fs/promises';
 import type { Dirent } from 'node:fs';
 import * as path from 'node:path';
 import { createHash } from 'node:crypto';
-import { getDownloadDir } from '../../routes/api/download-track/_shared';
+import { getDownloadDir } from '$lib/server/download/shared';
 import {
 	AUDIO_EXTENSIONS,
 	type LocalMediaFile,

@@ -42,7 +42,6 @@
 	import { searchOrchestrator } from '$lib/orchestrators';
 	import type { Album, AudioQuality, PlayableTrack } from '$lib/types';
 	import { isSonglinkTrack } from '$lib/types';
-	import { LoaderCircle } from 'lucide-svelte';
 	import { searchStore, searchStoreActions, type SearchTab } from '$lib/stores/searchStoreAdapter';
 
 	type UiTone = 'default' | 'secondary' | 'tertiary';
@@ -481,11 +480,10 @@
 			try {
 				await albumMusicBrainzController.hydrate(albumResults);
 			} finally {
-				if (token !== albumMusicBrainzLookupToken) {
-					return;
+				if (token === albumMusicBrainzLookupToken) {
+					isAlbumMusicBrainzLookupLoading = false;
+					pendingAlbumMusicBrainzAlbumIds = new Set();
 				}
-				isAlbumMusicBrainzLookupLoading = false;
-				pendingAlbumMusicBrainzAlbumIds = new Set();
 			}
 		})();
 	});
