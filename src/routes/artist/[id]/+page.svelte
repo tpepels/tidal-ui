@@ -25,6 +25,7 @@
 		buildTopTrackAlbumSignals,
 		filterDiscographyEntries
 	} from '$lib/features/artist/artistDiscographyModel';
+	import { resolveDiscographyGroupMusicBrainzReleaseId } from '$lib/features/artist/artistDiscographyPresentation';
 	import { createAlbumMusicBrainzMatchController } from '$lib/features/search/albumMusicBrainzMatchController';
 	import ArtistDiscographySection from '$lib/components/artist/ArtistDiscographySection.svelte';
 	import ArtistDiscographyHighlights from '$lib/components/artist/ArtistDiscographyHighlights.svelte';
@@ -211,6 +212,19 @@
 				pendingDiscographyMusicBrainzAlbumIds = next;
 			}
 		}
+	});
+	const visibleDiscographyMusicBrainzReleaseMatches = $derived.by(() => {
+		const matches: Record<number, string> = {};
+		for (const entry of discographyEntries) {
+			const releaseId = resolveDiscographyGroupMusicBrainzReleaseId(entry, {
+				albumMusicBrainzReleaseMatches,
+				resolveCachedMusicBrainzReleaseId: (album) => discographyMusicBrainzController.peekMatch(album)
+			});
+			if (releaseId) {
+				matches[entry.representative.id] = releaseId;
+			}
+		}
+		return matches;
 	});
 
 	const selectedMusicBrainzArtist = $derived.by(
@@ -827,7 +841,7 @@
 			storage: downloadStoragePreference
 		}),
 		resolveArtistName: () => artist?.name,
-		resolveMusicBrainzReleaseId: (albumId) => albumMusicBrainzReleaseMatches[albumId],
+		resolveMusicBrainzReleaseId: (albumId) => visibleDiscographyMusicBrainzReleaseMatches[albumId],
 		ensureMusicBrainzReleaseId: (album) => discographyMusicBrainzController.ensureMatch(album),
 		downloadAlbumFn: downloadAlbum
 	});
@@ -1099,7 +1113,7 @@
 						coverHydrationGeneration={coverHydrationGeneration}
 						albumDownloadStates={albumDownloadStates}
 						albumLibraryPresence={albumLibraryPresence}
-						albumMusicBrainzReleaseMatches={albumMusicBrainzReleaseMatches}
+						albumMusicBrainzReleaseMatches={visibleDiscographyMusicBrainzReleaseMatches}
 						isDiscographyMusicBrainzLoading={isDiscographyMusicBrainzLookupLoading}
 						pendingDiscographyMusicBrainzAlbumIds={pendingDiscographyMusicBrainzAlbumIds}
 						{displayTrackTotal}

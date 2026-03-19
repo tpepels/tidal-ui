@@ -8,6 +8,7 @@
 		buildArtistAlbumCoverCandidates as buildAlbumCoverCandidates,
 		serializeCoverCandidates
 	} from '$lib/features/artist/artistCoverHydrationController';
+	import { describeDiscographyEntrySource } from '$lib/features/artist/artistDiscographyPresentation';
 	import type { DiscographyFilterState } from '$lib/features/artist/artistDiscographyModel';
 	import {
 		createDefaultArtistAlbumDownloadState as createDefaultAlbumDownloadState,
@@ -197,6 +198,13 @@
 		<p class="ui-action-status">
 			Content filters use release metadata. “Non-explicit” is what some catalogs label as “clean”.
 		</p>
+		{#if discographyInfo?.enrichmentApplied ||
+			discography.some((album) => album.discographySource === 'official_tidal')}
+			<p class="ui-action-status">
+				Catalog release means the stable album page used for opening and downloading. Artist page
+				only release means it only came from the artist&apos;s official discography feed.
+			</p>
+		{/if}
 	</ActionPanel>
 	{#if discographyInfo?.mayBeIncomplete}
 		<StateBlock
@@ -263,7 +271,7 @@
 									href={`/album/${album.id}`}
 									title={album.title}
 									subtitle={formatAlbumMeta(album)}
-									meta={hasOfficialTidalSource ? 'Official discography source' : 'Catalog discography'}
+									meta={describeDiscographyEntrySource(entry)}
 									coverCacheKey={coverCacheKey}
 									coverCandidates={coverImageCandidates}
 									imageAlt={album.title}

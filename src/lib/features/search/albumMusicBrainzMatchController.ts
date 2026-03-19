@@ -408,6 +408,15 @@ export function createAlbumMusicBrainzMatchController(
 		return releaseId ?? undefined;
 	}
 
+	function peekMatch(album: Album): string | undefined {
+		const lookupKey = resolveAlbumMusicBrainzLookupKey(album);
+		if (!lookupKey) {
+			return undefined;
+		}
+		const cached = lookupCache.get(lookupKey);
+		return typeof cached === 'string' && cached.length > 0 ? cached : undefined;
+	}
+
 	function invalidate(): void {
 		lookupToken += 1;
 		for (const [key, value] of lookupCache.entries()) {
@@ -425,6 +434,7 @@ export function createAlbumMusicBrainzMatchController(
 	return {
 		hydrate,
 		ensureMatch,
+		peekMatch,
 		invalidate,
 		clearCache
 	};

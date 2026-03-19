@@ -267,6 +267,51 @@ describe('albumMusicBrainzMatchController', () => {
 		expect(matchedByAlbum.get(album.id)).toBe('release-203');
 	});
 
+	it('exposes cached matches by lookup key for equivalent album entries', async () => {
+		const primaryAlbum = createAlbum({
+			id: 220,
+			title: 'Shared Lookup Album',
+			releaseDate: '2024-05-01',
+			numberOfTracks: 10
+		});
+		const equivalentAlbum = createAlbum({
+			id: 221,
+			title: 'Shared Lookup Album',
+			releaseDate: '2024-05-01',
+			numberOfTracks: 10
+		});
+		const matchedByAlbum = new Map<number, string>();
+		const fetchImpl = vi.fn().mockResolvedValue({
+			ok: true,
+			json: async () => ({
+				success: true,
+				releases: [
+					{
+						id: 'release-220',
+						title: 'Shared Lookup Album',
+						trackCount: 10,
+						date: '2024-05-01'
+					}
+				]
+			})
+		});
+
+		const controller = createAlbumMusicBrainzMatchController({
+			concurrency: 1,
+			lookupLimit: 10,
+			fetchImpl: fetchImpl as unknown as typeof fetch,
+			hasMatch: (albumId) => matchedByAlbum.has(albumId),
+			onMatch: (albumId, releaseId) => {
+				matchedByAlbum.set(albumId, releaseId);
+			}
+		});
+
+		await controller.ensureMatch(primaryAlbum);
+
+		expect(controller.peekMatch(equivalentAlbum)).toBe('release-220');
+		expect(fetchImpl).toHaveBeenCalledTimes(1);
+	});
+
 	it('clears cached no-match entries on invalidate so a retry can recover', async () => {
 		const album = createAlbum({ id: 404, title: 'Invalidate Album' });
 		const matchedByAlbum = new Map<number, string>();
