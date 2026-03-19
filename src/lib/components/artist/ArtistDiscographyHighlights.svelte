@@ -263,6 +263,17 @@
 		}
 	}
 
+	@media (max-width: 639px) {
+		.recommendation-slider {
+			grid-auto-columns: minmax(220px, 72vw);
+			padding-bottom: 0.35rem;
+		}
+
+		.recommendation-slider__controls {
+			display: none;
+		}
+	}
+
 	@media (prefers-reduced-motion: reduce) {
 		.recommendation-slider__control,
 		.recommendation-slider,

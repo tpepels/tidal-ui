@@ -78,6 +78,7 @@
 	<WindowedList
 		items={tracks}
 		itemHeight={110}
+		itemHeightMobile={152}
 		overscan={6}
 		threshold={30}
 		className="ui-list-surface"

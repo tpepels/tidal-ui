@@ -100,6 +100,7 @@
 	<WindowedList
 		items={albums}
 		itemHeight={120}
+		itemHeightMobile={188}
 		overscan={6}
 		threshold={30}
 		className="ui-list-surface"

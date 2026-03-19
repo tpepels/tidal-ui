@@ -2142,6 +2142,139 @@ textarea {
 	.ui-media-card {
 		padding: 0.82rem;
 	}
+
+	.ui-list-row {
+		gap: 0.72rem;
+		padding: 0.8rem 0;
+	}
+
+	.ui-list-row--actionable,
+	.ui-media-row--actionable {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.ui-list-row__main,
+	.ui-media-row__main {
+		align-items: flex-start;
+		gap: 0.82rem;
+	}
+
+	.ui-list-row__text,
+	.ui-media-row__body {
+		gap: 0.28rem;
+	}
+
+	.ui-list-row__title,
+	.ui-media-row__title {
+		align-items: flex-start;
+	}
+
+	.ui-list-row__title-text,
+	.ui-list-row__meta,
+	.ui-list-row__value,
+	.ui-media-row__title-text,
+	.ui-media-row__subtitle,
+	.ui-media-row__meta,
+	.ui-media-row__description,
+	.ui-link-card__title,
+	.ui-link-card__description {
+		white-space: normal;
+		text-overflow: clip;
+		overflow-wrap: anywhere;
+		word-break: break-word;
+	}
+
+	.ui-list-row__title-text,
+	.ui-list-row__meta,
+	.ui-list-row__value,
+	.ui-media-row__subtitle,
+	.ui-media-row__meta,
+	.ui-media-row__description {
+		display: -webkit-box;
+		overflow: hidden;
+		-webkit-box-orient: vertical;
+	}
+
+	.ui-list-row__title-text,
+	.ui-media-row__title-text {
+		-webkit-line-clamp: 2;
+	}
+
+	.ui-list-row__meta,
+	.ui-list-row__value,
+	.ui-media-row__subtitle,
+	.ui-media-row__meta,
+	.ui-media-row__description {
+		-webkit-line-clamp: 2;
+	}
+
+	.ui-list-row__action-label {
+		display: inline;
+	}
+
+	.ui-list-row__action,
+	.ui-media-row__side,
+	.ui-media-row__side > * {
+		width: 100%;
+	}
+
+	.ui-list-row__action,
+	.ui-media-row__side > * {
+		min-width: 0;
+	}
+
+	.ui-list-row__action {
+		min-height: var(--ui-touch-target, 44px);
+		border-radius: 0.95rem;
+	}
+
+	.ui-list-row__action--labeled,
+	.ui-media-row__side > * {
+		justify-content: center;
+	}
+
+	.ui-media-row__side {
+		min-height: 0;
+	}
+
+	.ui-link-card {
+		grid-template-columns: auto minmax(0, 1fr);
+		align-items: flex-start;
+	}
+
+	.ui-link-card__state {
+		grid-column: 2;
+		justify-self: start;
+	}
+
+	.ui-media-card__title.ui-media-card__title--truncate {
+		-webkit-line-clamp: 3;
+		overflow-wrap: anywhere;
+		word-break: break-word;
+	}
+
+	.ui-media-card__subtitle.ui-media-card__title--truncate,
+	.ui-media-card__meta {
+		display: -webkit-box;
+		overflow: hidden;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+		white-space: normal;
+		text-overflow: clip;
+		overflow-wrap: anywhere;
+		word-break: break-word;
+	}
+
+	.ui-media-card__intent,
+	.ui-media-card__link {
+		white-space: normal;
+		overflow-wrap: anywhere;
+		word-break: break-word;
+	}
+
+	.ui-media-card__links--paired {
+		grid-template-columns: minmax(0, 1fr);
+	}
 }
 
 /* Normalize rounded utilities to a subtle, consistent radius (excluding intentional circles). */

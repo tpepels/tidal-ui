@@ -25,4 +25,15 @@ describe('SearchToolbar source contract', () => {
 		expect(scopeGroupIndex).toBeGreaterThan(artistFilterIndex);
 		expect(strictToggleIndex).toBeGreaterThan(scopeGroupIndex);
 	});
+
+	it('keeps scope chips wrapping on mobile instead of turning the scope row into a horizontal scroller', () => {
+		expect(source).toContain('.search-panel__scope {');
+		expect(source).not.toContain('overflow-x: auto;');
+		expect(source).toContain('flex: 1 1 calc(50% - 0.29rem);');
+	});
+
+	it('allows the strict-toggle copy to wrap on mobile', () => {
+		expect(source).toContain('.search-panel__strict span {');
+		expect(source).toContain('overflow-wrap: anywhere;');
+	});
 });

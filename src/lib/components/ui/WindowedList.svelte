@@ -4,12 +4,15 @@
 	import {
 		computeVirtualWindowRange,
 		createFullWindowRange,
+		resolveResponsiveItemHeight,
 		type VirtualWindowRange
 	} from '$lib/utils/windowing';
 
 	interface Props {
 		items: unknown[];
 		itemHeight: number;
+		itemHeightMobile?: number;
+		mobileBreakpoint?: number;
 		overscan?: number;
 		threshold?: number;
 		id?: string;
@@ -23,6 +26,8 @@
 	let {
 		items,
 		itemHeight,
+		itemHeightMobile = undefined,
+		mobileBreakpoint = 640,
 		overscan = 8,
 		threshold = 40,
 		id = undefined,
@@ -34,9 +39,19 @@
 	}: Props = $props();
 
 	let localContainer = $state<HTMLDivElement | null>(null);
+	let viewportWidth = $state(0);
 	let measuredItemHeight = $state(1);
 	let range = $state<VirtualWindowRange>(createFullWindowRange(0));
 	let frameId: number | null = null;
+
+	const resolvedItemHeight = $derived(
+		resolveResponsiveItemHeight({
+			itemHeight,
+			itemHeightMobile,
+			mobileBreakpoint,
+			viewportWidth
+		})
+	);
 
 	const visibleEntries = $derived.by(() =>
 		items
@@ -63,7 +78,7 @@
 			return;
 		}
 
-		const resolvedItemHeight = Math.max(1, measuredItemHeight || itemHeight || 1);
+		const estimatedItemHeight = Math.max(1, measuredItemHeight || resolvedItemHeight || 1);
 		let viewportHeight = 0;
 		let scrollOffset = 0;
 
@@ -78,7 +93,7 @@
 
 		range = computeVirtualWindowRange({
 			totalItems: items.length,
-			itemHeight: resolvedItemHeight,
+			itemHeight: estimatedItemHeight,
 			viewportHeight,
 			scrollOffset,
 			overscan,
@@ -114,12 +129,14 @@
 	});
 
 	$effect(() => {
-		measuredItemHeight = Math.max(1, itemHeight);
+		measuredItemHeight = Math.max(1, resolvedItemHeight);
 		scheduleUpdate();
 	});
 
 	$effect(() => {
 		items.length;
+		itemHeightMobile;
+		mobileBreakpoint;
 		overscan;
 		threshold;
 		scheduleUpdate();
@@ -137,8 +154,17 @@
 			return;
 		}
 
+		const syncViewportWidth = () => {
+			viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+		};
+
 		const handleScroll = () => scheduleUpdate();
-		const handleResize = () => scheduleUpdate();
+		const handleResize = () => {
+			syncViewportWidth();
+			scheduleUpdate();
+		};
+
+		syncViewportWidth();
 
 		if (useContainerScroll) {
 			localContainer?.addEventListener('scroll', handleScroll, { passive: true });

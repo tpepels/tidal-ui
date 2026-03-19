@@ -684,4 +684,16 @@
 			grid-template-columns: minmax(0, 1fr);
 		}
 	}
+
+	@media (max-width: 639px) {
+		.search-controls {
+			position: static;
+			top: auto;
+			z-index: auto;
+			padding-bottom: 0.7rem;
+			background: transparent;
+			backdrop-filter: none;
+			-webkit-backdrop-filter: none;
+		}
+	}
 </style>

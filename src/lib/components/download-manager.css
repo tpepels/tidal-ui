@@ -1796,11 +1796,11 @@
 			flex-wrap: wrap;
 		}
 
-		.control-btn span {
+		.download-manager-panel:not(.download-manager-panel--page) .control-btn span {
 			display: none;
 		}
 
-		.control-btn {
+		.download-manager-panel:not(.download-manager-panel--page) .control-btn {
 			padding: 8px;
 		}
 
@@ -1818,6 +1818,55 @@
 			line-clamp: 2;
 			-webkit-line-clamp: 2;
 			-webkit-box-orient: vertical;
+			overflow-wrap: anywhere;
+		}
+
+		.current-item-meta,
+		.queue-item-artist,
+		.queue-item-album,
+		.failed-item-artist,
+		.completed-item-meta,
+		.priority-item__title,
+		.priority-item__meta,
+		.detail-value {
+			white-space: normal;
+			text-overflow: clip;
+			overflow-wrap: anywhere;
+			word-break: break-word;
+		}
+
+		.current-item-meta,
+		.queue-item-artist,
+		.queue-item-album,
+		.failed-item-artist,
+		.completed-item-meta {
+			display: -webkit-box;
+			overflow: hidden;
+			line-clamp: 2;
+			-webkit-line-clamp: 2;
+			-webkit-box-orient: vertical;
+		}
+
+		.detail-row {
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 0.24rem;
+		}
+
+		.detail-value {
+			text-align: left;
+			width: 100%;
+		}
+
+		.failed-actions,
+		.detail-actions,
+		.download-manager-panel--page .download-manager-quick-actions {
+			flex-wrap: wrap;
+		}
+
+		.download-manager-panel--page .download-manager-quick-actions .control-btn {
+			width: 100%;
+			justify-content: center;
 		}
 
 		.download-manager-close {

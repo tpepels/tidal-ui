@@ -15,6 +15,13 @@ export interface VirtualWindowInput {
 	threshold?: number;
 }
 
+export interface ResponsiveItemHeightInput {
+	itemHeight: number;
+	itemHeightMobile?: number;
+	mobileBreakpoint?: number;
+	viewportWidth?: number | null;
+}
+
 export function createFullWindowRange(totalItems: number): VirtualWindowRange {
 	return {
 		startIndex: 0,
@@ -55,6 +62,26 @@ export function computeVirtualWindowRange(input: VirtualWindowInput): VirtualWin
 		paddingEnd: Math.max(0, (totalItems - endIndex) * itemHeight),
 		windowed: true
 	};
+}
+
+export function resolveResponsiveItemHeight(input: ResponsiveItemHeightInput): number {
+	const baseHeight = Math.max(1, Math.floor(input.itemHeight || 1));
+	const mobileHeight = Math.floor(input.itemHeightMobile ?? 0);
+	if (mobileHeight <= 0) {
+		return baseHeight;
+	}
+
+	const viewportWidth = Math.max(0, Math.floor(input.viewportWidth ?? 0));
+	if (viewportWidth <= 0) {
+		return baseHeight;
+	}
+
+	const mobileBreakpoint = Math.max(1, Math.floor(input.mobileBreakpoint ?? 640));
+	if (viewportWidth <= mobileBreakpoint) {
+		return Math.max(1, mobileHeight);
+	}
+
+	return baseHeight;
 }
 
 function clamp(value: number, min: number, max: number): number {

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { computeVirtualWindowRange, createFullWindowRange } from './windowing';
+import {
+	computeVirtualWindowRange,
+	createFullWindowRange,
+	resolveResponsiveItemHeight
+} from './windowing';
 
 describe('windowing', () => {
 	it('returns a full range when below threshold', () => {
@@ -50,5 +54,38 @@ describe('windowing', () => {
 			paddingEnd: 0,
 			windowed: true
 		});
+	});
+
+	it('prefers the mobile estimate when the viewport is within the mobile breakpoint', () => {
+		expect(
+			resolveResponsiveItemHeight({
+				itemHeight: 120,
+				itemHeightMobile: 188,
+				mobileBreakpoint: 640,
+				viewportWidth: 390
+			})
+		).toBe(188);
+	});
+
+	it('keeps the desktop estimate when the viewport is above the mobile breakpoint', () => {
+		expect(
+			resolveResponsiveItemHeight({
+				itemHeight: 120,
+				itemHeightMobile: 188,
+				mobileBreakpoint: 640,
+				viewportWidth: 900
+			})
+		).toBe(120);
+	});
+
+	it('falls back to the base estimate when the viewport width is unavailable', () => {
+		expect(
+			resolveResponsiveItemHeight({
+				itemHeight: 104,
+				itemHeightMobile: 132,
+				mobileBreakpoint: 640,
+				viewportWidth: 0
+			})
+		).toBe(104);
 	});
 });

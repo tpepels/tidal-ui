@@ -569,6 +569,7 @@
 	.library-suggestions-overview__value--small {
 		font-size: 0.98rem;
 		line-height: 1.35;
+		overflow-wrap: anywhere;
 	}
 
 	.library-suggestions-overview__meta {
@@ -643,6 +644,7 @@
 		margin: 0;
 		font-size: 0.86rem;
 		color: rgba(212, 212, 212, 0.78);
+		overflow-wrap: anywhere;
 	}
 
 	.library-suggestions-seeds__meta code {
@@ -650,6 +652,7 @@
 		border-radius: 0.32rem;
 		background: rgba(255, 255, 255, 0.08);
 		font-size: 0.82rem;
+		word-break: break-all;
 	}
 
 	.library-suggestions-seeds__chips {
@@ -669,10 +672,18 @@
 		font-size: 0.88rem;
 		text-decoration: none;
 		color: inherit;
+		max-width: 100%;
+		overflow-wrap: anywhere;
 	}
 
 	@media (max-width: 1024px) {
 		.library-suggestions-columns {
+			grid-template-columns: 1fr;
+		}
+	}
+
+	@media (max-width: 639px) {
+		.library-suggestions-overview {
 			grid-template-columns: 1fr;
 		}
 	}

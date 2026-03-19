@@ -26,6 +26,7 @@
 	<WindowedList
 		items={playlists}
 		itemHeight={100}
+		itemHeightMobile={132}
 		overscan={6}
 		threshold={28}
 		className="ui-list-surface"

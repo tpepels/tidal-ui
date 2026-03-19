@@ -282,9 +282,38 @@
 		}
 	}
 
-	@media (max-width: 1023px) {
+	@media (min-width: 640px) and (max-width: 1023px) {
 		.ui-section-nav--sticky {
 			top: 5.4rem;
+		}
+	}
+
+	@media (max-width: 639px) {
+		.ui-section-nav--sticky {
+			position: static;
+			top: auto;
+			z-index: auto;
+			padding: 0;
+			background: transparent;
+			backdrop-filter: none;
+			-webkit-backdrop-filter: none;
+		}
+
+		.ui-section-nav__inner {
+			flex-wrap: nowrap;
+			overflow-x: auto;
+			overscroll-behavior-x: contain;
+			scrollbar-width: none;
+			padding: 0.35rem 0 0.45rem;
+		}
+
+		.ui-section-nav__inner::-webkit-scrollbar {
+			display: none;
+		}
+
+		.ui-section-nav__link {
+			flex: 0 0 auto;
+			white-space: nowrap;
 		}
 	}
 
