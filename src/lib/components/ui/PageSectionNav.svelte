@@ -237,11 +237,11 @@
 		padding: 0.44rem 0.76rem;
 		border-radius: 999px;
 		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.08));
-		background: rgba(255, 255, 255, 0.03);
+		background: var(--ui-layer-interactive, rgba(255, 255, 255, 0.045));
 		font-size: 0.88rem;
 		font-weight: 600;
 		line-height: 1.25;
-		color: rgba(220, 220, 220, 0.84);
+		color: var(--ui-text-secondary, rgba(220, 220, 220, 0.84));
 		text-decoration: none;
 		transition:
 			border-color var(--ui-motion-fast) var(--ui-ease-standard),
@@ -256,10 +256,10 @@
 	}
 
 	.ui-section-nav__link.is-active {
-		border-color: rgba(255, 255, 255, 0.26);
-		background: rgba(255, 255, 255, 0.12);
-		color: rgba(255, 255, 255, 0.98);
-		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+		border-color: var(--ui-accent-border-strong, rgba(255, 255, 255, 0.26));
+		background: var(--ui-accent-surface, rgba(255, 255, 255, 0.12));
+		color: var(--ui-text-primary, rgba(255, 255, 255, 0.98));
+		box-shadow: inset 0 0 0 1px rgb(var(--ui-color-ochre-rgb, 197 139 58) / 0.12);
 	}
 
 	.ui-section-nav__link[data-tone='secondary'].is-active {
@@ -278,7 +278,7 @@
 		.ui-section-nav--sticky {
 			position: sticky;
 			top: 0.72rem;
-			background: rgba(7, 7, 7, 0.94);
+			background: rgb(var(--ui-color-coal-rgb, 20 17 15) / 0.94);
 		}
 	}
 

@@ -612,15 +612,15 @@
 
 <style>
 	:global(:root) {
-		--bloom-primary: #0a0a0a;
-		--bloom-secondary: #121212;
-		--bloom-accent: #f2f2f2;
-		--bloom-glow: rgba(255, 255, 255, 0.2);
-		--bloom-tertiary: rgba(255, 255, 255, 0.12);
-		--bloom-quaternary: rgba(255, 255, 255, 0.12);
-		--surface-color: #121212;
-		--surface-border: rgba(255, 255, 255, 0.15);
-		--surface-highlight: rgba(255, 255, 255, 0.08);
+		--bloom-primary: var(--ui-surface-base, #100d0c);
+		--bloom-secondary: var(--ui-surface-raised, #171210);
+		--bloom-accent: var(--ui-accent, #c58b3a);
+		--bloom-glow: rgb(var(--ui-color-ochre-rgb, 197 139 58) / 0.24);
+		--bloom-tertiary: rgb(var(--ui-color-parchment-rgb, 242 231 213) / 0.12);
+		--bloom-quaternary: rgb(var(--ui-color-terracotta-rgb, 198 106 75) / 0.12);
+		--surface-color: var(--ui-surface-raised, #171210);
+		--surface-border: var(--ui-border-subtle, rgba(255, 255, 255, 0.15));
+		--surface-highlight: var(--ui-layer-interactive, rgba(255, 255, 255, 0.08));
 		--accent-color: var(--bloom-accent);
 	}
 
@@ -628,12 +628,9 @@
 		margin: 0;
 		min-height: 100vh;
 		font-family: var(--ui-font-sans, 'Figtree', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif);
-		background:
-			radial-gradient(circle at top left, rgba(255, 255, 255, 0.035) 0%, transparent 22%),
-			radial-gradient(circle at top right, rgba(159, 185, 246, 0.035) 0%, transparent 20%),
-			#070707;
+		background: var(--ui-app-background);
 		background-attachment: fixed;
-		color: #f8fbff;
+		color: var(--ui-text-primary, #f2e7d5);
 	}
 
 	.app-root {
@@ -659,7 +656,7 @@
 		height: 480px;
 		left: -160px;
 		top: -140px;
-		background: radial-gradient(circle, rgba(255, 255, 255, 0.12) 0%, transparent 72%);
+		background: radial-gradient(circle, rgb(var(--ui-color-ochre-rgb, 197 139 58) / 0.14) 0%, transparent 72%);
 	}
 
 	.app-root::after {
@@ -667,7 +664,8 @@
 		height: 440px;
 		right: -180px;
 		bottom: -180px;
-		background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+		background:
+			radial-gradient(circle, rgb(var(--ui-color-terracotta-rgb, 198 106 75) / 0.12) 0%, transparent 70%);
 		animation-delay: 4s;
 	}
 
@@ -705,7 +703,7 @@
 		max-height: calc(100vh - clamp(1.6rem, 3.2vw, 2.8rem) - var(--player-height, 0px));
 		overflow-y: auto;
 		background: transparent;
-		border-right: 1px solid rgba(255, 255, 255, 0.08);
+		border-right: 1px solid var(--ui-divider, rgba(255, 255, 255, 0.08));
 		box-shadow: none;
 		animation: none;
 	}
@@ -727,7 +725,7 @@
 		font-size: 1.08rem;
 		font-weight: 700;
 		letter-spacing: 0.03em;
-		color: rgba(245, 245, 245, 0.95);
+		color: var(--ui-text-primary, rgba(245, 245, 245, 0.95));
 	}
 
 	.app-sidebar__subtitle {
@@ -735,7 +733,7 @@
 		font-size: 0.82rem;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
-		color: rgba(212, 212, 212, 0.68);
+		color: var(--ui-text-muted, rgba(212, 212, 212, 0.68));
 	}
 
 	.app-sidebar__section {
@@ -751,7 +749,7 @@
 		font-weight: 700;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
-		color: rgba(188, 188, 188, 0.68);
+		color: var(--ui-text-muted, rgba(188, 188, 188, 0.68));
 	}
 
 	.sidebar-icon-btn {
@@ -761,9 +759,9 @@
 		width: 2.2rem;
 		height: 2.2rem;
 		border-radius: var(--ui-radius-sm, 9px);
-		border: 1px solid rgba(255, 255, 255, 0.08);
-		background: rgba(255, 255, 255, 0.02);
-		color: rgba(236, 236, 236, 0.95);
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.08));
+		background: var(--ui-layer-section, rgba(255, 255, 255, 0.02));
+		color: var(--ui-text-primary, rgba(236, 236, 236, 0.95));
 		cursor: pointer;
 		transition:
 			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
@@ -773,8 +771,8 @@
 
 	.sidebar-icon-btn:hover {
 		transform: none;
-		border-color: rgba(255, 255, 255, 0.16);
-		background: rgba(255, 255, 255, 0.045);
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.16));
+		background: var(--ui-layer-interactive, rgba(255, 255, 255, 0.045));
 	}
 
 	.sidebar-icon-btn:active {
@@ -787,9 +785,9 @@
 		gap: 0.55rem;
 		padding: 0.72rem 0.82rem;
 		border-radius: var(--ui-radius-sm, 9px);
-		border: 1px solid rgba(255, 255, 255, 0.08);
-		background: rgba(255, 255, 255, 0.03);
-		color: rgba(236, 236, 236, 0.9);
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.08));
+		background: var(--ui-layer-interactive, rgba(255, 255, 255, 0.045));
+		color: var(--ui-text-secondary, rgba(236, 236, 236, 0.9));
 		text-decoration: none;
 		font-size: 0.95rem;
 		font-weight: 600;
@@ -814,8 +812,8 @@
 
 	.sidebar-action:hover:not(:disabled) {
 		transform: none;
-		border-color: rgba(255, 255, 255, 0.16);
-		background: rgba(255, 255, 255, 0.08);
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.16));
+		background: rgb(var(--ui-color-parchment-rgb, 242 231 213) / 0.08);
 	}
 
 	.sidebar-action:hover::after {
@@ -827,8 +825,8 @@
 	}
 
 	.sidebar-action.is-active {
-		border-color: rgba(255, 255, 255, 0.26);
-		background: rgba(255, 255, 255, 0.12);
+		border-color: var(--ui-accent-border-strong, rgba(255, 255, 255, 0.26));
+		background: var(--ui-accent-surface, rgba(255, 255, 255, 0.12));
 		box-shadow: none;
 	}
 
@@ -855,9 +853,9 @@
 		min-width: 2.45rem;
 		padding: 0.22rem 0.45rem;
 		border-radius: var(--ui-radius-sm, 9px);
-		border: 1px solid rgba(255, 255, 255, 0.16);
-		background: rgba(255, 255, 255, 0.1);
-		color: rgba(245, 245, 245, 0.96);
+		border: 1px solid var(--ui-accent-border, rgba(255, 255, 255, 0.16));
+		background: var(--ui-accent-surface, rgba(255, 255, 255, 0.1));
+		color: var(--ui-text-primary, rgba(245, 245, 245, 0.96));
 		font-size: 0.84rem;
 		font-weight: 700;
 		letter-spacing: 0.02em;
@@ -880,12 +878,12 @@
 		justify-content: center;
 		padding: 0.25rem 0.55rem;
 		border-radius: var(--ui-radius-sm, 9px);
-		border: 1px solid rgba(255, 255, 255, 0.08);
-		background: rgba(255, 255, 255, 0.02);
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.08));
+		background: var(--ui-layer-section, rgba(255, 255, 255, 0.02));
 		font-size: 0.82rem;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
-		color: rgba(215, 215, 215, 0.82);
+		color: var(--ui-text-secondary, rgba(215, 215, 215, 0.82));
 	}
 
 	.diagnostics-toggle {
@@ -895,9 +893,9 @@
 		z-index: 110;
 		border-radius: var(--ui-radius-sm, 9px);
 		padding: 0.45rem 1rem;
-		background: rgba(255, 255, 255, 0.14);
-		border: 1px solid rgba(255, 255, 255, 0.35);
-		color: rgba(226, 226, 226, 0.94);
+		background: var(--ui-accent-surface, rgba(255, 255, 255, 0.14));
+		border: 1px solid var(--ui-accent-border-strong, rgba(255, 255, 255, 0.35));
+		color: var(--ui-text-primary, rgba(226, 226, 226, 0.94));
 		font-size: 0.94rem;
 		cursor: pointer;
 		backdrop-filter: blur(10px);
@@ -907,7 +905,7 @@
 	}
 
 	.diagnostics-toggle:hover {
-		background: rgba(255, 255, 255, 0.22);
+		background: var(--ui-accent-surface-strong, rgba(255, 255, 255, 0.22));
 		transform: translateY(-1px);
 	}
 
@@ -955,7 +953,12 @@
 		z-index: 12;
 		padding: 0.1rem 0 0.42rem;
 		background:
-			linear-gradient(to bottom, rgba(7, 7, 7, 0.96), rgba(7, 7, 7, 0.9) 72%, transparent);
+			linear-gradient(
+				to bottom,
+				rgb(var(--ui-color-coal-rgb, 20 17 15) / 0.96),
+				rgb(var(--ui-color-coal-rgb, 20 17 15) / 0.9) 72%,
+				transparent
+			);
 		backdrop-filter: blur(10px);
 		-webkit-backdrop-filter: blur(10px);
 	}
@@ -972,7 +975,7 @@
 		font-weight: 700;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
-		color: rgba(198, 198, 198, 0.72);
+		color: var(--ui-text-muted, rgba(198, 198, 198, 0.72));
 	}
 
 	.mobile-topbar__title {
@@ -980,7 +983,7 @@
 		font-size: 1.14rem;
 		font-weight: 700;
 		line-height: 1.2;
-		color: rgba(247, 247, 247, 0.97);
+		color: var(--ui-text-primary, rgba(247, 247, 247, 0.97));
 	}
 
 	.mobile-primary-nav {
@@ -989,7 +992,12 @@
 		z-index: 11;
 		padding-bottom: 0.65rem;
 		background:
-			linear-gradient(to bottom, rgba(7, 7, 7, 0.92), rgba(7, 7, 7, 0.86) 74%, transparent);
+			linear-gradient(
+				to bottom,
+				rgb(var(--ui-color-coal-rgb, 20 17 15) / 0.92),
+				rgb(var(--ui-color-coal-rgb, 20 17 15) / 0.86) 74%,
+				transparent
+			);
 		backdrop-filter: blur(10px);
 		-webkit-backdrop-filter: blur(10px);
 	}
@@ -1014,18 +1022,18 @@
 		min-height: 40px;
 		padding: 0.46rem 0.72rem;
 		border-radius: 999px;
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		background: rgba(255, 255, 255, 0.04);
+		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.1));
+		background: var(--ui-layer-interactive, rgba(255, 255, 255, 0.04));
 		font-size: 0.88rem;
 		font-weight: 600;
-		color: rgba(238, 238, 238, 0.9);
+		color: var(--ui-text-secondary, rgba(238, 238, 238, 0.9));
 		text-decoration: none;
 	}
 
 	.mobile-primary-nav__link.is-active {
-		border-color: rgba(255, 255, 255, 0.28);
-		background: rgba(255, 255, 255, 0.12);
-		color: rgba(255, 255, 255, 0.98);
+		border-color: var(--ui-accent-border-strong, rgba(255, 255, 255, 0.28));
+		background: var(--ui-accent-surface, rgba(255, 255, 255, 0.12));
+		color: var(--ui-text-primary, rgba(255, 255, 255, 0.98));
 	}
 
 	.mobile-primary-nav__link:disabled {
@@ -1038,7 +1046,7 @@
 		justify-content: center;
 		padding: 0.16rem 0.4rem;
 		border-radius: 999px;
-		background: rgba(255, 255, 255, 0.12);
+		background: var(--ui-accent-surface, rgba(255, 255, 255, 0.12));
 		font-size: 0.72rem;
 		font-weight: 700;
 		line-height: 1;
@@ -1077,7 +1085,7 @@
 		align-items: center;
 		justify-content: center;
 		gap: 2rem;
-		background: rgba(7, 7, 7, 0.72);
+		background: rgb(var(--ui-color-coal-rgb, 20 17 15) / 0.78);
 		backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
 		-webkit-backdrop-filter: blur(var(--perf-blur-high, 32px)) saturate(var(--perf-saturate, 160%));
 		z-index: 50;
@@ -1102,7 +1110,7 @@
 		bottom: 0;
 		left: -40%;
 		width: 60%;
-		background: rgba(255, 255, 255, 0.7);
+		background: rgb(var(--ui-color-ochre-rgb, 197 139 58) / 0.82);
 		box-shadow: none;
 		animation: none;
 	}
@@ -1111,7 +1119,7 @@
 		font-size: 0.9rem;
 		letter-spacing: 0.28em;
 		text-transform: uppercase;
-		color: rgba(236, 236, 236, 0.9);
+		color: var(--ui-text-primary, rgba(236, 236, 236, 0.9));
 	}
 
 	@keyframes shimmer {

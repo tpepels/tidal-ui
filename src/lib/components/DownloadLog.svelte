@@ -255,7 +255,7 @@
 		display: flex;
 		flex-direction: column;
 		height: 100%;
-		background: #101010;
+		background: var(--ui-surface-raised, #171210);
 		backdrop-filter: none;
 		-webkit-backdrop-filter: none;
 	}
@@ -279,14 +279,14 @@
 		margin: 0;
 		font-size: 1rem;
 		font-weight: 600;
-		color: rgba(245, 245, 245, 0.96);
+		color: var(--ui-text-primary, rgba(245, 245, 245, 0.96));
 		letter-spacing: 0.02em;
 	}
 
 	.download-log-subtitle {
 		margin: 0;
 		font-size: 0.84rem;
-		color: rgba(163, 163, 163, 0.84);
+		color: var(--ui-text-muted, rgba(163, 163, 163, 0.84));
 	}
 
 	.download-log-actions {
@@ -307,7 +307,7 @@
 		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
 		font-size: 0.84rem;
 		font-weight: 600;
-		color: rgba(212, 212, 212, 0.82);
+		color: var(--ui-text-secondary, rgba(212, 212, 212, 0.82));
 	}
 
 	.download-log-btn {
@@ -319,7 +319,7 @@
 		border-radius: 8px;
 		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
-		color: rgba(212, 212, 212, 0.82);
+		color: var(--ui-text-secondary, rgba(212, 212, 212, 0.82));
 		transition:
 			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
 			background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
@@ -333,8 +333,8 @@
 
 	.download-log-btn:hover {
 		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
-		color: rgba(255, 255, 255, 0.96);
+		background: var(--ui-surface-interactive, rgba(255, 255, 255, 0.055));
+		color: var(--ui-text-primary, rgba(255, 255, 255, 0.96));
 		transform: translateY(var(--ui-lift-y, -1px));
 	}
 
@@ -355,7 +355,7 @@
 		font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
 		font-size: 13px;
 		padding: 10px 14px;
-		color: rgba(212, 212, 212, 0.88);
+		color: var(--ui-text-secondary, rgba(212, 212, 212, 0.88));
 		line-height: 1.4;
 
 		display: flex;
@@ -369,19 +369,19 @@
 	}
 
 	.download-log-panel :global(.download-log-content::-webkit-scrollbar-track) {
-		background: rgba(255, 255, 255, 0.02);
+		background: var(--ui-layer-section, rgba(255, 255, 255, 0.02));
 		border-radius: 6px;
 	}
 
 	.download-log-panel :global(.download-log-content::-webkit-scrollbar-thumb) {
-		background: rgba(255, 255, 255, 0.22);
+		background: rgb(var(--ui-color-parchment-rgb, 242 231 213) / 0.22);
 		border-radius: 6px;
 		border: 2px solid transparent;
 		background-clip: padding-box;
 	}
 
 	.download-log-panel :global(.download-log-content::-webkit-scrollbar-thumb:hover) {
-		background: rgba(255, 255, 255, 0.34);
+		background: rgb(var(--ui-color-parchment-rgb, 242 231 213) / 0.34);
 		background-clip: padding-box;
 	}
 
@@ -405,7 +405,7 @@
 	}
 
 	.download-log-time {
-		color: rgba(163, 163, 163, 0.82);
+		color: var(--ui-text-muted, rgba(163, 163, 163, 0.82));
 		flex-shrink: 0;
 		min-width: 12ch;
 		font-size: 0.82rem;
@@ -425,47 +425,47 @@
 	}
 
 	.download-log-entry--info {
-		color: rgba(212, 212, 212, 0.84);
+		color: var(--ui-text-secondary, rgba(212, 212, 212, 0.84));
 	}
 
 	.download-log-entry--info .download-log-level {
-		color: rgba(163, 163, 163, 0.82);
+		color: var(--ui-text-muted, rgba(163, 163, 163, 0.82));
 	}
 
 	.download-log-entry--success {
-		color: rgba(232, 232, 232, 0.92);
+		color: var(--ui-status-success, rgba(232, 232, 232, 0.92));
 	}
 
 	.download-log-entry--success .download-log-level {
-		color: rgba(220, 220, 220, 0.9);
+		color: var(--ui-status-success, rgba(220, 220, 220, 0.9));
 	}
 
 	.download-log-entry--success .download-log-time {
-		color: rgba(206, 206, 206, 0.88);
+		color: rgb(var(--ui-color-sage-rgb, 126 152 119) / 0.82);
 	}
 
 	.download-log-entry--warning {
-		color: rgba(224, 224, 224, 0.9);
+		color: var(--ui-status-warning, rgba(224, 224, 224, 0.9));
 	}
 
 	.download-log-entry--warning .download-log-level {
-		color: rgba(212, 212, 212, 0.88);
+		color: var(--ui-status-warning, rgba(212, 212, 212, 0.88));
 	}
 
 	.download-log-entry--warning .download-log-time {
-		color: rgba(194, 194, 194, 0.84);
+		color: rgb(var(--ui-color-ochre-rgb, 197 139 58) / 0.82);
 	}
 
 	.download-log-entry--error {
-		color: rgba(214, 214, 214, 0.92);
+		color: var(--ui-status-error, rgba(214, 214, 214, 0.92));
 	}
 
 	.download-log-entry--error .download-log-level {
-		color: rgba(200, 200, 200, 0.9);
+		color: var(--ui-status-error, rgba(200, 200, 200, 0.9));
 	}
 
 	.download-log-entry--error .download-log-time {
-		color: rgba(186, 186, 186, 0.88);
+		color: rgb(var(--ui-color-terracotta-rgb, 198 106 75) / 0.82);
 	}
 
 /* Health Summary Styles */
@@ -479,7 +479,7 @@
 	margin: 0 0 12px 0;
 	font-size: 0.9rem;
 	font-weight: 600;
-	color: rgba(245, 245, 245, 0.96);
+	color: var(--ui-text-primary, rgba(245, 245, 245, 0.96));
 	letter-spacing: 0.04em;
 }
 
@@ -507,24 +507,24 @@
 }
 
 .download-health-label {
-	color: rgba(212, 212, 212, 0.8);
+	color: var(--ui-text-secondary, rgba(212, 212, 212, 0.8));
 	font-size: 0.84rem;
 }
 
 .download-health-value {
-	color: rgba(245, 245, 245, 0.96);
+	color: var(--ui-text-primary, rgba(245, 245, 245, 0.96));
 	font-weight: 500;
 	font-size: 0.94rem;
 }
 
 .download-health-stat--wide .download-health-value {
 	font-size: 13px;
-	color: rgba(212, 212, 212, 0.82);
+	color: var(--ui-text-secondary, rgba(212, 212, 212, 0.82));
 	word-break: break-all;
 }
 
 .download-health-value.connected {
-	color: rgba(236, 236, 236, 0.94);
+	color: var(--ui-status-success, rgba(236, 236, 236, 0.94));
 }
 
 .download-health-btn {
@@ -534,7 +534,7 @@
 	border-radius: 8px;
 	border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 	background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
-	color: rgba(245, 245, 245, 0.92);
+	color: var(--ui-text-primary, rgba(245, 245, 245, 0.92));
 	font-size: 13px;
 	font-weight: 500;
 	transition:
@@ -543,11 +543,11 @@
 		transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
 }
 
-.download-health-btn:hover {
-	border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-	background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
-	transform: translateY(var(--ui-lift-y, -1px));
-}
+	.download-health-btn:hover {
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
+		background: var(--ui-surface-interactive, rgba(255, 255, 255, 0.055));
+		transform: translateY(var(--ui-lift-y, -1px));
+	}
 
 .download-health-btn:active {
 	background: var(--ui-surface-2, rgba(255, 255, 255, 0.09));
@@ -559,7 +559,7 @@
 	position: fixed;
 	bottom: calc(20px + var(--player-height, 0px) + env(safe-area-inset-bottom, 0px));
 	right: 20px;
-	background: var(--ui-surface-1, rgba(255, 255, 255, 0.055));
+	background: var(--ui-surface-raised, rgba(255, 255, 255, 0.055));
 	border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
 	border-radius: 12px;
 	padding: 12px 16px;
@@ -583,7 +583,7 @@
 	gap: 6px;
 	font-size: 14px;
 	font-weight: 600;
-	color: #fff;
+	color: var(--ui-text-primary, #fff);
 	white-space: nowrap;
 }
 
@@ -594,7 +594,7 @@
 .download-progress-compact-toggle {
 	background: none;
 	border: none;
-	color: #888;
+	color: var(--ui-text-muted, #888);
 	cursor: pointer;
 	font-size: 12px;
 	padding: 2px 6px;
@@ -603,7 +603,7 @@
 }
 
 .download-progress-compact-toggle:hover {
-	color: #fff;
+	color: var(--ui-text-primary, #fff);
 }
 
 .download-progress-compact-tasks {
@@ -621,7 +621,7 @@
 .download-progress-compact-task-title {
 	flex: 1;
 	font-size: 12px;
-	color: #ccc;
+	color: var(--ui-text-secondary, #ccc);
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -631,28 +631,28 @@
 .download-progress-compact-bar {
 	flex: 0 0 60px;
 	height: 4px;
-	background: rgba(255, 255, 255, 0.2);
+	background: var(--ui-accent-surface, rgba(197, 139, 58, 0.12));
 	border-radius: 2px;
 	overflow: hidden;
 }
 
 .download-progress-compact-bar-fill {
 	height: 100%;
-	background: rgba(255, 255, 255, 0.92);
+	background: var(--ui-accent, rgba(197, 139, 58, 0.92));
 	border-radius: 2px;
 	transition: width var(--ui-motion-medium, 200ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
 }
 
 .download-progress-compact-percent {
 	font-size: 11px;
-	color: #888;
+	color: var(--ui-text-muted, #888);
 	min-width: 32px;
 	text-align: right;
 }
 
 .download-progress-compact-more {
 	font-size: 11px;
-	color: #666;
+	color: var(--ui-text-muted, #666);
 	text-align: center;
 	padding: 4px 0;
 }
