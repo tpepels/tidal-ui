@@ -516,7 +516,7 @@
 					<p class="ui-detail-hero__eyebrow">Album</p>
 					<h1 class="ui-detail-hero__title">{album.title}</h1>
 					{#if album.artist}
-						<div class="text-left text-xl text-gray-300">
+						<div class="ui-detail-hero__support">
 							<ArtistLinks artists={[album.artist]} />
 						</div>
 					{/if}

@@ -140,12 +140,16 @@
 	/>
 {:else}
 	<div class={fallbackClass}>
-		{fallbackLabel}
+		<span class="cover-art-fallback__label">{fallbackLabel}</span>
 	</div>
 {/if}
 
 <style>
 	.cover-art-image {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
 		transition: opacity var(--ui-motion-medium, 200ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1));
 	}
 
@@ -163,10 +167,20 @@
 		width: 100%;
 		align-items: center;
 		justify-content: center;
-		background: rgba(255, 255, 255, 0.04);
+		background:
+			linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.025)),
+			rgba(255, 255, 255, 0.02);
 		border: 1px solid rgba(255, 255, 255, 0.12);
-		color: rgba(170, 170, 170, 0.92);
-		font-size: 0.78rem;
+		color: rgba(182, 182, 182, 0.92);
+		font-size: 0.84rem;
+		line-height: 1.3;
+		text-align: center;
+	}
+
+	.cover-art-fallback__label {
+		padding: 0 0.8rem;
+		font-weight: 650;
+		letter-spacing: 0.02em;
 	}
 
 	@media (prefers-reduced-motion: reduce) {

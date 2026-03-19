@@ -658,7 +658,8 @@
 		position: sticky;
 		top: 0;
 		z-index: 10;
-		padding: 0.15rem 0 0.6rem;
+		padding: 0.15rem 0 0.85rem;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 		background:
 			linear-gradient(to bottom, rgba(7, 7, 7, 0.96), rgba(7, 7, 7, 0.9) 74%, transparent);
 		backdrop-filter: blur(10px);

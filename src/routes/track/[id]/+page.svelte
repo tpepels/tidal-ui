@@ -271,7 +271,7 @@
 							<span class="ui-inline-tag">{track.audioQuality.replaceAll('_', ' ')}</span>
 						{/if}
 					</MetaStrip>
-					<div class="ui-list-surface ui-link-row-list">
+					<div class="ui-list-surface ui-link-row-list ui-detail-hero__related">
 						<a href={`/artist/${track.artist.id}`} class="ui-link-row" data-sveltekit-preload-data>
 							<div class="ui-link-row__media ui-link-row__media--circle">
 								{#if track.artist.picture}

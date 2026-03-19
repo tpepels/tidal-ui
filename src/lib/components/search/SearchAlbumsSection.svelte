@@ -50,12 +50,12 @@
 		}
 		if (state.downloading) {
 			if (state.total > 0) {
-				return `${state.completed}/${state.total}`;
+				return `Downloading ${state.completed}/${state.total}`;
 			}
-			return `${state.completed}`;
+			return `Downloading ${state.completed}`;
 		}
 		if (state.status === 'completed') {
-			return 'Done';
+			return 'Downloaded';
 		}
 		if (state.status === 'cancelled') {
 			return 'Stopped';
@@ -64,7 +64,7 @@
 			return 'Paused';
 		}
 		if (state.error) {
-			return state.error;
+			return 'Download error';
 		}
 		return null;
 	}
@@ -75,6 +75,18 @@
 			pendingMusicBrainzAlbumIds.has(albumId) &&
 			!albumMusicBrainzReleaseMatches[albumId]
 		);
+	}
+
+	function albumAuxiliaryStatusText(albumId: number, state: AlbumDownloadState): string | null {
+		const parts: string[] = [];
+		if (isMusicBrainzPendingForAlbum(albumId)) {
+			parts.push('Matching MusicBrainz…');
+		}
+		const downloadStatus = albumStatusText(state);
+		if (downloadStatus) {
+			parts.push(downloadStatus);
+		}
+		return parts.length > 0 ? parts.join(' • ') : null;
 	}
 </script>
 
@@ -87,7 +99,7 @@
 >
 	<WindowedList
 		items={albums}
-		itemHeight={82}
+		itemHeight={120}
 		overscan={6}
 		threshold={30}
 		className="ui-list-surface"
@@ -98,6 +110,7 @@
 				albumDownloadStates[album.id] ?? createDefaultAlbumDownloadState(album.numberOfTracks ?? 0)}
 			{@const canCancelAlbumDownload = isAlbumQueueDownloadCancellable(albumDownloadState)}
 			{@const albumCoverSrc = getAlbumCoverSrc(album)}
+			{@const auxiliaryStatus = albumAuxiliaryStatusText(album.id, albumDownloadState)}
 			<div class="ui-list-row ui-list-row--actionable ui-perf-row" data-window-item>
 				<a
 					href={`/album/${album.id}`}
@@ -136,13 +149,10 @@
 							1
 								? ''
 								: 's'}
-							{#if isMusicBrainzPendingForAlbum(album.id)}
-								• Matching MusicBrainz…
-							{/if}
-							{#if albumStatusText(albumDownloadState)}
-								• {albumStatusText(albumDownloadState)}
-							{/if}
 						</p>
+						{#if auxiliaryStatus}
+							<p class="ui-list-row__value">{auxiliaryStatus}</p>
+						{/if}
 					</div>
 				</a>
 				<button
@@ -151,7 +161,7 @@
 							? onCancelQueueDownload(album.id, event)
 							: onDownloadClick(album, event)}
 					type="button"
-					class="ui-list-row__action"
+					class="ui-list-row__action ui-list-row__action--labeled"
 					disabled={albumDownloadState.status === 'submitting'}
 					aria-label={
 						canCancelAlbumDownload
@@ -166,12 +176,18 @@
 				>
 					{#if canCancelAlbumDownload}
 						<X size={16} />
+						<span class="ui-list-row__action-label">Stop</span>
 					{:else if albumDownloadState.status === 'submitting' || albumDownloadState.downloading}
 						<LoaderCircle size={16} class="animate-spin" />
+						<span class="ui-list-row__action-label">Working</span>
 					{:else if albumDownloadState.status === 'paused'}
 						<RotateCcw size={16} />
+						<span class="ui-list-row__action-label">Resume</span>
 					{:else}
 						<Download size={16} />
+						<span class="ui-list-row__action-label">
+							{downloadActionLabel === 'Save to server' ? 'Save' : downloadActionLabel}
+						</span>
 					{/if}
 				</button>
 			</div>

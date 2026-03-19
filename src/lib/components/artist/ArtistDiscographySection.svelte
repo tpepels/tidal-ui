@@ -98,10 +98,10 @@
 </script>
 
 <section class="artist-discography-primary" data-ui-block="main-content">
-	<div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-		<div>
-			<h2 class="text-2xl font-semibold text-white">Discography</h2>
-			<p class="text-sm text-gray-400">Albums, EPs, and more from {artistName}.</p>
+	<div class="artist-discography-primary__header">
+		<div class="artist-discography-primary__heading">
+			<h2 class="artist-discography-primary__title">Discography</h2>
+			<p class="artist-discography-primary__subtitle">Albums, EPs, and more from {artistName}.</p>
 		</div>
 		<div class="ui-action-row ui-action-row--progressive">
 			<button
@@ -270,13 +270,13 @@
 									tone={section.id === 'album' ? 'secondary' : 'tertiary'}
 								>
 									{#snippet action()}
-										<button
+								<button
 											onclick={(event) =>
 												canCancelAlbumDownload
 													? onCancelAlbumQueueDownload(album.id, event)
 													: onAlbumDownload(album, event)}
 											type="button"
-											class="ui-list-row__action"
+											class="ui-list-row__action ui-list-row__action--labeled"
 											disabled={isDownloadingDiscography || albumDownloadState.status === 'submitting'}
 											aria-label={
 												canCancelAlbumDownload
@@ -291,12 +291,16 @@
 										>
 											{#if canCancelAlbumDownload}
 												<X size={16} />
+												<span class="ui-list-row__action-label">Stop</span>
 											{:else if albumDownloadState.status === 'submitting' || albumDownloadState.downloading}
 												<LoaderCircle size={16} class="animate-spin" />
+												<span class="ui-list-row__action-label">Working</span>
 											{:else if albumDownloadState.status === 'paused'}
 												<RotateCcw size={16} />
+												<span class="ui-list-row__action-label">Resume</span>
 											{:else}
 												<Download size={16} />
+												<span class="ui-list-row__action-label">Download</span>
 											{/if}
 										</button>
 									{/snippet}
@@ -396,7 +400,34 @@
 <style>
 	.artist-discography-primary {
 		border-top: 1px solid rgba(255, 255, 255, 0.18);
-		padding-top: 0.9rem;
+		padding-top: 1rem;
+	}
+
+	.artist-discography-primary__header {
+		display: flex;
+		flex-direction: column;
+		gap: 0.9rem;
+	}
+
+	.artist-discography-primary__heading {
+		display: flex;
+		flex-direction: column;
+		gap: 0.18rem;
+	}
+
+	.artist-discography-primary__title {
+		margin: 0;
+		font-size: clamp(1.45rem, 1.2rem + 0.8vw, 1.9rem);
+		line-height: 1.15;
+		font-weight: 700;
+		color: rgba(248, 248, 248, 0.98);
+	}
+
+	.artist-discography-primary__subtitle {
+		margin: 0;
+		font-size: 0.98rem;
+		line-height: 1.45;
+		color: rgba(205, 205, 205, 0.82);
 	}
 
 	.artist-discography-list {
@@ -419,5 +450,13 @@
 
 	.discography-mb-inline--searching {
 		color: rgba(210, 210, 210, 0.82);
+	}
+
+	@media (min-width: 768px) {
+		.artist-discography-primary__header {
+			flex-direction: row;
+			align-items: center;
+			justify-content: space-between;
+		}
 	}
 </style>
