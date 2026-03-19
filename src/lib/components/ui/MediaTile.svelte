@@ -81,12 +81,15 @@
 		}
 		return undefined;
 	}
+
+	const useArtworkOverlay = $derived(type === 'album');
 </script>
 
 <article
 	{...restProps}
 	class={`ui-media-card ui-entity-card ui-perf-card ${className}`.trim()}
 	data-tone={resolveCardTone()}
+	data-card-type={type}
 >
 	{#if badge}
 		{@render badge()}
@@ -97,9 +100,14 @@
 	<a
 		href={href}
 		class="ui-media-card__primary-link"
+		class:ui-media-card__primary-link--overlay={useArtworkOverlay}
 		data-sveltekit-preload-data={preload ? '' : undefined}
 	>
-		<div class="ui-media-card__artwork" class:ui-media-card__artwork--circle={type === 'artist'}>
+		<div
+			class="ui-media-card__artwork"
+			class:ui-media-card__artwork--circle={type === 'artist'}
+			class:ui-media-card__artwork--overlay={useArtworkOverlay}
+		>
 			{#if artwork}
 				{@render artwork()}
 			{:else if type === 'album' && coverCacheKey && coverCandidates.length > 0}
@@ -122,15 +130,44 @@
 					{/if}
 				</div>
 			{/if}
+
+			{#if useArtworkOverlay}
+				<div class="ui-media-card__artwork-overlay">
+					<div class="ui-media-card__body ui-media-card__body--overlay">
+						<h3 class="ui-media-card__title ui-media-card__title--truncate">{title}</h3>
+						{#if subtitle}
+							<p class="ui-media-card__subtitle ui-media-card__title--truncate">{subtitle}</p>
+						{/if}
+						{#if meta}
+							<p class="ui-media-card__meta">{meta}</p>
+						{/if}
+					</div>
+				</div>
+			{/if}
 		</div>
-		<div class="ui-media-card__body">
-			<h3 class="ui-media-card__title ui-media-card__title--truncate">{title}</h3>
-			{#if subtitle}
-				<p class="ui-media-card__subtitle ui-media-card__title--truncate">{subtitle}</p>
-			{/if}
-			{#if meta}
-				<p class="ui-media-card__meta">{meta}</p>
-			{/if}
+		{#if !useArtworkOverlay}
+			<div class="ui-media-card__body">
+				<h3 class="ui-media-card__title ui-media-card__title--truncate">{title}</h3>
+				{#if subtitle}
+					<p class="ui-media-card__subtitle ui-media-card__title--truncate">{subtitle}</p>
+				{/if}
+				{#if meta}
+					<p class="ui-media-card__meta">{meta}</p>
+				{/if}
+				{#if description}
+					<p class="ui-media-card__meta ui-entity-card__description">{description}</p>
+				{/if}
+				{#if intent}
+					<p class="ui-media-card__intent">{intent}</p>
+				{/if}
+				{#if bodyExtra}
+					{@render bodyExtra()}
+				{/if}
+			</div>
+		{/if}
+	</a>
+	{#if useArtworkOverlay && (description || intent || bodyExtra)}
+		<div class="ui-media-card__support">
 			{#if description}
 				<p class="ui-media-card__meta ui-entity-card__description">{description}</p>
 			{/if}
@@ -141,7 +178,7 @@
 				{@render bodyExtra()}
 			{/if}
 		</div>
-	</a>
+	{/if}
 	{#if linksContent}
 		{@render linksContent()}
 	{:else if links.length > 0}
