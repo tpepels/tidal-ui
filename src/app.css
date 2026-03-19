@@ -1264,12 +1264,15 @@ textarea {
 
 	.ui-detail-columns {
 		display: grid;
-		grid-template-columns: minmax(0, 1.45fr) minmax(19rem, 0.95fr);
+		grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem);
 		align-items: start;
-		column-gap: 2rem;
+		column-gap: clamp(1.5rem, 2vw, 2.4rem);
 	}
 
 	.ui-detail-sidebar {
+		width: 100%;
+		max-width: 24rem;
+		justify-self: end;
 		position: sticky;
 		top: 5.4rem;
 	}
