@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 describe('MusicBrainz detail stale-state handling', () => {
 	it('clears stale album release results when refresh fails', () => {
 		const source = readFileSync(
-			resolve(__dirname, '..', 'components/pages/AlbumPageContent.svelte'),
+			resolve(__dirname, '..', 'screens/album/AlbumScreenContainer.svelte'),
 			'utf8'
 		);
 		expect(source).toContain('musicBrainzReleaseOptions = [];');

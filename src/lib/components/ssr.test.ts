@@ -17,8 +17,8 @@ const compileDom = (relativePath: string) => {
 };
 
 describe('SSR compile', () => {
-	it('compiles SearchInterface for SSR', () => {
-		const result = compileSsr('src/lib/components/SearchInterface.svelte');
+	it('compiles SearchScreenLayout for SSR', () => {
+		const result = compileSsr('src/lib/screens/search/SearchScreenLayout.svelte');
 		expect(result.js.code.length).toBeGreaterThan(0);
 	});
 

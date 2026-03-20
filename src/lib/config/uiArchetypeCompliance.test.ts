@@ -31,14 +31,15 @@ const ROUTE_COMPLIANCE_SPECS: RouteComplianceSpec[] = [
 		archetype: 'collection',
 		files: [
 			'src/routes/library-suggestions/+page.svelte',
-			'src/lib/components/pages/LibrarySuggestionsPageContent.svelte'
+			'src/lib/screens/library-suggestions/LibrarySuggestionsScreenContainer.svelte',
+			'src/lib/screens/library-suggestions/LibrarySuggestionsScreenLayout.svelte'
 		],
 		requiredBlocks: ['page-header', 'filters-actions', 'results']
 	},
 	{
 		route: '/settings',
 		archetype: 'tool',
-		files: ['src/routes/settings/+page.svelte', 'src/lib/components/pages/SettingsPageContent.svelte'],
+		files: ['src/routes/settings/+page.svelte', 'src/lib/screens/settings/SettingsScreenContainer.svelte'],
 		requiredBlocks: ['page-header', 'key-summary', 'primary-actions', 'main-sections']
 	},
 	{
@@ -63,7 +64,7 @@ const ROUTE_COMPLIANCE_SPECS: RouteComplianceSpec[] = [
 	{
 		route: '/status',
 		archetype: 'tool',
-		files: ['src/routes/status/+page.svelte', 'src/lib/components/pages/StatusPageContent.svelte'],
+		files: ['src/routes/status/+page.svelte', 'src/lib/screens/status/StatusScreenContainer.svelte'],
 		requiredBlocks: ['page-header', 'key-summary', 'primary-actions', 'main-sections']
 	},
 	{
@@ -97,7 +98,7 @@ const ROUTE_COMPLIANCE_SPECS: RouteComplianceSpec[] = [
 			'src/lib/screens/artist/sections/ArtistHeroSection.svelte',
 			'src/lib/components/ui/DetailHeroSection.svelte',
 			'src/lib/screens/artist/sections/ArtistDiscographySection.svelte',
-			'src/lib/components/artist/ArtistDiscographySection.svelte',
+			'src/lib/screens/artist/ArtistDiscographySectionContent.svelte',
 			'src/lib/screens/artist/sections/ArtistRecommendationsSection.svelte',
 			'src/lib/screens/artist/sections/ArtistHighlightsSection.svelte',
 			'src/lib/screens/artist/sections/ArtistMusicBrainzSection.svelte'

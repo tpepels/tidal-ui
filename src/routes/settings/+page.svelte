@@ -1,5 +1,5 @@
 <script lang="ts">
-	import SettingsPageContent from '$lib/components/pages/SettingsPageContent.svelte';
+	import SettingsScreenContainer from '$lib/screens/settings/SettingsScreenContainer.svelte';
 	import { getRouteMeta } from '$lib/config/routeMeta';
 
 	const meta = getRouteMeta('/settings');
@@ -17,5 +17,5 @@
 			<p class="ui-page__subtitle">{meta?.subtitle ?? 'Streaming, download, and maintenance controls.'}</p>
 		</div>
 	</header>
-	<SettingsPageContent />
+	<SettingsScreenContainer />
 </section>

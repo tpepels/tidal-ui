@@ -1,5 +1,5 @@
 <script lang="ts">
-	import StatusPageContent from '$lib/components/pages/StatusPageContent.svelte';
+	import StatusScreenContainer from '$lib/screens/status/StatusScreenContainer.svelte';
 	import { getRouteMeta } from '$lib/config/routeMeta';
 
 	const meta = getRouteMeta('/status');
@@ -9,4 +9,4 @@
 	<title>{meta?.title ?? 'Status'} | BiniLossless</title>
 </svelte:head>
 
-<StatusPageContent />
+<StatusScreenContainer />

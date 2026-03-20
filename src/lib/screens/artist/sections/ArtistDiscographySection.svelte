@@ -1,5 +1,5 @@
 <script lang="ts">
-	import LegacyArtistDiscographySection from '$lib/components/artist/ArtistDiscographySection.svelte';
+	import ArtistDiscographySectionContent from '$lib/screens/artist/ArtistDiscographySectionContent.svelte';
 	import type {
 		ArtistDiscographyFilterState,
 		ArtistScreenAlbumDownloadState
@@ -50,4 +50,4 @@
 	let props: Props = $props();
 </script>
 
-<LegacyArtistDiscographySection {...props} />
+<ArtistDiscographySectionContent {...props} />

@@ -5,7 +5,7 @@
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
 	import { regionStore } from '$lib/stores/region';
 	import { logger, LogLevel, type LogEntry } from '$lib/core/logger';
-	import './download-manager.css';
+	import '$lib/components/download-manager.css';
 	import {
 		cancelActionKey,
 		deleteActionKey,
@@ -23,9 +23,9 @@
 		removeQueueJob as deleteQueueJob,
 		runQueueJobAction as runJobAction
 	} from '$lib/features/download-manager/queueActions';
-	import DownloadManagerPanelIntro from '$lib/components/download-manager/DownloadManagerPanelIntro.svelte';
-	import DownloadManagerPriorityOverview from '$lib/components/download-manager/DownloadManagerPriorityOverview.svelte';
-	import DownloadManagerDetailedSections from '$lib/components/download-manager/DownloadManagerDetailedSections.svelte';
+	import DownloadCenterSummarySection from '$lib/screens/download-center/sections/DownloadCenterSummarySection.svelte';
+	import DownloadCenterPrioritySection from '$lib/screens/download-center/sections/DownloadCenterPrioritySection.svelte';
+	import DownloadCenterTimelineSection from '$lib/screens/download-center/sections/DownloadCenterTimelineSection.svelte';
 	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
 	import { createAdaptivePollingController } from '$lib/utils/adaptivePolling';
 	import { confirm as requestConfirmation } from '$lib/stores/dialogs';
@@ -865,7 +865,7 @@
 			{/if}
 
 			<div id="download-center-summary" class="ui-section-anchor">
-				<DownloadManagerPanelIntro
+				<DownloadCenterSummarySection
 					{pageMode}
 					pollingError={$serverQueue.pollingError}
 					{pollStatusLabel}
@@ -902,7 +902,7 @@
 			<div class="download-manager-content" data-ui-block="main-sections">
 				{#if pageMode}
 					<section id="download-center-priority" class="ui-section-anchor">
-						<DownloadManagerPriorityOverview
+						<DownloadCenterPrioritySection
 							{stats}
 							{processingJobs}
 							{attentionPreviewJobs}
@@ -932,7 +932,7 @@
 				{/if}
 
 				<section id="download-center-details" class="ui-section-anchor">
-					<DownloadManagerDetailedSections
+					<DownloadCenterTimelineSection
 						{pageMode}
 						{showDetailedSections}
 						{stats}

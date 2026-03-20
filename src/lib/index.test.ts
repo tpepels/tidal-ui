@@ -20,7 +20,7 @@ vi.mock('./components/AudioPlayer.svelte', () => ({
 	default: { name: 'AudioPlayer' }
 }));
 
-vi.mock('./components/SearchInterface.svelte', () => ({
+vi.mock('./screens/search/SearchScreenLayout.svelte', () => ({
 	default: { name: 'SearchInterface' }
 }));
 

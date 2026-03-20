@@ -29,7 +29,9 @@ const MAIN_ROUTE_FILES = [
 	'src/routes/track/[id]/+page.svelte',
 	'src/routes/playlist/[id]/+page.svelte',
 	'src/routes/download-center/+page.svelte',
-	'src/routes/library-suggestions/+page.svelte'
+	'src/routes/library-suggestions/+page.svelte',
+	'src/routes/settings/+page.svelte',
+	'src/routes/status/+page.svelte'
 ];
 const BANNED_PRESENTATION_IMPORTS = [
 	/\$lib\/stores\//,
@@ -107,5 +109,26 @@ describe('UI architecture compliance', () => {
 
 		expect(albumScreenSource).not.toMatch(/AlbumPageContent\.svelte/);
 		expect(downloadCenterSource).not.toMatch(/DownloadManager\.svelte/);
+	});
+
+	it('keeps screen and shell entrypoints off removed legacy component paths', () => {
+		const searchScreenSource = readFileSync(
+			path.resolve(ROOT, 'src/lib/screens/search/SearchScreenContainer.svelte'),
+			'utf8'
+		);
+		const librarySuggestionsSource = readFileSync(
+			path.resolve(ROOT, 'src/lib/screens/library-suggestions/LibrarySuggestionsScreenContainer.svelte'),
+			'utf8'
+		);
+		const artistDiscographySource = readFileSync(
+			path.resolve(ROOT, 'src/lib/screens/artist/sections/ArtistDiscographySection.svelte'),
+			'utf8'
+		);
+		const layoutSource = readFileSync(path.resolve(ROOT, 'src/routes/+layout.svelte'), 'utf8');
+
+		expect(searchScreenSource).not.toMatch(/SearchInterface\.svelte/);
+		expect(librarySuggestionsSource).not.toMatch(/LibrarySuggestionsPageContent\.svelte/);
+		expect(artistDiscographySource).not.toMatch(/components\/artist\/ArtistDiscographySection\.svelte/);
+		expect(layoutSource).not.toMatch(/components\/DownloadManager\.svelte/);
 	});
 });

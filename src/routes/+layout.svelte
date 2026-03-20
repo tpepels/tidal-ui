@@ -7,7 +7,7 @@
 	import ConfirmDialogHost from '$lib/components/ConfirmDialogHost.svelte';
 	import ErrorBoundary from '$lib/components/ErrorBoundary.svelte';
 	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
-	import DownloadManager from '$lib/components/DownloadManager.svelte';
+	import FloatingDownloadManagerContainer from '$lib/shell/download-manager/FloatingDownloadManagerContainer.svelte';
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 	import { machineCurrentTrack, machineIsPlaying, machineQueue } from '$lib/stores/playerDerived';
 	import { queueStats, serverQueue, workerStatus } from '$lib/stores/serverQueue.svelte';
@@ -688,7 +688,7 @@
 	</div>
 
 	{#if !$page.url.pathname.startsWith('/download-center')}
-		<DownloadManager />
+		<FloatingDownloadManagerContainer />
 	{/if}
 	<LyricsPopup />
 	<ToastContainer />

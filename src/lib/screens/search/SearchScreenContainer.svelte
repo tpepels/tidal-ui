@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import SearchInterface from '$lib/components/SearchInterface.svelte';
+	import SearchScreenLayout from '$lib/screens/search/SearchScreenLayout.svelte';
 	import type { PlayableTrack } from '$lib/types';
 	import { playbackFacade } from '$lib/controllers/playbackFacade';
 	import { APP_VERSION } from '$lib/version';
@@ -54,6 +54,6 @@
 		</div>
 	</header>
 	<div data-ui-block="results">
-		<SearchInterface onTrackSelect={handleTrackSelect} />
+		<SearchScreenLayout onTrackSelect={handleTrackSelect} />
 	</div>
 </section>
