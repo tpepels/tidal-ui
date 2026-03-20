@@ -40,6 +40,14 @@ const BANNED_PRESENTATION_IMPORTS = [
 	/\$app\/stores/,
 	/\$app\/navigation/
 ];
+const MAJOR_SCREEN_DIRS = [
+	'src/lib/screens/album',
+	'src/lib/screens/artist',
+	'src/lib/screens/download-center',
+	'src/lib/screens/playlist',
+	'src/lib/screens/search',
+	'src/lib/screens/track'
+];
 
 describe('UI architecture compliance', () => {
 	it('keeps main route files as thin screen-container shells', () => {
@@ -70,8 +78,34 @@ describe('UI architecture compliance', () => {
 
 		for (const file of sectionFiles) {
 			const source = readFileSync(file, 'utf8');
-			expect(source).not.toMatch(/\blosslessAPI\b/);
-			expect(source).not.toMatch(/\$lib\/api(?:['/])/);
+			for (const pattern of BANNED_PRESENTATION_IMPORTS) {
+				expect(source).not.toMatch(pattern);
+			}
 		}
+	});
+
+	it('requires major screens to expose screenViewModel files and section directories', () => {
+		for (const relativeDir of MAJOR_SCREEN_DIRS) {
+			const absoluteDir = path.resolve(ROOT, relativeDir);
+			expect(statSync(absoluteDir).isDirectory()).toBe(true);
+			expect(statSync(path.join(absoluteDir, 'screenViewModel.ts')).isFile()).toBe(true);
+			const sectionDir = path.join(absoluteDir, 'sections');
+			expect(statSync(sectionDir).isDirectory()).toBe(true);
+			expect(collectSvelteFiles(sectionDir).length).toBeGreaterThan(0);
+		}
+	});
+
+	it('keeps album and download-center routes off the legacy monoliths', () => {
+		const albumScreenSource = readFileSync(
+			path.resolve(ROOT, 'src/lib/screens/album/AlbumScreenContainer.svelte'),
+			'utf8'
+		);
+		const downloadCenterSource = readFileSync(
+			path.resolve(ROOT, 'src/lib/screens/download-center/DownloadCenterScreenContainer.svelte'),
+			'utf8'
+		);
+
+		expect(albumScreenSource).not.toMatch(/AlbumPageContent\.svelte/);
+		expect(downloadCenterSource).not.toMatch(/DownloadManager\.svelte/);
 	});
 });

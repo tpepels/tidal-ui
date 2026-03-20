@@ -3,6 +3,7 @@ import type { Album } from '$lib/types';
 import {
 	createAlbumMusicBrainzMatchController,
 	musicBrainzTitlesLikelyMatch,
+	selectAlbumMusicBrainzHydrationCandidates,
 	stripTrailingBracketedSuffix,
 	resolveAlbumMusicBrainzLookupKey,
 	resolveAlbumMusicBrainzReleaseMatch
@@ -224,6 +225,53 @@ describe('albumMusicBrainzMatchController', () => {
 
 		expect(matchedByAlbum.get(album.id)).toBe('release-202');
 		expect(fetchImpl).toHaveBeenCalledTimes(1);
+	});
+
+	it('limits hydration candidates to unresolved lookup-ready albums', () => {
+		const albums = [
+			createAlbum({ id: 1, title: 'Ready Album 1' }),
+			createAlbum({ id: 2, title: 'Ready Album 2' }),
+			createAlbum({ id: 3, title: '', artist: undefined }),
+			createAlbum({ id: 4, title: 'Ready Album 4' })
+		];
+
+		const candidates = selectAlbumMusicBrainzHydrationCandidates(albums, {
+			hasMatch: (albumId) => albumId === 2,
+			lookupLimit: 2
+		});
+
+		expect(candidates.map((entry) => entry.album.id)).toEqual([1, 4]);
+	});
+
+	it('notifies when a lookup settles without a match', async () => {
+		const album = createAlbum({ id: 205, title: 'No Match Album' });
+		const matchedByAlbum = new Map<number, string>();
+		const settledAlbumIds: number[] = [];
+		const fetchImpl = vi.fn().mockResolvedValue({
+			ok: true,
+			json: async () => ({
+				success: true,
+				releases: []
+			})
+		});
+
+		const controller = createAlbumMusicBrainzMatchController({
+			concurrency: 1,
+			lookupLimit: 10,
+			fetchImpl: fetchImpl as unknown as typeof fetch,
+			hasMatch: (albumId) => matchedByAlbum.has(albumId),
+			onMatch: (albumId, releaseId) => {
+				matchedByAlbum.set(albumId, releaseId);
+			},
+			onLookupSettled: (albumId) => {
+				settledAlbumIds.push(albumId);
+			}
+		});
+
+		await controller.hydrate([album]);
+
+		expect(matchedByAlbum.has(album.id)).toBe(false);
+		expect(settledAlbumIds).toEqual([album.id]);
 	});
 
 	it('supports a high-priority ensureMatch lookup without duplicating in-flight requests', async () => {

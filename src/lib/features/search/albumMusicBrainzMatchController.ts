@@ -20,6 +20,7 @@ type AlbumMusicBrainzMatchControllerOptions = {
 	lookupLimit?: number;
 	hasMatch: (albumId: number) => boolean;
 	onMatch: (albumId: number, releaseId: string) => void;
+	onLookupSettled?: (albumId: number) => void;
 	fetchImpl?: FetchLike;
 };
 
@@ -197,6 +198,26 @@ export function resolveAlbumMusicBrainzLookupKey(album: Album): string | null {
 	return `${normalizedTitle}::${normalizedArtist}::${trackCount ?? 0}::${releaseDate}::${upc}`;
 }
 
+export function selectAlbumMusicBrainzHydrationCandidates(
+	albums: Album[],
+	options: {
+		hasMatch: (albumId: number) => boolean;
+		lookupLimit?: number;
+	}
+): Array<{ album: Album; lookupKey: string }> {
+	const lookupLimit = options.lookupLimit ?? DEFAULT_LOOKUP_LIMIT;
+	return albums
+		.map((album) => {
+			const lookupKey = resolveAlbumMusicBrainzLookupKey(album);
+			return { album, lookupKey };
+		})
+		.filter(
+			(entry): entry is { album: Album; lookupKey: string } =>
+				typeof entry.lookupKey === 'string' && !options.hasMatch(entry.album.id)
+		)
+		.slice(0, lookupLimit);
+}
+
 export async function resolveAlbumMusicBrainzReleaseMatch(
 	album: Album,
 	lookupKey: string,
@@ -339,16 +360,10 @@ export function createAlbumMusicBrainzMatchController(
 			return;
 		}
 
-		const candidates = albums
-			.map((album) => {
-				const lookupKey = resolveAlbumMusicBrainzLookupKey(album);
-				return { album, lookupKey };
-			})
-			.filter(
-				(entry): entry is { album: Album; lookupKey: string } =>
-					typeof entry.lookupKey === 'string' && !options.hasMatch(entry.album.id)
-			)
-			.slice(0, lookupLimit);
+		const candidates = selectAlbumMusicBrainzHydrationCandidates(albums, {
+			hasMatch: options.hasMatch,
+			lookupLimit
+		});
 
 		if (candidates.length === 0) {
 			return;
@@ -374,6 +389,7 @@ export function createAlbumMusicBrainzMatchController(
 			}
 
 			for (const result of resolvedBatch) {
+				options.onLookupSettled?.(result.albumId);
 				if (!result.releaseId || options.hasMatch(result.albumId)) {
 					continue;
 				}

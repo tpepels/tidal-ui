@@ -60,6 +60,7 @@ export type EntityTileVM = {
 };
 
 export type ActionButtonVM = {
+	id?: string;
 	label: string;
 	ariaLabel: string;
 	title?: string;
@@ -71,6 +72,62 @@ export type ActionButtonVM = {
 };
 
 export type DialogTone = 'default' | 'warning' | 'danger';
+
+export type DetailLinkVM = {
+	id: string;
+	label: string;
+	href: string;
+	ariaLabel?: string;
+	preload?: boolean;
+	external?: boolean;
+};
+
+export type DetailFactVM = {
+	label: string;
+	value: string;
+};
+
+export type DetailMetaItemVM =
+	| {
+			kind: 'tag';
+			label: string;
+	  }
+	| {
+			kind: 'text';
+			label: string;
+	  }
+	| {
+			kind: 'icon';
+			icon: 'calendar' | 'clock' | 'disc' | 'user';
+			label: string;
+			imageSrc?: string | null;
+			imageAlt?: string;
+			imageShape?: 'square' | 'circle';
+	  };
+
+export type DetailHeroVisualVM =
+	| {
+			kind: 'artwork';
+			artwork: ArtworkVM;
+	  }
+	| {
+			kind: 'video';
+			src: string;
+			alt: string;
+			posterSrc?: string | null;
+			shape?: 'square' | 'circle';
+			fallbackLabel?: string;
+	  };
+
+export type DetailHeroVM = {
+	eyebrow: string;
+	title: string;
+	description?: string | null;
+	visual?: DetailHeroVisualVM | null;
+	supportLinks?: DetailLinkVM[];
+	metaItems?: DetailMetaItemVM[];
+	relatedItems?: EntityRowVM[];
+};
 
 export type StateNoticeVM = {
 	tone: 'neutral' | 'info' | 'success' | 'warning' | 'error';

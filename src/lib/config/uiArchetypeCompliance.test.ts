@@ -47,7 +47,9 @@ const ROUTE_COMPLIANCE_SPECS: RouteComplianceSpec[] = [
 		files: [
 			'src/routes/download-center/+page.svelte',
 			'src/lib/screens/download-center/DownloadCenterScreenContainer.svelte',
-			'src/lib/components/DownloadManager.svelte',
+			'src/lib/screens/download-center/sections/DownloadCenterSummarySection.svelte',
+			'src/lib/screens/download-center/sections/DownloadCenterPrioritySection.svelte',
+			'src/lib/screens/download-center/sections/DownloadCenterTimelineSection.svelte',
 			'src/lib/components/download-manager/DownloadManagerPanelIntro.svelte'
 		],
 		requiredBlocks: ['page-header', 'key-summary', 'primary-actions', 'main-sections']
@@ -67,7 +69,16 @@ const ROUTE_COMPLIANCE_SPECS: RouteComplianceSpec[] = [
 	{
 		route: '/album/[id]',
 		archetype: 'detail',
-		files: ['src/routes/album/[id]/+page.svelte', 'src/lib/components/pages/AlbumPageContent.svelte'],
+		files: [
+			'src/routes/album/[id]/+page.svelte',
+			'src/lib/screens/album/AlbumScreenContainer.svelte',
+			'src/lib/screens/album/sections/AlbumHeroSection.svelte',
+			'src/lib/components/ui/DetailHeroSection.svelte',
+			'src/lib/screens/album/sections/AlbumActionsSection.svelte',
+			'src/lib/screens/album/sections/AlbumTracksSection.svelte',
+			'src/lib/screens/album/sections/AlbumMusicBrainzSection.svelte',
+			'src/lib/screens/album/sections/AlbumNotesSection.svelte'
+		],
 		requiredBlocks: [
 			'back-nav',
 			'entity-hero',
@@ -83,7 +94,13 @@ const ROUTE_COMPLIANCE_SPECS: RouteComplianceSpec[] = [
 		files: [
 			'src/routes/artist/[id]/+page.svelte',
 			'src/lib/screens/artist/ArtistScreenContainer.svelte',
-			'src/lib/components/artist/ArtistDiscographySection.svelte'
+			'src/lib/screens/artist/sections/ArtistHeroSection.svelte',
+			'src/lib/components/ui/DetailHeroSection.svelte',
+			'src/lib/screens/artist/sections/ArtistDiscographySection.svelte',
+			'src/lib/components/artist/ArtistDiscographySection.svelte',
+			'src/lib/screens/artist/sections/ArtistRecommendationsSection.svelte',
+			'src/lib/screens/artist/sections/ArtistHighlightsSection.svelte',
+			'src/lib/screens/artist/sections/ArtistMusicBrainzSection.svelte'
 		],
 		requiredBlocks: [
 			'back-nav',
@@ -97,7 +114,14 @@ const ROUTE_COMPLIANCE_SPECS: RouteComplianceSpec[] = [
 	{
 		route: '/track/[id]',
 		archetype: 'detail',
-		files: ['src/routes/track/[id]/+page.svelte', 'src/lib/screens/track/TrackScreenContainer.svelte'],
+		files: [
+			'src/routes/track/[id]/+page.svelte',
+			'src/lib/screens/track/TrackScreenContainer.svelte',
+			'src/lib/screens/track/sections/TrackHeroSection.svelte',
+			'src/lib/components/ui/DetailHeroSection.svelte',
+			'src/lib/screens/track/sections/TrackActionsSection.svelte',
+			'src/lib/screens/track/sections/TrackMusicBrainzSection.svelte'
+		],
 		requiredBlocks: ['back-nav', 'entity-hero', 'primary-actions', 'context-metadata', 'main-content']
 	},
 	{
@@ -105,7 +129,13 @@ const ROUTE_COMPLIANCE_SPECS: RouteComplianceSpec[] = [
 		archetype: 'detail',
 		files: [
 			'src/routes/playlist/[id]/+page.svelte',
-			'src/lib/screens/playlist/PlaylistScreenContainer.svelte'
+			'src/lib/screens/playlist/PlaylistScreenContainer.svelte',
+			'src/lib/screens/playlist/sections/PlaylistHeroSection.svelte',
+			'src/lib/components/ui/DetailHeroSection.svelte',
+			'src/lib/screens/playlist/sections/PlaylistActionsSection.svelte',
+			'src/lib/screens/playlist/sections/PlaylistTracksSection.svelte',
+			'src/lib/screens/playlist/sections/PlaylistMetadataSection.svelte',
+			'src/lib/screens/playlist/sections/PlaylistFeaturedArtistsSection.svelte'
 		],
 		requiredBlocks: [
 			'back-nav',

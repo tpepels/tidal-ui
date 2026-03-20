@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import { losslessAPI } from '$lib/api';
 	import { downloadAlbum } from '$lib/downloads';
 	import {
@@ -26,24 +26,18 @@
 		filterDiscographyEntries
 	} from '$lib/features/artist/artistDiscographyModel';
 	import { resolveDiscographyGroupMusicBrainzReleaseId } from '$lib/features/artist/artistDiscographyPresentation';
-	import { createAlbumMusicBrainzMatchController } from '$lib/features/search/albumMusicBrainzMatchController';
-	import ArtistDiscographySection from '$lib/components/artist/ArtistDiscographySection.svelte';
-	import ArtistDiscographyHighlights from '$lib/components/artist/ArtistDiscographyHighlights.svelte';
-	import ArtistRecommendationsRail from '$lib/components/artist/ArtistRecommendationsRail.svelte';
-	import ArtistTopTracksSection from '$lib/components/artist/ArtistTopTracksSection.svelte';
 	import {
-		formatMusicBrainzArtistLifeSpan,
+		createAlbumMusicBrainzMatchController,
+		selectAlbumMusicBrainzHydrationCandidates
+	} from '$lib/features/search/albumMusicBrainzMatchController';
+	import {
 		normalizeArtistToken as normalizeToken,
 		pickDefaultMusicBrainzArtistId,
 		searchMusicBrainzArtistsByName,
 		type MusicBrainzArtistOption
 	} from '$lib/features/artist/artistMusicBrainzController';
 	import type { Album, ArtistDetails, ArtistRecommendations, AudioQuality } from '$lib/types';
-	import DataGrid from '$lib/components/ui/DataGrid.svelte';
 	import PageSectionNav from '$lib/components/ui/PageSectionNav.svelte';
-	import SectionBlock from '$lib/components/ui/SectionBlock.svelte';
-	import MetaStrip from '$lib/components/ui/MetaStrip.svelte';
-	import StateNotice from '$lib/components/ui/StateNotice.svelte';
 	import { confirm as requestConfirmation } from '$lib/stores/dialogs';
 	import {
 		groupDiscography,
@@ -58,10 +52,26 @@
 		prefetchCoverCandidates,
 		subscribeCoverPipelineEvents
 	} from '$lib/utils/coverPipeline';
-	import { scoreAlbumForSelection } from '$lib/utils/albumSelection';
-	import { sortTopTracks } from '$lib/utils/topTracks';
 	import { fetchAlbumLibraryStatus } from '$lib/utils/mediaLibraryClient';
-	import { ArrowLeft, LoaderCircle, User } from 'lucide-svelte';
+	import { ArrowLeft, LoaderCircle } from 'lucide-svelte';
+	import ArtistDiscographySection from '$lib/screens/artist/sections/ArtistDiscographySection.svelte';
+	import ArtistHeroSection from '$lib/screens/artist/sections/ArtistHeroSection.svelte';
+	import ArtistHighlightsSection from '$lib/screens/artist/sections/ArtistHighlightsSection.svelte';
+	import ArtistMusicBrainzSection from '$lib/screens/artist/sections/ArtistMusicBrainzSection.svelte';
+	import ArtistRecommendationsSection from '$lib/screens/artist/sections/ArtistRecommendationsSection.svelte';
+	import ArtistTopTracksSection from '$lib/screens/artist/sections/ArtistTopTracksSection.svelte';
+	import {
+		DEFAULT_ARTIST_DISCOGRAPHY_FILTER_STATE,
+		buildArtistHeroViewModel,
+		buildArtistMusicBrainzSectionViewModel,
+		buildArtistRecommendationRailState,
+		buildArtistSectionNavItems,
+		displayArtistTrackTotal,
+		formatArtistAlbumMeta,
+		formatArtistQualityLabel,
+		normalizeArtistDetails,
+		toggleArtistDiscographyFilterState
+	} from '$lib/screens/artist/artistViewModel';
 
 	import { downloadPreferencesStore } from '$lib/stores/downloadPreferences';
 	import { userPreferencesStore } from '$lib/stores/userPreferences';
@@ -108,15 +118,7 @@
 	const discographyInfo = $derived(artist?.discographyInfo ?? null);
 	const downloadQuality = $derived($downloadPreferencesStore.downloadQuality as AudioQuality);
 	let bestEditionRule = $state<DiscographyBestEditionRule>('balanced');
-	let discographyFilterState = $state({
-		album: true,
-		ep: true,
-		single: true,
-		live: true,
-		remaster: true,
-		explicit: true,
-		clean: true
-	});
+	let discographyFilterState = $state({ ...DEFAULT_ARTIST_DISCOGRAPHY_FILTER_STATE });
 	const groupedDiscographyEntries = $derived(
 		groupDiscography(rawDiscography, downloadQuality, { bestEditionRule })
 	);
@@ -212,6 +214,14 @@
 				next.delete(albumId);
 				pendingDiscographyMusicBrainzAlbumIds = next;
 			}
+		},
+		onLookupSettled: (albumId) => {
+			if (!pendingDiscographyMusicBrainzAlbumIds.has(albumId)) {
+				return;
+			}
+			const next = new Set(pendingDiscographyMusicBrainzAlbumIds);
+			next.delete(albumId);
+			pendingDiscographyMusicBrainzAlbumIds = next;
 		}
 	});
 	const visibleDiscographyMusicBrainzReleaseMatches = $derived.by(() => {
@@ -234,26 +244,33 @@
 			null
 	);
 	const hasRecommendationRail = $derived(
-		recommendationsLoading ||
-			Boolean(recommendationsError) ||
-			recommendedArtists.length > 0 ||
-			recommendedAlbums.length > 0
+		buildArtistRecommendationRailState({
+			recommendationsLoading,
+			recommendationsError,
+			recommendedArtistsCount: recommendedArtists.length,
+			recommendedAlbumsCount: recommendedAlbums.length
+		})
 	);
 	const hasHighlightsSection = $derived(featuredDiscographyAlbums.length > 0);
-	const sectionNavItems = $derived.by(() => {
-		const items = [
-			{ id: 'artist-metadata', label: 'MusicBrainz', tone: 'tertiary' as const },
-			{ id: 'artist-top-tracks', label: 'Top Tracks' }
-		];
-		if (hasRecommendationRail) {
-			items.push({ id: 'artist-recommendations', label: 'Recommendations', tone: 'tertiary' as const });
-		}
-		if (hasHighlightsSection) {
-			items.push({ id: 'artist-highlights', label: 'Highlights' });
-		}
-		items.push({ id: 'artist-discography', label: 'Discography' });
-		return items;
-	});
+	const sectionNavItems = $derived.by(() =>
+		buildArtistSectionNavItems({
+			hasRecommendationRail,
+			hasHighlightsSection
+		})
+	);
+	const heroViewModel = $derived.by(() =>
+		artist ? buildArtistHeroViewModel(artist, artistImage) : null
+	);
+	const musicBrainzSectionViewModel = $derived.by(() =>
+		buildArtistMusicBrainzSectionViewModel({
+			candidates: musicBrainzArtistOptions,
+			selectedArtistId: selectedMusicBrainzArtistId,
+			selectedArtist: selectedMusicBrainzArtist,
+			isLoading: isMusicBrainzArtistLookupLoading,
+			hasAttempted: hasMusicBrainzArtistLookupAttempted,
+			error: musicBrainzArtistLookupError
+		})
+	);
 
 	$effect(() => {
 		const id = Number(artistId);
@@ -381,106 +398,14 @@
 		}
 	}
 
-	function getReleaseYear(date?: string | null): string | null {
-		if (!date) return null;
-		const timestamp = Date.parse(date);
-		if (Number.isNaN(timestamp)) return null;
-		return new Date(timestamp).getFullYear().toString();
-	}
-
-	function formatAlbumMeta(album: Album): string | null {
-		const parts: string[] = [];
-		const year = getReleaseYear(album.releaseDate ?? null);
-		if (year) parts.push(year);
-		if (album.type) parts.push(album.type.replace(/_/g, ' '));
-		if (album.numberOfTracks) parts.push(`${album.numberOfTracks} tracks`);
-		if (parts.length === 0) return null;
-		return parts.join(' • ');
-	}
-
-	function formatQualityLabel(quality: AudioQuality): string {
-		switch (quality) {
-			case 'HI_RES_LOSSLESS':
-				return 'Hi-Res';
-			case 'LOSSLESS':
-				return 'Lossless';
-			case 'HIGH':
-				return 'High';
-			case 'LOW':
-				return 'Low';
-			default:
-				return quality;
-		}
-	}
-
 	function toggleDiscographyFilter(
 		key: 'album' | 'ep' | 'single' | 'live' | 'remaster' | 'explicit' | 'clean'
 	): void {
-		const nextState = {
-			...discographyFilterState,
-			[key]: !discographyFilterState[key]
-		};
-		// Keep at least one content-rating option active to avoid a confusing "everything hidden" state.
-		if ((key === 'explicit' || key === 'clean') && !nextState.explicit && !nextState.clean) {
-			nextState[key === 'explicit' ? 'clean' : 'explicit'] = true;
-		}
-		discographyFilterState = nextState;
+		discographyFilterState = toggleArtistDiscographyFilterState(discographyFilterState, key);
 	}
 
 	function resetDiscographyFilters(): void {
-		discographyFilterState = {
-			album: true,
-			ep: true,
-			single: true,
-			live: true,
-			remaster: true,
-			explicit: true,
-			clean: true
-		};
-	}
-
-	function displayTrackTotal(total?: number | null): number {
-		if (!Number.isFinite(total)) return 0;
-		return total && total > 0 ? total : (total ?? 0);
-	}
-
-	function parseNumericId(value: unknown): number | null {
-		if (typeof value === 'number' && Number.isFinite(value)) return value;
-		if (typeof value === 'string' && value.trim().length > 0) {
-			const parsed = Number(value);
-			if (Number.isFinite(parsed)) return parsed;
-		}
-		return null;
-	}
-
-	function normalizeArtistDetails(data: ArtistDetails): ArtistDetails {
-		const normalizedAlbumsInput = Array.isArray(data.albums) ? data.albums : [];
-		const dedupedAlbums = new Map<number, Album>();
-		for (const album of normalizedAlbumsInput) {
-			const parsedId = parseNumericId((album as { id?: unknown }).id);
-			if (parsedId === null) continue;
-			const normalizedAlbum = { ...album, id: parsedId };
-			const existing = dedupedAlbums.get(parsedId);
-			if (!existing || scoreAlbumForSelection(normalizedAlbum) > scoreAlbumForSelection(existing)) {
-				dedupedAlbums.set(parsedId, normalizedAlbum);
-			}
-		}
-
-		const normalizedTracksInput = Array.isArray(data.tracks) ? data.tracks : [];
-		const dedupedTracks = new Map<number, (typeof normalizedTracksInput)[number]>();
-		for (const track of normalizedTracksInput) {
-			const parsedId = parseNumericId((track as { id?: unknown }).id);
-			if (parsedId === null) continue;
-			if (!dedupedTracks.has(parsedId)) {
-				dedupedTracks.set(parsedId, { ...track, id: parsedId });
-			}
-		}
-
-		return {
-			...data,
-			albums: Array.from(dedupedAlbums.values()),
-			tracks: sortTopTracks(Array.from(dedupedTracks.values()), 100)
-		};
+		discographyFilterState = { ...DEFAULT_ARTIST_DISCOGRAPHY_FILTER_STATE };
 	}
 
 	function markAlbumCoverFailed(albumId: number): void {
@@ -775,8 +700,19 @@
 			discographyMusicBrainzController.invalidate();
 			return;
 		}
+		const lookupCandidates = untrack(() =>
+			selectAlbumMusicBrainzHydrationCandidates(albums, {
+				hasMatch: (albumId) => Boolean(visibleDiscographyMusicBrainzReleaseMatches[albumId])
+			})
+		);
+		if (lookupCandidates.length === 0) {
+			discographyMusicBrainzLookupToken += 1;
+			isDiscographyMusicBrainzLookupLoading = false;
+			pendingDiscographyMusicBrainzAlbumIds = new Set();
+			return;
+		}
 		const token = ++discographyMusicBrainzLookupToken;
-		const pendingIds = albums.map((a) => a.id);
+		const pendingIds = lookupCandidates.map((entry) => entry.album.id);
 		isDiscographyMusicBrainzLookupLoading = true;
 		pendingDiscographyMusicBrainzAlbumIds = new Set(pendingIds);
 		void (async () => {
@@ -1055,45 +991,9 @@
 			<ArrowLeft size={20} />
 			Back
 		</button>
-
-
-
-		<section class="ui-detail-hero" data-ui-block="entity-hero">
-			<div class="ui-detail-hero__layout">
-				<div class="ui-detail-hero__art ui-detail-hero__art--circle">
-					{#if artistImage}
-						<img src={artistImage} alt={artist.name} class="h-full w-full object-cover" />
-					{:else}
-						<div class="flex h-full w-full items-center justify-center">
-							<User size={120} class="text-gray-600" />
-						</div>
-					{/if}
-				</div>
-
-				<div class="ui-detail-hero__body">
-					<p class="ui-detail-hero__eyebrow">Artist</p>
-					<h1 class="ui-detail-hero__title">{artist.name}</h1>
-
-					<MetaStrip>
-						{#if artist.popularity}
-							<div class="ui-meta-strip__item">
-								Popularity {artist.popularity}
-							</div>
-						{/if}
-						{#if artist.artistTypes && artist.artistTypes.length > 0}
-							{#each artist.artistTypes as type (type)}
-								<span class="ui-inline-tag">{type}</span>
-							{/each}
-						{/if}
-						{#if artist.artistRoles && artist.artistRoles.length > 0}
-							{#each artist.artistRoles as role (role.category)}
-								<span class="ui-inline-tag">{role.category}</span>
-							{/each}
-						{/if}
-					</MetaStrip>
-				</div>
-			</div>
-		</section>
+		{#if heroViewModel}
+			<ArtistHeroSection hero={heroViewModel} />
+		{/if}
 
 		<PageSectionNav items={sectionNavItems} sticky={true} />
 
@@ -1129,9 +1029,9 @@
 						albumMusicBrainzReleaseMatches={visibleDiscographyMusicBrainzReleaseMatches}
 						isDiscographyMusicBrainzLoading={isDiscographyMusicBrainzLookupLoading}
 						pendingDiscographyMusicBrainzAlbumIds={pendingDiscographyMusicBrainzAlbumIds}
-						{displayTrackTotal}
-						{formatAlbumMeta}
-						{formatQualityLabel}
+						displayTrackTotal={displayArtistTrackTotal}
+						formatAlbumMeta={formatArtistAlbumMeta}
+						formatQualityLabel={formatArtistQualityLabel}
 						onDownloadDiscography={handleDownloadDiscography}
 						onBestEditionRuleChange={(rule: DiscographyBestEditionRule) => {
 							bestEditionRule = rule;
@@ -1148,129 +1048,25 @@
 
 			<div class="ui-detail-sidebar">
 				<section id="artist-metadata" class="ui-section-anchor" data-ui-block="context-metadata">
-					<SectionBlock
-						title="MusicBrainz"
-						subtitle="Resolved artist identity and facts."
-						tone="tertiary"
-					>
-						<svelte:fragment slot="actions">
-								<button
-									type="button"
-									onclick={() =>
-										lookupMusicBrainzArtists({
-											id: artist!.id,
-											name: artist!.name
-										})}
-									class="ui-chip-button ui-chip-button--compact"
-									disabled={isMusicBrainzArtistLookupLoading}
-								>
-									{#if isMusicBrainzArtistLookupLoading}
-										Refreshing…
-									{:else}
-										Refresh Match
-									{/if}
-								</button>
-						</svelte:fragment>
-						{#if isMusicBrainzArtistLookupLoading && musicBrainzArtistOptions.length === 0}
-							<StateNotice tone="info" message="Searching MusicBrainz artists…" compact={true} />
-						{:else if isMusicBrainzArtistLookupLoading}
-							<StateNotice
-								tone="info"
-								message="Refreshing MusicBrainz artist match…"
-								compact={true}
-								stale={true}
-							/>
-						{:else if musicBrainzArtistOptions.length > 0}
-							<label class="ui-section-block__eyebrow" for="musicbrainz-artist-select">
-								Selected Artist
-							</label>
-							<select
-								id="musicbrainz-artist-select"
-								class="ui-select w-full"
-								bind:value={selectedMusicBrainzArtistId}
-							>
-								{#each musicBrainzArtistOptions as candidate, index (candidate.id)}
-									<option value={candidate.id}>
-										{index === 0 ? 'Best Match - ' : ''}{candidate.name || 'Unnamed artist'}
-										{#if candidate.country}
-											· {candidate.country}
-										{/if}
-										{#if candidate.type}
-											· {candidate.type}
-										{/if}
-									</option>
-								{/each}
-							</select>
-							{#if selectedMusicBrainzArtist}
-								<DataGrid gridRole="artist-musicbrainz-facts">
-									{#if selectedMusicBrainzArtist.type}
-										<div class="ui-data-point">
-											<p class="ui-data-point__label">Type</p>
-											<p class="ui-data-point__value">{selectedMusicBrainzArtist.type}</p>
-										</div>
-									{/if}
-									{#if selectedMusicBrainzArtist.country}
-										<div class="ui-data-point">
-											<p class="ui-data-point__label">Country</p>
-											<p class="ui-data-point__value">{selectedMusicBrainzArtist.country}</p>
-										</div>
-									{/if}
-									{#if selectedMusicBrainzArtist.area}
-										<div class="ui-data-point">
-											<p class="ui-data-point__label">Area</p>
-											<p class="ui-data-point__value">{selectedMusicBrainzArtist.area}</p>
-										</div>
-									{/if}
-									{#if formatMusicBrainzArtistLifeSpan(selectedMusicBrainzArtist)}
-										<div class="ui-data-point">
-											<p class="ui-data-point__label">Life Span</p>
-											<p class="ui-data-point__value">
-												{formatMusicBrainzArtistLifeSpan(selectedMusicBrainzArtist)}
-											</p>
-										</div>
-									{/if}
-									{#if typeof selectedMusicBrainzArtist.score === 'number'}
-										<div class="ui-data-point">
-											<p class="ui-data-point__label">Match Score</p>
-											<p class="ui-data-point__value">{selectedMusicBrainzArtist.score}/100</p>
-										</div>
-									{/if}
-								</DataGrid>
-								{#if selectedMusicBrainzArtist.disambiguation}
-									<StateNotice
-										tone="neutral"
-										message={selectedMusicBrainzArtist.disambiguation}
-										compact={true}
-									/>
-								{/if}
-								<p class="ui-action-status">
-									<a
-										href={`https://musicbrainz.org/artist/${selectedMusicBrainzArtist.id}`}
-										target="_blank"
-										rel="noopener noreferrer"
-										aria-label="Open artist in MusicBrainz in a new tab"
-										class="text-gray-300 underline decoration-dotted underline-offset-2 transition-colors hover:text-white"
-									>
-										Open artist in MusicBrainz
-									</a>
-								</p>
-							{/if}
-						{:else if hasMusicBrainzArtistLookupAttempted}
-							<StateNotice
-								tone="neutral"
-								message="No MusicBrainz artist match found for this artist."
-								compact={true}
-							/>
-						{/if}
-						{#if musicBrainzArtistLookupError}
-							<StateNotice tone="error" message={musicBrainzArtistLookupError} compact={true} />
-						{/if}
-					</SectionBlock>
+					<ArtistMusicBrainzSection
+						viewModel={musicBrainzSectionViewModel}
+						isLoading={isMusicBrainzArtistLookupLoading}
+						onRefresh={() => {
+							if (!artist) return;
+							void lookupMusicBrainzArtists({
+								id: artist.id,
+								name: artist.name
+							});
+						}}
+						onSelectionChange={(value) => {
+							selectedMusicBrainzArtistId = value;
+						}}
+					/>
 				</section>
 
 				{#if hasRecommendationRail}
 					<section id="artist-recommendations" class="ui-section-anchor" data-ui-block="secondary-content">
-						<ArtistRecommendationsRail
+						<ArtistRecommendationsSection
 							artistId={artist.id}
 							artistName={artist.name}
 							{recommendations}
@@ -1278,21 +1074,21 @@
 							{recommendationsError}
 							{recommendedArtists}
 							{recommendedAlbums}
-							{formatAlbumMeta}
+							formatAlbumMeta={formatArtistAlbumMeta}
 						/>
 					</section>
 				{/if}
 
 				{#if hasHighlightsSection}
 					<section id="artist-highlights" class="ui-section-anchor" data-ui-block="secondary-content">
-						<ArtistDiscographyHighlights
+						<ArtistHighlightsSection
 							artistId={artist.id}
 							artistName={artist.name}
 							{featuredDiscographyAlbums}
 							{albumCoverOverrides}
 							{albumCoverFailures}
 							coverHydrationGeneration={coverHydrationGeneration}
-							{formatAlbumMeta}
+							formatAlbumMeta={formatArtistAlbumMeta}
 							onAlbumCoverError={handleAlbumCoverError}
 							onAlbumCoverLoad={handleAlbumCoverLoad}
 						/>
