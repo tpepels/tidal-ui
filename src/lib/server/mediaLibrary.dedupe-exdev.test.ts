@@ -7,9 +7,9 @@ const sharedMocks = vi.hoisted(() => ({
 	moveFile: vi.fn()
 }));
 
-vi.mock('../../routes/api/download-track/_shared', async () => {
-	const actual = await vi.importActual<typeof import('../../routes/api/download-track/_shared')>(
-		'../../routes/api/download-track/_shared'
+vi.mock('$lib/server/download/shared', async () => {
+	const actual = await vi.importActual<typeof import('$lib/server/download/shared')>(
+		'$lib/server/download/shared'
 	);
 	return {
 		...actual,
@@ -18,7 +18,7 @@ vi.mock('../../routes/api/download-track/_shared', async () => {
 });
 
 import { clearMediaLibraryScanCache, deduplicateMediaLibrary } from './mediaLibrary';
-import { sanitizeDirName } from '../../routes/api/download-track/_shared';
+import { sanitizeDirName } from '$lib/server/download/shared';
 
 describe('mediaLibrary dedupe EXDEV handling', () => {
 	let downloadDir: string;

@@ -18,7 +18,7 @@ import {
 	MAX_FILE_SIZE,
 	MAX_CHUNK_SIZE,
 	validateChecksum
-} from './_shared';
+} from '$lib/server/download/shared';
 import { createDownloadOperationLogger, downloadLogger } from '$lib/server/observability';
 import { finalizeTrack } from '$lib/server/download/finalizeTrack';
 import { z } from 'zod';

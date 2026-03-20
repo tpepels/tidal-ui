@@ -7,7 +7,7 @@
 	import {
 		buildArtistAlbumCoverCandidates as buildAlbumCoverCandidates,
 		serializeCoverCandidates
-	} from '$lib/features/artist/artistCoverHydrationController';
+	} from '$lib/presentation/artistCoverPresentation';
 	import { describeDiscographyEntrySource } from '$lib/features/artist/artistDiscographyPresentation';
 	import type { DiscographyFilterState } from '$lib/features/artist/artistDiscographyModel';
 	import {

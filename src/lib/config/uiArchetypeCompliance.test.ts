@@ -50,8 +50,7 @@ const ROUTE_COMPLIANCE_SPECS: RouteComplianceSpec[] = [
 			'src/lib/screens/download-center/DownloadCenterScreenContainer.svelte',
 			'src/lib/screens/download-center/sections/DownloadCenterSummarySection.svelte',
 			'src/lib/screens/download-center/sections/DownloadCenterPrioritySection.svelte',
-			'src/lib/screens/download-center/sections/DownloadCenterTimelineSection.svelte',
-			'src/lib/components/download-manager/DownloadManagerPanelIntro.svelte'
+			'src/lib/screens/download-center/sections/DownloadCenterTimelineSection.svelte'
 		],
 		requiredBlocks: ['page-header', 'key-summary', 'primary-actions', 'main-sections']
 	},

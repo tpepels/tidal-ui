@@ -27,7 +27,7 @@ import {
 	UPLOAD_TTL,
 	type ChunkUploadState,
 	type PendingUpload
-} from './_shared';
+} from '$lib/server/download/shared';
 
 describe('Chunk Upload Error Handling', () => {
 	const testUploadId = 'test-upload-regression-123';

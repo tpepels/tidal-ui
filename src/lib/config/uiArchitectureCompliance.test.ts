@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -14,6 +14,25 @@ function collectSvelteFiles(dir: string): string[] {
 			continue;
 		}
 		if (fullPath.endsWith('.svelte')) {
+			files.push(fullPath);
+		}
+	}
+
+	return files;
+}
+
+function collectCodeFiles(dir: string): string[] {
+	const entries = readdirSync(dir);
+	const files: string[] = [];
+
+	for (const entry of entries) {
+		const fullPath = path.join(dir, entry);
+		const stats = statSync(fullPath);
+		if (stats.isDirectory()) {
+			files.push(...collectCodeFiles(fullPath));
+			continue;
+		}
+		if (fullPath.endsWith('.svelte') || fullPath.endsWith('.ts')) {
 			files.push(fullPath);
 		}
 	}
@@ -49,6 +68,23 @@ const MAJOR_SCREEN_DIRS = [
 	'src/lib/screens/playlist',
 	'src/lib/screens/search',
 	'src/lib/screens/track'
+];
+const FORBIDDEN_LEGACY_IMPORTS = [
+	/components\/artist\/ArtistRecommendationsRail\.svelte/,
+	/components\/artist\/ArtistDiscographyHighlights\.svelte/,
+	/components\/download-manager\/DownloadManagerPanelIntro\.svelte/,
+	/components\/download-manager\/DownloadManagerPriorityOverview\.svelte/,
+	/components\/download-manager\/DownloadManagerDetailedSections\.svelte/,
+	/routes\/api\/download-track\/_shared/
+];
+const REMOVED_LEGACY_FILES = [
+	'src/lib/components/artist/ArtistRecommendationsRail.svelte',
+	'src/lib/components/artist/ArtistDiscographyHighlights.svelte',
+	'src/lib/components/download-manager/DownloadManagerPanelIntro.svelte',
+	'src/lib/components/download-manager/DownloadManagerPriorityOverview.svelte',
+	'src/lib/components/download-manager/DownloadManagerDetailedSections.svelte',
+	'src/routes/api/download-track/_shared.ts',
+	'src/routes/api/download-track/_shared.test.ts'
 ];
 
 describe('UI architecture compliance', () => {
@@ -130,5 +166,26 @@ describe('UI architecture compliance', () => {
 		expect(librarySuggestionsSource).not.toMatch(/LibrarySuggestionsPageContent\.svelte/);
 		expect(artistDiscographySource).not.toMatch(/components\/artist\/ArtistDiscographySection\.svelte/);
 		expect(layoutSource).not.toMatch(/components\/DownloadManager\.svelte/);
+	});
+
+	it('keeps removed legacy adapter and shim paths out of runtime source', () => {
+		const runtimeSources = [
+			...collectCodeFiles(path.resolve(ROOT, 'src/lib/screens')),
+			...collectCodeFiles(path.resolve(ROOT, 'src/lib/shell')),
+			...collectCodeFiles(path.resolve(ROOT, 'src/routes'))
+		];
+
+		for (const file of runtimeSources) {
+			const source = readFileSync(file, 'utf8');
+			for (const pattern of FORBIDDEN_LEGACY_IMPORTS) {
+				expect(source).not.toMatch(pattern);
+			}
+		}
+	});
+
+	it('keeps removed legacy adapter and shim files deleted', () => {
+		for (const relativeFile of REMOVED_LEGACY_FILES) {
+			expect(existsSync(path.resolve(ROOT, relativeFile))).toBe(false);
+		}
 	});
 });

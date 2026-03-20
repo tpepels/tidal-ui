@@ -2,8 +2,8 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { buildServerFilename, getDownloadDir, getServerExtension, sanitizeDirName } from '$lib/server/download/shared';
 import type { AudioQuality, TrackLookup } from '$lib/types';
-import { buildServerFilename, getDownloadDir, getServerExtension, sanitizeDirName } from '../download-track/_shared';
 
 export const POST: RequestHandler = async ({ request }) => {
 	try {

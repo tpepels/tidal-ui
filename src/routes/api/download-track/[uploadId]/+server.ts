@@ -6,7 +6,7 @@ import {
 	MAX_FILE_SIZE,
 	validateChecksum,
 	endUpload
-} from '../_shared';
+} from '$lib/server/download/shared';
 import { finalizeTrack } from '$lib/server/download/finalizeTrack';
 
 export const POST: RequestHandler = async ({ request, params }) => {

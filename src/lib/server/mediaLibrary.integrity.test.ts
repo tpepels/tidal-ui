@@ -12,7 +12,7 @@ vi.mock('./download/audioIntegrity', () => ({
 }));
 
 import { clearMediaLibraryScanCache, inspectAlbumIntegrity } from './mediaLibrary';
-import { sanitizeDirName } from '../../routes/api/download-track/_shared';
+import { sanitizeDirName } from '$lib/server/download/shared';
 
 describe('inspectAlbumIntegrity', () => {
 	let downloadDir: string;

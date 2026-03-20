@@ -20,7 +20,7 @@ import {
 	getMediaLibrarySuggestions,
 	sweepTransientAlbumArtifacts
 } from './mediaLibrary';
-import { sanitizeDirName } from '../../routes/api/download-track/_shared';
+import { sanitizeDirName } from '$lib/server/download/shared';
 
 describe('mediaLibrary', () => {
 	let downloadDir: string;

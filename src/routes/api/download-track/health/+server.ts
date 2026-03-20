@@ -10,7 +10,7 @@ import {
 	MAX_CONCURRENT_UPLOADS,
 	getDownloadDir,
 	getTempDir
-} from '../_shared';
+} from '$lib/server/download/shared';
 import Redis from 'ioredis';
 
 export const GET: RequestHandler = async () => {

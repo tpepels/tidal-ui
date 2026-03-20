@@ -94,7 +94,9 @@ describe('Download Track API (chunked + cover)', () => {
 	it('uploads chunks and downloads cover end-to-end', async () => {
 		const { POST: startUpload } = await import('./+server');
 		const { POST: uploadChunk } = await import('./[uploadId]/chunk/+server');
-		const { sanitizePath, pendingUploads, chunkUploads, buildServerFilename } = await import('./_shared');
+		const { sanitizePath, pendingUploads, chunkUploads, buildServerFilename } = await import(
+			'$lib/server/download/shared'
+		);
 
 		const payload = Buffer.from('abcdefghijklmnopqrstuvwxyz');
 		const checksum = checksumForBuffer(payload);
@@ -175,7 +177,9 @@ describe('Download Track API (chunked + cover)', () => {
 	it('skips overwrite when conflictResolution is skip', async () => {
 		const { POST: startUpload } = await import('./+server');
 		const { POST: uploadChunk } = await import('./[uploadId]/chunk/+server');
-		const { sanitizePath, pendingUploads, chunkUploads, buildServerFilename } = await import('./_shared');
+		const { sanitizePath, pendingUploads, chunkUploads, buildServerFilename } = await import(
+			'$lib/server/download/shared'
+		);
 
 		const existingPayload = Buffer.from('existing-data');
 		const payload = Buffer.from('new-data-will-be-skipped');

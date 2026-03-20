@@ -4,8 +4,8 @@ import * as path from 'node:path';
 import type { Album, AudioQuality } from '$lib/types';
 import { losslessAPI } from '$lib/api';
 import { inspectAlbumIntegrity, scanLocalMediaLibrary, type LocalMediaFile } from '$lib/server/mediaLibrary';
+import { sanitizeDirName } from '$lib/server/download/shared';
 import { enqueueJob } from '$lib/server/downloadQueueManager';
-import { sanitizeDirName } from '../../download-track/_shared';
 
 type RepairAllRequestBody = {
 	quality?: AudioQuality;

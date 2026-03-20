@@ -15,11 +15,13 @@
 		type ArtistAlbumDownloadState as AlbumDownloadState
 	} from '$lib/features/artist/artistAlbumQueueController';
 	import {
-		buildArtistAlbumCoverCandidates as buildAlbumCoverCandidates,
 		createArtistCoverHydrationController,
+	} from '$lib/features/artist/artistCoverHydrationController';
+	import {
+		buildArtistAlbumCoverCandidates as buildAlbumCoverCandidates,
 		parseCoverCandidates,
 		serializeCoverCandidates
-	} from '$lib/features/artist/artistCoverHydrationController';
+	} from '$lib/presentation/artistCoverPresentation';
 	import {
 		buildFeaturedDiscographyAlbums,
 		buildTopTrackAlbumSignals,

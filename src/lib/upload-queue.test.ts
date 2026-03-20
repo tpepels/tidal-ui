@@ -8,7 +8,7 @@ import {
 	cleanupExpiredUploads,
 	forceCleanupAllUploads,
 	UPLOAD_TTL
-} from '../routes/api/download-track/_shared';
+} from '$lib/server/download/shared';
 
 describe('Upload Queue Management', () => {
 	beforeEach(() => {

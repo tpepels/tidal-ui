@@ -14,7 +14,7 @@ import {
 	retryFs,
 	touchUploadTimestamp,
 	startCleanupInterval
-} from '../../_shared';
+} from '$lib/server/download/shared';
 import {
 	createDownloadOperationLogger,
 	getDownloadOperationLogger,

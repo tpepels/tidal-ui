@@ -10,9 +10,9 @@ import {
 	detectAudioFormatFromBuffer,
 	resolveFileConflict,
 	generateChecksum
-} from './_shared';
+} from './shared';
 
-describe('download-track/_shared invariants', () => {
+describe('server/download/shared invariants', () => {
 	let tempDir: string;
 	let originalDownloadDir: string | undefined;
 
