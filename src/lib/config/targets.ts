@@ -120,6 +120,20 @@ const STATIC_V2_API_TARGETS = [
 		weight: 15,
 		requiresProxy: false,
 		category: 'auto-only'
+	},
+	{
+		name: 'streamex',
+		baseUrl: 'https://streamex.sh/api/music',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'pinkhamster',
+		baseUrl: 'https://hifi.p1nkhamster.xyz',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
 	}
 ] satisfies ApiClusterTarget[];
 
@@ -136,22 +150,6 @@ const UPTIME_ENDPOINTS = [
 ] as const;
 
 const EXCLUDED_STREAMING_HOSTS = new Set(['monochrome-api.samidy.com']);
-const DEFAULT_DYNAMIC_ALLOWED_HOSTS = new Set([
-	'api.monochrome.tf',
-	'arran.monochrome.tf',
-	'eu-central.monochrome.tf',
-	'us-west.monochrome.tf',
-	'hifi-one.spotisaver.net',
-	'hifi-two.spotisaver.net',
-	'triton.squid.wtf',
-	'wolf.qqdl.site',
-	'maus.qqdl.site',
-	'vogel.qqdl.site',
-	'katze.qqdl.site',
-	'hund.qqdl.site',
-	'tidal.kinoplus.online',
-	'tidal-api.binimum.org'
-]);
 const hostnameTrustCache = new Map<string, { trusted: boolean; expiresAt: number }>();
 const staticWeightByBaseUrl = new Map<string, number>();
 for (const target of DEFAULT_API_TARGETS) {
@@ -202,17 +200,7 @@ function getRefreshTimeoutMs(): number {
 	);
 }
 
-function getDynamicAllowedHosts(): Set<string> {
-	const configured = getEnvValue('API_TARGET_ALLOWED_HOSTS');
-	if (!configured) {
-		return new Set(DEFAULT_DYNAMIC_ALLOWED_HOSTS);
-	}
-	const parsed = configured
-		.split(',')
-		.map((entry) => entry.trim().toLowerCase())
-		.filter((entry) => entry.length > 0);
-	return parsed.length > 0 ? new Set(parsed) : new Set(DEFAULT_DYNAMIC_ALLOWED_HOSTS);
-}
+
 
 function isDynamicRefreshEnabled(force: boolean): boolean {
 	// Never call uptime endpoints directly from browser runtime (CORS + trust concerns).
@@ -363,7 +351,6 @@ async function filterTrustedDynamicTargets(
 	targets: ApiClusterTarget[],
 	isTrustedHostname: (hostname: string) => Promise<boolean>
 ): Promise<ApiClusterTarget[]> {
-	const allowedHosts = getDynamicAllowedHosts();
 	const trusted: ApiClusterTarget[] = [];
 	for (const target of targets) {
 		let parsed: URL;
@@ -374,9 +361,6 @@ async function filterTrustedDynamicTargets(
 		}
 		const hostname = parsed.hostname.toLowerCase();
 		if (parsed.protocol !== 'https:') {
-			continue;
-		}
-		if (!allowedHosts.has(hostname)) {
 			continue;
 		}
 		if (isPrivateOrLocalHostname(hostname)) {
