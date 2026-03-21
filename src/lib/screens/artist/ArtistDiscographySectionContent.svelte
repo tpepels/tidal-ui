@@ -133,6 +133,14 @@
 		() => !hasDefaultDiscographyFilters(discographyFilterState)
 	);
 
+	const activeReleaseFilterCount = $derived.by(
+		() => releaseTypeFilters.filter((filter) => discographyFilterState[filter.key]).length
+	);
+
+	const activeVariantFilterCount = $derived.by(
+		() => variantFilters.filter((filter) => discographyFilterState[filter.key]).length
+	);
+
 	const controlsSummary = $derived.by(() => {
 		const parts = [
 			`${bestEditionLabels[bestEditionRule] ?? 'Balanced'} edition`,
@@ -248,21 +256,32 @@
 								</button>
 							{/each}
 						</div>
+						<p class="artist-discography-controls__meta">
+							{activeReleaseFilterCount} of {releaseTypeFilters.length} active
+						</p>
 					</div>
 					<div class="artist-discography-controls__field">
-						<span class="artist-discography-controls__label">Content filters</span>
-						<div class="ui-action-row ui-action-row--progressive">
-							{#each variantFilters as filter (filter.key)}
-								<button
-									type="button"
-									onclick={() => onToggleDiscographyFilter(filter.key)}
-									class="ui-filter-chip ui-filter-chip--soft"
-									class:is-active={discographyFilterState[filter.key]}
-								>
-									{filter.label}
-								</button>
-							{/each}
-						</div>
+						<details class="artist-discography-controls__advanced">
+							<summary class="artist-discography-controls__advanced-summary">
+								<span>Content filters</span>
+								<span class="artist-discography-controls__advanced-meta">
+									{activeVariantFilterCount} of {variantFilters.length} active
+								</span>
+								<ChevronDown size={14} aria-hidden="true" />
+							</summary>
+							<div class="ui-action-row ui-action-row--progressive artist-discography-controls__advanced-row">
+								{#each variantFilters as filter (filter.key)}
+									<button
+										type="button"
+										onclick={() => onToggleDiscographyFilter(filter.key)}
+										class="ui-filter-chip ui-filter-chip--soft"
+										class:is-active={discographyFilterState[filter.key]}
+									>
+										{filter.label}
+									</button>
+								{/each}
+							</div>
+						</details>
 					</div>
 				</div>
 				<div class="artist-discography-controls__footer">
@@ -614,6 +633,12 @@
 		gap: 0.32rem;
 	}
 
+	.artist-discography-controls__meta {
+		margin: 0;
+		font-size: 0.72rem;
+		color: rgba(194, 194, 194, 0.65);
+	}
+
 	.artist-discography-controls__label {
 		font-size: 0.68rem;
 		font-weight: 700;
@@ -628,6 +653,44 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 0.5rem;
+	}
+
+	.artist-discography-controls__advanced {
+		border: 1px dashed rgba(255, 255, 255, 0.14);
+		border-radius: 0.7rem;
+		overflow: hidden;
+	}
+
+	.artist-discography-controls__advanced-summary {
+		list-style: none;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.35rem;
+		padding: 0.42rem 0.56rem;
+		cursor: pointer;
+		font-size: 0.76rem;
+		font-weight: 600;
+		color: rgba(234, 234, 234, 0.9);
+	}
+
+	.artist-discography-controls__advanced-summary::-webkit-details-marker {
+		display: none;
+	}
+
+	.artist-discography-controls__advanced-meta {
+		font-size: 0.7rem;
+		font-weight: 500;
+		color: rgba(190, 190, 190, 0.7);
+	}
+
+	.artist-discography-controls__advanced-row {
+		padding: 0 0.56rem 0.56rem;
+		border-top: 1px solid rgba(255, 255, 255, 0.08);
+	}
+
+	.artist-discography-controls__advanced[open] .artist-discography-controls__advanced-summary :global(svg) {
+		transform: rotate(180deg);
 	}
 
 	.artist-discography-list {

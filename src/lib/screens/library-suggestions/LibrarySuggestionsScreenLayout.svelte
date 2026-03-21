@@ -39,6 +39,9 @@
 	let smartAlbums = $state<ScoredAlbum[]>([]);
 	let suggestionSeed = $state<number | null>(null);
 	let smartGeneratedAt = $state<number | null>(null);
+	let showAllSeedArtists = $state(false);
+
+	const SEED_PREVIEW_LIMIT = 8;
 
 	const hasSmartSuggestions = $derived(smartArtists.length > 0 || smartAlbums.length > 0);
 	const scannedAtText = $derived.by(() =>
@@ -60,6 +63,12 @@
 		{ id: 'library-smart-picks', label: 'Recommendations', tone: 'secondary' as const },
 		{ id: 'library-overview', label: 'Overview', tone: 'tertiary' as const }
 	]);
+	const visibleSeedArtists = $derived.by(() =>
+		showAllSeedArtists ? seedArtists : seedArtists.slice(0, SEED_PREVIEW_LIMIT)
+	);
+	const hiddenSeedArtistCount = $derived.by(() =>
+		Math.max(0, seedArtists.length - SEED_PREVIEW_LIMIT)
+	);
 
 	onMount(() => {
 		const restored = restoreSuggestionsFromCache();
@@ -347,19 +356,34 @@
 		</div>
 		{#if seedArtists.length > 0}
 			<div class="library-suggestions-seeds">
-				<p class="library-suggestions-seeds__label">Seed artists</p>
-				<p class="library-suggestions-seeds__meta">
-					Random seed: <code>{suggestionSeedText}</code>
-					{#if Number.isFinite(smartGeneratedAt) && smartGeneratedAt}
-						<span> • Generated {smartGeneratedAtText}</span>
-					{/if}
-				</p>
+				<div class="library-suggestions-seeds__header">
+					<p class="library-suggestions-seeds__label">Seed artists</p>
+					<p class="library-suggestions-seeds__meta">
+						<code>{suggestionSeedText}</code>
+						{#if Number.isFinite(smartGeneratedAt) && smartGeneratedAt}
+							<span> • {smartGeneratedAtText}</span>
+						{/if}
+					</p>
+				</div>
 				<div class="library-suggestions-seeds__chips">
-					{#each seedArtists as seed (`${seed.artist.id}:${seed.source.artistDir}`)}
+					{#each visibleSeedArtists as seed (`${seed.artist.id}:${seed.source.artistDir}`)}
 						<a class="library-suggestions-seed-chip" href={`/artist/${seed.artist.id}`}>
 							{seed.artist.name}
 						</a>
 					{/each}
+					{#if hiddenSeedArtistCount > 0}
+						<button
+							type="button"
+							class="ui-chip-button ui-chip-button--compact"
+							onclick={() => {
+								showAllSeedArtists = !showAllSeedArtists;
+							}}
+						>
+							{showAllSeedArtists
+								? 'Show fewer seeds'
+								: `Show all seeds (${seedArtists.length})`}
+						</button>
+					{/if}
 				</div>
 			</div>
 		{/if}
@@ -387,6 +411,17 @@
 				message="Fetching artist-mix recommendations from API seeds."
 			/>
 		{:else}
+			<div class="library-suggestions-at-a-glance" role="group" aria-label="Recommendations at a glance">
+				<p class="library-suggestions-at-a-glance__item">
+					<strong>{smartArtists.length}</strong> artists
+				</p>
+				<p class="library-suggestions-at-a-glance__item">
+					<strong>{smartAlbums.length}</strong> albums
+				</p>
+				<p class="library-suggestions-at-a-glance__item">
+					<strong>{seedArtists.length}</strong> seed artists
+				</p>
+			</div>
 			<div class="library-suggestions-columns">
 				<div class="library-suggestions-column">
 					<div class="library-suggestions-column__header">
@@ -400,7 +435,6 @@
 									href={`/artist/${recommendation.artist.id}`}
 									title={recommendation.artist.name}
 									meta={`Score ${recommendation.score.toFixed(1)} · ${recommendation.seedMatches} seed${recommendation.seedMatches === 1 ? '' : 's'}`}
-									description="Open artist or run a scoped search from this recommendation."
 									imageSrc={getArtistPortraitSrc(recommendation.artist.picture)}
 									imageAlt={`Portrait of ${recommendation.artist.name}`}
 									circle={true}
@@ -443,7 +477,6 @@
 									title={recommendation.album.title}
 									subtitle={recommendedAlbumArtistName}
 									meta={`Score ${recommendation.score.toFixed(1)} · ${recommendation.seedMatches} seed${recommendation.seedMatches === 1 ? '' : 's'}`}
-									description="Open the album or jump to the matching artist/search context."
 									imageAlt={`Cover for ${recommendation.album.title}`}
 									coverCacheKey={recommendedAlbumCoverCacheKey}
 									coverCandidates={recommendedAlbumCoverCandidates}
@@ -596,6 +629,26 @@
 		gap: 0.72rem;
 	}
 
+	.library-suggestions-at-a-glance {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.35rem;
+	}
+
+	.library-suggestions-at-a-glance__item {
+		margin: 0;
+		padding: 0.22rem 0.48rem;
+		border-radius: 999px;
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		font-size: 0.76rem;
+		color: rgba(219, 219, 219, 0.84);
+	}
+
+	.library-suggestions-at-a-glance__item strong {
+		font-weight: 700;
+		color: rgba(244, 244, 244, 0.96);
+	}
+
 	.library-suggestions-column {
 		display: flex;
 		flex-direction: column;
@@ -625,6 +678,14 @@
 		gap: 0.3rem;
 	}
 
+	.library-suggestions-seeds__header {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.3rem;
+	}
+
 	.library-suggestions-seeds__label {
 		margin: 0;
 		font-size: 0.74rem;
@@ -635,7 +696,7 @@
 
 	.library-suggestions-seeds__meta {
 		margin: 0;
-		font-size: 0.8rem;
+		font-size: 0.74rem;
 		color: rgba(212, 212, 212, 0.72);
 		overflow-wrap: anywhere;
 	}

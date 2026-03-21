@@ -32,6 +32,25 @@
 		onRefresh?: (() => void) | null;
 		compact?: boolean;
 	} = $props();
+
+	const ENDPOINT_PREVIEW_LIMIT = 4;
+
+	let showAllBrowse = $state(false);
+	let showAllStream = $state(false);
+
+	const browseTargets = $derived(status?.browseTargets ?? []);
+	const streamTargets = $derived(status?.streamTargets ?? []);
+
+	const hiddenBrowseCount = $derived(Math.max(0, browseTargets.length - ENDPOINT_PREVIEW_LIMIT));
+	const hiddenStreamCount = $derived(Math.max(0, streamTargets.length - ENDPOINT_PREVIEW_LIMIT));
+
+	function formatEndpointHost(baseUrl: string): string {
+		try {
+			return new URL(baseUrl).host;
+		} catch {
+			return baseUrl;
+		}
+	}
 </script>
 
 <section class="api-targets-card" class:api-targets-card--compact={compact}>
@@ -44,58 +63,96 @@
 		{/if}
 	</div>
 
-	<p class="section-footnote">
-		Source: <strong>{status?.source ?? 'unknown'}</strong>
-	</p>
-	<p class="section-footnote">
-		Available targets: {status?.targetCount ?? 0}
-	</p>
-	<p class="section-footnote">
-		Browse targets: {status?.browseTargetCount ?? 0}
-	</p>
-	<p class="section-footnote">
-		Streaming targets: {status?.streamTargetCount ?? 0}
-	</p>
-	{#if status?.browseTargets?.length}
+	<div class="api-targets-card__summary-grid" role="group" aria-label="API target summary">
+		<div class="api-targets-card__summary-item">
+			<p class="api-targets-card__summary-label">All</p>
+			<p class="api-targets-card__summary-value">{status?.targetCount ?? 0}</p>
+		</div>
+		<div class="api-targets-card__summary-item">
+			<p class="api-targets-card__summary-label">Browse</p>
+			<p class="api-targets-card__summary-value">{status?.browseTargetCount ?? 0}</p>
+		</div>
+		<div class="api-targets-card__summary-item">
+			<p class="api-targets-card__summary-label">Stream</p>
+			<p class="api-targets-card__summary-value">{status?.streamTargetCount ?? 0}</p>
+		</div>
+	</div>
+
+	<div class="api-targets-card__meta">
+		<p class="section-footnote">Source: <strong>{status?.source ?? 'unknown'}</strong></p>
+		{#if status?.lastSuccessfulRefreshIso}
+			<p class="section-footnote">
+				Last successful refresh: {new Date(status.lastSuccessfulRefreshIso).toLocaleString()}
+			</p>
+		{/if}
+		{#if status?.refresh}
+			<p class="section-footnote">
+				Refresh check: {status.refresh.updated ? 'updated targets' : 'no update'} ({status.refresh.count ?? 0}
+				target(s))
+			</p>
+		{/if}
+		{#if lastUpdatedAt}
+			<p class="section-footnote">Checked in UI: {new Date(lastUpdatedAt).toLocaleTimeString()}</p>
+		{/if}
+	</div>
+
+	{#if browseTargets.length}
 		<div class="api-targets-card__group">
-			<p class="section-footnote"><strong>Browse endpoints</strong></p>
+			<div class="api-targets-card__group-header">
+				<p class="section-footnote"><strong>Browse endpoints</strong> ({browseTargets.length})</p>
+				{#if hiddenBrowseCount > 0}
+					<button
+						type="button"
+						class="ui-chip-button ui-chip-button--compact ui-chip-button--detail"
+						onclick={() => {
+							showAllBrowse = !showAllBrowse;
+						}}
+					>
+						{showAllBrowse ? 'Show less' : `Show all (${browseTargets.length})`}
+					</button>
+				{/if}
+			</div>
 			<ul class="api-targets-card__list">
-				{#each status.browseTargets as target (target.name + target.baseUrl)}
+				{#each (showAllBrowse ? browseTargets : browseTargets.slice(0, ENDPOINT_PREVIEW_LIMIT)) as target (target.name + target.baseUrl)}
 					<li class="api-targets-card__item">
-						<span class="api-targets-card__name">{target.name}</span>
+						<span class="api-targets-card__name">{target.name} · {formatEndpointHost(target.baseUrl)}</span>
 						<span class="api-targets-card__url">{target.baseUrl}</span>
 					</li>
 				{/each}
+				{#if !showAllBrowse && hiddenBrowseCount > 0}
+					<li class="api-targets-card__item api-targets-card__item--more">+ {hiddenBrowseCount} more</li>
+				{/if}
 			</ul>
 		</div>
 	{/if}
-	{#if status?.streamTargets?.length}
+	{#if streamTargets.length}
 		<div class="api-targets-card__group">
-			<p class="section-footnote"><strong>Streaming endpoints</strong></p>
+			<div class="api-targets-card__group-header">
+				<p class="section-footnote"><strong>Streaming endpoints</strong> ({streamTargets.length})</p>
+				{#if hiddenStreamCount > 0}
+					<button
+						type="button"
+						class="ui-chip-button ui-chip-button--compact ui-chip-button--detail"
+						onclick={() => {
+							showAllStream = !showAllStream;
+						}}
+					>
+						{showAllStream ? 'Show less' : `Show all (${streamTargets.length})`}
+					</button>
+				{/if}
+			</div>
 			<ul class="api-targets-card__list">
-				{#each status.streamTargets as target (target.name + target.baseUrl)}
+				{#each (showAllStream ? streamTargets : streamTargets.slice(0, ENDPOINT_PREVIEW_LIMIT)) as target (target.name + target.baseUrl)}
 					<li class="api-targets-card__item">
-						<span class="api-targets-card__name">{target.name}</span>
+						<span class="api-targets-card__name">{target.name} · {formatEndpointHost(target.baseUrl)}</span>
 						<span class="api-targets-card__url">{target.baseUrl}</span>
 					</li>
 				{/each}
+				{#if !showAllStream && hiddenStreamCount > 0}
+					<li class="api-targets-card__item api-targets-card__item--more">+ {hiddenStreamCount} more</li>
+				{/if}
 			</ul>
 		</div>
-	{/if}
-	{#if status?.lastSuccessfulRefreshIso}
-		<p class="section-footnote">
-			Last successful refresh: {new Date(status.lastSuccessfulRefreshIso).toLocaleString()}
-		</p>
-	{/if}
-	{#if status?.refresh}
-		<p class="section-footnote">
-			Refresh check: {status.refresh.updated ? 'updated targets' : 'no update'} ({status.refresh.count ?? 0} target(s))
-		</p>
-	{/if}
-	{#if lastUpdatedAt}
-		<p class="section-footnote">
-			Checked in UI: {new Date(lastUpdatedAt).toLocaleTimeString()}
-		</p>
 	{/if}
 	{#if status?.error}
 		<p class="section-footnote section-footnote--error">{status.error}</p>
@@ -113,11 +170,55 @@
 		gap: 0.35rem;
 	}
 
+	.api-targets-card__summary-grid {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 0.3rem;
+	}
+
+	.api-targets-card__summary-item {
+		display: flex;
+		flex-direction: column;
+		gap: 0.08rem;
+		padding: 0.38rem 0.42rem;
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		border-radius: 0.5rem;
+		background: rgba(255, 255, 255, 0.02);
+	}
+
+	.api-targets-card__summary-label {
+		margin: 0;
+		font-size: 0.66rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: rgba(198, 198, 198, 0.72);
+	}
+
+	.api-targets-card__summary-value {
+		margin: 0;
+		font-size: 1rem;
+		font-weight: 700;
+		color: rgba(244, 244, 244, 0.96);
+	}
+
+	.api-targets-card__meta {
+		display: flex;
+		flex-direction: column;
+		gap: 0.14rem;
+	}
+
 	.api-targets-card__group {
 		display: flex;
 		flex-direction: column;
-		gap: 0.35rem;
+		gap: 0.2rem;
 		margin-top: 0.2rem;
+	}
+
+	.api-targets-card__group-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.35rem;
 	}
 
 	.api-targets-card__list {
@@ -126,27 +227,33 @@
 		list-style: none;
 		display: flex;
 		flex-direction: column;
-		gap: 0.3rem;
+		gap: 0.22rem;
 	}
 
 	.api-targets-card__item {
 		display: flex;
 		flex-direction: column;
 		gap: 0.08rem;
-		padding: 0.22rem 0.38rem;
+		padding: 0.18rem 0.3rem;
 		border-radius: 0.5rem;
-		background: rgba(255, 255, 255, 0.03);
+		background: rgba(255, 255, 255, 0.02);
 		border: 1px solid rgba(255, 255, 255, 0.06);
 	}
 
+	.api-targets-card__item--more {
+		font-size: 0.74rem;
+		color: rgba(210, 210, 210, 0.7);
+		align-items: flex-start;
+	}
+
 	.api-targets-card__name {
-		font-size: 0.75rem;
+		font-size: 0.72rem;
 		font-weight: 600;
 		color: rgba(236, 236, 236, 0.88);
 	}
 
 	.api-targets-card__url {
-		font-size: 0.75rem;
+		font-size: 0.7rem;
 		word-break: break-all;
 		color: rgba(210, 210, 210, 0.78);
 	}
@@ -169,7 +276,7 @@
 
 	.section-footnote {
 		margin: 0;
-		font-size: 0.9rem;
+		font-size: 0.82rem;
 		color: rgba(212, 212, 212, 0.7);
 		line-height: 1.4;
 	}

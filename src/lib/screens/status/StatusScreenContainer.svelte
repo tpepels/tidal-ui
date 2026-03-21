@@ -263,46 +263,48 @@
 			</ToolPanel>
 		</div>
 
-		<ToolPanel tone="tertiary">
-			<p class="section-heading">Queue Metrics</p>
-			<div class="status-page__metric-grid">
-				<div class="status-page__metric">
-					<p class="status-page__metric-label">Success Rate</p>
-					<p class="status-page__metric-value">{toMetricNumber(queueMetrics?.avg_success_rate)}%</p>
+		<details class="status-page__secondary">
+			<summary>Detailed queue metrics</summary>
+			<ToolPanel tone="tertiary">
+				<div class="status-page__metric-grid">
+					<div class="status-page__metric">
+						<p class="status-page__metric-label">Success Rate</p>
+						<p class="status-page__metric-value">{toMetricNumber(queueMetrics?.avg_success_rate)}%</p>
+					</div>
+					<div class="status-page__metric">
+						<p class="status-page__metric-label">Avg Retry Count</p>
+						<p class="status-page__metric-value">{toMetricNumber(queueMetrics?.avg_retry_count)}</p>
+					</div>
+					<div class="status-page__metric">
+						<p class="status-page__metric-label">Avg Job Duration</p>
+						<p class="status-page__metric-value">{formatDurationFromMs(queueMetrics?.avg_job_duration_ms)}</p>
+					</div>
+					<div class="status-page__metric">
+						<p class="status-page__metric-label">Total Download Time</p>
+						<p class="status-page__metric-value">{formatDurationFromMs(queueMetrics?.total_download_time_ms)}</p>
+					</div>
+					<div class="status-page__metric">
+						<p class="status-page__metric-label">Cancelled</p>
+						<p class="status-page__metric-value">{toMetricNumber(queueMetrics?.cancelled)}</p>
+					</div>
+					<div class="status-page__metric">
+						<p class="status-page__metric-label">Jobs Tracked</p>
+						<p class="status-page__metric-value">{toMetricNumber(queueMetrics?.total_jobs)}</p>
+					</div>
 				</div>
-				<div class="status-page__metric">
-					<p class="status-page__metric-label">Avg Retry Count</p>
-					<p class="status-page__metric-value">{toMetricNumber(queueMetrics?.avg_retry_count)}</p>
-				</div>
-				<div class="status-page__metric">
-					<p class="status-page__metric-label">Avg Job Duration</p>
-					<p class="status-page__metric-value">{formatDurationFromMs(queueMetrics?.avg_job_duration_ms)}</p>
-				</div>
-				<div class="status-page__metric">
-					<p class="status-page__metric-label">Total Download Time</p>
-					<p class="status-page__metric-value">{formatDurationFromMs(queueMetrics?.total_download_time_ms)}</p>
-				</div>
-				<div class="status-page__metric">
-					<p class="status-page__metric-label">Cancelled</p>
-					<p class="status-page__metric-value">{toMetricNumber(queueMetrics?.cancelled)}</p>
-				</div>
-				<div class="status-page__metric">
-					<p class="status-page__metric-label">Jobs Tracked</p>
-					<p class="status-page__metric-value">{toMetricNumber(queueMetrics?.total_jobs)}</p>
-				</div>
-			</div>
-			{#if queueMetrics?.failure_by_code && Object.keys(queueMetrics.failure_by_code).length > 0}
-				<ul class="status-page__issues">
-					{#each Object.entries(queueMetrics.failure_by_code) as [code, count] (code)}
-						<li>{code}: {count}</li>
-					{/each}
-				</ul>
-			{/if}
-			<details class="status-page__details">
-				<summary>Show raw metrics snapshot</summary>
-				<pre class="status-page__json">{JSON.stringify(statusQueueMetrics?.metrics ?? {}, null, 2)}</pre>
-			</details>
-		</ToolPanel>
+				{#if queueMetrics?.failure_by_code && Object.keys(queueMetrics.failure_by_code).length > 0}
+					<ul class="status-page__issues">
+						{#each Object.entries(queueMetrics.failure_by_code) as [code, count] (code)}
+							<li>{code}: {count}</li>
+						{/each}
+					</ul>
+				{/if}
+				<details class="status-page__details">
+					<summary>Show raw metrics snapshot</summary>
+					<pre class="status-page__json">{JSON.stringify(statusQueueMetrics?.metrics ?? {}, null, 2)}</pre>
+				</details>
+			</ToolPanel>
+		</details>
 
 		<div id="status-errors" class="ui-section-anchor">
 			<ToolPanel tone="secondary">
@@ -490,6 +492,29 @@
 		gap: 0.78rem;
 		grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 		padding-bottom: 0.45rem;
+	}
+
+	.status-page__secondary {
+		grid-column: 1 / -1;
+		border-top: 1px solid rgba(255, 255, 255, 0.1);
+		padding-top: 0.15rem;
+	}
+
+	.status-page__secondary > summary {
+		list-style: none;
+		cursor: pointer;
+		padding: 0.5rem 0.05rem;
+		font-size: 0.8rem;
+		font-weight: 600;
+		color: rgba(220, 220, 220, 0.88);
+	}
+
+	.status-page__secondary > summary::-webkit-details-marker {
+		display: none;
+	}
+
+	.status-page__secondary :global(.tool-panel) {
+		margin-top: 0.25rem;
 	}
 
 	.status-page__metric-grid {
