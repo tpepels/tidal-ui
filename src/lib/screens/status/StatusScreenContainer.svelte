@@ -26,9 +26,13 @@
 		success?: boolean;
 		source?: string;
 		targetCount?: number;
+		browseTargetCount?: number;
+		streamTargetCount?: number;
 		lastSuccessfulRefreshIso?: string | null;
 		error?: string | null;
 		targets?: Array<{ name: string; baseUrl: string; weight: number }>;
+		browseTargets?: Array<{ name: string; baseUrl: string; weight: number }>;
+		streamTargets?: Array<{ name: string; baseUrl: string; weight: number }>;
 		refresh?: {
 			updated?: boolean;
 			count?: number;
@@ -190,7 +194,7 @@
 		/>
 	{/if}
 
-	<PageSectionNav items={sectionNavItems} sticky={true} />
+	<PageSectionNav items={sectionNavItems} sticky={true} showOnDesktop={false} />
 
 	<div class="status-page__grid" data-ui-block="main-sections">
 		<div id="status-health" class="ui-section-anchor" data-ui-block="key-summary">

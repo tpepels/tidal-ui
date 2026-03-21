@@ -75,9 +75,13 @@
 		success?: boolean;
 		source?: string;
 		targetCount?: number;
+		browseTargetCount?: number;
+		streamTargetCount?: number;
 		lastSuccessfulRefreshIso?: string | null;
 		error?: string | null;
 		targets?: Array<{ name: string; baseUrl: string; weight: number }>;
+		browseTargets?: Array<{ name: string; baseUrl: string; weight: number }>;
+		streamTargets?: Array<{ name: string; baseUrl: string; weight: number }>;
 		refresh?: {
 			updated?: boolean;
 			count?: number;
@@ -366,7 +370,17 @@
 			const message = error instanceof Error ? error.message : 'Failed to fetch API target status';
 			statusTargets = existing
 				? { ...existing, success: false, error: message }
-				: { success: false, source: 'unknown', targetCount: 0, error: message, targets: [] };
+				: {
+						success: false,
+						source: 'unknown',
+						targetCount: 0,
+						browseTargetCount: 0,
+						streamTargetCount: 0,
+						error: message,
+						targets: [],
+						browseTargets: [],
+						streamTargets: []
+				  };
 		} finally {
 			apiTargetsStatusLoading = false;
 		}
@@ -442,7 +456,7 @@
 		</button>
 	</div>
 
-	<PageSectionNav items={sectionNavItems} sticky={true} />
+	<PageSectionNav items={sectionNavItems} sticky={true} showOnDesktop={false} />
 
 	<div id="settings-audio" class="ui-section-anchor">
 	<ToolPanel

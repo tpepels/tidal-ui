@@ -8,12 +8,23 @@ vi.mock('$lib/config/targets', () => ({
 	API_CONFIG: {
 		targets: [
 			{
+				name: 'browse-1',
+				baseUrl: 'https://api.monochrome.tf',
+				weight: 15,
+				requiresProxy: false,
+				category: 'auto-only'
+			}
+		],
+		browseTargets: [
+			{
 				name: 't1',
 				baseUrl: 'https://api.monochrome.tf',
 				weight: 15,
 				requiresProxy: false,
 				category: 'auto-only'
-			},
+			}
+		],
+		streamTargets: [
 			{
 				name: 't2',
 				baseUrl: 'https://hifi-one.spotisaver.net',
@@ -48,7 +59,9 @@ describe('GET /api/targets/status', () => {
 		mockGetApiTargetRefreshState.mockReturnValue({
 			lastSuccessfulRefreshAt: Date.parse('2026-03-06T22:40:49.638Z'),
 			source: 'uptime',
-			targetCount: 2
+			targetCount: 2,
+			browseTargetCount: 1,
+			streamTargetCount: 1
 		});
 	});
 
@@ -67,7 +80,11 @@ describe('GET /api/targets/status', () => {
 		expect(body.source).toBe('uptime');
 		expect(body.lastSuccessfulRefreshIso).toBe('2026-03-06T22:40:49.638Z');
 		expect(body.targetCount).toBe(2);
-		expect(body.targets).toHaveLength(2);
+		expect(body.browseTargetCount).toBe(1);
+		expect(body.streamTargetCount).toBe(1);
+		expect(body.targets).toHaveLength(1);
+		expect(body.browseTargets).toHaveLength(1);
+		expect(body.streamTargets).toHaveLength(1);
 	});
 
 	it('forces refresh when refresh query param is set', async () => {

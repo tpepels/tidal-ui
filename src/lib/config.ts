@@ -13,6 +13,7 @@ export { API_CONFIG };
 export type { ApiClusterTarget };
 
 type RegionPreference = 'auto' | 'us' | 'eu';
+type TargetPurpose = 'browse' | 'stream';
 
 type WeightedTarget = ApiClusterTarget & { cumulativeWeight: number };
 
@@ -124,7 +125,7 @@ function selectFromWeightedTargets(weighted: WeightedTarget[]): ApiClusterTarget
 
 export function getTargetsForRegion(region: RegionPreference = 'auto'): ApiClusterTarget[] {
 	// Currently only 'auto' region is supported
-	return region === 'auto' ? API_CONFIG.targets : [];
+	return region === 'auto' ? API_CONFIG.browseTargets : [];
 }
 
 export function selectApiTargetForRegion(region: RegionPreference): ApiClusterTarget {
@@ -392,7 +393,9 @@ function isLikelyApiClusterUrl(url: URL): boolean {
 		host.endsWith('.monochrome.tf') ||
 		host.endsWith('.squid.wtf') ||
 		host.endsWith('.spotisaver.net') ||
+		host.endsWith('.p1nkhamster.xyz') ||
 		host.endsWith('.qqdl.site') ||
+		(host === 'streamex.sh' || host.endsWith('.streamex.sh')) ||
 		host.endsWith('.kinoplus.online') ||
 		host.endsWith('.binimum.org') ||
 		host.endsWith('.401658.xyz')
@@ -454,6 +457,62 @@ function isDownloadUrl(url: string | URL): boolean {
 	return downloadPatterns.some(pattern => pattern.test(urlStr));
 }
 
+function inferTargetPurpose(
+	resolvedUrl: URL,
+	operationType?: 'download' | 'upload' | 'default',
+	override?: TargetPurpose
+): TargetPurpose {
+	if (override) {
+		return override;
+	}
+
+	if (operationType === 'download') {
+		return 'stream';
+	}
+
+	const path = resolvedUrl.pathname.toLowerCase();
+	if (
+		path.includes('/track/') ||
+		path.includes('/manifest/') ||
+		path.includes('/song/')
+	) {
+		return 'stream';
+	}
+
+	return 'browse';
+}
+
+function getTargetsForPurpose(purpose: TargetPurpose): ApiClusterTarget[] {
+	const configured = purpose === 'stream' ? API_CONFIG.streamTargets : API_CONFIG.browseTargets;
+	if (configured.length > 0) {
+		return configured;
+	}
+	if (API_CONFIG.targets.length > 0) {
+		return API_CONFIG.targets;
+	}
+	return [];
+}
+
+function getPrimaryTargetForPurpose(purpose: TargetPurpose): ApiClusterTarget {
+	const configured = getTargetsForPurpose(purpose);
+	if (configured.length > 0) {
+		return configured[0];
+	}
+	return getPrimaryTarget();
+}
+
+function selectApiTargetForPurpose(
+	purpose: TargetPurpose,
+	apiVersion: 'v1' | 'v2' = 'v2'
+): ApiClusterTarget {
+	const configured = getTargetsForPurpose(purpose);
+	if (configured.length === 0) {
+		return selectApiTarget(apiVersion);
+	}
+	const weighted = buildWeightedTargets(configured);
+	return selectFromWeightedTargets(weighted);
+}
+
 /**
  * Fetch with CORS handling
  */
@@ -465,6 +524,7 @@ export async function fetchWithCORS(
 		timeout?: number;
 		maxRetries?: number;
 		operationType?: 'download' | 'upload' | 'default';
+		targetPurpose?: TargetPurpose;
 		skipTarget?: string; // Skip a previously-failed target on retry
 	}
 ): Promise<Response> {
@@ -480,6 +540,11 @@ export async function fetchWithCORS(
 	}
 
 	const apiVersion = options?.apiVersion ?? 'v2';
+	const targetPurpose = inferTargetPurpose(
+		resolvedUrl,
+		options?.operationType,
+		options?.targetPurpose
+	);
 	const originTarget = findTargetForUrl(resolvedUrl);
 	const shouldRouteThroughApiCluster = !originTarget && isLikelyApiClusterUrl(resolvedUrl);
 	if (!originTarget && !shouldRouteThroughApiCluster) {
@@ -488,16 +553,18 @@ export async function fetchWithCORS(
 		});
 	}
 
-	const weightedTargets = ensureWeightedTargets(apiVersion);
+	const purposeTargets = getTargetsForPurpose(targetPurpose);
+	const weightedTargets =
+		purposeTargets.length > 0 ? buildWeightedTargets(purposeTargets) : ensureWeightedTargets(apiVersion);
 	const attemptOrder: ApiClusterTarget[] = [];
 	if (shouldPreferPrimaryTarget(resolvedUrl)) {
-		const primary = getPrimaryTarget(apiVersion);
+		const primary = getPrimaryTargetForPurpose(targetPurpose);
 		if (!attemptOrder.some((candidate) => candidate.name === primary.name)) {
 			attemptOrder.push(primary);
 		}
 	}
 
-	const selected = selectApiTarget(apiVersion);
+	const selected = selectApiTargetForPurpose(targetPurpose, apiVersion);
 	if (!attemptOrder.some((candidate) => candidate.name === selected.name)) {
 		attemptOrder.push(selected);
 	}
@@ -545,7 +612,7 @@ export async function fetchWithCORS(
 	}
 
 	if (uniqueTargets.length === 0) {
-		uniqueTargets = [getPrimaryTarget(apiVersion)];
+		uniqueTargets = [getPrimaryTargetForPurpose(targetPurpose)];
 	}
 
 	const originBase = originTarget ? parseTargetBase(originTarget) : new URL(resolvedUrl.origin);

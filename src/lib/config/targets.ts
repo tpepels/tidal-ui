@@ -11,6 +11,8 @@ export interface ApiClusterTarget {
 
 export interface ApiConfig {
 	targets: ApiClusterTarget[];
+	browseTargets: ApiClusterTarget[];
+	streamTargets: ApiClusterTarget[];
 	baseUrl: string;
 	useProxy: boolean;
 	proxyUrl: string;
@@ -167,6 +169,8 @@ let lastRefreshError: string | null = null;
 export const API_CONFIG: ApiConfig = {
 	// Cluster of target endpoints for load distribution and redundancy
 	targets: DEFAULT_API_TARGETS.map((target) => ({ ...target })),
+	browseTargets: DEFAULT_API_TARGETS.map((target) => ({ ...target })),
+	streamTargets: DEFAULT_API_TARGETS.map((target) => ({ ...target })),
 	baseUrl: DEFAULT_API_TARGETS[0]?.baseUrl ?? DEFAULT_FALLBACK_BASE_URL,
 	// Proxy configuration for endpoints that need it
 	useProxy: true,
@@ -463,13 +467,6 @@ function buildTargetsFromEntries(
 	return result;
 }
 
-function applyTargets(targets: ApiClusterTarget[], source: 'static' | 'uptime'): void {
-	const nextTargets = targets.length > 0 ? targets : DEFAULT_API_TARGETS;
-	API_CONFIG.targets = nextTargets.map((target) => ({ ...target }));
-	API_CONFIG.baseUrl = API_CONFIG.targets[0]?.baseUrl ?? DEFAULT_FALLBACK_BASE_URL;
-	lastRefreshSource = source;
-}
-
 function getActiveFetch(options?: RefreshOptions): typeof fetch | null {
 	if (options?.fetchImpl) return options.fetchImpl;
 	if (typeof fetch !== 'function') return null;
@@ -529,12 +526,45 @@ function chooseBestPayload(payloads: UptimeResponse[]): UptimeResponse | null {
 	return best ?? payloads[0];
 }
 
-function resolveTargetsFromPayload(payload: UptimeResponse): ApiClusterTarget[] {
+function resolveTargetPoolsFromPayload(payload: UptimeResponse): {
+	browseTargets: ApiClusterTarget[];
+	streamTargets: ApiClusterTarget[];
+} {
 	const downSet = parseDownUrlSet(payload.down);
 	const streamingEntries = parseUptimeEntries(payload.streaming);
 	const apiEntries = parseUptimeEntries(payload.api);
-	const preferredEntries = streamingEntries.length > 0 ? streamingEntries : apiEntries;
-	return buildTargetsFromEntries(preferredEntries, downSet);
+	const streamTargets = buildTargetsFromEntries(streamingEntries, downSet);
+	const browseTargets = buildTargetsFromEntries(apiEntries, downSet);
+
+	return {
+		browseTargets,
+		streamTargets
+	};
+}
+
+function applyTargetPools(
+	browseTargets: ApiClusterTarget[],
+	streamTargets: ApiClusterTarget[],
+	source: 'static' | 'uptime'
+): void {
+	const nextBrowseTargets =
+		browseTargets.length > 0
+			? browseTargets
+			: streamTargets.length > 0
+				? streamTargets
+				: DEFAULT_API_TARGETS;
+	const nextStreamTargets =
+		streamTargets.length > 0
+			? streamTargets
+			: browseTargets.length > 0
+				? browseTargets
+				: DEFAULT_API_TARGETS;
+
+	API_CONFIG.browseTargets = nextBrowseTargets.map((target) => ({ ...target }));
+	API_CONFIG.streamTargets = nextStreamTargets.map((target) => ({ ...target }));
+	API_CONFIG.targets = API_CONFIG.browseTargets.map((target) => ({ ...target }));
+	API_CONFIG.baseUrl = API_CONFIG.browseTargets[0]?.baseUrl ?? DEFAULT_FALLBACK_BASE_URL;
+	lastRefreshSource = source;
 }
 
 export async function refreshApiTargets(options?: RefreshOptions): Promise<RefreshResult> {
@@ -594,13 +624,17 @@ export async function refreshApiTargets(options?: RefreshOptions): Promise<Refre
 				};
 			}
 
-			const resolvedTargets = resolveTargetsFromPayload(chosen);
-			const trustedTargets = await filterTrustedDynamicTargets(
-				resolvedTargets,
+			const resolvedPools = resolveTargetPoolsFromPayload(chosen);
+			const trustedBrowseTargets = await filterTrustedDynamicTargets(
+				resolvedPools.browseTargets,
 				options?.isTrustedHostname ?? defaultIsTrustedHostname
 			);
-			if (trustedTargets.length === 0) {
-				const errorMessage = 'Uptime payload had no trusted streaming targets';
+			const trustedStreamTargets = await filterTrustedDynamicTargets(
+				resolvedPools.streamTargets,
+				options?.isTrustedHostname ?? defaultIsTrustedHostname
+			);
+			if (trustedBrowseTargets.length === 0 && trustedStreamTargets.length === 0) {
+				const errorMessage = 'Uptime payload had no trusted API targets';
 				lastRefreshError = errorMessage;
 				return {
 					updated: false,
@@ -612,12 +646,12 @@ export async function refreshApiTargets(options?: RefreshOptions): Promise<Refre
 				};
 			}
 
-			applyTargets(trustedTargets, 'uptime');
+			applyTargetPools(trustedBrowseTargets, trustedStreamTargets, 'uptime');
 			lastRefreshError = null;
 			lastSuccessfulRefreshAt = Date.now();
 			return {
 				updated: true,
-				count: API_CONFIG.targets.length,
+				count: API_CONFIG.browseTargets.length + API_CONFIG.streamTargets.length,
 				source: 'uptime',
 				lastUpdated: typeof chosen.lastUpdated === 'string' ? chosen.lastUpdated : undefined
 			};
@@ -649,22 +683,26 @@ export function getApiTargetRefreshState(): {
 	source: 'static' | 'uptime';
 	error?: string;
 	targetCount: number;
+	browseTargetCount: number;
+	streamTargetCount: number;
 } {
 	return {
 		lastSuccessfulRefreshAt,
 		source: lastRefreshSource,
 		error: lastRefreshError ?? undefined,
-		targetCount: API_CONFIG.targets.length
+		targetCount: API_CONFIG.browseTargets.length + API_CONFIG.streamTargets.length,
+		browseTargetCount: API_CONFIG.browseTargets.length,
+		streamTargetCount: API_CONFIG.streamTargets.length
 	};
 }
 
 export const __test = {
 	resetTargets(): void {
-		applyTargets(DEFAULT_API_TARGETS, 'static');
+		applyTargetPools(DEFAULT_API_TARGETS, DEFAULT_API_TARGETS, 'static');
 		lastSuccessfulRefreshAt = 0;
 		lastRefreshError = null;
 		refreshInFlight = null;
 		hostnameTrustCache.clear();
 	},
-	resolveTargetsFromPayload
+	resolveTargetPoolsFromPayload
 };

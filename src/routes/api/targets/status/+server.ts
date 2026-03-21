@@ -28,8 +28,20 @@ export const GET: RequestHandler = async ({ url }) => {
 					? new Date(state.lastSuccessfulRefreshAt).toISOString()
 					: null,
 			targetCount: state.targetCount,
+			browseTargetCount: state.browseTargetCount,
+			streamTargetCount: state.streamTargetCount,
 			error: state.error ?? null,
 			targets: API_CONFIG.targets.map((target) => ({
+				name: target.name,
+				baseUrl: target.baseUrl,
+				weight: target.weight
+			})),
+			browseTargets: API_CONFIG.browseTargets.map((target) => ({
+				name: target.name,
+				baseUrl: target.baseUrl,
+				weight: target.weight
+			})),
+			streamTargets: API_CONFIG.streamTargets.map((target) => ({
 				name: target.name,
 				baseUrl: target.baseUrl,
 				weight: target.weight

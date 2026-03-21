@@ -19,12 +19,14 @@
 		items = [],
 		sticky = false,
 		ariaLabel = 'Page sections',
-		className = ''
+		className = '',
+		showOnDesktop = true
 	}: {
 		items?: PageSectionNavItem[];
 		sticky?: boolean;
 		ariaLabel?: string;
 		className?: string;
+		showOnDesktop?: boolean;
 	} = $props();
 
 	let activeId = $state('');
@@ -179,7 +181,7 @@
 
 {#if visibleItems.length > 1}
 	<nav
-		class={`ui-section-nav ${sticky ? 'ui-section-nav--sticky' : ''} ${className}`.trim()}
+		class={`ui-section-nav ${sticky ? 'ui-section-nav--sticky' : ''} ${!showOnDesktop ? 'ui-section-nav--mobile-only' : ''} ${className}`.trim()}
 		aria-label={ariaLabel}
 	>
 		<div class="ui-section-nav__inner">
@@ -278,6 +280,10 @@
 		.ui-section-nav--sticky {
 			position: sticky;
 			background: rgb(var(--ui-color-coal-rgb, 20 17 15) / 0.94);
+		}
+
+		.ui-section-nav--mobile-only {
+			display: none;
 		}
 	}
 

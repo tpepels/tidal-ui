@@ -6,7 +6,7 @@ describe('dynamic API target refresh', () => {
 		__test.resetTargets();
 	});
 
-	it('prefers streaming targets and excludes blocked/down hosts', async () => {
+	it('splits browse and stream targets from uptime payload', async () => {
 		const payload = {
 			lastUpdated: '2026-03-06T22:40:49.638Z',
 			api: [
@@ -37,22 +37,26 @@ describe('dynamic API target refresh', () => {
 		});
 
 		expect(result.updated).toBe(true);
-		expect(API_CONFIG.targets.length).toBe(2);
-		expect(API_CONFIG.targets.map((target) => target.baseUrl)).toEqual([
+		expect(API_CONFIG.browseTargets.map((target) => target.baseUrl)).toEqual([
+			'https://triton.squid.wtf'
+		]);
+		expect(API_CONFIG.streamTargets.map((target) => target.baseUrl)).toEqual([
 			'https://api.monochrome.tf',
 			'https://hifi-one.spotisaver.net'
 		]);
-		expect(API_CONFIG.targets.some((target) => target.baseUrl.includes('samidy.com'))).toBe(false);
-		expect(API_CONFIG.targets.some((target) => target.baseUrl.includes('arran.monochrome.tf'))).toBe(
+		expect(API_CONFIG.targets.map((target) => target.baseUrl)).toEqual([
+			'https://triton.squid.wtf'
+		]);
+		expect(API_CONFIG.browseTargets.some((target) => target.baseUrl.includes('samidy.com'))).toBe(
 			false
 		);
-		expect(API_CONFIG.targets.some((target) => target.baseUrl.includes('triton.squid.wtf'))).toBe(
+		expect(API_CONFIG.browseTargets.some((target) => target.baseUrl.includes('arran.monochrome.tf'))).toBe(
 			false
 		);
-		expect(API_CONFIG.baseUrl).toBe('https://api.monochrome.tf');
+		expect(API_CONFIG.baseUrl).toBe('https://triton.squid.wtf');
 	});
 
-	it('falls back to api list when streaming list is empty', async () => {
+	it('falls back stream pool to browse pool when streaming list is empty', async () => {
 		const payload = {
 			lastUpdated: '2026-03-06T22:40:49.638Z',
 			api: [
@@ -79,14 +83,18 @@ describe('dynamic API target refresh', () => {
 		});
 
 		expect(result.updated).toBe(true);
-		expect(API_CONFIG.targets.map((target) => target.baseUrl)).toEqual([
+		expect(API_CONFIG.browseTargets.map((target) => target.baseUrl)).toEqual([
+			'https://triton.squid.wtf',
+			'https://hifi-two.spotisaver.net'
+		]);
+		expect(API_CONFIG.streamTargets.map((target) => target.baseUrl)).toEqual([
 			'https://triton.squid.wtf',
 			'https://hifi-two.spotisaver.net'
 		]);
 		expect(API_CONFIG.targets.some((target) => target.baseUrl.includes('samidy.com'))).toBe(false);
 	});
 
-	it('keeps only trusted allowlisted HTTPS hosts', async () => {
+	it('falls back browse pool to stream pool when api list is empty', async () => {
 		const payload = {
 			lastUpdated: '2026-03-06T22:40:49.638Z',
 			streaming: [
@@ -113,7 +121,10 @@ describe('dynamic API target refresh', () => {
 		});
 
 		expect(result.updated).toBe(true);
-		expect(API_CONFIG.targets.map((target) => target.baseUrl)).toEqual([
+		expect(API_CONFIG.streamTargets.map((target) => target.baseUrl)).toEqual([
+			'https://api.monochrome.tf'
+		]);
+		expect(API_CONFIG.browseTargets.map((target) => target.baseUrl)).toEqual([
 			'https://api.monochrome.tf'
 		]);
 	});

@@ -741,7 +741,7 @@
 				</div>
 			</div>
 
-			<PageSectionNav items={sectionNavItems} sticky={true} />
+			<PageSectionNav items={sectionNavItems} sticky={true} showOnDesktop={false} />
 
 			<div id="download-center-summary" class="ui-section-anchor">
 				<DownloadCenterSummarySection

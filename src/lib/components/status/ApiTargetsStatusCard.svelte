@@ -3,8 +3,12 @@
 		success?: boolean;
 		source?: string;
 		targetCount?: number;
+		browseTargetCount?: number;
+		streamTargetCount?: number;
 		lastSuccessfulRefreshIso?: string | null;
 		error?: string | null;
+		browseTargets?: Array<{ name: string; baseUrl: string; weight: number }>;
+		streamTargets?: Array<{ name: string; baseUrl: string; weight: number }>;
 		refresh?: {
 			updated?: boolean;
 			count?: number;
@@ -46,6 +50,38 @@
 	<p class="section-footnote">
 		Available targets: {status?.targetCount ?? 0}
 	</p>
+	<p class="section-footnote">
+		Browse targets: {status?.browseTargetCount ?? 0}
+	</p>
+	<p class="section-footnote">
+		Streaming targets: {status?.streamTargetCount ?? 0}
+	</p>
+	{#if status?.browseTargets?.length}
+		<div class="api-targets-card__group">
+			<p class="section-footnote"><strong>Browse endpoints</strong></p>
+			<ul class="api-targets-card__list">
+				{#each status.browseTargets as target (target.name + target.baseUrl)}
+					<li class="api-targets-card__item">
+						<span class="api-targets-card__name">{target.name}</span>
+						<span class="api-targets-card__url">{target.baseUrl}</span>
+					</li>
+				{/each}
+			</ul>
+		</div>
+	{/if}
+	{#if status?.streamTargets?.length}
+		<div class="api-targets-card__group">
+			<p class="section-footnote"><strong>Streaming endpoints</strong></p>
+			<ul class="api-targets-card__list">
+				{#each status.streamTargets as target (target.name + target.baseUrl)}
+					<li class="api-targets-card__item">
+						<span class="api-targets-card__name">{target.name}</span>
+						<span class="api-targets-card__url">{target.baseUrl}</span>
+					</li>
+				{/each}
+			</ul>
+		</div>
+	{/if}
 	{#if status?.lastSuccessfulRefreshIso}
 		<p class="section-footnote">
 			Last successful refresh: {new Date(status.lastSuccessfulRefreshIso).toLocaleString()}
@@ -75,6 +111,44 @@
 
 	.api-targets-card--compact {
 		gap: 0.35rem;
+	}
+
+	.api-targets-card__group {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+		margin-top: 0.2rem;
+	}
+
+	.api-targets-card__list {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+	}
+
+	.api-targets-card__item {
+		display: flex;
+		flex-direction: column;
+		gap: 0.08rem;
+		padding: 0.22rem 0.38rem;
+		border-radius: 0.5rem;
+		background: rgba(255, 255, 255, 0.03);
+		border: 1px solid rgba(255, 255, 255, 0.06);
+	}
+
+	.api-targets-card__name {
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: rgba(236, 236, 236, 0.88);
+	}
+
+	.api-targets-card__url {
+		font-size: 0.75rem;
+		word-break: break-all;
+		color: rgba(210, 210, 210, 0.78);
 	}
 
 	.api-targets-card__header {
