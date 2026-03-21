@@ -643,33 +643,37 @@
 				<StateNotice tone="info" message="Refining results…" compact={true} />
 			{/if}
 		{:else if !$searchStore.query.trim()}
-			<StateNotice
-				title="Ready to search"
-				message="Choose sections, enter a query, optionally add an album artist filter, then run search."
-				embedded={true}
-			/>
+			<div class="search-empty-state ui-surface-card">
+				<StateBlock
+					kind="empty"
+					title="Ready to search"
+					message="Choose sections, enter a query, optionally add an album artist filter, then run search."
+				/>
+			</div>
 		{:else if isQueryATidalUrl}
-			<StateNotice tone="info" message="TIDAL URL detected. Press Search to load it." embedded={true} />
+			<div class="search-empty-state ui-surface-card">
+				<StateNotice tone="info" message="TIDAL URL detected. Press Search to load it." />
+			</div>
 		{:else if isQueryASpotifyPlaylist}
-			<StateNotice
-				tone="info"
-				message="Spotify playlist detected. Press Search to convert it."
-				embedded={true}
-			/>
+			<div class="search-empty-state ui-surface-card">
+				<StateNotice tone="info" message="Spotify playlist detected. Press Search to convert it." />
+			</div>
 		{:else if isQueryAStreamingUrl}
-			<StateNotice
-				tone="info"
-				message="Streaming URL detected. Press Search to convert it."
-				embedded={true}
-			/>
+			<div class="search-empty-state ui-surface-card">
+				<StateNotice tone="info" message="Streaming URL detected. Press Search to convert it." />
+			</div>
 		{:else if $searchStore.isLoading}
-			<StateNotice tone="info" message="Searching…" compact={true} />
+			<div class="search-empty-state ui-surface-card">
+				<StateNotice tone="info" message="Searching…" />
+			</div>
 		{:else}
-			<StateBlock
-				kind="empty"
-				title="No results found"
-				message="Try a different query or disable strict artist match."
-			/>
+			<div class="search-empty-state ui-surface-card">
+				<StateBlock
+					kind="empty"
+					title="No results found"
+					message="Try a different query or disable strict artist match."
+				/>
+			</div>
 		{/if}
 	{/if}
 </div>
@@ -678,7 +682,7 @@
 	.search-root {
 		display: flex;
 		flex-direction: column;
-		gap: 1.2rem;
+		gap: 0.95rem;
 	}
 
 	.search-status {
@@ -689,18 +693,23 @@
 		position: sticky;
 		top: 0;
 		z-index: 10;
-		padding: 0.15rem 0 0.85rem;
+		padding: 0.08rem 0 0.62rem;
 		border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 		background:
-			linear-gradient(to bottom, rgba(7, 7, 7, 0.96), rgba(7, 7, 7, 0.9) 74%, transparent);
-		backdrop-filter: blur(10px);
-		-webkit-backdrop-filter: blur(10px);
+			linear-gradient(to bottom, rgba(7, 7, 7, 0.94), rgba(7, 7, 7, 0.82) 68%, transparent);
+		backdrop-filter: blur(8px);
+		-webkit-backdrop-filter: blur(8px);
 	}
 
 	.search-sections {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
-		gap: 1.4rem;
+		gap: 1.1rem;
+	}
+
+	.search-empty-state {
+		max-width: 44rem;
+		padding: 0.2rem 1rem 0.95rem;
 	}
 
 	@media (min-width: 1080px) {
@@ -721,7 +730,7 @@
 			position: static;
 			top: auto;
 			z-index: auto;
-			padding-bottom: 0.7rem;
+			padding-bottom: 0.5rem;
 			background: transparent;
 			backdrop-filter: none;
 			-webkit-backdrop-filter: none;

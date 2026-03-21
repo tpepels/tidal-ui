@@ -522,7 +522,7 @@
 
 <style>
 	.library-suggestions-page {
-		gap: 0.95rem;
+		gap: 0.78rem;
 	}
 
 	.library-suggestions-page__spinner {
@@ -536,15 +536,15 @@
 	.library-suggestions-overview__card {
 		display: flex;
 		flex-direction: column;
-		gap: 0.35rem;
+		gap: 0.24rem;
 	}
 
 	.library-suggestions-overview__heading {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.4rem;
-		font-size: 0.86rem;
-		letter-spacing: 0.08em;
+		font-size: 0.78rem;
+		letter-spacing: 0.07em;
 		text-transform: uppercase;
 		color: rgba(214, 214, 214, 0.82);
 	}
@@ -555,51 +555,51 @@
 
 	.library-suggestions-overview__value {
 		margin: 0;
-		font-size: 1.44rem;
+		font-size: 1.24rem;
 		font-weight: 700;
 	}
 
 	.library-suggestions-overview__value--small {
-		font-size: 0.98rem;
+		font-size: 0.9rem;
 		line-height: 1.35;
 		overflow-wrap: anywhere;
 	}
 
 	.library-suggestions-overview__meta {
 		margin: 0;
-		font-size: 0.88rem;
-		color: rgba(209, 209, 209, 0.85);
+		font-size: 0.8rem;
+		color: rgba(209, 209, 209, 0.74);
 	}
 
 	.library-suggestions-section {
 		display: flex;
 		flex-direction: column;
-		gap: 0.86rem;
+		gap: 0.68rem;
 	}
 
 	.library-suggestions-section__header h2 {
 		margin: 0;
-		font-size: 1.2rem;
+		font-size: 1.08rem;
 	}
 
 	.library-suggestions-section__eyebrow {
 		margin: 0 0 0.2rem;
-		font-size: 0.82rem;
+		font-size: 0.74rem;
 		text-transform: uppercase;
-		letter-spacing: 0.1em;
-		color: rgba(204, 204, 204, 0.75);
+		letter-spacing: 0.08em;
+		color: rgba(204, 204, 204, 0.68);
 	}
 
 	.library-suggestions-columns {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 0.92rem;
+		gap: 0.72rem;
 	}
 
 	.library-suggestions-column {
 		display: flex;
 		flex-direction: column;
-		gap: 0.65rem;
+		gap: 0.5rem;
 	}
 
 	.library-suggestions-list {
@@ -616,53 +616,53 @@
 
 	.library-suggestions-column__header h3 {
 		margin: 0;
-		font-size: 1.08rem;
+		font-size: 0.96rem;
 	}
 
 	.library-suggestions-seeds {
 		display: flex;
 		flex-direction: column;
-		gap: 0.45rem;
+		gap: 0.3rem;
 	}
 
 	.library-suggestions-seeds__label {
 		margin: 0;
-		font-size: 0.84rem;
-		letter-spacing: 0.08em;
+		font-size: 0.74rem;
+		letter-spacing: 0.07em;
 		text-transform: uppercase;
-		color: rgba(194, 194, 194, 0.76);
+		color: rgba(194, 194, 194, 0.68);
 	}
 
 	.library-suggestions-seeds__meta {
 		margin: 0;
-		font-size: 0.86rem;
-		color: rgba(212, 212, 212, 0.78);
+		font-size: 0.8rem;
+		color: rgba(212, 212, 212, 0.72);
 		overflow-wrap: anywhere;
 	}
 
 	.library-suggestions-seeds__meta code {
-		padding: 0.08rem 0.35rem;
+		padding: 0.06rem 0.28rem;
 		border-radius: 0.32rem;
-		background: rgba(255, 255, 255, 0.08);
-		font-size: 0.82rem;
+		background: rgba(255, 255, 255, 0.05);
+		font-size: 0.76rem;
 		word-break: break-all;
 	}
 
 	.library-suggestions-seeds__chips {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.45rem;
+		gap: 0.32rem;
 	}
 
 	.library-suggestions-seed-chip {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		padding: 0.32rem 0.62rem;
+		padding: 0.24rem 0.5rem;
 		border-radius: var(--ui-radius-sm, 9px);
-		border: 1px solid rgba(212, 212, 212, 0.38);
-		background: rgba(18, 18, 18, 0.55);
-		font-size: 0.88rem;
+		border: 1px solid rgba(212, 212, 212, 0.2);
+		background: transparent;
+		font-size: 0.8rem;
 		text-decoration: none;
 		color: inherit;
 		max-width: 100%;

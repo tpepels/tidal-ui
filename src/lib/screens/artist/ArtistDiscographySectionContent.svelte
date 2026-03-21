@@ -485,14 +485,14 @@
 
 <style>
 	.artist-discography-primary {
-		border-top: 1px solid rgba(255, 255, 255, 0.18);
-		padding-top: 1rem;
+		border-top: 1px solid rgba(255, 255, 255, 0.1);
+		padding-top: 0.72rem;
 	}
 
 	.artist-discography-primary__header {
 		display: flex;
 		flex-direction: column;
-		gap: 0.9rem;
+		gap: 0.68rem;
 	}
 
 	.artist-discography-primary__heading {
@@ -503,7 +503,7 @@
 
 	.artist-discography-primary__title {
 		margin: 0;
-		font-size: clamp(1.45rem, 1.2rem + 0.8vw, 1.9rem);
+		font-size: clamp(1.34rem, 1.16rem + 0.6vw, 1.72rem);
 		line-height: 1.15;
 		font-weight: 700;
 		color: rgba(248, 248, 248, 0.98);
@@ -511,46 +511,46 @@
 
 	.artist-discography-primary__subtitle {
 		margin: 0;
-		font-size: 0.98rem;
-		line-height: 1.45;
-		color: rgba(205, 205, 205, 0.82);
+		font-size: 0.9rem;
+		line-height: 1.36;
+		color: rgba(205, 205, 205, 0.76);
 	}
 
 	.artist-discography-toolbar {
 		display: grid;
-		gap: 0.85rem;
-		margin-top: 1rem;
+		gap: 0.58rem;
+		margin-top: 0.72rem;
 	}
 
 	.artist-discography-toolbar__summary {
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.55rem;
+		gap: 0.35rem;
 	}
 
 	.artist-discography-toolbar__pill {
 		display: inline-flex;
 		align-items: center;
-		padding: 0.24rem 0.58rem;
+		padding: 0.16rem 0.42rem;
 		border-radius: 999px;
-		border: 1px solid rgba(255, 255, 255, 0.12);
-		background: rgba(255, 255, 255, 0.06);
-		font-size: 0.72rem;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		background: transparent;
+		font-size: 0.68rem;
 		font-weight: 700;
 		letter-spacing: 0.02em;
 		color: rgba(238, 238, 238, 0.92);
 	}
 
 	.artist-discography-toolbar__summary-text {
-		font-size: 0.82rem;
-		color: rgba(200, 200, 200, 0.76);
+		font-size: 0.76rem;
+		color: rgba(200, 200, 200, 0.68);
 	}
 
 	.artist-discography-controls {
 		border: 1px solid rgba(255, 255, 255, 0.08);
-		border-radius: 1rem;
-		background: rgba(255, 255, 255, 0.04);
+		border-radius: 0.9rem;
+		background: transparent;
 		overflow: hidden;
 	}
 
@@ -559,8 +559,8 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 0.8rem;
-		padding: 0.9rem 1rem;
+		gap: 0.65rem;
+		padding: 0.68rem 0.82rem;
 		cursor: pointer;
 	}
 
@@ -572,7 +572,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.45rem;
-		font-size: 0.9rem;
+		font-size: 0.84rem;
 		font-weight: 700;
 		color: rgba(244, 244, 244, 0.95);
 	}
@@ -580,8 +580,8 @@
 	.artist-discography-controls__summary-meta {
 		flex: 1;
 		min-width: 0;
-		font-size: 0.78rem;
-		color: rgba(198, 198, 198, 0.72);
+		font-size: 0.72rem;
+		color: rgba(198, 198, 198, 0.66);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -598,24 +598,24 @@
 
 	.artist-discography-controls__content {
 		display: grid;
-		gap: 0.85rem;
-		padding: 0 1rem 1rem;
+		gap: 0.68rem;
+		padding: 0 0.82rem 0.82rem;
 		border-top: 1px solid rgba(255, 255, 255, 0.06);
 	}
 
 	.artist-discography-controls__grid {
 		display: grid;
-		gap: 0.9rem;
-		padding-top: 0.85rem;
+		gap: 0.72rem;
+		padding-top: 0.68rem;
 	}
 
 	.artist-discography-controls__field {
 		display: grid;
-		gap: 0.45rem;
+		gap: 0.32rem;
 	}
 
 	.artist-discography-controls__label {
-		font-size: 0.72rem;
+		font-size: 0.68rem;
 		font-weight: 700;
 		letter-spacing: 0.05em;
 		text-transform: uppercase;
@@ -627,22 +627,22 @@
 		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
-		gap: 0.75rem;
+		gap: 0.5rem;
 	}
 
 	.artist-discography-list {
-		padding-inline: 0.1rem;
+		padding-inline: 0;
 	}
 
 	.discography-mb-inline {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.28rem;
-		padding: 0.14rem 0.42rem;
+		padding: 0.12rem 0.34rem;
 		border-radius: 999px;
 		border: 1px solid rgba(255, 255, 255, 0.1);
-		background: rgba(255, 255, 255, 0.06);
-		font-size: 0.72rem;
+		background: transparent;
+		font-size: 0.68rem;
 		font-weight: 700;
 		line-height: 1;
 		color: rgba(236, 236, 236, 0.9);

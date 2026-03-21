@@ -16,7 +16,7 @@
 
 <SectionBlock
 	title="MusicBrainz"
-	subtitle="Resolved track metadata."
+	subtitle="Resolved track metadata and links."
 	tone="tertiary"
 >
 	<svelte:fragment slot="actions">
@@ -29,7 +29,7 @@
 			{#if isLoading}
 				Refreshing…
 			{:else}
-				Refresh Metadata
+				Refresh
 			{/if}
 		</button>
 	</svelte:fragment>
@@ -73,13 +73,13 @@
 	.track-metadata__details {
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
-		padding-top: 0.35rem;
+		gap: 0.55rem;
+		padding-top: 0.28rem;
 		border-top: 1px solid rgba(255, 255, 255, 0.08);
 	}
 
 	.track-metadata__details summary {
-		font-size: 0.9rem;
+		font-size: 0.84rem;
 		font-weight: 600;
 		color: rgba(220, 220, 220, 0.84);
 	}

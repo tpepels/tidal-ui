@@ -492,7 +492,7 @@
 	</div>
 {:else if album}
 	<div
-		class="ui-page space-y-6 pb-32 pt-4 lg:pb-40"
+		class="ui-page space-y-5 pb-32 pt-4 lg:pb-40"
 		data-ui-archetype="detail"
 		data-ui-route="album"
 		data-ui-block="main-content"

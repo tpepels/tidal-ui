@@ -233,7 +233,7 @@
 	</div>
 {:else if track}
 	<div
-		class="ui-page space-y-8 pb-32 pt-4 lg:pb-40"
+		class="ui-page space-y-5 pb-32 pt-4 lg:pb-40"
 		data-ui-archetype="detail"
 		data-ui-route="track"
 		data-ui-block="main-content"

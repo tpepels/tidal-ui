@@ -17,7 +17,7 @@
 
 <SectionBlock
 	title="MusicBrainz"
-	subtitle="Resolved artist identity and facts."
+	subtitle="Resolved artist identity and links."
 	tone="tertiary"
 >
 	<svelte:fragment slot="actions">
@@ -30,7 +30,7 @@
 			{#if isLoading}
 				Refreshing…
 			{:else}
-				Refresh Match
+				Refresh
 			{/if}
 		</button>
 	</svelte:fragment>

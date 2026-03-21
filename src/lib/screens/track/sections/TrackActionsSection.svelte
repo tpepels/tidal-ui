@@ -14,7 +14,7 @@
 
 <SectionBlock
 	title="Actions"
-	subtitle="Play, download, or share this track."
+	subtitle="Playback and download controls."
 	tone="secondary"
 >
 	<div class="ui-action-row ui-action-row--progressive">

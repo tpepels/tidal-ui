@@ -288,7 +288,7 @@
 		display: flex;
 		flex-direction: column;
 		height: 100%;
-		background: var(--ui-surface-raised, #171210);
+		background: transparent;
 		backdrop-filter: none;
 		-webkit-backdrop-filter: none;
 	}
@@ -297,8 +297,8 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 14px 18px;
-		border-bottom: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
+		padding: 0.7rem 0 0.72rem;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 		flex-shrink: 0;
 	}
 
@@ -310,7 +310,7 @@
 
 	.download-log-title {
 		margin: 0;
-		font-size: 1rem;
+		font-size: 0.96rem;
 		font-weight: 600;
 		color: var(--ui-text-primary, rgba(245, 245, 245, 0.96));
 		letter-spacing: 0.02em;
@@ -318,27 +318,27 @@
 
 	.download-log-subtitle {
 		margin: 0;
-		font-size: 0.84rem;
+		font-size: 0.8rem;
 		color: var(--ui-text-muted, rgba(163, 163, 163, 0.84));
 	}
 
 	.download-log-actions {
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		gap: 0.38rem;
 	}
 
 	.download-log-count {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		min-width: 2.2rem;
-		height: 2rem;
-		padding: 0 0.6rem;
+		min-width: 1.9rem;
+		height: 1.8rem;
+		padding: 0 0.45rem;
 		border-radius: 999px;
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
-		font-size: 0.84rem;
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		background: transparent;
+		font-size: 0.78rem;
 		font-weight: 600;
 		color: var(--ui-text-secondary, rgba(212, 212, 212, 0.82));
 	}
@@ -346,12 +346,12 @@
 	.download-log-btn {
 		all: unset;
 		cursor: pointer;
-		padding: 0.46rem;
-		min-width: 2rem;
-		min-height: 2rem;
+		padding: 0.4rem;
+		min-width: 1.8rem;
+		min-height: 1.8rem;
 		border-radius: 8px;
-		border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		background: transparent;
 		color: var(--ui-text-secondary, rgba(212, 212, 212, 0.82));
 		transition:
 			border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
@@ -365,8 +365,8 @@
 	}
 
 	.download-log-btn:hover {
-		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));
-		background: var(--ui-surface-interactive, rgba(255, 255, 255, 0.055));
+		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.22));
+		background: rgba(255, 255, 255, 0.045);
 		color: var(--ui-text-primary, rgba(255, 255, 255, 0.96));
 		transform: translateY(var(--ui-lift-y, -1px));
 	}
@@ -387,7 +387,7 @@
 
 		font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
 		font-size: 13px;
-		padding: 10px 14px;
+		padding: 0.5rem 0;
 		color: var(--ui-text-secondary, rgba(212, 212, 212, 0.88));
 		line-height: 1.4;
 
@@ -420,9 +420,10 @@
 
 	.download-log-entry {
 		margin: 0;
-		padding: 0.48rem 0.62rem;
-		border-radius: 8px;
-		border: 1px solid transparent;
+		padding: 0.46rem 0;
+		border-radius: 0;
+		border: 0;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 		display: flex;
 		gap: 8px;
 		align-items: flex-start;
@@ -433,8 +434,7 @@
 	}
 
 	.download-log-entry:hover {
-		border-color: var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-		background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
+		background: rgba(255, 255, 255, 0.025);
 	}
 
 	.download-log-time {
@@ -502,53 +502,58 @@
 	}
 
 /* Health Summary Styles */
-.download-health-summary {
-	padding: 16px;
-	border-bottom: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-	background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
-}
+	.download-health-summary {
+		padding: 0.72rem 0 0.2rem;
+		border-top: 1px solid rgba(255, 255, 255, 0.08);
+		border-bottom: 0;
+		background: transparent;
+	}
 
-.download-health-title {
-	margin: 0 0 12px 0;
-	font-size: 0.9rem;
-	font-weight: 600;
-	color: var(--ui-text-primary, rgba(245, 245, 245, 0.96));
-	letter-spacing: 0.04em;
-}
+	.download-health-title {
+		margin: 0 0 0.55rem 0;
+		font-size: 0.84rem;
+		font-weight: 700;
+		color: var(--ui-text-primary, rgba(245, 245, 245, 0.96));
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+	}
 
-.download-health-stats {
-	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-	gap: 8px;
-	margin-bottom: 12px;
-}
+	.download-health-stats {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+		gap: 0.24rem 0.9rem;
+		margin-bottom: 0.72rem;
+	}
 
-.download-health-stat {
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
-	align-items: flex-start;
-	padding: 0.5rem 0.58rem;
-	border-radius: 10px;
-	border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-	background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
-	font-size: 13px;
-}
+	.download-health-stat {
+		display: flex;
+		flex-direction: column;
+		gap: 0.1rem;
+		align-items: flex-start;
+		padding: 0.34rem 0;
+		border-radius: 0;
+		border: 0;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+		background: transparent;
+		font-size: 13px;
+	}
 
 .download-health-stat--wide {
 	grid-column: 1 / -1;
 }
 
-.download-health-label {
-	color: var(--ui-text-secondary, rgba(212, 212, 212, 0.8));
-	font-size: 0.84rem;
-}
+	.download-health-label {
+		color: var(--ui-text-secondary, rgba(212, 212, 212, 0.72));
+		font-size: 0.76rem;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
 
-.download-health-value {
-	color: var(--ui-text-primary, rgba(245, 245, 245, 0.96));
-	font-weight: 500;
-	font-size: 0.94rem;
-}
+	.download-health-value {
+		color: var(--ui-text-primary, rgba(245, 245, 245, 0.96));
+		font-weight: 500;
+		font-size: 0.9rem;
+	}
 
 .download-health-stat--wide .download-health-value {
 	font-size: 13px;
@@ -560,21 +565,21 @@
 	color: var(--ui-status-success, rgba(236, 236, 236, 0.94));
 }
 
-.download-health-btn {
-	all: unset;
-	cursor: pointer;
-	padding: 8px 14px;
-	border-radius: 8px;
-	border: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.18));
-	background: var(--ui-surface-0, rgba(255, 255, 255, 0.035));
-	color: var(--ui-text-primary, rgba(245, 245, 245, 0.92));
-	font-size: 13px;
-	font-weight: 500;
+	.download-health-btn {
+		all: unset;
+		cursor: pointer;
+		padding: 0.46rem 0.72rem;
+		border-radius: 8px;
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		background: transparent;
+		color: var(--ui-text-primary, rgba(245, 245, 245, 0.92));
+		font-size: 0.82rem;
+		font-weight: 500;
 	transition:
 		border-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
 		background var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
 		transform var(--ui-motion-fast, 140ms) var(--ui-ease-emphasis, cubic-bezier(0.16, 1, 0.3, 1));
-}
+	}
 
 	.download-health-btn:hover {
 		border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.34));

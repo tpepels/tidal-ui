@@ -53,7 +53,7 @@
 <ToolPanel
 	eyebrow="Secondary"
 	title="Discovery Suggestions"
-	subtitle={`Related artists and albums based on ${artistName}.`}
+	subtitle={`Related artists and albums for ${artistName}.`}
 	panelRole="artist-discovery"
 >
 	{#if recommendations?.source === 'artist-mix' && recommendations.mixTitle}
@@ -214,13 +214,13 @@
 	.artist-rail-stack {
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
+		gap: 0.82rem;
 	}
 
 	.artist-rail-group {
 		display: flex;
 		flex-direction: column;
-		gap: 0.55rem;
+		gap: 0.42rem;
 	}
 
 	.artist-rail-group__header {
@@ -228,7 +228,7 @@
 		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
-		gap: 0.65rem;
+		gap: 0.5rem;
 	}
 
 	.artist-rail-group__title-row {
@@ -240,7 +240,7 @@
 
 	.artist-rail-group__title {
 		margin: 0;
-		font-size: 0.96rem;
+		font-size: 0.9rem;
 		font-weight: 700;
 		line-height: 1.3;
 		color: rgba(238, 238, 238, 0.96);
@@ -249,11 +249,11 @@
 	.recommendation-count-pill {
 		display: inline-flex;
 		align-items: center;
-		border: 1px solid rgba(255, 255, 255, 0.2);
-		background: rgba(255, 255, 255, 0.05);
+		border: 1px solid rgba(255, 255, 255, 0.14);
+		background: transparent;
 		border-radius: var(--ui-radius-sm, 9px);
-		padding: 0.2rem 0.58rem;
-		font-size: 0.74rem;
+		padding: 0.14rem 0.42rem;
+		font-size: 0.7rem;
 		font-weight: 600;
 		color: rgba(234, 234, 234, 0.95);
 	}
@@ -261,19 +261,19 @@
 	.recommendation-slider__controls {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.4rem;
+		gap: 0.28rem;
 	}
 
 	.recommendation-slider__control {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		border: 1px solid rgba(255, 255, 255, 0.16);
-		background: rgba(255, 255, 255, 0.04);
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		background: transparent;
 		border-radius: var(--ui-radius-sm, 9px);
-		padding: 0.28rem 0.36rem;
-		min-width: 2rem;
-		min-height: 2rem;
+		padding: 0.22rem 0.28rem;
+		min-width: 1.8rem;
+		min-height: 1.8rem;
 		color: rgba(234, 234, 234, 0.95);
 		transition:
 			background-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
@@ -283,8 +283,8 @@
 	}
 
 	.recommendation-slider__control:hover {
-		border-color: rgba(255, 255, 255, 0.3);
-		background: rgba(255, 255, 255, 0.11);
+		border-color: rgba(255, 255, 255, 0.2);
+		background: rgba(255, 255, 255, 0.045);
 		color: rgba(246, 246, 246, 0.98);
 		transform: translateY(var(--ui-lift-y, -1px));
 	}
@@ -292,10 +292,10 @@
 	.recommendation-slider {
 		display: grid;
 		grid-auto-flow: column;
-		grid-auto-columns: minmax(180px, 220px);
-		gap: 0.65rem;
+		grid-auto-columns: minmax(170px, 208px);
+		gap: 0.48rem;
 		overflow-x: auto;
-		padding: 0.1rem 0.1rem 0.5rem;
+		padding: 0.05rem 0.05rem 0.32rem;
 		scroll-snap-type: x mandatory;
 		scrollbar-color: rgba(255, 255, 255, 0.28) rgba(22, 22, 22, 0.4);
 		scrollbar-width: thin;
@@ -318,21 +318,21 @@
 	}
 
 	:global(.recommendation-slider__item.ui-media-card) {
-		padding: 0.62rem;
-		gap: 0.46rem;
+		padding: 0.5rem;
+		gap: 0.34rem;
 		border-radius: var(--ui-radius-sm, 9px);
 	}
 
 	:global(.recommendation-slider__item .ui-media-card__title) {
-		font-size: 0.92rem;
+		font-size: 0.86rem;
 	}
 
 	:global(.recommendation-slider__item .ui-media-card__subtitle) {
-		font-size: 0.82rem;
+		font-size: 0.78rem;
 	}
 
 	:global(.recommendation-slider__item .ui-media-card__meta) {
-		font-size: 0.76rem;
+		font-size: 0.72rem;
 	}
 
 	@media (max-width: 900px) {

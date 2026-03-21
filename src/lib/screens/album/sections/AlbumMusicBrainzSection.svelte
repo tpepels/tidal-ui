@@ -17,7 +17,7 @@
 
 <SectionBlock
 	title="MusicBrainz"
-	subtitle="Preferred release metadata for downloads."
+	subtitle="Release metadata for downloads."
 	tone="tertiary"
 >
 	<svelte:fragment slot="actions">
@@ -30,7 +30,7 @@
 			{#if isLoading}
 				Refreshing…
 			{:else}
-				Refresh Matches
+				Refresh
 			{/if}
 		</button>
 	</svelte:fragment>

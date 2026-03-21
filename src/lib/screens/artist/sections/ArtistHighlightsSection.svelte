@@ -58,7 +58,7 @@
 	<ToolPanel
 		eyebrow="Secondary"
 		title="Discography Highlights"
-		subtitle={`Best-known releases from ${artistName}, separated from the full catalog below.`}
+		subtitle={`Featured releases from ${artistName}.`}
 		panelRole="artist-discography-highlights"
 	>
 		<div class="artist-rail-group">
@@ -150,7 +150,7 @@
 	.artist-rail-group {
 		display: flex;
 		flex-direction: column;
-		gap: 0.55rem;
+		gap: 0.42rem;
 	}
 
 	.artist-rail-group__header {
@@ -158,12 +158,12 @@
 		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
-		gap: 0.65rem;
+		gap: 0.5rem;
 	}
 
 	.artist-rail-group__title {
 		margin: 0;
-		font-size: 0.96rem;
+		font-size: 0.9rem;
 		font-weight: 700;
 		line-height: 1.3;
 		color: rgba(238, 238, 238, 0.96);
@@ -172,19 +172,19 @@
 	.recommendation-slider__controls {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.4rem;
+		gap: 0.28rem;
 	}
 
 	.recommendation-slider__control {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		border: 1px solid rgba(255, 255, 255, 0.16);
-		background: rgba(255, 255, 255, 0.04);
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		background: transparent;
 		border-radius: var(--ui-radius-sm, 9px);
-		padding: 0.28rem 0.36rem;
-		min-width: 2rem;
-		min-height: 2rem;
+		padding: 0.22rem 0.28rem;
+		min-width: 1.8rem;
+		min-height: 1.8rem;
 		color: rgba(234, 234, 234, 0.95);
 		transition:
 			background-color var(--ui-motion-fast, 140ms) var(--ui-ease-standard, cubic-bezier(0.2, 0, 0, 1)),
@@ -194,8 +194,8 @@
 	}
 
 	.recommendation-slider__control:hover {
-		border-color: rgba(255, 255, 255, 0.3);
-		background: rgba(255, 255, 255, 0.11);
+		border-color: rgba(255, 255, 255, 0.2);
+		background: rgba(255, 255, 255, 0.045);
 		color: rgba(246, 246, 246, 0.98);
 		transform: translateY(var(--ui-lift-y, -1px));
 	}
@@ -203,10 +203,10 @@
 	.recommendation-slider {
 		display: grid;
 		grid-auto-flow: column;
-		grid-auto-columns: minmax(180px, 220px);
-		gap: 0.65rem;
+		grid-auto-columns: minmax(170px, 208px);
+		gap: 0.48rem;
 		overflow-x: auto;
-		padding: 0.1rem 0.1rem 0.5rem;
+		padding: 0.05rem 0.05rem 0.32rem;
 		scroll-snap-type: x mandatory;
 		scrollbar-color: rgba(255, 255, 255, 0.28) rgba(22, 22, 22, 0.4);
 		scrollbar-width: thin;
@@ -229,21 +229,21 @@
 	}
 
 	:global(.recommendation-slider__item.ui-media-card) {
-		padding: 0.62rem;
-		gap: 0.46rem;
+		padding: 0.5rem;
+		gap: 0.34rem;
 		border-radius: var(--ui-radius-sm, 9px);
 	}
 
 	:global(.recommendation-slider__item .ui-media-card__title) {
-		font-size: 0.92rem;
+		font-size: 0.86rem;
 	}
 
 	:global(.recommendation-slider__item .ui-media-card__subtitle) {
-		font-size: 0.82rem;
+		font-size: 0.78rem;
 	}
 
 	:global(.recommendation-slider__item .ui-media-card__meta) {
-		font-size: 0.76rem;
+		font-size: 0.72rem;
 	}
 
 	.discography-featured__slider {
@@ -251,8 +251,8 @@
 	}
 
 	:global(.discography-featured__item) {
-		border-color: rgba(255, 255, 255, 0.14);
-		background: rgba(255, 255, 255, 0.02);
+		border-color: rgba(255, 255, 255, 0.1);
+		background: transparent;
 	}
 
 	@media (max-width: 900px) {

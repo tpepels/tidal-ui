@@ -10,6 +10,6 @@
 	let { facts }: Props = $props();
 </script>
 
-<SectionBlock title="Metadata" subtitle="Creation and update dates.">
+<SectionBlock title="Metadata" subtitle="Created and updated timestamps.">
 	<DetailFactsGrid {facts} />
 </SectionBlock>

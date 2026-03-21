@@ -16,7 +16,7 @@
 
 <SectionBlock
 	title="Actions"
-	subtitle="Play, download, and maintain this album."
+	subtitle="Playback and download controls."
 	tone="secondary"
 >
 	<div class="ui-action-row ui-action-row--progressive">

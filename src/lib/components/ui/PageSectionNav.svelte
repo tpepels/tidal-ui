@@ -20,7 +20,7 @@
 		sticky = false,
 		ariaLabel = 'Page sections',
 		className = '',
-		showOnDesktop = true
+		showOnDesktop = false
 	}: {
 		items?: PageSectionNavItem[];
 		sticky?: boolean;
