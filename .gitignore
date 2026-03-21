@@ -29,7 +29,6 @@ dump.rdb
 
 # Runtime upload state
 data/
---config
 .node-localstorage
 
 # Vite
@@ -134,10 +133,5 @@ temp/
 .netlify
 
 # more squidly things
-docker-compose.yml
-
 .venv
 downloaded_files
-
-# Removed files (keep in gitignore to prevent re-addition)
-CODE_OF_CONDUCT.md
