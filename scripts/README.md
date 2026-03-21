@@ -15,8 +15,6 @@ scripts/
 │   ├── check-api-health.cjs    # Monitor API endpoint health
 │   └── validate-api-tests.cjs  # Validate API test coverage
 │
-├── migrate-structure.sh    # Project restructure migration
-├── rollback-structure.sh   # Rollback restructure migration
 └── README.md               # This file
 ```
 
@@ -228,51 +226,6 @@ node scripts/api/validate-api-tests.cjs
 
 ---
 
-## Migration Scripts
-
-### 📦 `migrate-structure.sh`
-
-**Purpose**: Reorganize project structure (docs, configs, scripts)
-
-**Usage**:
-```bash
-bash scripts/migrate-structure.sh
-```
-
-**What it does**:
-- Moves documentation to `docs/` hierarchy
-- Organizes scripts into `scripts/dev/` and `scripts/api/`
-- Groups configs into `config/` subdirectories
-- Moves certificates to `.certs/`
-- Cleans up build artifacts
-- Updates `.gitignore`
-
-**Safe to run multiple times** - skips already moved files.
-
-**See**: `RESTRUCTURE_PROPOSAL.md` for full details
-
----
-
-### ⏪ `rollback-structure.sh`
-
-**Purpose**: Rollback migration and restore original structure
-
-**Usage**:
-```bash
-bash scripts/rollback-structure.sh
-```
-
-**What it does**:
-- Moves all files back to root directory
-- Removes empty directories
-- Restores original structure
-
-**Safe to run multiple times** - skips already restored files.
-
-**Note**: If you updated `package.json` or config files, you'll need to restore those changes manually.
-
----
-
 ## Common Workflows
 
 ### Local Development with HTTPS + Redis
@@ -378,6 +331,5 @@ When adding new scripts:
 
 ## References
 
-- [RESTRUCTURE_PROPOSAL.md](../RESTRUCTURE_PROPOSAL.md) - Project restructure details
 - [docs/architecture/ARCHITECTURE.md](../docs/architecture/ARCHITECTURE.md) - Project architecture
 - [docs/development/](../docs/development/) - Development guides

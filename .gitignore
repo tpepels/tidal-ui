@@ -129,9 +129,6 @@ temp/
 !.vscode/extensions.json
 .history/*
 
-# Local Netlify folder
-.netlify
-
-# more squidly things
+# Local dev tooling
 .venv
 downloaded_files

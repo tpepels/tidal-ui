@@ -999,7 +999,7 @@
 
 		<PageSectionNav items={sectionNavItems} sticky={true} />
 
-		<div class="ui-detail-columns">
+		<div class="ui-detail-columns artist-detail-columns">
 			<div class="ui-detail-main">
 				<section id="artist-top-tracks" class="ui-section-anchor" data-ui-block="main-content">
 					<ArtistTopTracksSection topTracks={topTracks} artistName={artist.name} />
@@ -1048,7 +1048,7 @@
 				</section>
 			</div>
 
-			<div class="ui-detail-sidebar">
+			<div class="ui-detail-sidebar artist-detail-sidebar">
 				<section id="artist-metadata" class="ui-section-anchor" data-ui-block="context-metadata">
 					<ArtistMusicBrainzSection
 						viewModel={musicBrainzSectionViewModel}
@@ -1100,3 +1100,20 @@
 		</div>
 	</div>
 	{/if}
+
+<style>
+	@media (min-width: 900px) and (max-width: 1180px) {
+		.artist-detail-columns {
+			display: flex;
+			flex-direction: column;
+			gap: 2rem;
+		}
+
+		.artist-detail-sidebar {
+			position: static;
+			top: auto;
+			max-width: none;
+			justify-self: stretch;
+		}
+	}
+</style>

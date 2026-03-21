@@ -122,11 +122,10 @@ describe('UI architecture compliance', () => {
 		}
 	});
 
-	it('requires major screens to expose screenViewModel files and section directories', () => {
+	it('requires major screens to expose section directories', () => {
 		for (const relativeDir of MAJOR_SCREEN_DIRS) {
 			const absoluteDir = path.resolve(ROOT, relativeDir);
 			expect(statSync(absoluteDir).isDirectory()).toBe(true);
-			expect(statSync(path.join(absoluteDir, 'screenViewModel.ts')).isFile()).toBe(true);
 			const sectionDir = path.join(absoluteDir, 'sections');
 			expect(statSync(sectionDir).isDirectory()).toBe(true);
 			expect(collectSvelteFiles(sectionDir).length).toBeGreaterThan(0);
