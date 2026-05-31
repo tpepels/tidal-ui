@@ -110,7 +110,7 @@ export async function fetchAlbumWithTargetRotation(
 					? `${statusSummary}: ${bodySnippet}`
 					: `${statusSummary} (no body)`;
 				console.warn(`[Worker] ${logSummary}`);
-				lastError = new Error(bodySnippet ? `${statusSummary} - ${bodySnippet}` : statusSummary);
+				lastError = new Error(statusSummary);
 
 				if (albumResponse.status === 429) {
 					const { backoffMs } = rateLimiter.recordError(target.name, 'rate_limit');

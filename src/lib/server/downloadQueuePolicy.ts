@@ -53,7 +53,10 @@ export function categorizeError(error: string | Error, statusCode?: number): Cat
 		lowerMsg.includes('timeout') ||
 		lowerMsg.includes('econnrefused') ||
 		lowerMsg.includes('enotfound') ||
-		lowerMsg.includes('network')
+		lowerMsg.includes('network') ||
+		lowerMsg.includes('fetch failed') ||
+		lowerMsg.includes('aborted') ||
+		lowerMsg.includes('operation was aborted')
 	) {
 		return {
 			category: 'network',
@@ -84,7 +87,14 @@ export function categorizeError(error: string | Error, statusCode?: number): Cat
 		};
 	}
 
-	if (statusCode && statusCode >= 500) {
+	if (
+		(statusCode && statusCode >= 500) ||
+		/\bhttp [5]\d\d\b/.test(lowerMsg) ||
+		lowerMsg.includes('bad gateway') ||
+		lowerMsg.includes('service unavailable') ||
+		lowerMsg.includes('gateway timeout') ||
+		lowerMsg.includes('internal server error')
+	) {
 		return {
 			category: 'server_error',
 			isRetryable: true,

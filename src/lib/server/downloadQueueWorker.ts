@@ -186,8 +186,12 @@ async function failOrRequeueAlbumJob(params: {
 			cancellationRequested: false,
 			pauseRequested: false
 		});
+		const requeueLogMsg =
+			params.errorMessage.length > 120
+				? params.errorMessage.slice(0, 120) + '…'
+				: params.errorMessage;
 		console.warn(
-			`[Worker] Album job ${params.job.id} requeued (${nextRetryCount}/${maxRetries}) after ${params.errorCategory}: ${params.errorMessage}`
+			`[Worker] Album job ${params.job.id} requeued (${nextRetryCount}/${maxRetries}) after ${params.errorCategory}: ${requeueLogMsg}`
 		);
 		return 'requeued';
 	}
@@ -457,8 +461,13 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 							error: result.error ?? 'External error',
 							errorCategory: result.errorCategory
 						};
+						const terminalErrMsg = terminalAlbumFailureState.value.error ?? 'External error';
+						const terminalErrLogMsg =
+							terminalErrMsg.length > 200
+								? terminalErrMsg.slice(0, 200) + '…'
+								: terminalErrMsg;
 						console.error(
-							`[Worker] Album ${albumJob.albumId}: terminal track failure on ${trackId} after ${result.attempts} attempt(s): ${terminalAlbumFailureState.value.error}`
+							`[Worker] Album ${albumJob.albumId}: terminal track failure on ${trackId} after ${result.attempts} attempt(s): ${terminalErrLogMsg}`
 						);
 					}
 				}
