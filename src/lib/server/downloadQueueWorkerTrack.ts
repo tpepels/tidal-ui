@@ -111,7 +111,8 @@ async function downloadTrack(
 				rateLimiter.recordError(apiTarget, 'rate_limit');
 			}
 
-			console.error(`[Worker] Track ${trackId} failed: ${errorMsg}`);
+			const errorLogMsg = errorMsg.length > 200 ? errorMsg.slice(0, 200) + '…' : errorMsg;
+			console.error(`[Worker] Track ${trackId} failed: ${errorLogMsg}`);
 			return {
 				success: false,
 				error: errorMsg,
@@ -459,8 +460,10 @@ export async function downloadAlbumTrackWithPolicy(options: {
 			TRACK_RETRY_MAX_DELAY_MS
 		);
 		const delayMs = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : backoffMs;
+		const retryErrMsg = (result.error ?? 'unknown');
+		const retryErrLogMsg = retryErrMsg.length > 120 ? retryErrMsg.slice(0, 120) + '…' : retryErrMsg;
 		console.warn(
-			`[Worker] Track ${options.trackId}: retrying after failure (${attempts}/${ALBUM_TRACK_MAX_ATTEMPTS}) in ${delayMs}ms: ${result.error ?? 'unknown'}`
+			`[Worker] Track ${options.trackId}: retrying after failure (${attempts}/${ALBUM_TRACK_MAX_ATTEMPTS}) in ${delayMs}ms: ${retryErrLogMsg}`
 		);
 		await waitWithJitter(delayMs);
 	}

@@ -414,7 +414,11 @@ export async function downloadTrackWithRetry(
 			);
 			
 			if (attempt < maxAttempts && isRetriable) {
-				console.warn(`[DownloadTrack] Attempt ${attempt} failed, retrying...`, lastError.message);
+				const retryLogMsg =
+					lastError.message.length > 120
+						? lastError.message.slice(0, 120) + '…'
+						: lastError.message;
+				console.warn(`[DownloadTrack] Attempt ${attempt} failed, retrying... ${retryLogMsg}`);
 				await delayBeforeRetry(attempt);
 				continue;
 			}

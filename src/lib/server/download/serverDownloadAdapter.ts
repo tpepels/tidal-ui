@@ -492,7 +492,8 @@ export async function downloadTrackServerSide(
 	} catch (error) {
 		const errorMsg = error instanceof Error ? error.message : String(error);
 		const classified = classifyServerDownloadError(errorMsg);
-		console.error(`[ServerDownload] Failed to download track ${trackId}:`, errorMsg);
+		const errorLogMsg = errorMsg.length > 200 ? errorMsg.slice(0, 200) + '…' : errorMsg;
+		console.error(`[ServerDownload] Failed to download track ${trackId}:`, errorLogMsg);
 		return {
 			success: false,
 			error: errorMsg,
