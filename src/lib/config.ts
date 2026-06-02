@@ -716,6 +716,9 @@ export async function fetchWithCORS(
 
 			lastResponse = response;
 			attemptDetails.push({ target: target.name, status: response.status });
+			if (response.status >= 500) {
+				markTargetUnhealthy(target.name);
+			}
 			if (response.status === 404 && shortCircuitNotFound) {
 				return response;
 			}
