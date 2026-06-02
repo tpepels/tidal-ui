@@ -396,6 +396,7 @@ function classifyServerDownloadError(errorMessage: string): {
 		message.includes('timeout') ||
 		message.includes('abort') ||
 		message.includes('network') ||
+		message.includes('fetch failed') ||
 		message.includes('econnrefused') ||
 		message.includes('enotfound') ||
 		message.includes('econnreset') ||
