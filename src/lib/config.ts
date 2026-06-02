@@ -372,7 +372,9 @@ function getDefaultTimeoutForUrl(url: URL): number {
 function getDefaultMaxRetriesForUrl(url: URL): number {
 	const path = url.pathname.toLowerCase();
 	if (path.includes('/artist/') || path.includes('/album/') || path.includes('/playlist/')) {
-		return 1;
+		// Don't retry within the same target — fetchWithTargetFallback already tries the next
+		// target on failure, so per-target retries only slow down the fallback chain.
+		return 0;
 	}
 	return 3;
 }
