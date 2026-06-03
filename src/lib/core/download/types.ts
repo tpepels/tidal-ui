@@ -33,6 +33,12 @@ export interface SegmentTemplate {
 	mediaUrlTemplate: string;
 	startNumber: number;
 	segmentTimeline: Array<{ duration: number; repeat: number }>;
+	/** Fixed segment duration in timescale units (from SegmentTemplate @duration attribute) */
+	segmentDuration?: number;
+	/** Timescale for segmentDuration (from SegmentTemplate @timescale attribute) */
+	timescale?: number;
+	/** Total presentation duration in seconds (from MPD @mediaPresentationDuration) */
+	mediaPresentationDuration?: number;
 }
 
 export interface DownloadResult {

@@ -150,6 +150,26 @@ describe('manifestParser', () => {
 			expect(result.segmentUrls).toBeDefined();
 		});
 
+		it('should compute correct segment count for fixed-duration SegmentTemplate with mediaPresentationDuration', () => {
+			// PT2M31.952S = 151.952s, segmentDuration=1437696, timescale=48000 → ceil(151.952*48000/1437696) = 6
+			const dashManifest = `<?xml version="1.0"?>
+<MPD mediaPresentationDuration="PT2M31.952S">
+	<Period>
+		<AdaptationSet>
+			<Representation mimeType="audio/flac" codecs="flac">
+				<SegmentTemplate media="https://example.com/segment_$Number$.m4s" initialization="https://example.com/init.mp4" startNumber="1" duration="1437696" timescale="48000" />
+			</Representation>
+		</AdaptationSet>
+	</Period>
+</MPD>`;
+			const base64 = btoa(dashManifest);
+			const result = parseManifest(base64);
+			expect(result.type).toBe('segmented-dash');
+			expect(result.segmentUrls).toHaveLength(6);
+			expect(result.segmentUrls?.[0]).toContain('segment_1.m4s');
+			expect(result.segmentUrls?.[5]).toContain('segment_6.m4s');
+		});
+
 		it('should preserve base URL query parameters for DASH segments', () => {
 			const dashManifest = `<?xml version="1.0"?>
 <MPD>

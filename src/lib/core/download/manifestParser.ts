@@ -5,6 +5,16 @@
 import { isSegmentedDashManifest, parseJsonSafely } from '$lib/api/manifest';
 import type { ManifestParseResult, SegmentTemplate } from './types';
 
+function parseISO8601DurationToSeconds(duration: string): number | null {
+	const match = /^PT(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?$/.exec(duration);
+	if (!match) return null;
+	const hours = parseFloat(match[1] ?? '0') || 0;
+	const minutes = parseFloat(match[2] ?? '0') || 0;
+	const seconds = parseFloat(match[3] ?? '0') || 0;
+	const total = hours * 3600 + minutes * 60 + seconds;
+	return total > 0 ? total : null;
+}
+
 export function decodeBase64Manifest(manifest: string): string {
 	if (typeof manifest !== 'string') return '';
 	const trimmed = manifest.trim();
@@ -258,11 +268,23 @@ export function parseMpdSegmentTemplate(manifestText: string): (SegmentTemplate 
 				}
 			}
 
+			const rawSegmentDuration = template.getAttribute('duration');
+			const rawTimescale = template.getAttribute('timescale');
+			const segmentDuration = rawSegmentDuration ? Number.parseInt(rawSegmentDuration, 10) : undefined;
+			const timescale = rawTimescale ? Number.parseInt(rawTimescale, 10) : undefined;
+			const mpdDurationStr = doc.documentElement?.getAttribute('mediaPresentationDuration');
+			const mediaPresentationDuration = mpdDurationStr
+				? (parseISO8601DurationToSeconds(mpdDurationStr) ?? undefined)
+				: undefined;
+
 			return {
 				initializationUrl,
 				mediaUrlTemplate,
 				startNumber: Number.isFinite(startNumber) && startNumber > 0 ? startNumber : 1,
 				segmentTimeline,
+				segmentDuration,
+				timescale,
+				mediaPresentationDuration,
 				baseUrl,
 				codec
 			};
@@ -295,11 +317,25 @@ export function parseMpdSegmentTemplate(manifestText: string): (SegmentTemplate 
 		const baseUrlMatch = /<BaseURL>([^<]+)<\/BaseURL>/i.exec(trimmed);
 		const baseUrl = normalizeSegmentTemplateValue(baseUrlMatch?.[1] ?? null) ?? undefined;
 
+		const templateAttrMatch = /<SegmentTemplate([^>]*)(?:\/|>)/i.exec(trimmed);
+		const templateAttrs = templateAttrMatch?.[1] ?? '';
+		const segmentDurationMatch = /\bduration="(\d+)"/i.exec(templateAttrs);
+		const timescaleMatch = /\btimescale="(\d+)"/i.exec(templateAttrs);
+		const segmentDuration = segmentDurationMatch ? Number.parseInt(segmentDurationMatch[1]!, 10) : undefined;
+		const timescale = timescaleMatch ? Number.parseInt(timescaleMatch[1]!, 10) : undefined;
+		const mpdDurationMatch = /\bmediaPresentationDuration="([^"]+)"/i.exec(trimmed);
+		const mediaPresentationDuration = mpdDurationMatch
+			? (parseISO8601DurationToSeconds(mpdDurationMatch[1]!) ?? undefined)
+			: undefined;
+
 		return {
 			initializationUrl,
 			mediaUrlTemplate,
 			startNumber: Number.isFinite(startNumber) && startNumber > 0 ? startNumber : 1,
 			segmentTimeline,
+			segmentDuration,
+			timescale,
+			mediaPresentationDuration,
 			baseUrl
 		};
 	};
@@ -331,17 +367,30 @@ function buildMpdSegmentUrls(
 	const initializationUrl = resolveUrl(template.initializationUrl);
 	const segmentUrls: string[] = [];
 	let segmentNumber = template.startNumber;
-	const timeline =
-		template.segmentTimeline.length > 0 ? template.segmentTimeline : [{ duration: 0, repeat: 0 }];
 
-	for (const entry of timeline) {
-		const repeat = Number.isFinite(entry.repeat) ? entry.repeat : 0;
-		const count = Math.max(1, repeat + 1);
-		for (let i = 0; i < count; i += 1) {
+	if (template.segmentTimeline.length > 0) {
+		for (const entry of template.segmentTimeline) {
+			const repeat = Number.isFinite(entry.repeat) ? entry.repeat : 0;
+			const count = Math.max(1, repeat + 1);
+			for (let i = 0; i < count; i += 1) {
+				const url = template.mediaUrlTemplate.replace('$Number$', `${segmentNumber}`);
+				segmentUrls.push(resolveUrl(url));
+				segmentNumber += 1;
+			}
+		}
+	} else if (template.segmentDuration && template.timescale && template.mediaPresentationDuration) {
+		const numSegments = Math.ceil(
+			(template.mediaPresentationDuration * template.timescale) / template.segmentDuration
+		);
+		for (let i = 0; i < numSegments; i += 1) {
 			const url = template.mediaUrlTemplate.replace('$Number$', `${segmentNumber}`);
 			segmentUrls.push(resolveUrl(url));
 			segmentNumber += 1;
 		}
+	} else {
+		// Fallback: generate at least one segment
+		const url = template.mediaUrlTemplate.replace('$Number$', `${segmentNumber}`);
+		segmentUrls.push(resolveUrl(url));
 	}
 
 	return { initializationUrl, segmentUrls };
