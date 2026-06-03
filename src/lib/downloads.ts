@@ -109,10 +109,10 @@ export function buildTrackFilename(
 	return `${parts.join(' - ')}.${extension}`;
 }
 
-function warnIfAlbumTrackListIncomplete(album: Album, tracks: Track[]): void {
+function getAlbumTrackListIncompleteMessage(album: Album, tracks: Track[]): string | null {
 	const rawExpectedCount = Number(album.numberOfTracks);
 	if (!Number.isFinite(rawExpectedCount) || rawExpectedCount <= 0) {
-		return;
+		return null;
 	}
 	const expectedCount = Math.trunc(rawExpectedCount);
 	const observedTrackNumbers = new Set<number>();
@@ -131,16 +131,21 @@ function warnIfAlbumTrackListIncomplete(album: Album, tracks: Track[]): void {
 	}
 
 	if (tracks.length >= expectedCount && missingTrackNumbers.length === 0) {
-		return;
+		return null;
 	}
 
 	const missingPart =
 		missingTrackNumbers.length > 0
 			? ` Missing track number(s): ${missingTrackNumbers.join(', ')}.`
 			: '';
-	console.warn(
-		`[Album Download] Metadata incomplete for album ${album.id}: received ${tracks.length}/${expectedCount} track item(s).${missingPart}`
-	);
+	return `Metadata incomplete for album ${album.id}: received ${tracks.length}/${expectedCount} track item(s).${missingPart}`;
+}
+
+function assertAlbumTrackListComplete(album: Album, tracks: Track[]): void {
+	const message = getAlbumTrackListIncompleteMessage(album, tracks);
+	if (!message) return;
+	console.warn(`[Album Download] ${message}`);
+	throw new Error(message);
 }
 
 type MusicBrainzReleaseSearchOption = {
@@ -615,7 +620,7 @@ export async function downloadAlbum(
 		// Fetch album info
 		const { album: fetchedAlbum, tracks } = await losslessAPI.getAlbum(album.id);
 		const canonicalAlbum = fetchedAlbum ?? album;
-		warnIfAlbumTrackListIncomplete(canonicalAlbum, tracks);
+		assertAlbumTrackListComplete(canonicalAlbum, tracks);
 
 		if (!tracks || tracks.length === 0) {
 			throw new Error('No tracks found for album');
@@ -669,7 +674,7 @@ export async function downloadAlbum(
 
 	const { album: fetchedAlbum, tracks } = await losslessAPI.getAlbum(album.id);
 	const canonicalAlbum = fetchedAlbum ?? album;
-	warnIfAlbumTrackListIncomplete(canonicalAlbum, tracks);
+	assertAlbumTrackListComplete(canonicalAlbum, tracks);
 	if (!tracks || tracks.length === 0) {
 		throw new Error('No tracks found for album');
 	}

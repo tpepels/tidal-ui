@@ -7,6 +7,10 @@ import {
 import type { Album, Track } from '$lib/types';
 import type { CatalogAlbumLookupResult } from './catalogTypes';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
 function summarizeMissingAlbumTrackNumbers(
 	album: Album,
 	tracks: Track[]
@@ -78,6 +82,33 @@ export function parseAlbumLookupPayload(
 		endpoint: 'catalog.album.container',
 		allowUnvalidated: true
 	});
+
+	if (isRecord(data) && isRecord(data.data)) {
+		const albumData = data.data;
+		const items = albumData.items;
+		if (
+			Array.isArray(items) &&
+			typeof albumData.id === 'number' &&
+			typeof albumData.title === 'string'
+		) {
+			const albumFields = { ...albumData };
+			delete albumFields.items;
+			const albumEntry = prepareAlbum(albumFields as unknown as Album);
+			const tracks = items
+				.map((item: unknown) => {
+					if (!isRecord(item)) return null;
+					const trackCandidate = (isRecord(item.item) ? item.item : item) as unknown as Track;
+					if (typeof trackCandidate.id !== 'number') return null;
+					return prepareTrack({
+						...trackCandidate,
+						album: trackCandidate.album ?? albumEntry
+					});
+				})
+				.filter((track): track is Track => track !== null);
+
+			return validateAlbumLookupResult({ album: albumEntry, tracks });
+		}
+	}
 
 	if (data && typeof data === 'object') {
 		const container = data as { data?: { items?: unknown } };

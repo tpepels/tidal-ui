@@ -295,7 +295,11 @@ export async function getArtist(
 				context.ensureNotRateLimited(fallbackResponse);
 				if (fallbackResponse.ok) {
 					const fallbackData = await fallbackResponse.json();
-					const baseArtist = Array.isArray(fallbackData) ? fallbackData[0] : fallbackData;
+					const baseArtist = Array.isArray(fallbackData)
+						? fallbackData[0]
+						: fallbackData && typeof fallbackData === 'object' && 'artist' in fallbackData
+							? (fallbackData as { artist?: unknown }).artist
+							: fallbackData;
 					if (baseArtist && typeof baseArtist === 'object') {
 						recordArtist(baseArtist as Artist, id);
 					}

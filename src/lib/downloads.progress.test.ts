@@ -133,6 +133,52 @@ describe('downloadAlbum server progress', () => {
 		}));
 	});
 
+	it('does not queue a server album download when fetched metadata is incomplete', async () => {
+		const album = {
+			id: 2,
+			title: 'Incomplete Album',
+			cover: 'cover',
+			videoCover: null,
+			numberOfTracks: 2,
+			artist: { id: 1, name: 'Progress Artist', type: 'MAIN' },
+			artists: [{ id: 1, name: 'Progress Artist', type: 'MAIN' }]
+		} as Album;
+		const track = {
+			id: 20,
+			title: 'Only Track',
+			duration: 180,
+			trackNumber: 1,
+			volumeNumber: 1,
+			audioQuality: 'LOSSLESS',
+			audioModes: ['STEREO'],
+			allowStreaming: true,
+			streamReady: true,
+			premiumStreamingOnly: false,
+			artist: { id: 1, name: 'Progress Artist', type: 'MAIN' },
+			artists: [{ id: 1, name: 'Progress Artist', type: 'MAIN' }],
+			album
+		} as Track;
+		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+		vi.mocked(losslessAPI.getAlbum).mockResolvedValue({ album, tracks: [track] });
+
+		try {
+			await expect(
+				downloadAlbum(album, 'LOSSLESS', undefined, undefined, {
+					mode: 'individual',
+					storage: 'server'
+				})
+			).rejects.toThrow('Metadata incomplete for album 2: received 1/2 track item(s).');
+			expect(warnSpy).toHaveBeenCalledWith(
+				expect.stringContaining('Metadata incomplete for album 2')
+			);
+			expect(
+				vi.mocked(global.fetch).mock.calls.some((call) => call[0] === '/api/download-queue')
+			).toBe(false);
+		} finally {
+			warnSpy.mockRestore();
+		}
+	});
+
 	it('includes forceOverwrite in queue request when requested', async () => {
 		const album: Album = {
 			id: 11,

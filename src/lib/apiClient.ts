@@ -693,7 +693,7 @@ class LosslessAPI {
 			adaptive: 'true',
 			manifestType: 'MPEG_DASH',
 			uriScheme: 'HTTPS',
-			usage: 'DOWNLOAD'
+			usage: 'PLAYBACK'
 		});
 		params.append('formats', requiredFormat);
 

@@ -158,6 +158,8 @@ describe('API Integration Tests', () => {
 				expect(fetchSpy).toHaveBeenCalledTimes(3);
 				expect(fetchSpy.mock.calls[0][0]).toContain('/trackManifests/?');
 				expect(fetchSpy.mock.calls[0][0]).toContain('formats=FLAC_HIRES');
+				expect(fetchSpy.mock.calls[0][0]).toContain('usage=PLAYBACK');
+				expect(fetchSpy.mock.calls[0][0]).not.toContain('usage=DOWNLOAD');
 				expect(fetchSpy.mock.calls.some((call) => String(call[0]).includes('/track/?'))).toBe(false);
 				expect(result.info.audioQuality).toBe('HI_RES_LOSSLESS');
 				expect(result.info.manifest).toContain('<MPD');

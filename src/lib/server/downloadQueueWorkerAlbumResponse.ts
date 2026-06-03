@@ -9,7 +9,35 @@ export function parseAlbumResponse(data: unknown): {
 	if (data && typeof data === 'object' && 'data' in data) {
 		const dataObj = data as { data?: unknown };
 		if (dataObj.data && typeof dataObj.data === 'object' && 'items' in dataObj.data) {
+			const albumCandidate = dataObj.data as Record<string, unknown>;
 			const items = (dataObj.data as { items?: unknown }).items;
+			if (
+				Array.isArray(items) &&
+				typeof albumCandidate.id === 'number' &&
+				typeof albumCandidate.title === 'string'
+			) {
+				const album = { ...albumCandidate };
+				delete album.items;
+				const tracks = items
+					.map((item: unknown) => {
+						if (!item || typeof item !== 'object') return null;
+						const itemObj = item as { item?: unknown };
+						const resolved =
+							itemObj.item && typeof itemObj.item === 'object' ? itemObj.item : item;
+						if (!resolved || typeof resolved !== 'object') return null;
+						const track = resolved as Record<string, unknown>;
+						if (typeof track.id !== 'number') return null;
+						return track.album ? track : { ...track, album };
+					})
+					.filter((track): track is Record<string, unknown> => track !== null);
+
+				if (tracks.length === 0) {
+					throw new Error('No valid tracks found in album');
+				}
+
+				return { album, tracks };
+			}
+
 			if (Array.isArray(items) && items.length > 0) {
 				const firstItem = items[0];
 				const firstTrack =
@@ -93,14 +121,14 @@ export function parseAlbumResponse(data: unknown): {
 	return { album, tracks };
 }
 
-export function warnIfAlbumTrackListIncomplete(
+function getAlbumTrackListIncompleteMessage(
 	albumId: number,
 	album: Record<string, unknown>,
 	tracks: Array<Record<string, unknown>>
-): void {
+): string | null {
 	const rawExpectedCount = Number(album.numberOfTracks);
 	if (!Number.isFinite(rawExpectedCount) || rawExpectedCount <= 0) {
-		return;
+		return null;
 	}
 	const expectedCount = Math.trunc(rawExpectedCount);
 	const observedTrackNumbers = new Set<number>();
@@ -119,14 +147,34 @@ export function warnIfAlbumTrackListIncomplete(
 	}
 
 	if (tracks.length >= expectedCount && missingTrackNumbers.length === 0) {
-		return;
+		return null;
 	}
 
 	const missingPart =
 		missingTrackNumbers.length > 0
 			? ` Missing track number(s): ${missingTrackNumbers.join(', ')}.`
 			: '';
-	console.warn(
-		`[Worker] Album ${albumId} metadata incomplete: received ${tracks.length}/${expectedCount} track item(s).${missingPart}`
-	);
+	return `[Worker] Album ${albumId} metadata incomplete: received ${tracks.length}/${expectedCount} track item(s).${missingPart}`;
+}
+
+export function warnIfAlbumTrackListIncomplete(
+	albumId: number,
+	album: Record<string, unknown>,
+	tracks: Array<Record<string, unknown>>
+): void {
+	const message = getAlbumTrackListIncompleteMessage(albumId, album, tracks);
+	if (message) {
+		console.warn(message);
+	}
+}
+
+export function assertAlbumTrackListComplete(
+	albumId: number,
+	album: Record<string, unknown>,
+	tracks: Array<Record<string, unknown>>
+): void {
+	const message = getAlbumTrackListIncompleteMessage(albumId, album, tracks);
+	if (!message) return;
+	console.warn(message);
+	throw new Error(message.replace('[Worker] ', ''));
 }

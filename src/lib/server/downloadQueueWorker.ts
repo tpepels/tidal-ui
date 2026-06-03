@@ -25,7 +25,7 @@ import {
 	resetTrackProgressForAlbumRetry,
 	type ExpectedAlbumTrack
 } from './downloadQueueWorkerPolicy';
-import { warnIfAlbumTrackListIncomplete } from './downloadQueueWorkerAlbumResponse';
+import { assertAlbumTrackListComplete } from './downloadQueueWorkerAlbumResponse';
 import type { AudioQuality } from '$lib/types';
 import { sweepTransientAlbumArtifacts } from './mediaLibrary';
 import { clearMediaLibraryScanCache } from './mediaLibrary';
@@ -251,7 +251,7 @@ async function processAlbumJob(job: QueuedJob): Promise<void> {
 		}
 
 		const { album, tracks } = albumData;
-		warnIfAlbumTrackListIncomplete(albumJob.albumId, album, tracks);
+		assertAlbumTrackListComplete(albumJob.albumId, album, tracks);
 		const totalTracks = tracks.length;
 
 		if (totalTracks === 0) {

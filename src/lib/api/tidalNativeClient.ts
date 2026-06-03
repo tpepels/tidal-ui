@@ -32,7 +32,8 @@ const TOKEN_REFRESH_SKEW_MS = 60_000;
 const DEFAULT_BROWSER_CLIENT_ID = 'txNoH4kkV41MfH25';
 const DEFAULT_BROWSER_CLIENT_SECRET = 'dQjy0MinCEvxi1O4UmxvxWnDjt4cgHBPw8ll6nYBk98=';
 const DEFAULT_SEARCH_LIMIT = 100;
-const DEFAULT_ALBUM_TRACK_LIMIT = 500;
+const ALBUM_ITEMS_PAGE_LIMIT = 100;
+const MAX_ALBUM_TRACK_ITEMS = 5000;
 const DEFAULT_PLAYLIST_TRACK_LIMIT = 500;
 
 let tokenState: TokenState | null = null;
@@ -529,28 +530,48 @@ export async function nativeGetAlbum(
 	id: number,
 	options?: { signal?: AbortSignal }
 ): Promise<NativeAlbumWithTracks> {
-	const [albumPayload, itemsPayload] = await Promise.all([
-		fetchNativeJson<unknown>(
-			`${TIDAL_API_BASE}/albums/${id}`,
-			{ countryCode: getCountryCode() },
-			options
-		),
-		fetchNativeJson<JsonRecord>(
+	const albumPayload = await fetchNativeJson<unknown>(
+		`${TIDAL_API_BASE}/albums/${id}`,
+		{ countryCode: getCountryCode() },
+		options
+	);
+	const album = normalizeAlbumRecord(albumPayload);
+	if (!album) throw new Error('Native TIDAL album metadata was malformed');
+
+	const expectedCount =
+		Number.isFinite(Number(album.numberOfTracks)) && Number(album.numberOfTracks) > 0
+			? Math.trunc(Number(album.numberOfTracks))
+			: null;
+	const maxItems = Math.min(MAX_ALBUM_TRACK_ITEMS, expectedCount ?? MAX_ALBUM_TRACK_ITEMS);
+	const items: unknown[] = [];
+	let offset = 0;
+
+	while (items.length < maxItems) {
+		const pageLimit = Math.min(ALBUM_ITEMS_PAGE_LIMIT, maxItems - items.length);
+		const itemsPayload = await fetchNativeJson<JsonRecord>(
 			`${TIDAL_API_BASE}/albums/${id}/items`,
 			{
 				countryCode: getCountryCode(),
-				limit: DEFAULT_ALBUM_TRACK_LIMIT,
-				offset: 0
+				limit: pageLimit,
+				offset
 			},
 			options
-		)
-	]);
-	const album = normalizeAlbumRecord(albumPayload);
-	if (!album) throw new Error('Native TIDAL album metadata was malformed');
-	const items = Array.isArray(itemsPayload.items) ? itemsPayload.items : [];
+		);
+		const pageItems = Array.isArray(itemsPayload.items) ? itemsPayload.items : [];
+		if (pageItems.length === 0) break;
+		items.push(...pageItems);
+		if (pageItems.length < pageLimit) break;
+		offset += pageItems.length;
+	}
+
 	const tracks = items
 		.map((entry) => (isRecord(entry) ? normalizeTrackRecord(entry.item, [], album) : null))
 		.filter((track): track is Track => track !== null);
+	if (expectedCount !== null && tracks.length < expectedCount) {
+		throw new Error(
+			`Native TIDAL album metadata returned ${tracks.length}/${expectedCount} track item(s)`
+		);
+	}
 	return { album, tracks };
 }
 

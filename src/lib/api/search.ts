@@ -170,10 +170,6 @@ export async function searchAlbums(
 	const params = new URLSearchParams();
 	params.set('al', query);
 	const trimmedArtistQuery = artistQuery?.trim() ?? '';
-	if (trimmedArtistQuery.length > 0) {
-		// API supports combined album + artist filtering when both params are present.
-		params.set('a', trimmedArtistQuery);
-	}
 	appendDefaultPagination(params);
 	const response = await context.fetch(
 		context.buildRegionalUrl(`/search/?${params.toString()}`, region)
@@ -188,45 +184,63 @@ export async function searchAlbums(
 		allowUnvalidated: true
 	});
 
+	const preparedItems = dedupeByKey(
+		normalized.items.map((album) => {
+			const prepared = prepareAlbum(album);
+			const parsedId = parseNumericId((prepared as { id?: unknown }).id);
+			return parsedId !== null ? { ...prepared, id: parsedId } : prepared;
+		}),
+		(album) => {
+			const candidate = album as {
+				id?: unknown;
+				upc?: unknown;
+				url?: unknown;
+				title?: unknown;
+				releaseDate?: unknown;
+				artist?: { name?: unknown } | undefined;
+			};
+			const parsedId = parseNumericId(candidate.id);
+			if (parsedId !== null) {
+				return `id:${parsedId}`;
+			}
+			if (typeof candidate.url === 'string' && candidate.url.trim().length > 0) {
+				return `url:${candidate.url.trim().toLowerCase()}`;
+			}
+			if (typeof candidate.upc === 'string' && candidate.upc.trim().length > 0) {
+				return `upc:${candidate.upc.trim().toLowerCase()}`;
+			}
+			const title = typeof candidate.title === 'string' ? candidate.title.trim().toLowerCase() : '';
+			const year =
+				typeof candidate.releaseDate === 'string' && candidate.releaseDate.length >= 4
+					? candidate.releaseDate.slice(0, 4)
+					: '';
+			const artistName =
+				typeof candidate.artist?.name === 'string'
+					? candidate.artist.name.trim().toLowerCase()
+					: '';
+			return `fallback:${artistName}|${title}|${year}`;
+		}
+	);
+
+	const normalizedArtistQuery = trimmedArtistQuery.toLowerCase();
+	const filteredItems =
+		normalizedArtistQuery.length === 0
+			? preparedItems
+			: preparedItems.filter((album) => {
+					const names = [
+						album.artist?.name,
+						...(Array.isArray(album.artists) ? album.artists.map((artist) => artist.name) : [])
+					]
+						.filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
+						.map((name) => name.toLowerCase());
+					return names.length === 0 || names.some((name) => name.includes(normalizedArtistQuery));
+				});
+
 	return {
 		...normalized,
-		items: dedupeByKey(
-			normalized.items.map((album) => {
-				const prepared = prepareAlbum(album);
-				const parsedId = parseNumericId((prepared as { id?: unknown }).id);
-				return parsedId !== null ? { ...prepared, id: parsedId } : prepared;
-			}),
-			(album) => {
-				const candidate = album as {
-					id?: unknown;
-					upc?: unknown;
-					url?: unknown;
-					title?: unknown;
-					releaseDate?: unknown;
-					artist?: { name?: unknown } | undefined;
-				};
-				const parsedId = parseNumericId(candidate.id);
-				if (parsedId !== null) {
-					return `id:${parsedId}`;
-				}
-				if (typeof candidate.url === 'string' && candidate.url.trim().length > 0) {
-					return `url:${candidate.url.trim().toLowerCase()}`;
-				}
-				if (typeof candidate.upc === 'string' && candidate.upc.trim().length > 0) {
-					return `upc:${candidate.upc.trim().toLowerCase()}`;
-				}
-				const title = typeof candidate.title === 'string' ? candidate.title.trim().toLowerCase() : '';
-				const year =
-					typeof candidate.releaseDate === 'string' && candidate.releaseDate.length >= 4
-						? candidate.releaseDate.slice(0, 4)
-						: '';
-				const artistName =
-					typeof candidate.artist?.name === 'string'
-						? candidate.artist.name.trim().toLowerCase()
-						: '';
-				return `fallback:${artistName}|${title}|${year}`;
-			}
-		)
+		items: filteredItems,
+		totalNumberOfItems:
+			normalizedArtistQuery.length === 0 ? normalized.totalNumberOfItems : filteredItems.length
 	};
 }
 
