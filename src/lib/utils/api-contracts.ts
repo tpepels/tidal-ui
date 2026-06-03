@@ -152,23 +152,35 @@ export function validateApiResponse<T>(data: unknown, schema: z.ZodSchema<T>, en
 
 // API Spec Compliance Validators
 export const API_SPECS = {
+	VERSION: '2.10',
 	SEARCH_ENDPOINTS: {
-		tracks: '/search/tracks',
-		albums: '/search/albums',
-		artists: '/search/artists',
-		playlists: '/search/playlists'
+		tracks: '/search/?s={query}',
+		albums: '/search/?al={query}',
+		artists: '/search/?a={query}',
+		playlists: '/search/?p={query}',
+		videos: '/search/?v={query}',
+		isrc: '/search/?i={isrc}'
 	},
 	RESOURCE_ENDPOINTS: {
-		album: '/album/{id}',
-		artist: '/artist/{id}',
-		playlist: '/playlist/{uuid}',
-		track: '/track/{trackId}',
-		trackStream: '/track/{trackId}/stream',
-		trackDash: '/track/{trackId}/dash',
-		trackLyrics: '/track/{trackId}/lyrics',
+		root: '/',
+		info: '/info/?id={trackId}',
+		album: '/album/?id={id}',
+		artist: '/artist/?id={id}',
+		artistDiscography: '/artist/?f={id}',
+		playlist: '/playlist/?id={uuid}',
+		trackPlaybackInfo: '/track/?id={trackId}',
+		trackManifests: '/trackManifests/?id={trackId}',
+		recommendations: '/recommendations/?id={trackId}',
+		mix: '/mix/?id={mixId}',
+		artistSimilar: '/artist/similar/?id={id}',
+		albumSimilar: '/album/similar/?id={id}',
+		lyrics: '/lyrics/?id={trackId}',
+		widevine: '/widevine',
 		covers: '/covers',
-		cover: '/cover/{coverId}',
-		artistPicture: '/artist/{pictureId}/picture'
+		coverByTrack: '/cover/?id={trackId}',
+		coverByQuery: '/cover/?q={query}',
+		topVideos: '/topvideos/',
+		video: '/video/?id={videoId}'
 	}
 } as const;
 
@@ -177,13 +189,21 @@ export function validateEndpointFormat(
 	expectedPattern: string,
 	params: Record<string, unknown>
 ): boolean {
-	// Convert OpenAPI path pattern to regex
-	const regexPattern = expectedPattern.replace(/\{([^}]+)\}/g, (_, param) => {
-		const value = params[param];
-		return value ? String(value) : `[^/]+`; // Allow any non-slash chars if param not provided
-	});
+	const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	const regexPattern = expectedPattern
+		.split(/(\{[^}]+\})/g)
+		.map((part) => {
+			const match = part.match(/^\{([^}]+)\}$/);
+			if (!match) {
+				return escapeRegExp(part);
+			}
+			const value = params[match[1]];
+			return value ? escapeRegExp(String(value)) : `[^/?&]+`;
+		})
+		.join('');
 
-	const regex = new RegExp(`^${regexPattern}(\\?.*)?$`);
+	const trailingParamsPattern = expectedPattern.includes('?') ? '(&.*)?' : '(\\?.*)?';
+	const regex = new RegExp(`^${regexPattern}${trailingParamsPattern}$`);
 	return regex.test(actualUrl);
 }
 

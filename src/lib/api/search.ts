@@ -17,6 +17,19 @@ export type SearchApiContext = {
 	ensureNotRateLimited: (response: Response) => void;
 };
 
+const DEFAULT_SEARCH_LIMIT = 100;
+const DEFAULT_SEARCH_OFFSET = 0;
+
+const appendDefaultPagination = (params: URLSearchParams): URLSearchParams => {
+	if (!params.has('limit')) {
+		params.set('limit', String(DEFAULT_SEARCH_LIMIT));
+	}
+	if (!params.has('offset')) {
+		params.set('offset', String(DEFAULT_SEARCH_OFFSET));
+	}
+	return params;
+};
+
 const parseNumericId = (value: unknown): number | null => {
 	if (typeof value === 'number' && Number.isFinite(value)) return value;
 	if (typeof value === 'string' && value.trim().length > 0) {
@@ -50,7 +63,8 @@ export async function searchTracks(
 	});
 
 	try {
-		const url = context.buildRegionalUrl(`/search/?s=${encodeURIComponent(query)}`, region);
+		const params = appendDefaultPagination(new URLSearchParams({ s: query }));
+		const url = context.buildRegionalUrl(`/search/?${params.toString()}`, region);
 
 		logger.logAPIRequest('GET', url, { component: 'api', operation: 'searchTracks' });
 
@@ -115,8 +129,9 @@ export async function searchArtists(
 	query: string,
 	region: RegionOption = 'auto'
 ): Promise<SearchResponse<Artist>> {
+	const params = appendDefaultPagination(new URLSearchParams({ a: query }));
 	const response = await context.fetch(
-		context.buildRegionalUrl(`/search/?a=${encodeURIComponent(query)}`, region)
+		context.buildRegionalUrl(`/search/?${params.toString()}`, region)
 	);
 	context.ensureNotRateLimited(response);
 	if (!response.ok) throw new Error('Failed to search artists');
@@ -159,6 +174,7 @@ export async function searchAlbums(
 		// API supports combined album + artist filtering when both params are present.
 		params.set('a', trimmedArtistQuery);
 	}
+	appendDefaultPagination(params);
 	const response = await context.fetch(
 		context.buildRegionalUrl(`/search/?${params.toString()}`, region)
 	);
@@ -219,8 +235,9 @@ export async function searchPlaylists(
 	query: string,
 	region: RegionOption = 'auto'
 ): Promise<SearchResponse<Playlist>> {
+	const params = appendDefaultPagination(new URLSearchParams({ p: query }));
 	const response = await context.fetch(
-		context.buildRegionalUrl(`/search/?p=${encodeURIComponent(query)}`, region)
+		context.buildRegionalUrl(`/search/?${params.toString()}`, region)
 	);
 	context.ensureNotRateLimited(response);
 	if (!response.ok) throw new Error('Failed to search playlists');

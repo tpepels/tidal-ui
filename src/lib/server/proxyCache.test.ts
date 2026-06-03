@@ -32,6 +32,7 @@ describe('proxyCache', () => {
 	it('selects TTL based on URL path', () => {
 		const config = { defaultTtlSeconds: 60, searchTtlSeconds: 10, trackTtlSeconds: 5, imageTtlSeconds: 300 };
 		expect(getCacheTtlSeconds(new URL('https://api.test/track/1'), config)).toBe(5);
+		expect(getCacheTtlSeconds(new URL('https://api.test/trackManifests/?id=1'), config)).toBe(5);
 		expect(getCacheTtlSeconds(new URL('https://api.test/search/items?q=1'), config)).toBe(10);
 		expect(getCacheTtlSeconds(new URL('https://api.test/album/1'), config)).toBe(60);
 		expect(getCacheTtlSeconds(new URL('https://resources.tidal.com/images/a/b/c/640x640.jpg'), config)).toBe(300);

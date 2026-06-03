@@ -12,6 +12,8 @@ const HEALTH_BACKOFF_MS = {
 };
 
 const ALBUM_TARGET_TIMEOUT_MS = 10_000;
+const ALBUM_LOOKUP_LIMIT = 500;
+const ALBUM_LOOKUP_OFFSET = 0;
 let albumTargetCursor = 0;
 const targetHealth = new Map<string, number>();
 
@@ -88,7 +90,12 @@ export async function fetchAlbumWithTargetRotation(
 
 		const target = rotatedTargets[index];
 		try {
-			const albumUrl = `${target.baseUrl}/album/?id=${albumId}`;
+			const albumParams = new URLSearchParams({
+				id: String(albumId),
+				limit: String(ALBUM_LOOKUP_LIMIT),
+				offset: String(ALBUM_LOOKUP_OFFSET)
+			});
+			const albumUrl = `${target.baseUrl}/album/?${albumParams.toString()}`;
 			console.log(`[Worker] Album ${albumId}: Trying ${target.name} (${target.baseUrl})`);
 
 			const controller = new AbortController();

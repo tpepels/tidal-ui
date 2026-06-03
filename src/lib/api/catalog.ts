@@ -9,11 +9,19 @@ export { getArtistRecommendations } from './catalogArtistRecommendations';
 export type { ArtistFetchProgress } from './catalogArtistTransport';
 export type { CatalogApiContext } from './catalogTypes';
 
+const PLAYLIST_LOOKUP_LIMIT = 500;
+const PLAYLIST_LOOKUP_OFFSET = 0;
+
 export async function getPlaylist(
 	context: CatalogApiContext,
 	uuid: string
 ): Promise<{ playlist: Playlist; items: Array<{ item: Track }> }> {
-	const response = await context.fetch(`${context.baseUrl}/playlist/?id=${uuid}`);
+	const params = new URLSearchParams({
+		id: uuid,
+		limit: String(PLAYLIST_LOOKUP_LIMIT),
+		offset: String(PLAYLIST_LOOKUP_OFFSET)
+	});
+	const response = await context.fetch(`${context.baseUrl}/playlist/?${params.toString()}`);
 	context.ensureNotRateLimited(response);
 	if (!response.ok) throw new Error('Failed to get playlist');
 	const data = await response.json();

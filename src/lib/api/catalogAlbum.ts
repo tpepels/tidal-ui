@@ -11,6 +11,9 @@ import {
 } from './catalogRequestState';
 import type { CatalogAlbumLookupResult, CatalogApiContext } from './catalogTypes';
 
+const ALBUM_LOOKUP_LIMIT = 500;
+const ALBUM_LOOKUP_OFFSET = 0;
+
 export async function getAlbum(
 	context: CatalogApiContext,
 	id: number,
@@ -31,7 +34,12 @@ export async function getAlbum(
 	}
 
 	const lookupPromise = (async () => {
-		const response = await context.fetch(`${context.baseUrl}/album/?id=${id}`, {
+		const params = new URLSearchParams({
+			id: String(id),
+			limit: String(ALBUM_LOOKUP_LIMIT),
+			offset: String(ALBUM_LOOKUP_OFFSET)
+		});
+		const response = await context.fetch(`${context.baseUrl}/album/?${params.toString()}`, {
 			signal: options?.signal
 		});
 		context.ensureNotRateLimited(response);

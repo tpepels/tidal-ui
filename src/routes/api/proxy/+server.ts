@@ -336,6 +336,12 @@ function buildMockProxyResponse(parsedTarget: URL): Response | null {
 	if (parsedTarget.hostname === 'example.com' && path === '/audio.mp3') {
 		return mockAudioResponse();
 	}
+	if (parsedTarget.hostname === 'example.com' && path === '/audio.mpd') {
+		return new Response('<MPD mediaPresentationDuration="PT240S"></MPD>', {
+			status: 200,
+			headers: { 'Content-Type': 'application/dash+xml' }
+		});
+	}
 
 	if (path.includes('/search/')) {
 		const params = parsedTarget.searchParams;
@@ -387,6 +393,26 @@ function buildMockProxyResponse(parsedTarget: URL): Response | null {
 		return jsonResponse({
 			playlist,
 			items: [{ item: track }]
+		});
+	}
+
+	if (path.includes('/trackmanifests/')) {
+		const id = Number.parseInt(parsedTarget.searchParams.get('id') || '789', 10);
+		const trackId = Number.isFinite(id) ? id : 789;
+		return jsonResponse({
+			version: '2.10',
+			data: {
+				data: {
+					id: String(trackId),
+					type: 'trackManifests',
+					attributes: {
+						trackPresentation: 'FULL',
+						uri: 'https://example.com/audio.mpd',
+						hash: 'mock-manifest-hash',
+						formats: ['FLAC_HIRES']
+					}
+				}
+			}
 		});
 	}
 
@@ -528,7 +554,7 @@ const ensureVaryIncludesOrigin = (value: string | null): string => {
 	return entries.join(', ');
 };
 
-const RETRYABLE_PATH_SEGMENTS = ['/track/', '/search/'];
+const RETRYABLE_PATH_SEGMENTS = ['/track/', '/trackmanifests/', '/search/'];
 
 const TOKEN_INVALID_MESSAGE = 'token has invalid payload';
 

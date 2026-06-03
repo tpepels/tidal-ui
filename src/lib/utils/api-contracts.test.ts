@@ -18,7 +18,7 @@ describe('API Contract Validation', () => {
 				offset: 0
 			};
 
-			const result = validateApiResponse(validData, SearchResponseSchema, '/search/tracks');
+			const result = validateApiResponse(validData, SearchResponseSchema, '/search/?s=query');
 			expect(result).toEqual(validData);
 		});
 
@@ -51,41 +51,43 @@ describe('API Contract Validation', () => {
 				]
 			};
 
-			const result = validateApiResponse(validAlbum, AlbumResponseSchema, '/album/1');
+			const result = validateApiResponse(validAlbum, AlbumResponseSchema, '/album/?id=1');
 			expect(result.album.title).toBe('Test Album');
 		});
 	});
 
 	describe('validateEndpointFormat', () => {
-		it('validates correct REST endpoints', () => {
-			expect(validateEndpointFormat('/album/123', '/album/{id}', { id: 123 })).toBe(true);
-			expect(validateEndpointFormat('/artist/456', '/artist/{id}', { id: 456 })).toBe(true);
+		it('validates correct hifi-api query endpoints', () => {
+			expect(validateEndpointFormat('/album/?id=123', '/album/?id={id}', { id: 123 })).toBe(true);
+			expect(validateEndpointFormat('/artist/?id=456', '/artist/?id={id}', { id: 456 })).toBe(true);
 			expect(
-				validateEndpointFormat('/track/789?quality=LOSSLESS', '/track/{trackId}', { trackId: 789 })
+				validateEndpointFormat('/track/?id=789&quality=LOSSLESS', '/track/?id={trackId}', { trackId: 789 })
 			).toBe(true);
 		});
 
 		it('rejects incorrect endpoints', () => {
-			expect(validateEndpointFormat('/album?id=123', '/album/{id}', { id: 123 })).toBe(false);
-			expect(validateEndpointFormat('/search/?s=query', '/search/tracks', {})).toBe(false);
+			expect(validateEndpointFormat('/album/123', '/album/?id={id}', { id: 123 })).toBe(false);
+			expect(validateEndpointFormat('/search/tracks', '/search/?s={query}', { query: 'query' })).toBe(false);
 		});
 	});
 
 	describe('API Spec Compliance', () => {
 		it('validates search endpoints match spec', () => {
-			// These should match the OpenAPI spec exactly
-			expect(API_SPECS.SEARCH_ENDPOINTS.tracks).toBe('/search/tracks');
-			expect(API_SPECS.SEARCH_ENDPOINTS.albums).toBe('/search/albums');
-			expect(API_SPECS.SEARCH_ENDPOINTS.artists).toBe('/search/artists');
-			expect(API_SPECS.SEARCH_ENDPOINTS.playlists).toBe('/search/playlists');
+			expect(API_SPECS.VERSION).toBe('2.10');
+			expect(API_SPECS.SEARCH_ENDPOINTS.tracks).toBe('/search/?s={query}');
+			expect(API_SPECS.SEARCH_ENDPOINTS.albums).toBe('/search/?al={query}');
+			expect(API_SPECS.SEARCH_ENDPOINTS.artists).toBe('/search/?a={query}');
+			expect(API_SPECS.SEARCH_ENDPOINTS.playlists).toBe('/search/?p={query}');
+			expect(API_SPECS.SEARCH_ENDPOINTS.isrc).toBe('/search/?i={isrc}');
 		});
 
 		it('validates resource endpoints match spec', () => {
-			expect(API_SPECS.RESOURCE_ENDPOINTS.album).toBe('/album/{id}');
-			expect(API_SPECS.RESOURCE_ENDPOINTS.artist).toBe('/artist/{id}');
-			expect(API_SPECS.RESOURCE_ENDPOINTS.track).toBe('/track/{trackId}');
-			expect(API_SPECS.RESOURCE_ENDPOINTS.trackStream).toBe('/track/{trackId}/stream');
-			expect(API_SPECS.RESOURCE_ENDPOINTS.trackDash).toBe('/track/{trackId}/dash');
+			expect(API_SPECS.RESOURCE_ENDPOINTS.album).toBe('/album/?id={id}');
+			expect(API_SPECS.RESOURCE_ENDPOINTS.artist).toBe('/artist/?id={id}');
+			expect(API_SPECS.RESOURCE_ENDPOINTS.trackPlaybackInfo).toBe('/track/?id={trackId}');
+			expect(API_SPECS.RESOURCE_ENDPOINTS.trackManifests).toBe('/trackManifests/?id={trackId}');
+			expect(API_SPECS.RESOURCE_ENDPOINTS.artistSimilar).toBe('/artist/similar/?id={id}');
+			expect(API_SPECS.RESOURCE_ENDPOINTS.video).toBe('/video/?id={videoId}');
 		});
 	});
 
@@ -94,15 +96,15 @@ describe('API Contract Validation', () => {
 			const invalidData = { invalidField: 'value' };
 
 			expect(() => {
-				validateApiResponse(invalidData, AlbumResponseSchema, '/album/1');
-			}).toThrow(/API response validation failed for \/album\/1/);
+				validateApiResponse(invalidData, AlbumResponseSchema, '/album/?id=1');
+			}).toThrow(/API response validation failed for \/album\/\?id=1/);
 		});
 
 		it('handles Zod errors gracefully', () => {
 			const invalidData = null;
 
 			expect(() => {
-				validateApiResponse(invalidData, SearchResponseSchema, '/search/tracks');
+				validateApiResponse(invalidData, SearchResponseSchema, '/search/?s=query');
 			}).toThrow(TidalError);
 		});
 	});

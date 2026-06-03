@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-const PROBE_PATH = '/search/tracks?query=test&limit=1';
+const PROBE_PATH = '/search/?s=test&limit=1&offset=0';
 const PROBE_TIMEOUT_MS = 2500;
 
 async function probeTarget(target: string): Promise<{ reachable: boolean; detail: string }> {

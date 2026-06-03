@@ -468,9 +468,14 @@ function isLikelyApiClusterUrl(url: URL): boolean {
 		path.includes('/playlist/') ||
 		path.includes('/search/') ||
 		path.includes('/song/') ||
+		path.includes('/recommendations/') ||
+		path.includes('/mix/') ||
 		path.includes('/lyrics/') ||
 		path.includes('/cover/') ||
 		path.includes('/info/') ||
+		path.includes('/topvideos/') ||
+		path.includes('/video/') ||
+		path.includes('/widevine') ||
 		path.includes('/manifest/')
 	);
 }

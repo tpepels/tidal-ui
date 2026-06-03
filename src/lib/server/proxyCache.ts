@@ -91,7 +91,7 @@ export function getCacheTtlSeconds(url: URL, config: CacheTtlConfig): number {
 	}
 
 	const path = url.pathname.toLowerCase();
-	if (path.includes('/track/') || path.includes('/song/')) {
+	if (path.includes('/track/') || path.includes('/trackmanifests/') || path.includes('/song/')) {
 		return config.trackTtlSeconds;
 	}
 	if (path.includes('/search/')) {

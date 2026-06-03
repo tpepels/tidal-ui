@@ -6,6 +6,9 @@ import { sortTopTracks } from '$lib/utils/topTracks';
 import type { Album, Artist, ArtistDetails, Track } from '$lib/types';
 import type { CatalogApiContext } from './catalogTypes';
 
+const ARTIST_ENRICHMENT_SEARCH_LIMIT = 500;
+const ARTIST_ENRICHMENT_SEARCH_OFFSET = 0;
+
 export async function getArtist(
 	context: CatalogApiContext,
 	id: number,
@@ -403,8 +406,13 @@ export async function getArtist(
 			seenEnrichmentQueries.add(normalizedQuery);
 			enrichmentQueryCount += 1;
 
+			const searchParams = new URLSearchParams({
+				al: trimmedQuery,
+				limit: String(ARTIST_ENRICHMENT_SEARCH_LIMIT),
+				offset: String(ARTIST_ENRICHMENT_SEARCH_OFFSET)
+			});
 			const searchResponse = await context.fetch(
-				`${context.baseUrl}/search/?al=${encodeURIComponent(trimmedQuery)}`,
+				`${context.baseUrl}/search/?${searchParams.toString()}`,
 				{ signal: options?.signal }
 			);
 			context.ensureNotRateLimited(searchResponse);
