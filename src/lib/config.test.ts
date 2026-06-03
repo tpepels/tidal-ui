@@ -248,6 +248,32 @@ describe('config target selection', () => {
 		expect(calledUrl).toBe('https://new-primary.example.com/track/?id=123&quality=LOSSLESS');
 	});
 
+	it('does not rewrite TIDAL manifest CDN URLs onto API targets', async () => {
+		const { config, retryFetch } = await setupConfig({
+			targets: [
+				{
+					name: 'primary',
+					baseUrl: 'https://primary.example.com',
+					weight: 1,
+					requiresProxy: false,
+					category: 'auto-only'
+				}
+			]
+		});
+		retryFetch.mockResolvedValue(
+			new Response('<MPD></MPD>', {
+				status: 200,
+				headers: { 'content-type': 'application/dash+xml' }
+			})
+		);
+
+		await config.fetchWithCORS('https://im-fa.manifest.tidal.com/1/manifests/test.mpd');
+
+		expect(retryFetch).toHaveBeenCalledTimes(1);
+		const [calledUrl] = retryFetch.mock.calls[0] as [string, RequestInit];
+		expect(calledUrl).toBe('https://im-fa.manifest.tidal.com/1/manifests/test.mpd');
+	});
+
 	it('tries fallback targets when a track lookup returns preview playback info', async () => {
 		const { config, retryFetch } = await setupConfig({
 			targets: [

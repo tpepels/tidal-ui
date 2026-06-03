@@ -201,6 +201,53 @@ describe('API Integration Tests', () => {
 				fetchSpy.mockRestore();
 			}
 		});
+
+		it('does not fall back to legacy playbackinfo when trackManifests manifest URI fails', async () => {
+			const runtimeSpy = vi
+				.spyOn(losslessAPI as any, 'isBrowserRuntime')
+				.mockReturnValue(false);
+			const fetchSpy = vi
+				.spyOn(losslessAPI as any, 'fetch')
+				.mockResolvedValueOnce(
+					new Response(
+						JSON.stringify({
+							version: '2.10',
+							data: {
+								data: {
+									id: '123',
+									type: 'trackManifests',
+									attributes: {
+										trackPresentation: 'FULL',
+										uri: 'https://im-fa.manifest.tidal.com/1/manifests/test.mpd',
+										formats: ['FLAC_HIRES']
+									}
+								}
+							}
+						}),
+						{ status: 200, headers: { 'content-type': 'application/json' } }
+					)
+				)
+				.mockResolvedValueOnce(
+					new Response('manifest unavailable', {
+						status: 502,
+						headers: { 'content-type': 'text/plain' }
+					})
+				);
+
+			try {
+				await expect(losslessAPI.getTrack(123, 'HI_RES_LOSSLESS')).rejects.toThrow(
+					'trackManifests lookup failed for HI_RES_LOSSLESS'
+				);
+				expect(fetchSpy.mock.calls[0][0]).toContain('/trackManifests/?');
+				expect(fetchSpy.mock.calls[1][0]).toBe(
+					'https://im-fa.manifest.tidal.com/1/manifests/test.mpd'
+				);
+				expect(fetchSpy.mock.calls.some((call) => String(call[0]).includes('/track/?'))).toBe(false);
+			} finally {
+				runtimeSpy.mockRestore();
+				fetchSpy.mockRestore();
+			}
+		});
 	});
 
 	describe('Error handling edge cases', () => {

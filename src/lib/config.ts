@@ -475,8 +475,7 @@ function isLikelyApiClusterUrl(url: URL): boolean {
 		path.includes('/info/') ||
 		path.includes('/topvideos/') ||
 		path.includes('/video/') ||
-		path.includes('/widevine') ||
-		path.includes('/manifest/')
+		path.includes('/widevine')
 	);
 }
 
@@ -536,7 +535,6 @@ function inferTargetPurpose(
 	if (
 		path.includes('/track/') ||
 		path.includes('/trackmanifests/') ||
-		path.includes('/manifest/') ||
 		path.includes('/song/')
 	) {
 		return 'stream';

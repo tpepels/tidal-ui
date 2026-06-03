@@ -899,14 +899,16 @@ class LosslessAPI {
 			try {
 				return await this.getTrackFromTrackManifests(id, quality, options);
 			} catch (error) {
-				if (this.isTrackManifestQualityUnavailable(error)) {
-					throw error;
-				}
-				console.warn('[API] trackManifests lookup failed; falling back to legacy /track/', {
+				console.warn('[API] trackManifests lookup failed for exact hi-res request', {
 					trackId: id,
 					quality,
 					error: error instanceof Error ? error.message : String(error)
 				});
+				if (this.isTrackManifestQualityUnavailable(error)) {
+					throw error;
+				}
+				const message = error instanceof Error ? error.message : String(error);
+				throw new Error(`trackManifests lookup failed for ${quality}: ${message}`);
 			}
 		}
 
