@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import SearchScreenLayout from '$lib/screens/search/SearchScreenLayout.svelte';
-	import type { PlayableTrack } from '$lib/types';
+	import { type PlayableTrack, isSonglinkTrack } from '$lib/types';
 	import { playbackFacade } from '$lib/controllers/playbackFacade';
+	import { losslessAPI } from '$lib/api';
 	import { APP_VERSION } from '$lib/version';
 	import { breadcrumbStore } from '$lib/stores/breadcrumbStore';
 	import { getRouteMeta } from '$lib/config/routeMeta';
@@ -26,6 +27,19 @@
 		}
 	});
 
+	async function fillQueueWithRecommendations(track: PlayableTrack) {
+		if (isSonglinkTrack(track)) return;
+
+		try {
+			const recommendations = await losslessAPI.getRecommendations(track.id);
+			if (recommendations.length > 0) {
+				playbackFacade.loadQueue([track, ...recommendations], 0, { autoPlay: true });
+			}
+		} catch {
+			// Recommendations are best-effort; ignore failures silently.
+		}
+	}
+
 	function handleTrackSelect(track: PlayableTrack) {
 		if (!track) {
 			console.error('handleTrackSelect called with null/undefined track');
@@ -34,6 +48,7 @@
 
 		try {
 			playbackFacade.loadQueue([track], 0, { autoPlay: true });
+			fillQueueWithRecommendations(track);
 		} catch (error) {
 			console.error('Failed to play track:', error);
 		}
