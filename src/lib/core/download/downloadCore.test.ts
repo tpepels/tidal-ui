@@ -243,4 +243,26 @@ describe('downloadTrackCore', () => {
 
 		await expect(promise).rejects.toThrow('Could not extract download URL');
 	});
+
+	it('should throw immediately when TIDAL returns a preview clip (assetPresentation: PREVIEW)', async () => {
+		const previewLookup: TrackLookup = {
+			track: baseTrack(42, 'HI_RES_LOSSLESS'),
+			info: {
+				...baseInfo(42, 'HI_RES_LOSSLESS', btoa(JSON.stringify({ urls: ['https://cdn.tidal.com/preview.flac'] }))),
+				assetPresentation: 'PREVIEW'
+			}
+		};
+		mockApiClient.getTrack = vi.fn(async () => previewLookup);
+
+		const promise = downloadTrackCore({
+			trackId: 42,
+			quality: 'HI_RES_LOSSLESS',
+			apiClient: mockApiClient,
+			fetchFn
+		});
+
+		await expect(promise).rejects.toThrow('preview clip');
+		// Should fail before ever fetching audio
+		expect(fetchFn).not.toHaveBeenCalled();
+	});
 });
