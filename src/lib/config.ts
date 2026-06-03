@@ -334,26 +334,75 @@ function isLikelyProxyErrorPayload(payload: unknown): boolean {
 	return false;
 }
 
+function hasPreviewAssetPresentation(payload: unknown): boolean {
+	const queue: unknown[] = [payload];
+	let inspected = 0;
+
+	while (queue.length > 0 && inspected < 100) {
+		inspected += 1;
+		const candidate = queue.shift();
+		if (!candidate || typeof candidate !== 'object') {
+			continue;
+		}
+
+		if (Array.isArray(candidate)) {
+			queue.push(...candidate);
+			continue;
+		}
+
+		const record = candidate as Record<string, unknown>;
+		const assetPresentation = record.assetPresentation;
+		if (
+			typeof assetPresentation === 'string' &&
+			assetPresentation.trim().toUpperCase() === 'PREVIEW'
+		) {
+			return true;
+		}
+
+		for (const value of Object.values(record)) {
+			if (value && (typeof value === 'object' || Array.isArray(value))) {
+				queue.push(value);
+			}
+		}
+	}
+
+	return false;
+}
+
+function isTrackPlaybackLookupUrl(url: URL): boolean {
+	const path = url.pathname.toLowerCase();
+	return path === '/track' || path === '/track/' || path.endsWith('/track/');
+}
+
 // NOTE: This function consumes the provided response body.
 // Callers should pass in a cloned response if they need to keep the original readable.
-async function isUnexpectedProxyResponse(response: Response): Promise<boolean> {
+async function getUnexpectedOkResponseReason(
+	response: Response,
+	options?: { rejectPreviewPlayback?: boolean }
+): Promise<string | null> {
 	if (!response.ok) {
-		return false;
+		return null;
 	}
 
 	if (!response.headers || typeof response.headers.get !== 'function') {
-		return false;
+		return null;
 	}
 	const contentType = response.headers.get('content-type');
 	if (!contentType || !contentType.toLowerCase().includes('application/json')) {
-		return false;
+		return null;
 	}
 
 	try {
 		const payload = await response.json();
-		return isLikelyProxyErrorPayload(payload);
+		if (isLikelyProxyErrorPayload(payload)) {
+			return 'proxy error payload';
+		}
+		if (options?.rejectPreviewPlayback && hasPreviewAssetPresentation(payload)) {
+			return 'preview playback asset';
+		}
+		return null;
 	} catch {
-		return false;
+		return null;
 	}
 }
 
@@ -371,7 +420,12 @@ function getDefaultTimeoutForUrl(url: URL): number {
 
 function getDefaultMaxRetriesForUrl(url: URL): number {
 	const path = url.pathname.toLowerCase();
-	if (path.includes('/artist/') || path.includes('/album/') || path.includes('/playlist/')) {
+	if (
+		path.includes('/artist/') ||
+		path.includes('/album/') ||
+		path.includes('/playlist/') ||
+		path.includes('/search/')
+	) {
 		// Don't retry within the same target — fetchWithTargetFallback already tries the next
 		// target on failure, so per-target retries only slow down the fallback chain.
 		return 0;
@@ -408,6 +462,7 @@ function isLikelyApiClusterUrl(url: URL): boolean {
 	const path = url.pathname.toLowerCase();
 	return (
 		path.includes('/track/') ||
+		path.includes('/trackmanifests/') ||
 		path.includes('/album/') ||
 		path.includes('/artist/') ||
 		path.includes('/playlist/') ||
@@ -475,6 +530,7 @@ function inferTargetPurpose(
 	const path = resolvedUrl.pathname.toLowerCase();
 	if (
 		path.includes('/track/') ||
+		path.includes('/trackmanifests/') ||
 		path.includes('/manifest/') ||
 		path.includes('/song/')
 	) {
@@ -702,15 +758,25 @@ export async function fetchWithCORS(
 				operationType
 			});
 			if (response.ok) {
-				const unexpected = await isUnexpectedProxyResponse(response.clone());
-				if (!unexpected) {
+				const unexpectedReason = await getUnexpectedOkResponseReason(response.clone(), {
+					rejectPreviewPlayback:
+						targetPurpose === 'stream' && isTrackPlaybackLookupUrl(rewrittenUrl)
+				});
+				if (!unexpectedReason) {
 					if (stickyEndpointKey) {
 						stickyEndpointPreferredTargets.set(stickyEndpointKey, target.name);
 					}
 					return response;
 				}
+				if (unexpectedReason === 'preview playback asset') {
+					console.warn('[API Targets] Target returned preview playback info; trying next target', {
+						target: target.name,
+						trackId: rewrittenUrl.searchParams.get('id'),
+						quality: rewrittenUrl.searchParams.get('quality')
+					});
+				}
 				lastUnexpectedResponse = response;
-				attemptDetails.push({ target: target.name, status: response.status });
+				attemptDetails.push({ target: target.name, error: unexpectedReason });
 				continue;
 			}
 

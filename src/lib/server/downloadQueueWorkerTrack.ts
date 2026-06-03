@@ -35,7 +35,7 @@ const TRACK_RETRY_MAX_DELAY_MS = Math.max(
 	TRACK_RETRY_BASE_DELAY_MS,
 	Number(process.env.DOWNLOAD_TRACK_RETRY_MAX_DELAY_MS || 30_000)
 );
-const DOWNLOAD_ENABLE_QUALITY_FALLBACK = process.env.DOWNLOAD_ENABLE_QUALITY_FALLBACK !== 'false';
+const DOWNLOAD_ENABLE_QUALITY_FALLBACK = process.env.DOWNLOAD_ENABLE_QUALITY_FALLBACK === 'true';
 const DEFAULT_ALBUM_TRACK_MAX_ATTEMPTS = 12;
 const legacyAlbumTrackRetriesRaw = Number(process.env.ALBUM_TRACK_RETRY_ATTEMPTS || '');
 const legacyAlbumTrackAttemptsDefault =

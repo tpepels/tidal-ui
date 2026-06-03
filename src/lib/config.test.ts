@@ -34,6 +34,8 @@ const buildConfig = (overrides?: Partial<{
 	const targets = overrides?.targets ?? defaultTargets;
 	return {
 		targets,
+		browseTargets: targets,
+		streamTargets: targets,
 		baseUrl: overrides?.baseUrl ?? targets[0]?.baseUrl ?? 'https://api.example.com',
 		useProxy: overrides?.useProxy ?? true,
 		proxyUrl: overrides?.proxyUrl ?? '/proxy'
@@ -173,6 +175,45 @@ describe('config target selection', () => {
 		expect(retryFetch).toHaveBeenCalledTimes(1);
 	});
 
+	it('does not retry within a search target before rotating targets', async () => {
+		const { config, retryFetch } = await setupConfig({
+			targets: [
+				{
+					name: 'primary',
+					baseUrl: 'https://primary.example.com',
+					weight: 1,
+					requiresProxy: false,
+					category: 'auto-only'
+				},
+				{
+					name: 'fallback',
+					baseUrl: 'https://fallback.example.com',
+					weight: 1,
+					requiresProxy: false,
+					category: 'auto-only'
+				}
+			]
+		});
+		vi.spyOn(Math, 'random').mockReturnValue(0);
+		retryFetch
+			.mockRejectedValueOnce(new Error('Failed to fetch'))
+			.mockResolvedValueOnce(
+				new Response(JSON.stringify({ ok: true }), {
+					status: 200,
+					headers: { 'content-type': 'application/json' }
+				})
+			);
+
+		const result = await config.fetchWithCORS('https://primary.example.com/search/?s=test');
+
+		expect(result.status).toBe(200);
+		expect(retryFetch).toHaveBeenCalledTimes(2);
+		for (const call of retryFetch.mock.calls) {
+			const [, options] = call as [string, RequestInit & { maxRetries?: number }];
+			expect(options.maxRetries).toBe(0);
+		}
+	});
+
 	it('rewrites stale API origins to current target pool when origin is no longer configured', async () => {
 		const { config, retryFetch } = await setupConfig({
 			targets: [
@@ -205,6 +246,69 @@ describe('config target selection', () => {
 		expect(retryFetch).toHaveBeenCalledTimes(1);
 		const [calledUrl] = retryFetch.mock.calls[0] as [string, RequestInit];
 		expect(calledUrl).toBe('https://new-primary.example.com/track/?id=123&quality=LOSSLESS');
+	});
+
+	it('tries fallback targets when a track lookup returns preview playback info', async () => {
+		const { config, retryFetch } = await setupConfig({
+			targets: [
+				{
+					name: 'primary',
+					baseUrl: 'https://primary.example.com',
+					weight: 1,
+					requiresProxy: false,
+					category: 'auto-only'
+				},
+				{
+					name: 'fallback',
+					baseUrl: 'https://fallback.example.com',
+					weight: 1,
+					requiresProxy: false,
+					category: 'auto-only'
+				}
+			]
+		});
+		vi.spyOn(Math, 'random').mockReturnValue(0);
+		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const previewResponse = new Response(
+			JSON.stringify({
+				data: {
+					trackId: 123,
+					manifest: 'preview-manifest',
+					assetPresentation: 'PREVIEW'
+				}
+			}),
+			{ status: 200, headers: { 'content-type': 'application/json' } }
+		);
+		const fullResponse = new Response(
+			JSON.stringify({
+				data: {
+					trackId: 123,
+					manifest: 'full-manifest',
+					assetPresentation: 'FULL'
+				}
+			}),
+			{ status: 200, headers: { 'content-type': 'application/json' } }
+		);
+		retryFetch.mockResolvedValueOnce(previewResponse).mockResolvedValueOnce(fullResponse);
+
+		const result = await config.fetchWithCORS(
+			'https://primary.example.com/track/?id=123&quality=LOSSLESS'
+		);
+
+		expect(result).toBe(fullResponse);
+		expect(retryFetch).toHaveBeenCalledTimes(2);
+		const calledUrls = retryFetch.mock.calls.map((call) => call[0] as string);
+		expect(calledUrls[0]).toBe('https://primary.example.com/track/?id=123&quality=LOSSLESS');
+		expect(calledUrls[1]).toBe('https://fallback.example.com/track/?id=123&quality=LOSSLESS');
+		expect(warnSpy).toHaveBeenCalledWith(
+			'[API Targets] Target returned preview playback info; trying next target',
+			expect.objectContaining({
+				target: 'primary',
+				trackId: '123',
+				quality: 'LOSSLESS'
+			})
+		);
+		warnSpy.mockRestore();
 	});
 
 	it('does not retry the same target repeatedly when only one target is available', async () => {

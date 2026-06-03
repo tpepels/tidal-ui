@@ -81,6 +81,18 @@ const ArtistRecommendationsSchema = z.object({
 
 type CodedError = Error & { code?: string };
 
+type TrackManifestAttributes = {
+	trackPresentation?: string;
+	uri?: string;
+	manifest?: string;
+	manifestHash?: string;
+	formats: string[];
+	albumReplayGain?: number;
+	albumPeakAmplitude?: number;
+	trackReplayGain?: number;
+	trackPeakAmplitude?: number;
+};
+
 export type TrackDownloadProgress =
 	| { stage: 'downloading'; receivedBytes: number; totalBytes?: number }
 	| { stage: 'embedding'; progress: number };
@@ -459,6 +471,175 @@ class LosslessAPI {
 		};
 	}
 
+	private getRequiredTrackManifestFormat(quality: AudioQuality): string | null {
+		switch (quality) {
+			case 'HI_RES_LOSSLESS':
+				return 'FLAC_HIRES';
+			case 'LOSSLESS':
+				return 'FLAC';
+			default:
+				return null;
+		}
+	}
+
+	private extractTrackManifestAttributes(payload: unknown): TrackManifestAttributes | null {
+		const root = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : null;
+		const firstData = root?.data;
+		const secondData =
+			firstData && typeof firstData === 'object'
+				? (firstData as Record<string, unknown>).data
+				: undefined;
+		const candidate =
+			secondData && typeof secondData === 'object'
+				? secondData
+				: firstData && typeof firstData === 'object'
+					? firstData
+					: root;
+		const attributesSource =
+			candidate && typeof candidate === 'object'
+				? ((candidate as Record<string, unknown>).attributes ?? candidate)
+				: null;
+		if (!attributesSource || typeof attributesSource !== 'object') {
+			return null;
+		}
+
+		const attributes = attributesSource as Record<string, unknown>;
+		const rawFormats = Array.isArray(attributes.formats) ? attributes.formats : [];
+		const normalization = (value: unknown, key: 'replayGain' | 'peakAmplitude'): number | undefined => {
+			if (!value || typeof value !== 'object') return undefined;
+			const candidate = (value as Record<string, unknown>)[key];
+			return typeof candidate === 'number' ? candidate : undefined;
+		};
+
+		return {
+			trackPresentation:
+				typeof attributes.trackPresentation === 'string'
+					? attributes.trackPresentation
+					: undefined,
+			uri: typeof attributes.uri === 'string' ? attributes.uri : undefined,
+			manifest: typeof attributes.manifest === 'string' ? attributes.manifest : undefined,
+			manifestHash:
+				typeof attributes.hash === 'string'
+					? attributes.hash
+					: typeof attributes.manifestHash === 'string'
+						? attributes.manifestHash
+						: undefined,
+			formats: rawFormats
+				.filter((format): format is string => typeof format === 'string')
+				.map((format) => format.trim().toUpperCase())
+				.filter((format) => format.length > 0),
+			albumReplayGain: normalization(attributes.albumAudioNormalizationData, 'replayGain'),
+			albumPeakAmplitude: normalization(attributes.albumAudioNormalizationData, 'peakAmplitude'),
+			trackReplayGain: normalization(attributes.trackAudioNormalizationData, 'replayGain'),
+			trackPeakAmplitude: normalization(attributes.trackAudioNormalizationData, 'peakAmplitude')
+		};
+	}
+
+	private async resolveTrackManifestText(attributes: TrackManifestAttributes): Promise<{
+		manifest: string;
+		manifestMimeType: string;
+	}> {
+		if (attributes.manifest && attributes.manifest.trim().length > 0) {
+			return {
+				manifest: attributes.manifest,
+				manifestMimeType: 'application/dash+xml'
+			};
+		}
+
+		const uri = attributes.uri?.trim();
+		if (!uri) {
+			throw new Error('Track manifest response did not include a manifest URI');
+		}
+
+		if (!/^https?:\/\//i.test(uri)) {
+			return {
+				manifest: uri,
+				manifestMimeType: 'application/dash+xml'
+			};
+		}
+
+		const response = await this.fetch(uri, { apiVersion: 'v2', maxRetries: 0 });
+		if (!response.ok) {
+			throw new Error(`Failed to fetch track manifest URI (status ${response.status})`);
+		}
+		const manifest = await response.text();
+		if (!manifest.trim()) {
+			throw new Error('Track manifest URI returned an empty manifest');
+		}
+
+		return {
+			manifest,
+			manifestMimeType: response.headers.get('content-type') ?? 'application/dash+xml'
+		};
+	}
+
+	private isTrackManifestQualityUnavailable(error: unknown): boolean {
+		return (
+			error instanceof Error &&
+			error.message.includes('trackManifests response did not include required format')
+		);
+	}
+
+	private async getTrackFromTrackManifests(
+		id: number,
+		quality: AudioQuality,
+		options?: { skipTarget?: string }
+	): Promise<TrackLookup> {
+		const requiredFormat = this.getRequiredTrackManifestFormat(quality);
+		if (!requiredFormat) {
+			throw new Error(`trackManifests does not support ${quality} quality`);
+		}
+
+		const params = new URLSearchParams({
+			id: String(id),
+			adaptive: 'true',
+			manifestType: 'MPEG_DASH',
+			uriScheme: 'HTTPS',
+			usage: 'DOWNLOAD'
+		});
+		params.append('formats', requiredFormat);
+
+		const response = await this.fetch(`${this.baseUrl}/trackManifests/?${params.toString()}`, {
+			apiVersion: 'v2',
+			skipTarget: options?.skipTarget
+		});
+		this.ensureNotRateLimited(response);
+		if (!response.ok) {
+			throw new Error(`Failed to get trackManifests response (status ${response.status})`);
+		}
+
+		const payload = await response.json();
+		const attributes = this.extractTrackManifestAttributes(payload);
+		if (!attributes) {
+			throw new Error('Malformed trackManifests response');
+		}
+		if (!attributes.formats.includes(requiredFormat)) {
+			throw new Error(
+				`trackManifests response did not include required format ${requiredFormat} for ${quality}`
+			);
+		}
+
+		const manifestPayload = await this.resolveTrackManifestText(attributes);
+		const track = await this.fetchTrackMetadata(id, 'v2');
+		return {
+			track,
+			info: {
+				trackId: id,
+				audioMode: 'STEREO',
+				audioQuality: quality,
+				manifest: manifestPayload.manifest,
+				manifestMimeType: manifestPayload.manifestMimeType,
+				manifestHash: attributes.manifestHash,
+				assetPresentation:
+					attributes.trackPresentation?.trim().toUpperCase() === 'PREVIEW' ? 'PREVIEW' : 'FULL',
+				albumReplayGain: attributes.albumReplayGain,
+				albumPeakAmplitude: attributes.albumPeakAmplitude,
+				trackReplayGain: attributes.trackReplayGain,
+				trackPeakAmplitude: attributes.trackPeakAmplitude
+			}
+		};
+	}
+
 	private buildDashManifestResult(payload: string, contentType: string | null): DashManifestResult {
 		return buildDashManifestResultHelper({
 			payload,
@@ -496,6 +677,7 @@ class LosslessAPI {
 			apiVersion?: 'v1' | 'v2';
 			preferredQuality?: string;
 			skipTarget?: string;
+			maxRetries?: number;
 		}
 	): Promise<Response> {
 		return fetchWithCORS(url, options);
@@ -712,6 +894,22 @@ class LosslessAPI {
 			);
 			return this.parseBrowserTrackLookupPayload(id, payload);
 		}
+
+		if (this.isHiResQuality(quality)) {
+			try {
+				return await this.getTrackFromTrackManifests(id, quality, options);
+			} catch (error) {
+				if (this.isTrackManifestQualityUnavailable(error)) {
+					throw error;
+				}
+				console.warn('[API] trackManifests lookup failed; falling back to legacy /track/', {
+					trackId: id,
+					quality,
+					error: error instanceof Error ? error.message : String(error)
+				});
+			}
+		}
+
 		const url = `${this.baseUrl}/track/?id=${id}&quality=${quality}`;
 		let lastError: Error | null = null;
 

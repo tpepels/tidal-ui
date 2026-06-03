@@ -86,6 +86,123 @@ describe('API Integration Tests', () => {
 		});
 	});
 
+	describe('getTrack hi-res manifest resolution', () => {
+		const trackMetadataPayload = {
+			version: '2.10',
+			data: {
+				id: 123,
+				title: 'Hi Res Track',
+				duration: 180,
+				artist: { id: 1, name: 'Test Artist', type: 'MAIN' },
+				artists: [{ id: 1, name: 'Test Artist', type: 'MAIN' }],
+				album: { id: 2, title: 'Test Album', cover: null, videoCover: null },
+				trackNumber: 1,
+				volumeNumber: 1,
+				audioQuality: 'HI_RES_LOSSLESS',
+				audioModes: ['STEREO'],
+				allowStreaming: true,
+				streamReady: true,
+				premiumStreamingOnly: false
+			}
+		};
+
+		it('uses trackManifests for HI_RES_LOSSLESS before legacy playbackinfo', async () => {
+			const runtimeSpy = vi
+				.spyOn(losslessAPI as any, 'isBrowserRuntime')
+				.mockReturnValue(false);
+			const fetchSpy = vi
+				.spyOn(losslessAPI as any, 'fetch')
+				.mockResolvedValueOnce(
+					new Response(
+						JSON.stringify({
+							version: '2.10',
+							data: {
+								data: {
+									id: '123',
+									type: 'trackManifests',
+									attributes: {
+										trackPresentation: 'FULL',
+										uri: 'https://im-fa.manifest.tidal.com/1/manifests/test.mpd',
+										hash: 'manifest-hash',
+										formats: ['FLAC_HIRES'],
+										trackAudioNormalizationData: {
+											replayGain: -7.5,
+											peakAmplitude: 0.95
+										}
+									}
+								}
+							}
+						}),
+						{ status: 200, headers: { 'content-type': 'application/json' } }
+					)
+				)
+				.mockResolvedValueOnce(
+					new Response('<MPD mediaPresentationDuration="PT180S"></MPD>', {
+						status: 200,
+						headers: { 'content-type': 'application/dash+xml' }
+					})
+				)
+				.mockResolvedValueOnce(
+					new Response(JSON.stringify(trackMetadataPayload), {
+						status: 200,
+						headers: { 'content-type': 'application/json' }
+					})
+				);
+
+			try {
+				const result = await losslessAPI.getTrack(123, 'HI_RES_LOSSLESS');
+
+				expect(fetchSpy).toHaveBeenCalledTimes(3);
+				expect(fetchSpy.mock.calls[0][0]).toContain('/trackManifests/?');
+				expect(fetchSpy.mock.calls[0][0]).toContain('formats=FLAC_HIRES');
+				expect(fetchSpy.mock.calls.some((call) => String(call[0]).includes('/track/?'))).toBe(false);
+				expect(result.info.audioQuality).toBe('HI_RES_LOSSLESS');
+				expect(result.info.manifest).toContain('<MPD');
+				expect(result.info.manifestMimeType).toBe('application/dash+xml');
+				expect(result.info.trackReplayGain).toBe(-7.5);
+			} finally {
+				runtimeSpy.mockRestore();
+				fetchSpy.mockRestore();
+			}
+		});
+
+		it('fails exact HI_RES_LOSSLESS when trackManifests omits FLAC_HIRES', async () => {
+			const runtimeSpy = vi
+				.spyOn(losslessAPI as any, 'isBrowserRuntime')
+				.mockReturnValue(false);
+			const fetchSpy = vi.spyOn(losslessAPI as any, 'fetch').mockResolvedValueOnce(
+				new Response(
+					JSON.stringify({
+						version: '2.10',
+						data: {
+							data: {
+								id: '123',
+								type: 'trackManifests',
+								attributes: {
+									trackPresentation: 'FULL',
+									uri: 'https://im-fa.manifest.tidal.com/1/manifests/test.mpd',
+									formats: ['FLAC']
+								}
+							}
+						}
+					}),
+					{ status: 200, headers: { 'content-type': 'application/json' } }
+				)
+			);
+
+			try {
+				await expect(losslessAPI.getTrack(123, 'HI_RES_LOSSLESS')).rejects.toThrow(
+					'trackManifests response did not include required format FLAC_HIRES'
+				);
+				expect(fetchSpy).toHaveBeenCalledTimes(1);
+				expect(fetchSpy.mock.calls.some((call) => String(call[0]).includes('/track/?'))).toBe(false);
+			} finally {
+				runtimeSpy.mockRestore();
+				fetchSpy.mockRestore();
+			}
+		});
+	});
+
 	describe('Error handling edge cases', () => {
 		it('handles network errors gracefully', () => {
 			const error = TidalError.networkError(new Error('Connection timeout'));
