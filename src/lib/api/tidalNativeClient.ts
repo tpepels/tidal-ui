@@ -132,11 +132,15 @@ async function requestAccessToken(signal?: AbortSignal): Promise<string> {
 		typeof Buffer !== 'undefined'
 			? Buffer.from(`${credentials.clientId}:${credentials.clientSecret}`).toString('base64')
 			: btoa(`${credentials.clientId}:${credentials.clientSecret}`);
-	const body = new URLSearchParams({ grant_type: 'client_credentials' });
+	const body = new URLSearchParams({
+		client_id: credentials.clientId,
+		client_secret: credentials.clientSecret,
+		grant_type: 'client_credentials'
+	});
 	let response = await fetch(TIDAL_AUTH_URL, {
 		method: 'POST',
 		headers: {
-			authorization: `Basic ${basicAuth}`,
+			Authorization: `Basic ${basicAuth}`,
 			'content-type': 'application/x-www-form-urlencoded'
 		},
 		body,

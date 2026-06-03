@@ -1,7 +1,11 @@
-import { describe, expect, it } from 'vitest';
-import { API_CONFIG, __test } from './targets';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { API_CONFIG, __test, refreshApiTargets } from './targets';
 
 describe('API_CONFIG', () => {
+	afterEach(() => {
+		__test.resetTargets();
+	});
+
 	it('exports a non-empty target list with a baseUrl', () => {
 		expect(API_CONFIG.targets.length).toBeGreaterThan(0);
 		expect(API_CONFIG.browseTargets.length).toBeGreaterThan(0);
@@ -21,5 +25,30 @@ describe('API_CONFIG', () => {
 		expect(pools.streamTargets).toHaveLength(1);
 		expect(pools.qobuzTargets).toHaveLength(1);
 		expect(pools.qobuzTargets[0].baseUrl).toBe('https://qobuz.example.com');
+	});
+
+	it('merges dynamic Qobuz instances with Monochrome defaults', async () => {
+		const dynamicQobuzUrl = 'https://dynamic-qobuz.example.com';
+		const fetchImpl = vi.fn(async () => {
+			return new Response(
+				JSON.stringify({
+					lastUpdated: '2026-06-03T12:00:00.000Z',
+					api: [{ url: 'https://api.example.com', version: '2.7' }],
+					streaming: [{ url: 'https://stream.example.com', version: '2.7' }],
+					qobuz: [{ url: dynamicQobuzUrl, version: '1.0' }]
+				}),
+				{ status: 200, headers: { 'content-type': 'application/json' } }
+			);
+		});
+
+		await refreshApiTargets({
+			force: true,
+			fetchImpl,
+			isTrustedHostname: async () => true
+		});
+
+		const qobuzUrls = API_CONFIG.qobuzTargets.map((target) => target.baseUrl);
+		expect(qobuzUrls).toContain(dynamicQobuzUrl);
+		expect(qobuzUrls).toContain('https://qdl-api.monochrome.tf');
 	});
 });

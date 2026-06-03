@@ -136,4 +136,48 @@ describe('manifest retry rotation', () => {
     expect(apiClient.getTrack).toHaveBeenCalledTimes(2);
     expect(fetchFn).toHaveBeenCalledTimes(1);
   });
+
+  it('retries when a single-url stream is terminated mid-download', async () => {
+    apiClient = {
+      getTrack: vi
+        .fn()
+        .mockResolvedValueOnce(
+          buildLookup({
+            trackId: 1,
+            quality: 'LOSSLESS',
+            originalTrackUrl: null,
+            manifest: 'https://cdnA/audio.flac'
+          })
+        )
+        .mockResolvedValueOnce(
+          buildLookup({
+            trackId: 1,
+            quality: 'LOSSLESS',
+            originalTrackUrl: null,
+            manifest: 'https://cdnB/audio.flac'
+          })
+        )
+    };
+    fetchFn = vi
+      .fn<Parameters<FetchFunction>, ReturnType<FetchFunction>>()
+      .mockRejectedValueOnce(new TypeError('terminated'))
+      .mockResolvedValueOnce({
+        ok: true,
+        headers: new Headers({ 'content-length': '2048', 'content-type': 'audio/flac' }),
+        arrayBuffer: async () => new ArrayBuffer(2048)
+      } as Response);
+
+    const result = await downloadTrackCore({
+      trackId: 1,
+      quality: 'LOSSLESS',
+      apiClient,
+      fetchFn
+    });
+
+    expect(result.receivedBytes).toBe(2048);
+    expect(apiClient.getTrack).toHaveBeenCalledTimes(2);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    expect(fetchFn.mock.calls[0][0]).toBe('https://cdnA/audio.flac');
+    expect(fetchFn.mock.calls[1][0]).toBe('https://cdnB/audio.flac');
+  });
 });

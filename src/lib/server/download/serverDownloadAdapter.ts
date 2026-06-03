@@ -397,6 +397,11 @@ function classifyServerDownloadError(errorMessage: string): {
 		message.includes('abort') ||
 		message.includes('network') ||
 		message.includes('fetch failed') ||
+		message.includes('terminated') ||
+		message.includes('und_err_socket') ||
+		message.includes('socketerror') ||
+		message.includes('socket closed') ||
+		message.includes('other side closed') ||
 		message.includes('econnrefused') ||
 		message.includes('enotfound') ||
 		message.includes('econnreset') ||

@@ -105,12 +105,17 @@ function isRetriableSegmentError(error: Error): boolean {
 		// Timeouts
 		/\btimeout\b/,                                 // Timeouts
 		/\beabrupt.*close\b/,                          // Connection closed unexpectedly
+		/\bterminated\b/,                              // Undici socket terminated mid-stream
+		/\bund_err_socket\b/,                          // Undici socket closed
+		/\bsocketerror\b/,                             // Undici socket error wrapper
+		/\bsocket.*closed\b/,                          // Socket closed while streaming
+		/\bother side closed\b/,                       // Remote peer closed the stream
 		
 		// Connection issues
 		/\bconnection\b/,                              // Generic connection issues
-		/\bECONNRESET\b/, /\bECONNREFUSED\b/,         // Network errors
-		/\bEADDR.*NOTFOUND\b/, /\bENOTFOUND\b/,       // DNS resolution failures
-		/\bEGETADDRINFO\b/,                            // Address lookup failures
+		/\beconnreset\b/, /\beconnrefused\b/,         // Network errors
+		/\beaddr.*notfound\b/, /\benotfound\b/,       // DNS resolution failures
+		/\begetaddrinfo\b/,                            // Address lookup failures
 		/\bno such host\b/,                            // DNS resolution (might recover)
 		
 		// Incomplete requests

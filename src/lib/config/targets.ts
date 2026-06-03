@@ -594,12 +594,27 @@ function applyTargetPools(
 
 	API_CONFIG.browseTargets = nextBrowseTargets.map((target) => ({ ...target }));
 	API_CONFIG.streamTargets = nextStreamTargets.map((target) => ({ ...target }));
-	API_CONFIG.qobuzTargets = (qobuzTargets.length > 0 ? qobuzTargets : DEFAULT_QOBUZ_TARGETS).map(
+	API_CONFIG.qobuzTargets = mergeTargetsByBaseUrl(qobuzTargets, DEFAULT_QOBUZ_TARGETS).map(
 		(target) => ({ ...target })
 	);
 	API_CONFIG.targets = API_CONFIG.browseTargets.map((target) => ({ ...target }));
 	API_CONFIG.baseUrl = API_CONFIG.browseTargets[0]?.baseUrl ?? DEFAULT_FALLBACK_BASE_URL;
 	lastRefreshSource = source;
+}
+
+function mergeTargetsByBaseUrl(
+	primaryTargets: ApiClusterTarget[],
+	fallbackTargets: ApiClusterTarget[]
+): ApiClusterTarget[] {
+	const merged: ApiClusterTarget[] = [];
+	const seen = new Set<string>();
+	for (const target of [...primaryTargets, ...fallbackTargets]) {
+		const normalized = normalizeTargetUrl(target.baseUrl);
+		if (!normalized || seen.has(normalized)) continue;
+		seen.add(normalized);
+		merged.push(target);
+	}
+	return merged.length > 0 ? merged : fallbackTargets;
 }
 
 function getConfiguredTargetCount(): number {
