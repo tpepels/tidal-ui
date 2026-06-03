@@ -151,6 +151,54 @@ describe('audioIntegrity', () => {
 		expect(result.error).toMatch(/decoded duration mismatch/i);
 	});
 
+	it('includes a preview clip hint when ffmpeg decodes ~30s of a much longer track', async () => {
+		const result = await validateAudioFileIntegrity(
+			{
+				filePath: '/tmp/example.flac',
+				expectedExtension: '.flac',
+				expectedDurationSeconds: 151
+			},
+			{
+				binaryFinder: () => '/usr/bin/ffprobe',
+				ffmpegBinaryFinder: () => '/usr/bin/ffmpeg',
+				durationToleranceSeconds: 4.53,
+				probeRunner: async () => ({
+					format: { format_name: 'flac', duration: '151' },
+					streams: [{ codec_type: 'audio', codec_name: 'flac', duration: '151' }]
+				}),
+				decodeRunner: async () => 29.952
+			}
+		);
+
+		expect(result.ok).toBe(false);
+		expect(result.error).toMatch(/decoded duration mismatch/i);
+		expect(result.error).toMatch(/30-second preview/i);
+	});
+
+	it('does not add a preview hint when the short duration is not near 30s', async () => {
+		const result = await validateAudioFileIntegrity(
+			{
+				filePath: '/tmp/example.flac',
+				expectedExtension: '.flac',
+				expectedDurationSeconds: 300
+			},
+			{
+				binaryFinder: () => '/usr/bin/ffprobe',
+				ffmpegBinaryFinder: () => '/usr/bin/ffmpeg',
+				durationToleranceSeconds: 5,
+				probeRunner: async () => ({
+					format: { format_name: 'flac', duration: '300' },
+					streams: [{ codec_type: 'audio', codec_name: 'flac', duration: '300' }]
+				}),
+				decodeRunner: async () => 120
+			}
+		);
+
+		expect(result.ok).toBe(false);
+		expect(result.error).toMatch(/decoded duration mismatch/i);
+		expect(result.error).not.toMatch(/30-second preview/i);
+	});
+
 	it('parses ffmpeg progress timestamps', () => {
 		expect(__test.parseFfmpegTimestampSeconds('00:03:31.245')).toBeCloseTo(211.245, 3);
 		expect(__test.parseFfmpegTimestampSeconds('n/a')).toBeNull();

@@ -83,7 +83,9 @@ export function isDefinitiveExternalTrackFailure(result: WorkerFailureInput): bo
 		message.includes('quality unavailable') ||
 		message.includes('manifest unavailable') ||
 		message.includes('unsupported quality') ||
-		message.includes('not found')
+		message.includes('not found') ||
+		message.includes('integrity validation failed') ||
+		message.includes('decoded duration mismatch')
 	);
 }
 

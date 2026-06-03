@@ -730,7 +730,7 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 			error: createDownloadError(
 				ERROR_CODES.INTEGRITY_CHECK_FAILED,
 				`Audio integrity validation failed: ${integrity.error || 'unknown reason'}`,
-				true,
+				false,
 				{
 					path: finalOutputPath,
 					durationSeconds: integrity.durationSeconds,
@@ -738,7 +738,7 @@ export async function finalizeTrack(params: FinalizeTrackParams): Promise<Finali
 					formatName: integrity.formatName
 				},
 				10,
-				'Please retry the download.'
+				'If you are receiving 30-second preview clips, the requested quality tier may not be available on your account.'
 			),
 			status: 500
 		};

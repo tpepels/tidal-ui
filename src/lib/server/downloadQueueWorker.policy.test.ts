@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { __test } from './downloadQueueWorker';
+import {
+	isDefinitiveExternalTrackFailure,
+	shouldAttemptQualityFallback
+} from './downloadQueueWorkerPolicy';
 
 describe('downloadQueueWorker policy helpers', () => {
 	it('detects missing published tracks by expected filename', () => {
@@ -56,5 +60,58 @@ describe('downloadQueueWorker policy helpers', () => {
 		expect(__test.deriveFailureCode('unknown', 'ffprobe found no audio stream')).toBe(
 			'INTEGRITY_VALIDATION_FAILED'
 		);
+	});
+
+	describe('integrity failure policy', () => {
+		it('treats integrity validation failures as definitive terminal failures', () => {
+			expect(
+				isDefinitiveExternalTrackFailure({
+					error: 'Audio integrity validation failed: Decoded duration mismatch: expected 151s ± 4.53s, ffmpeg decoded 29.952s',
+					retryable: false
+				})
+			).toBe(true);
+
+			expect(
+				isDefinitiveExternalTrackFailure({
+					error: 'Audio integrity validation failed: Decoded duration mismatch: expected 219s, ffmpeg decoded 29.907s',
+					retryable: false
+				})
+			).toBe(true);
+		});
+
+		it('does not treat integrity failures as terminal when marked retryable', () => {
+			// retryable=true always short-circuits to false (no terminal treatment)
+			expect(
+				isDefinitiveExternalTrackFailure({
+					error: 'Audio integrity validation failed: Decoded duration mismatch',
+					retryable: true
+				})
+			).toBe(false);
+		});
+
+		it('does not trigger quality fallback for integrity failures', () => {
+			// Integrity failures mean the server served wrong audio content (e.g. a 30-second
+			// preview clip). Falling back to a lower quality tier would download the same
+			// broken content — so these must fail terminally, not silently downgrade.
+			expect(
+				shouldAttemptQualityFallback(
+					{
+						error: 'Audio integrity validation failed: Decoded duration mismatch: expected 151s ± 4.53s, ffmpeg decoded 29.952s',
+						retryable: false
+					},
+					true
+				)
+			).toBe(false);
+
+			expect(
+				shouldAttemptQualityFallback(
+					{
+						error: 'Audio integrity validation failed: Decoded duration mismatch',
+						retryable: false
+					},
+					true
+				)
+			).toBe(false);
+		});
 	});
 });
