@@ -1,5 +1,6 @@
 import { detectAudioFormatFromBlob } from '../utils/audioFormat';
 import { isSegmentedDashManifest } from './manifest';
+import { assertFullTrackStream, isPreviewClipError } from '../utils/streamAvailability';
 import type { AudioQuality, Track, TrackLookup } from '../types';
 import type { DownloadTrackOptions } from '../apiClient';
 
@@ -54,6 +55,7 @@ export async function fetchTrackBlobPayload(params: {
 			metadataLookup: initialMetadataLookup,
 			manifestQuality
 		} = await deps.resolveTrackLookups(trackId, quality);
+		assertFullTrackStream(manifestLookup, { trackId, quality: manifestQuality });
 		let metadataLookup = initialMetadataLookup;
 		let response: Response | null = null;
 		let streamUrl: string | null = null;
@@ -102,12 +104,16 @@ export async function fetchTrackBlobPayload(params: {
 				if (!fallbackUrl && manifestQuality !== 'LOSSLESS') {
 					try {
 						const losslessLookup = await deps.getTrack(trackId, 'LOSSLESS');
+						assertFullTrackStream(losslessLookup, { trackId, quality: 'LOSSLESS' });
 						const candidateUrl = deps.extractStreamUrlFromManifest(losslessLookup.info.manifest);
 						if (candidateUrl) {
 							fallbackUrl = candidateUrl;
 							manifestSource = losslessLookup;
 						}
 					} catch (manifestError) {
+						if (isPreviewClipError(manifestError)) {
+							throw manifestError;
+						}
 						console.warn(
 							'Failed to fetch lossless manifest for download fallback',
 							manifestError
@@ -230,6 +236,9 @@ export async function fetchTrackBlobPayload(params: {
 			throw error;
 		}
 		if (error instanceof Error && error.message === deps.rateLimitErrorMessage) {
+			throw error;
+		}
+		if (isPreviewClipError(error)) {
 			throw error;
 		}
 		throw new Error(

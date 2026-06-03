@@ -39,9 +39,13 @@ const buildLookup = (params: {
 	quality: AudioQuality;
 	manifest: string;
 	originalTrackUrl?: string | null;
+	assetPresentation?: string;
 }): TrackLookup => ({
 	track: baseTrack(params.trackId, params.quality),
-	info: baseInfo(params.trackId, params.quality, params.manifest),
+	info: {
+		...baseInfo(params.trackId, params.quality, params.manifest),
+		assetPresentation: params.assetPresentation ?? 'FULL'
+	},
 	...(params.originalTrackUrl ? { originalTrackUrl: params.originalTrackUrl } : {})
 });
 
@@ -85,5 +89,51 @@ describe('manifest retry rotation', () => {
     const calls = fetchFn.mock.calls.map(call => call[0] as string);
     expect(calls.some(u => u.toLowerCase().includes('cdna'))).toBe(true);
     expect(calls.some(u => u.toLowerCase().includes('cdnb'))).toBe(true);
+  });
+
+  it('stops retrying when a rotated manifest is a preview clip', async () => {
+    const fullManifest = `<MPD><BaseURL>https://cdnA/</BaseURL><SegmentTemplate initialization="init.mp4" media="s$Number$.m4s" startNumber="1"><SegmentTimeline><S d="2" r="1" /></SegmentTimeline></SegmentTemplate></MPD>`;
+    const previewManifest = btoa(JSON.stringify({ urls: ['https://cdnB/preview.flac'] }));
+
+    apiClient = {
+      getTrack: vi
+        .fn()
+        .mockResolvedValueOnce(
+          buildLookup({
+            trackId: 1,
+            quality: 'LOSSLESS',
+            originalTrackUrl: null,
+            manifest: fullManifest
+          })
+        )
+        .mockResolvedValueOnce(
+          buildLookup({
+            trackId: 1,
+            quality: 'LOSSLESS',
+            originalTrackUrl: null,
+            manifest: previewManifest,
+            assetPresentation: 'PREVIEW'
+          })
+        )
+    };
+    fetchFn = vi
+      .fn<Parameters<FetchFunction>, ReturnType<FetchFunction>>()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        arrayBuffer: async () => new ArrayBuffer(0)
+      } as Response);
+
+    await expect(
+      downloadTrackCore({
+        trackId: 1,
+        quality: 'LOSSLESS',
+        apiClient,
+        fetchFn
+      })
+    ).rejects.toThrow('preview clip');
+
+    expect(apiClient.getTrack).toHaveBeenCalledTimes(2);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 });

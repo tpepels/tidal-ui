@@ -13,6 +13,7 @@ import type { AudioQuality, TrackLookup } from '$lib/types';
 import { parseManifest } from './manifestParser';
 import { downloadSegmentedDash } from './segmentDownloader';
 import { assertCompleteResponseBody } from './responseIntegrity';
+import { assertFullTrackStream } from '$lib/utils/streamAvailability';
 import { 
 	recordDownloadStart,
 	recordDownloadSuccess,
@@ -161,15 +162,7 @@ export async function downloadTrackCore(params: {
 	
 	let trackLookup = await trackLookupPromise;
 
-	// Fail immediately if TIDAL is serving a preview clip instead of the full track.
-	// assetPresentation='PREVIEW' means the track isn't available at the requested quality
-	// on this account — proceeding would download a 30-second clip that fails integrity.
-	if (trackLookup.info?.assetPresentation === 'PREVIEW') {
-		throw new Error(
-			`TIDAL returned a preview clip instead of the full track (assetPresentation: PREVIEW). ` +
-			`Track ${trackId} may not be available in ${quality} quality on this account.`
-		);
-	}
+	assertFullTrackStream(trackLookup, { trackId, quality });
 
 	let result: DownloadResult | null = null;
 
@@ -215,6 +208,7 @@ export async function downloadTrackCore(params: {
 					});
 					const freshLookup = await apiClient.getTrack(trackId, quality, { skipTarget: `retry-${manifestRetries}` });
 					trackLookup = freshLookup;
+					assertFullTrackStream(trackLookup, { trackId, quality });
 					debugLog('[DownloadCore] Fresh manifest received from different target');
 				}
 				
@@ -405,7 +399,9 @@ export async function downloadTrackWithRetry(
 			const isRetriable = !errorMsg.includes('forbidden') && 
 				!errorMsg.includes('unauthorized') &&
 				!errorMsg.includes('not found') &&
-				!errorMsg.includes('unavailable');
+				!errorMsg.includes('unavailable') &&
+				!errorMsg.includes('preview clip') &&
+				!errorMsg.includes('assetpresentation');
 			
 			// Record failure attempt
 			const targetName = params.skipTarget ? `(skipping: ${params.skipTarget})` : 'auto';

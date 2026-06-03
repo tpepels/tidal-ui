@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { safeValidateApiResponse } from '../utils/schemas';
 import { detectAudioFormat } from '../utils/audioFormat';
+import { assertFullTrackStream } from '../utils/streamAvailability';
 import { buildMpdSegmentUrls, parseMpdSegmentTemplate } from './streamManifest';
 import { downloadCoverSeparately } from './coverDownload';
 import type { AudioQuality, TrackLookup } from '../types';
@@ -67,6 +68,7 @@ export async function getStreamDataForTrack(params: {
 		try {
 			try {
 				const lookup = await getTrack(trackId, quality);
+				assertFullTrackStream(lookup, { trackId, quality });
 				replayGain = lookup.info.trackReplayGain ?? null;
 				sampleRate = lookup.info.sampleRate ?? null;
 				bitDepth = lookup.info.bitDepth ?? null;
@@ -92,6 +94,7 @@ export async function getStreamDataForTrack(params: {
 	for (let attempt = 1; attempt <= 3; attempt += 1) {
 		try {
 			const lookup = await getTrack(trackId, quality);
+			assertFullTrackStream(lookup, { trackId, quality });
 			replayGain = lookup.info.trackReplayGain ?? null;
 			sampleRate = lookup.info.sampleRate ?? null;
 			bitDepth = lookup.info.bitDepth ?? null;
@@ -155,6 +158,7 @@ export async function resolveTrackStreamUrl(params: {
 	}
 
 	const lookup = await getTrack(trackId, quality);
+	assertFullTrackStream(lookup, { trackId, quality });
 	if (lookup.originalTrackUrl) {
 		return lookup.originalTrackUrl;
 	}
