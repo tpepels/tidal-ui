@@ -365,11 +365,19 @@ export async function validateAudioFileIntegrity(
 					: getConfiguredDurationToleranceSeconds(referenceDuration);
 			const decodedDelta = Math.abs(decodedDuration - referenceDuration);
 			if (decodedDelta > decodeToleranceSeconds) {
+				// ~30 second decoded duration with a much longer expected duration is the TIDAL
+				// preview clip pattern: the file header reports the full track length but only
+				// 30 seconds of audio is actually present, indicating the requested quality tier
+				// is not available on the account.
+				const isPreviewClip = decodedDuration < 32 && referenceDuration > 60;
+				const previewHint = isPreviewClip
+					? ' (audio appears to be a 30-second preview; requested quality may not be available on your account)'
+					: '';
 				return {
 					ok: false,
 					error:
 						`Decoded duration mismatch: expected ${referenceDuration}s ± ${decodeToleranceSeconds}s, ` +
-						`ffmpeg decoded ${decodedDuration.toFixed(3)}s`
+						`ffmpeg decoded ${decodedDuration.toFixed(3)}s${previewHint}`
 				};
 			}
 		}

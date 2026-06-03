@@ -161,6 +161,16 @@ export async function downloadTrackCore(params: {
 	
 	let trackLookup = await trackLookupPromise;
 
+	// Fail immediately if TIDAL is serving a preview clip instead of the full track.
+	// assetPresentation='PREVIEW' means the track isn't available at the requested quality
+	// on this account — proceeding would download a 30-second clip that fails integrity.
+	if (trackLookup.info?.assetPresentation === 'PREVIEW') {
+		throw new Error(
+			`TIDAL returned a preview clip instead of the full track (assetPresentation: PREVIEW). ` +
+			`Track ${trackId} may not be available in ${quality} quality on this account.`
+		);
+	}
+
 	let result: DownloadResult | null = null;
 
 	// Try originalTrackUrl first (pre-signed URL)
