@@ -123,8 +123,8 @@ function buildUrl(base: string, params?: Record<string, unknown> | URLSearchPara
 	return url.toString();
 }
 
-async function requestAccessToken(signal?: AbortSignal): Promise<string> {
-	if (tokenState && Date.now() + TOKEN_REFRESH_SKEW_MS < tokenState.expiresAt) {
+async function requestAccessToken(signal?: AbortSignal, force = false): Promise<string> {
+	if (!force && tokenState && Date.now() + TOKEN_REFRESH_SKEW_MS < tokenState.expiresAt) {
 		return tokenState.accessToken;
 	}
 
@@ -189,17 +189,27 @@ async function fetchNativeJson<T>(
 	if (!isNativeTidalApiEnabled()) {
 		throw new Error('Native TIDAL API is disabled');
 	}
-	const token = await requestAccessToken(options?.signal);
-	const response = await fetch(buildUrl(url, params), {
-		method: 'GET',
-		headers: {
-			authorization: `Bearer ${token}`,
-			accept: options?.openApi
-				? 'application/vnd.api+json, application/json;q=0.9, */*;q=0.8'
-				: 'application/json'
-		},
-		signal: options?.signal
-	});
+
+	let response: Response | null = null;
+	for (let attempt = 0; attempt < 2; attempt += 1) {
+		const token = await requestAccessToken(options?.signal, attempt > 0);
+		response = await fetch(buildUrl(url, params), {
+			method: 'GET',
+			headers: {
+				authorization: `Bearer ${token}`,
+				accept: options?.openApi
+					? 'application/vnd.api+json, application/json;q=0.9, */*;q=0.8'
+					: 'application/json'
+			},
+			signal: options?.signal
+		});
+		if (response.status !== 401) break;
+		tokenState = null;
+	}
+
+	if (!response) {
+		throw new Error('Native TIDAL request failed before receiving a response');
+	}
 	if (!response.ok) {
 		throw new Error(`Native TIDAL request failed (${response.status})`);
 	}
@@ -526,6 +536,33 @@ export async function nativeGetTrackMetadata(
 	return track;
 }
 
+export async function nativeGetTrackManifestPayload(
+	id: number,
+	params?: {
+		formats?: string[];
+		adaptive?: boolean;
+		manifestType?: string;
+		uriScheme?: 'HTTPS' | 'HTTP';
+		usage?: string;
+		signal?: AbortSignal;
+	}
+): Promise<unknown> {
+	const searchParams = new URLSearchParams({
+		adaptive: String(params?.adaptive ?? false),
+		manifestType: params?.manifestType ?? 'MPEG_DASH',
+		uriScheme: params?.uriScheme ?? 'HTTPS',
+		usage: params?.usage ?? 'PLAYBACK'
+	});
+	for (const format of params?.formats ?? []) {
+		searchParams.append('formats', format);
+	}
+	return fetchNativeJson<unknown>(
+		`${TIDAL_OPEN_API_BASE}/trackManifests/${id}`,
+		searchParams,
+		{ openApi: true, signal: params?.signal }
+	);
+}
+
 export async function nativeGetAlbum(
 	id: number,
 	options?: { signal?: AbortSignal }
@@ -719,3 +756,9 @@ export async function nativeGetLyrics(
 		isRightToLeft: asBoolean(payload.isRightToLeft)
 	};
 }
+
+export const __test = {
+	resetTokenState(): void {
+		tokenState = null;
+	}
+};

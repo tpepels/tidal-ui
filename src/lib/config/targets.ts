@@ -594,9 +594,10 @@ function applyTargetPools(
 
 	API_CONFIG.browseTargets = nextBrowseTargets.map((target) => ({ ...target }));
 	API_CONFIG.streamTargets = nextStreamTargets.map((target) => ({ ...target }));
-	API_CONFIG.qobuzTargets = mergeTargetsByBaseUrl(qobuzTargets, DEFAULT_QOBUZ_TARGETS).map(
-		(target) => ({ ...target })
-	);
+	API_CONFIG.qobuzTargets =
+		source === 'uptime'
+			? qobuzTargets.map((target) => ({ ...target }))
+			: mergeTargetsByBaseUrl(qobuzTargets, DEFAULT_QOBUZ_TARGETS).map((target) => ({ ...target }));
 	API_CONFIG.targets = API_CONFIG.browseTargets.map((target) => ({ ...target }));
 	API_CONFIG.baseUrl = API_CONFIG.browseTargets[0]?.baseUrl ?? DEFAULT_FALLBACK_BASE_URL;
 	lastRefreshSource = source;

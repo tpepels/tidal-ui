@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
 import { losslessAPI } from './api';
 import { TidalError } from './errors';
+import { __test as nativeTidalTest } from './api/tidalNativeClient';
 
 describe('API Integration Tests', () => {
 	let consoleErrorSpy: MockInstance;
@@ -158,8 +159,12 @@ describe('API Integration Tests', () => {
 				expect(fetchSpy).toHaveBeenCalledTimes(3);
 				expect(fetchSpy.mock.calls[0][0]).toContain('/trackManifests/?');
 				expect(fetchSpy.mock.calls[0][0]).toContain('formats=FLAC_HIRES');
-				expect(fetchSpy.mock.calls[0][0]).toContain('usage=PLAYBACK');
+				expect(fetchSpy.mock.calls[0][0]).toContain('quality=HI_RES_LOSSLESS');
+				expect(fetchSpy.mock.calls[0][0]).toContain('adaptive=false');
 				expect(fetchSpy.mock.calls[0][0]).not.toContain('usage=DOWNLOAD');
+				expect(fetchSpy.mock.calls[0][0]).not.toContain('usage=PLAYBACK');
+				expect(fetchSpy.mock.calls[0][0]).not.toContain('manifestType=');
+				expect(fetchSpy.mock.calls[0][0]).not.toContain('uriScheme=');
 				expect(fetchSpy.mock.calls.some((call) => String(call[0]).includes('/track/?'))).toBe(false);
 				expect(result.info.audioQuality).toBe('HI_RES_LOSSLESS');
 				expect(result.info.manifest).toContain('<MPD');
@@ -168,6 +173,71 @@ describe('API Integration Tests', () => {
 			} finally {
 				runtimeSpy.mockRestore();
 				fetchSpy.mockRestore();
+			}
+		});
+
+		it('uses native OpenAPI trackManifests before public hifi-api stream targets', async () => {
+			vi.stubEnv('TIDAL_NATIVE_API_ENABLED', 'true');
+			nativeTidalTest.resetTokenState();
+			const runtimeSpy = vi
+				.spyOn(losslessAPI as any, 'isBrowserRuntime')
+				.mockReturnValue(false);
+			const apiFetchSpy = vi.spyOn(losslessAPI as any, 'fetch');
+			const nativeFetch = vi
+				.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+				.mockResolvedValueOnce(
+					new Response(JSON.stringify({ access_token: 'native-token', expires_in: 3600 }), {
+						status: 200,
+						headers: { 'content-type': 'application/json' }
+					})
+				)
+				.mockResolvedValueOnce(
+					new Response(
+						JSON.stringify({
+							data: {
+								id: '123',
+								type: 'trackManifests',
+								attributes: {
+									trackPresentation: 'FULL',
+									manifest: '<MPD mediaPresentationDuration="PT180S"></MPD>',
+									hash: 'native-manifest-hash',
+									formats: ['FLAC_HIRES'],
+									trackAudioNormalizationData: {
+										replayGain: -6,
+										peakAmplitude: 0.9
+									}
+								}
+							}
+						}),
+						{ status: 200, headers: { 'content-type': 'application/vnd.api+json' } }
+					)
+				)
+				.mockResolvedValueOnce(
+					new Response(JSON.stringify(trackMetadataPayload.data), {
+						status: 200,
+						headers: { 'content-type': 'application/json' }
+					})
+				);
+			vi.stubGlobal('fetch', nativeFetch);
+
+			try {
+				const result = await losslessAPI.getTrack(123, 'HI_RES_LOSSLESS');
+
+				expect(result.info.manifest).toContain('<MPD');
+				expect(result.info.manifestHash).toBe('native-manifest-hash');
+				expect(result.info.trackReplayGain).toBe(-6);
+				expect(apiFetchSpy).not.toHaveBeenCalledWith(
+					expect.stringContaining('/trackManifests/?'),
+					expect.anything()
+				);
+				const manifestUrl = new URL(String(nativeFetch.mock.calls[1]?.[0]));
+				expect(manifestUrl.href).toContain('/v2/trackManifests/123');
+				expect(manifestUrl.searchParams.get('adaptive')).toBe('false');
+				expect(manifestUrl.searchParams.getAll('formats')).toEqual(['FLAC_HIRES']);
+			} finally {
+				runtimeSpy.mockRestore();
+				apiFetchSpy.mockRestore();
+				nativeTidalTest.resetTokenState();
 			}
 		});
 

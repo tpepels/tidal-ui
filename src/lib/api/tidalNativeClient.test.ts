@@ -124,6 +124,100 @@ describe('tidalNativeClient', () => {
 		expect(secondItemsUrl.searchParams.get('offset')).toBe('100');
 	});
 
+	it('refreshes the app token once when a native resource request returns 401', async () => {
+		vi.resetModules();
+		vi.stubEnv('TIDAL_NATIVE_API_ENABLED', 'true');
+		const fetchMock = vi
+			.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+			.mockResolvedValueOnce(
+				new Response(JSON.stringify({ access_token: 'stale-token', expires_in: 3600 }), {
+					status: 200,
+					headers: { 'content-type': 'application/json' }
+				})
+			)
+			.mockResolvedValueOnce(new Response('Unauthorized', { status: 401 }))
+			.mockResolvedValueOnce(
+				new Response(JSON.stringify({ access_token: 'fresh-token', expires_in: 3600 }), {
+					status: 200,
+					headers: { 'content-type': 'application/json' }
+				})
+			)
+			.mockResolvedValueOnce(
+				new Response(
+					JSON.stringify({
+						id: 123,
+						title: 'Native Track',
+						duration: 180,
+						artist: { id: 1, name: 'Native Artist', type: 'MAIN' },
+						artists: [{ id: 1, name: 'Native Artist', type: 'MAIN' }],
+						album: { id: 2, title: 'Native Album', cover: '', videoCover: null }
+					}),
+					{ status: 200, headers: { 'content-type': 'application/json' } }
+				)
+			);
+		vi.stubGlobal('fetch', fetchMock);
+
+		const { nativeGetTrackMetadata } = await import('./tidalNativeClient');
+		const track = await nativeGetTrackMetadata(123);
+
+		expect(track.id).toBe(123);
+		expect(fetchMock).toHaveBeenCalledTimes(4);
+		expect((fetchMock.mock.calls[1]?.[1]?.headers as Record<string, string>).authorization).toBe(
+			'Bearer stale-token'
+		);
+		expect((fetchMock.mock.calls[3]?.[1]?.headers as Record<string, string>).authorization).toBe(
+			'Bearer fresh-token'
+		);
+	});
+
+	it('requests native OpenAPI trackManifests with fixed exact-quality params', async () => {
+		vi.resetModules();
+		vi.stubEnv('TIDAL_NATIVE_API_ENABLED', 'true');
+		const fetchMock = vi
+			.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+			.mockResolvedValueOnce(
+				new Response(JSON.stringify({ access_token: 'native-token', expires_in: 3600 }), {
+					status: 200,
+					headers: { 'content-type': 'application/json' }
+				})
+			)
+			.mockResolvedValueOnce(
+				new Response(
+					JSON.stringify({
+						data: {
+							id: '123',
+							type: 'trackManifests',
+							attributes: {
+								formats: ['FLAC_HIRES'],
+								trackPresentation: 'FULL',
+								manifest: '<MPD></MPD>'
+							}
+						}
+					}),
+					{ status: 200, headers: { 'content-type': 'application/vnd.api+json' } }
+				)
+			);
+		vi.stubGlobal('fetch', fetchMock);
+
+		const { nativeGetTrackManifestPayload } = await import('./tidalNativeClient');
+		await nativeGetTrackManifestPayload(123, {
+			formats: ['FLAC_HIRES'],
+			adaptive: false
+		});
+
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		const manifestUrl = new URL(String(fetchMock.mock.calls[1]?.[0]));
+		expect(manifestUrl.href).toContain('/v2/trackManifests/123');
+		expect(manifestUrl.searchParams.get('adaptive')).toBe('false');
+		expect(manifestUrl.searchParams.get('manifestType')).toBe('MPEG_DASH');
+		expect(manifestUrl.searchParams.get('uriScheme')).toBe('HTTPS');
+		expect(manifestUrl.searchParams.get('usage')).toBe('PLAYBACK');
+		expect(manifestUrl.searchParams.getAll('formats')).toEqual(['FLAC_HIRES']);
+		expect((fetchMock.mock.calls[1]?.[1]?.headers as Record<string, string>).accept).toContain(
+			'application/vnd.api+json'
+		);
+	});
+
 	it('rejects native album metadata when the item list is shorter than numberOfTracks', async () => {
 		vi.resetModules();
 		vi.stubEnv('TIDAL_NATIVE_API_ENABLED', 'true');

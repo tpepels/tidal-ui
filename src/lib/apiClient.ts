@@ -29,6 +29,7 @@ import {
 	nativeGetArtist,
 	nativeGetCover,
 	nativeGetLyrics,
+	nativeGetTrackManifestPayload,
 	nativeGetPlaylist,
 	nativeGetTrackMetadata,
 	nativeSearchAlbums,
@@ -678,39 +679,12 @@ class LosslessAPI {
 		);
 	}
 
-	private async getTrackFromTrackManifests(
+	private async buildTrackLookupFromTrackManifestAttributes(
 		id: number,
 		quality: AudioQuality,
-		options?: { skipTarget?: string }
+		requiredFormat: string,
+		attributes: TrackManifestAttributes
 	): Promise<TrackLookup> {
-		const requiredFormat = this.getRequiredTrackManifestFormat(quality);
-		if (!requiredFormat) {
-			throw new Error(`trackManifests does not support ${quality} quality`);
-		}
-
-		const params = new URLSearchParams({
-			id: String(id),
-			adaptive: 'true',
-			manifestType: 'MPEG_DASH',
-			uriScheme: 'HTTPS',
-			usage: 'PLAYBACK'
-		});
-		params.append('formats', requiredFormat);
-
-		const response = await this.fetch(`${this.baseUrl}/trackManifests/?${params.toString()}`, {
-			apiVersion: 'v2',
-			skipTarget: options?.skipTarget
-		});
-		this.ensureNotRateLimited(response);
-		if (!response.ok) {
-			throw new Error(`Failed to get trackManifests response (status ${response.status})`);
-		}
-
-		const payload = await response.json();
-		const attributes = this.extractTrackManifestAttributes(payload);
-		if (!attributes) {
-			throw new Error('Malformed trackManifests response');
-		}
 		if (!attributes.formats.includes(requiredFormat)) {
 			throw new Error(
 				`trackManifests response did not include required format ${requiredFormat} for ${quality}`
@@ -745,6 +719,82 @@ class LosslessAPI {
 				trackPeakAmplitude: attributes.trackPeakAmplitude
 			}
 		};
+	}
+
+	private async getTrackFromNativeTrackManifests(
+		id: number,
+		quality: AudioQuality
+	): Promise<TrackLookup | null> {
+		if (!isNativeTidalApiEnabled()) {
+			return null;
+		}
+		const requiredFormat = this.getRequiredTrackManifestFormat(quality);
+		if (!requiredFormat) {
+			return null;
+		}
+
+		try {
+			const payload = await nativeGetTrackManifestPayload(id, {
+				formats: [requiredFormat],
+				adaptive: false
+			});
+			const attributes = this.extractTrackManifestAttributes(payload);
+			if (!attributes) {
+				throw new Error('Malformed native trackManifests response');
+			}
+			return await this.buildTrackLookupFromTrackManifestAttributes(
+				id,
+				quality,
+				requiredFormat,
+				attributes
+			);
+		} catch (error) {
+			console.warn('[NativeTidal] trackManifests failed; using hifi-api fallback', {
+				trackId: id,
+				quality,
+				error: error instanceof Error ? error.message : String(error)
+			});
+			return null;
+		}
+	}
+
+	private async getTrackFromTrackManifests(
+		id: number,
+		quality: AudioQuality,
+		options?: { skipTarget?: string }
+	): Promise<TrackLookup> {
+		const requiredFormat = this.getRequiredTrackManifestFormat(quality);
+		if (!requiredFormat) {
+			throw new Error(`trackManifests does not support ${quality} quality`);
+		}
+
+		const params = new URLSearchParams({
+			id: String(id),
+			quality,
+			adaptive: 'false'
+		});
+		params.append('formats', requiredFormat);
+
+		const response = await this.fetch(`${this.baseUrl}/trackManifests/?${params.toString()}`, {
+			apiVersion: 'v2',
+			skipTarget: options?.skipTarget
+		});
+		this.ensureNotRateLimited(response);
+		if (!response.ok) {
+			throw new Error(`Failed to get trackManifests response (status ${response.status})`);
+		}
+
+		const payload = await response.json();
+		const attributes = this.extractTrackManifestAttributes(payload);
+		if (!attributes) {
+			throw new Error('Malformed trackManifests response');
+		}
+		return this.buildTrackLookupFromTrackManifestAttributes(
+			id,
+			quality,
+			requiredFormat,
+			attributes
+		);
 	}
 
 	private buildDashManifestResult(payload: string, contentType: string | null): DashManifestResult {
@@ -1061,6 +1111,11 @@ class LosslessAPI {
 		}
 
 		if (this.isHiResQuality(quality)) {
+			const nativeManifest = await this.getTrackFromNativeTrackManifests(id, quality);
+			if (nativeManifest) {
+				return nativeManifest;
+			}
+
 			try {
 				return await this.getTrackFromTrackManifests(id, quality, options);
 			} catch (error) {

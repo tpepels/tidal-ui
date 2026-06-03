@@ -75,11 +75,12 @@ export function isQobuzFallbackEnabled(): boolean {
 export function getQobuzFallbackTargets(): string[] {
 	const raw = getEnvValue('QOBUZ_FALLBACK_TARGETS');
 	const configuredTargets = API_CONFIG.qobuzTargets?.map((target) => target.baseUrl) ?? [];
-	const candidates = raw && raw.trim().length > 0 ? raw.split(',') : configuredTargets;
+	const hasExplicitTargets = raw !== undefined && raw.trim().length > 0;
+	const candidates = hasExplicitTargets ? raw.split(',') : configuredTargets;
 	const normalized = candidates
 		.map((value) => normalizeInstanceUrl(value))
 		.filter((value): value is string => value !== null);
-	return normalized.length > 0 ? normalized : DEFAULT_QOBUZ_FALLBACK_TARGETS;
+	return hasExplicitTargets && normalized.length === 0 ? DEFAULT_QOBUZ_FALLBACK_TARGETS : normalized;
 }
 
 function normalizeInstanceUrl(value: unknown): string | null {

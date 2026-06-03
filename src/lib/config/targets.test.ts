@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { API_CONFIG, __test, refreshApiTargets } from './targets';
+import { getQobuzFallbackTargets } from '$lib/api/qobuzFallback';
 
 describe('API_CONFIG', () => {
 	afterEach(() => {
@@ -27,7 +28,7 @@ describe('API_CONFIG', () => {
 		expect(pools.qobuzTargets[0].baseUrl).toBe('https://qobuz.example.com');
 	});
 
-	it('merges dynamic Qobuz instances with Monochrome defaults', async () => {
+	it('uses dynamic Qobuz instances from successful uptime refreshes', async () => {
 		const dynamicQobuzUrl = 'https://dynamic-qobuz.example.com';
 		const fetchImpl = vi.fn(async () => {
 			return new Response(
@@ -48,7 +49,29 @@ describe('API_CONFIG', () => {
 		});
 
 		const qobuzUrls = API_CONFIG.qobuzTargets.map((target) => target.baseUrl);
-		expect(qobuzUrls).toContain(dynamicQobuzUrl);
-		expect(qobuzUrls).toContain('https://qdl-api.monochrome.tf');
+		expect(qobuzUrls).toEqual([dynamicQobuzUrl]);
+	});
+
+	it('does not use stale default Qobuz instances when uptime reports none', async () => {
+		const fetchImpl = vi.fn(async () => {
+			return new Response(
+				JSON.stringify({
+					lastUpdated: '2026-06-03T12:00:00.000Z',
+					api: [{ url: 'https://api.example.com', version: '2.7' }],
+					streaming: [{ url: 'https://stream.example.com', version: '2.7' }],
+					qobuz: []
+				}),
+				{ status: 200, headers: { 'content-type': 'application/json' } }
+			);
+		});
+
+		await refreshApiTargets({
+			force: true,
+			fetchImpl,
+			isTrustedHostname: async () => true
+		});
+
+		expect(API_CONFIG.qobuzTargets).toHaveLength(0);
+		expect(getQobuzFallbackTargets()).toEqual([]);
 	});
 });
