@@ -5,10 +5,12 @@
 		targetCount?: number;
 		browseTargetCount?: number;
 		streamTargetCount?: number;
+		qobuzTargetCount?: number;
 		lastSuccessfulRefreshIso?: string | null;
 		error?: string | null;
 		browseTargets?: Array<{ name: string; baseUrl: string; weight: number }>;
 		streamTargets?: Array<{ name: string; baseUrl: string; weight: number }>;
+		qobuzTargets?: Array<{ name: string; baseUrl: string; weight: number }>;
 		refresh?: {
 			updated?: boolean;
 			count?: number;
@@ -37,12 +39,15 @@
 
 	let showAllBrowse = $state(false);
 	let showAllStream = $state(false);
+	let showAllQobuz = $state(false);
 
 	const browseTargets = $derived(status?.browseTargets ?? []);
 	const streamTargets = $derived(status?.streamTargets ?? []);
+	const qobuzTargets = $derived(status?.qobuzTargets ?? []);
 
 	const hiddenBrowseCount = $derived(Math.max(0, browseTargets.length - ENDPOINT_PREVIEW_LIMIT));
 	const hiddenStreamCount = $derived(Math.max(0, streamTargets.length - ENDPOINT_PREVIEW_LIMIT));
+	const hiddenQobuzCount = $derived(Math.max(0, qobuzTargets.length - ENDPOINT_PREVIEW_LIMIT));
 
 	function formatEndpointHost(baseUrl: string): string {
 		try {
@@ -75,6 +80,10 @@
 		<div class="api-targets-card__summary-item">
 			<p class="api-targets-card__summary-label">Stream</p>
 			<p class="api-targets-card__summary-value">{status?.streamTargetCount ?? 0}</p>
+		</div>
+		<div class="api-targets-card__summary-item">
+			<p class="api-targets-card__summary-label">Qobuz</p>
+			<p class="api-targets-card__summary-value">{status?.qobuzTargetCount ?? 0}</p>
 		</div>
 	</div>
 
@@ -154,6 +163,35 @@
 			</ul>
 		</div>
 	{/if}
+	{#if qobuzTargets.length}
+		<div class="api-targets-card__group">
+			<div class="api-targets-card__group-header">
+				<p class="section-footnote"><strong>Qobuz endpoints</strong> ({qobuzTargets.length})</p>
+				{#if hiddenQobuzCount > 0}
+					<button
+						type="button"
+						class="ui-chip-button ui-chip-button--compact ui-chip-button--detail"
+						onclick={() => {
+							showAllQobuz = !showAllQobuz;
+						}}
+					>
+						{showAllQobuz ? 'Show less' : `Show all (${qobuzTargets.length})`}
+					</button>
+				{/if}
+			</div>
+			<ul class="api-targets-card__list">
+				{#each (showAllQobuz ? qobuzTargets : qobuzTargets.slice(0, ENDPOINT_PREVIEW_LIMIT)) as target (target.name + target.baseUrl)}
+					<li class="api-targets-card__item">
+						<span class="api-targets-card__name">{target.name} · {formatEndpointHost(target.baseUrl)}</span>
+						<span class="api-targets-card__url">{target.baseUrl}</span>
+					</li>
+				{/each}
+				{#if !showAllQobuz && hiddenQobuzCount > 0}
+					<li class="api-targets-card__item api-targets-card__item--more">+ {hiddenQobuzCount} more</li>
+				{/if}
+			</ul>
+		</div>
+	{/if}
 	{#if status?.error}
 		<p class="section-footnote section-footnote--error">{status.error}</p>
 	{/if}
@@ -172,7 +210,7 @@
 
 	.api-targets-card__summary-grid {
 		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
+		grid-template-columns: repeat(4, minmax(0, 1fr));
 		gap: 0.3rem;
 	}
 

@@ -28,11 +28,13 @@
 		targetCount?: number;
 		browseTargetCount?: number;
 		streamTargetCount?: number;
+		qobuzTargetCount?: number;
 		lastSuccessfulRefreshIso?: string | null;
 		error?: string | null;
 		targets?: Array<{ name: string; baseUrl: string; weight: number }>;
 		browseTargets?: Array<{ name: string; baseUrl: string; weight: number }>;
 		streamTargets?: Array<{ name: string; baseUrl: string; weight: number }>;
+		qobuzTargets?: Array<{ name: string; baseUrl: string; weight: number }>;
 		refresh?: {
 			updated?: boolean;
 			count?: number;

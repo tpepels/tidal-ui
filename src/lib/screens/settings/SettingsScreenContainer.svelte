@@ -77,11 +77,13 @@
 		targetCount?: number;
 		browseTargetCount?: number;
 		streamTargetCount?: number;
+		qobuzTargetCount?: number;
 		lastSuccessfulRefreshIso?: string | null;
 		error?: string | null;
 		targets?: Array<{ name: string; baseUrl: string; weight: number }>;
 		browseTargets?: Array<{ name: string; baseUrl: string; weight: number }>;
 		streamTargets?: Array<{ name: string; baseUrl: string; weight: number }>;
+		qobuzTargets?: Array<{ name: string; baseUrl: string; weight: number }>;
 		refresh?: {
 			updated?: boolean;
 			count?: number;
@@ -376,10 +378,12 @@
 						targetCount: 0,
 						browseTargetCount: 0,
 						streamTargetCount: 0,
+						qobuzTargetCount: 0,
 						error: message,
 						targets: [],
 						browseTargets: [],
-						streamTargets: []
+						streamTargets: [],
+						qobuzTargets: []
 				  };
 		} finally {
 			apiTargetsStatusLoading = false;

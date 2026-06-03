@@ -30,6 +30,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			targetCount: state.targetCount,
 			browseTargetCount: state.browseTargetCount,
 			streamTargetCount: state.streamTargetCount,
+			qobuzTargetCount: state.qobuzTargetCount,
 			error: state.error ?? null,
 			targets: API_CONFIG.targets.map((target) => ({
 				name: target.name,
@@ -42,6 +43,11 @@ export const GET: RequestHandler = async ({ url }) => {
 				weight: target.weight
 			})),
 			streamTargets: API_CONFIG.streamTargets.map((target) => ({
+				name: target.name,
+				baseUrl: target.baseUrl,
+				weight: target.weight
+			})),
+			qobuzTargets: API_CONFIG.qobuzTargets.map((target) => ({
 				name: target.name,
 				baseUrl: target.baseUrl,
 				weight: target.weight

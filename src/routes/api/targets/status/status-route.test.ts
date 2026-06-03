@@ -32,6 +32,15 @@ vi.mock('$lib/config/targets', () => ({
 				requiresProxy: false,
 				category: 'auto-only'
 			}
+		],
+		qobuzTargets: [
+			{
+				name: 'q1',
+				baseUrl: 'https://qdl-api.monochrome.tf',
+				weight: 15,
+				requiresProxy: false,
+				category: 'auto-only'
+			}
 		]
 	},
 	refreshApiTargetsIfStale: mockRefreshApiTargetsIfStale,
@@ -59,9 +68,10 @@ describe('GET /api/targets/status', () => {
 		mockGetApiTargetRefreshState.mockReturnValue({
 			lastSuccessfulRefreshAt: Date.parse('2026-03-06T22:40:49.638Z'),
 			source: 'uptime',
-			targetCount: 2,
+			targetCount: 3,
 			browseTargetCount: 1,
-			streamTargetCount: 1
+			streamTargetCount: 1,
+			qobuzTargetCount: 1
 		});
 	});
 
@@ -79,12 +89,14 @@ describe('GET /api/targets/status', () => {
 		expect(body.success).toBe(true);
 		expect(body.source).toBe('uptime');
 		expect(body.lastSuccessfulRefreshIso).toBe('2026-03-06T22:40:49.638Z');
-		expect(body.targetCount).toBe(2);
+		expect(body.targetCount).toBe(3);
 		expect(body.browseTargetCount).toBe(1);
 		expect(body.streamTargetCount).toBe(1);
+		expect(body.qobuzTargetCount).toBe(1);
 		expect(body.targets).toHaveLength(1);
 		expect(body.browseTargets).toHaveLength(1);
 		expect(body.streamTargets).toHaveLength(1);
+		expect(body.qobuzTargets).toHaveLength(1);
 	});
 
 	it('forces refresh when refresh query param is set', async () => {

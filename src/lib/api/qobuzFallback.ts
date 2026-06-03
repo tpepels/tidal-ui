@@ -1,4 +1,5 @@
 import type { AudioQuality, Track, TrackLookup } from '../types';
+import { API_CONFIG, refreshApiTargetsIfStale } from '../config/targets';
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -64,15 +65,17 @@ function parsePositiveInteger(raw: string | undefined, fallback: number): number
 
 export function isQobuzFallbackEnabled(): boolean {
 	const raw = getEnvValue('QOBUZ_FALLBACK_ENABLED');
-	if (!raw) return true;
+	if (!raw) {
+		return getEnvValue('VITEST') !== 'true';
+	}
 	const normalized = raw.trim().toLowerCase();
 	return !['0', 'false', 'no', 'off', 'disabled'].includes(normalized);
 }
 
 export function getQobuzFallbackTargets(): string[] {
 	const raw = getEnvValue('QOBUZ_FALLBACK_TARGETS');
-	const candidates =
-		raw && raw.trim().length > 0 ? raw.split(',') : DEFAULT_QOBUZ_FALLBACK_TARGETS;
+	const configuredTargets = API_CONFIG.qobuzTargets?.map((target) => target.baseUrl) ?? [];
+	const candidates = raw && raw.trim().length > 0 ? raw.split(',') : configuredTargets;
 	const normalized = candidates
 		.map((value) => normalizeInstanceUrl(value))
 		.filter((value): value is string => value !== null);
@@ -293,6 +296,14 @@ export async function resolveQobuzFallbackLookup(params: {
 	signal?: AbortSignal;
 }): Promise<TrackLookup | null> {
 	if (!isQobuzFallbackEnabled()) return null;
+
+	try {
+		await refreshApiTargetsIfStale();
+	} catch (error) {
+		console.warn('[QobuzFallback] Target refresh failed; using current Qobuz targets', {
+			error: error instanceof Error ? error.message : String(error)
+		});
+	}
 
 	const isrc = normalizeIsrc(params.track.isrc);
 	if (!isrc) return null;

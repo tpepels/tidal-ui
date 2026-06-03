@@ -7,11 +7,13 @@ describe('API Integration Tests', () => {
 
 	beforeEach(() => {
 		consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+		vi.stubEnv('QOBUZ_FALLBACK_ENABLED', 'false');
 	});
 
 	afterEach(() => {
 		consoleErrorSpy.mockRestore();
 		vi.unstubAllGlobals();
+		vi.unstubAllEnvs();
 	});
 
 	describe('LosslessAPI error handling', () => {
@@ -203,7 +205,7 @@ describe('API Integration Tests', () => {
 			}
 		});
 
-		it('fails exact HI_RES_LOSSLESS with upstream previewReason when Qobuz has no ISRC to match', async () => {
+		it('fails exact HI_RES_LOSSLESS with upstream previewReason when Qobuz is disabled', async () => {
 			const runtimeSpy = vi
 				.spyOn(losslessAPI as any, 'isBrowserRuntime')
 				.mockReturnValue(false);
@@ -242,7 +244,7 @@ describe('API Integration Tests', () => {
 				await expect(losslessAPI.getTrack(123, 'HI_RES_LOSSLESS')).rejects.toThrow(
 					'previewReason: FULL_REQUIRES_SUBSCRIPTION'
 				);
-				expect(fetchSpy).toHaveBeenCalledTimes(2);
+				expect(fetchSpy).toHaveBeenCalledTimes(1);
 				expect(qobuzFetch).not.toHaveBeenCalled();
 				expect(fetchSpy.mock.calls.some((call) => String(call[0]).includes('/track/?'))).toBe(false);
 			} finally {
@@ -251,7 +253,8 @@ describe('API Integration Tests', () => {
 			}
 		});
 
-		it('uses Qobuz fallback when trackManifests returns preview for an exact ISRC match', async () => {
+		it('uses Qobuz before trackManifests for an exact ISRC match', async () => {
+			vi.stubEnv('QOBUZ_FALLBACK_ENABLED', 'true');
 			const runtimeSpy = vi
 				.spyOn(losslessAPI as any, 'isBrowserRuntime')
 				.mockReturnValue(false);
@@ -299,40 +302,18 @@ describe('API Integration Tests', () => {
 					})
 				);
 			vi.stubGlobal('fetch', qobuzFetch);
-			const fetchSpy = vi
-				.spyOn(losslessAPI as any, 'fetch')
-				.mockResolvedValueOnce(
-					new Response(
-						JSON.stringify({
-							version: '2.10',
-							data: {
-								data: {
-									id: '123',
-									type: 'trackManifests',
-									attributes: {
-										trackPresentation: 'PREVIEW',
-										previewReason: 'FULL_REQUIRES_SUBSCRIPTION',
-										uri: 'https://im-fa.manifest.tidal.com/1/manifests/test.mpd',
-										formats: ['FLAC_HIRES']
-									}
-								}
-							}
-						}),
-						{ status: 200, headers: { 'content-type': 'application/json' } }
-					)
+			const fetchSpy = vi.spyOn(losslessAPI as any, 'fetch').mockResolvedValueOnce(
+				new Response(
+					JSON.stringify({
+						version: '2.10',
+						data: {
+							...trackMetadataPayload.data,
+							isrc: 'GBVNV2600046'
+						}
+					}),
+					{ status: 200, headers: { 'content-type': 'application/json' } }
 				)
-				.mockResolvedValueOnce(
-					new Response(
-						JSON.stringify({
-							version: '2.10',
-							data: {
-								...trackMetadataPayload.data,
-								isrc: 'GBVNV2600046'
-							}
-						}),
-						{ status: 200, headers: { 'content-type': 'application/json' } }
-					)
-				);
+			);
 
 			try {
 				const result = await losslessAPI.getTrack(123, 'HI_RES_LOSSLESS');
@@ -343,7 +324,12 @@ describe('API Integration Tests', () => {
 				expect(result.info.bitDepth).toBe(24);
 				expect(result.info.sampleRate).toBe(48000);
 				expect(result.info.trackReplayGain).toBe(-5.17);
+				expect(fetchSpy).toHaveBeenCalledTimes(1);
+				expect(fetchSpy.mock.calls[0][0]).toContain('/info/?id=123');
 				expect(fetchSpy.mock.calls.some((call) => String(call[0]).includes('/track/?'))).toBe(false);
+				expect(
+					fetchSpy.mock.calls.some((call) => String(call[0]).includes('/trackManifests/?'))
+				).toBe(false);
 				expect(qobuzFetch).toHaveBeenCalledTimes(2);
 				expect(String(qobuzFetch.mock.calls[0][0])).toContain('/api/get-music?q=GBVNV2600046');
 				expect(String(qobuzFetch.mock.calls[1][0])).toContain(

@@ -36,6 +36,7 @@ const buildConfig = (overrides?: Partial<{
 		targets,
 		browseTargets: targets,
 		streamTargets: targets,
+		qobuzTargets: [],
 		baseUrl: overrides?.baseUrl ?? targets[0]?.baseUrl ?? 'https://api.example.com',
 		useProxy: overrides?.useProxy ?? true,
 		proxyUrl: overrides?.proxyUrl ?? '/proxy'

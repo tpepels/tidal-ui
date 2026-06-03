@@ -22,7 +22,20 @@ import {
 } from './api/streamManifest';
 import { runMetadataEmbeddingPipeline } from './api/metadataEmbedding';
 import { fetchTrackBlobPayload } from './api/trackBlob';
-import { resolveQobuzFallbackLookup } from './api/qobuzFallback';
+import { isQobuzFallbackEnabled, resolveQobuzFallbackLookup } from './api/qobuzFallback';
+import {
+	isNativeTidalApiEnabled,
+	nativeGetAlbum,
+	nativeGetArtist,
+	nativeGetCover,
+	nativeGetLyrics,
+	nativeGetPlaylist,
+	nativeGetTrackMetadata,
+	nativeSearchAlbums,
+	nativeSearchArtists,
+	nativeSearchPlaylists,
+	nativeSearchTracks
+} from './api/tidalNativeClient';
 import {
 	downloadFlacFromMpdManifest,
 	downloadTrackToClient,
@@ -184,6 +197,23 @@ class LosslessAPI {
 
 	private isBrowserRuntime(): boolean {
 		return typeof window !== 'undefined' && typeof window.document !== 'undefined';
+	}
+
+	private async tryNativeTidal<T>(
+		operation: string,
+		callback: () => Promise<T>
+	): Promise<T | null> {
+		if (this.isBrowserRuntime() || !isNativeTidalApiEnabled()) {
+			return null;
+		}
+		try {
+			return await callback();
+		} catch (error) {
+			console.warn(`[NativeTidal] ${operation} failed; using hifi-api fallback`, {
+				error: error instanceof Error ? error.message : String(error)
+			});
+			return null;
+		}
 	}
 
 	private getAppErrorMessage(payload: unknown, status: number): string {
@@ -412,6 +442,13 @@ class LosslessAPI {
 		trackId: number,
 		apiVersion: 'v1' | 'v2' = 'v2'
 	): Promise<Track> {
+		const nativeTrack = await this.tryNativeTidal('track metadata', () =>
+			nativeGetTrackMetadata(trackId)
+		);
+		if (nativeTrack) {
+			return prepareTrack(nativeTrack);
+		}
+
 		const response = await this.fetch(`${this.baseUrl}/info/?id=${trackId}`, { apiVersion });
 		this.ensureNotRateLimited(response);
 		if (!response.ok) {
@@ -480,6 +517,9 @@ class LosslessAPI {
 		trackId: number,
 		quality: AudioQuality
 	): Promise<TrackLookup | null> {
+		if (!isQobuzFallbackEnabled()) {
+			return null;
+		}
 		try {
 			const track = await this.fetchTrackMetadata(trackId, 'v2');
 			return await this.getQobuzFallbackLookup(track, quality);
@@ -791,6 +831,15 @@ class LosslessAPI {
 				items: result.items.map((track) => prepareTrack(track))
 			};
 		}
+		const nativeResult = await this.tryNativeTidal('search tracks', () =>
+			nativeSearchTracks(query)
+		);
+		if (nativeResult) {
+			return {
+				...nativeResult,
+				items: nativeResult.items.map((track) => prepareTrack(track))
+			};
+		}
 		return searchTracks(this.getSearchContext(), query, region);
 	}
 
@@ -818,6 +867,15 @@ class LosslessAPI {
 			return {
 				...result,
 				items: result.items.map((artist) => prepareArtist(artist))
+			};
+		}
+		const nativeResult = await this.tryNativeTidal('search artists', () =>
+			nativeSearchArtists(query)
+		);
+		if (nativeResult) {
+			return {
+				...nativeResult,
+				items: nativeResult.items.map((artist) => prepareArtist(artist))
 			};
 		}
 		return searchArtists(this.getSearchContext(), query, region);
@@ -852,6 +910,35 @@ class LosslessAPI {
 				items: result.items.map((album) => prepareAlbum(album))
 			};
 		}
+		const nativeResult = await this.tryNativeTidal('search albums', () =>
+			nativeSearchAlbums(query)
+		);
+		if (nativeResult) {
+			const trimmedArtistQuery = artistQuery?.trim().toLowerCase() ?? '';
+			const preparedItems = nativeResult.items.map((album) => prepareAlbum(album));
+			if (!trimmedArtistQuery) {
+				return {
+					...nativeResult,
+					items: preparedItems
+				};
+			}
+			const filteredItems = preparedItems.filter((album) => {
+				const names = [
+					album.artist?.name,
+					...(Array.isArray(album.artists) ? album.artists.map((artist) => artist.name) : [])
+				]
+					.filter((name): name is string => typeof name === 'string')
+					.map((name) => name.toLowerCase());
+				return names.some((name) => name.includes(trimmedArtistQuery));
+			});
+			if (filteredItems.length > 0) {
+				return {
+					...nativeResult,
+					items: filteredItems,
+					totalNumberOfItems: filteredItems.length
+				};
+			}
+		}
 		return searchAlbums(this.getSearchContext(), query, region, artistQuery);
 	}
 
@@ -876,6 +963,12 @@ class LosslessAPI {
 				PlaylistSearchResponseSchema,
 				'catalog.search.playlists'
 			);
+		}
+		const nativeResult = await this.tryNativeTidal('search playlists', () =>
+			nativeSearchPlaylists(query)
+		);
+		if (nativeResult) {
+			return nativeResult;
 		}
 		return searchPlaylists(this.getSearchContext(), query, region);
 	}
@@ -960,6 +1053,11 @@ class LosslessAPI {
 				`/api/catalog/track/${id}?${new URLSearchParams({ quality }).toString()}`
 			);
 			return this.parseBrowserTrackLookupPayload(id, payload);
+		}
+
+		const qobuzPrimary = await this.getQobuzFallbackLookupByTrackId(id, quality);
+		if (qobuzPrimary) {
+			return qobuzPrimary;
 		}
 
 		if (this.isHiResQuality(quality)) {
@@ -1143,6 +1241,15 @@ class LosslessAPI {
 				tracks: result.tracks.map((track) => prepareTrack(track))
 			};
 		}
+		const nativeResult = await this.tryNativeTidal('album metadata', () =>
+			nativeGetAlbum(id, { signal: options?.signal })
+		);
+		if (nativeResult) {
+			return {
+				album: prepareAlbum(nativeResult.album),
+				tracks: nativeResult.tracks.map((track) => prepareTrack(track))
+			};
+		}
 		return getAlbum(this.getCatalogContext(), id, options);
 	}
 
@@ -1156,6 +1263,15 @@ class LosslessAPI {
 				PlaylistWithTracksSchema,
 				'catalog.playlist'
 			);
+		}
+		const nativeResult = await this.tryNativeTidal('playlist metadata', () =>
+			nativeGetPlaylist(uuid)
+		);
+		if (nativeResult) {
+			return {
+				playlist: nativeResult.playlist,
+				items: nativeResult.items.map((entry) => ({ item: prepareTrack(entry.item) }))
+			};
 		}
 		return getPlaylist(this.getCatalogContext(), uuid);
 	}
@@ -1187,6 +1303,16 @@ class LosslessAPI {
 				...prepareArtist(result),
 				albums: (result.albums ?? []).map((album) => prepareAlbum(album)),
 				tracks: (result.tracks ?? []).map((track) => prepareTrack(track))
+			};
+		}
+		const nativeResult = await this.tryNativeTidal('artist metadata', () =>
+			nativeGetArtist(id, { signal: options?.signal })
+		);
+		if (nativeResult) {
+			return {
+				...prepareArtist(nativeResult),
+				albums: (nativeResult.albums ?? []).map((album) => prepareAlbum(album)),
+				tracks: (nativeResult.tracks ?? []).map((track) => prepareTrack(track))
 			};
 		}
 		return getArtist(this.getCatalogContext(), id, options);
@@ -1221,6 +1347,10 @@ class LosslessAPI {
 	 * Get cover image
 	 */
 	async getCover(id?: number, query?: string): Promise<CoverImage[]> {
+		const nativeResult = await this.tryNativeTidal('cover lookup', () => nativeGetCover(id, query));
+		if (nativeResult) {
+			return nativeResult;
+		}
 		return getCover(this.getCatalogContext(), id, query);
 	}
 
@@ -1228,6 +1358,10 @@ class LosslessAPI {
 	 * Get lyrics for a track
 	 */
 	async getLyrics(id: number): Promise<Lyrics> {
+		const nativeResult = await this.tryNativeTidal('lyrics lookup', () => nativeGetLyrics(id));
+		if (nativeResult) {
+			return nativeResult;
+		}
 		return getLyrics(this.getCatalogContext(), id);
 	}
 

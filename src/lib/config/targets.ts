@@ -13,6 +13,7 @@ export interface ApiConfig {
 	targets: ApiClusterTarget[];
 	browseTargets: ApiClusterTarget[];
 	streamTargets: ApiClusterTarget[];
+	qobuzTargets: ApiClusterTarget[];
 	baseUrl: string;
 	useProxy: boolean;
 	proxyUrl: string;
@@ -27,6 +28,7 @@ type UptimeResponse = {
 	lastUpdated?: unknown;
 	api?: unknown;
 	streaming?: unknown;
+	qobuz?: unknown;
 	down?: unknown;
 };
 
@@ -140,6 +142,29 @@ const STATIC_V2_API_TARGETS = [
 ] satisfies ApiClusterTarget[];
 
 const DEFAULT_API_TARGETS = STATIC_V2_API_TARGETS.map((target) => ({ ...target }));
+const DEFAULT_QOBUZ_TARGETS = [
+	{
+		name: 'qobuz-monochrome',
+		baseUrl: 'https://qdl-api.monochrome.tf',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'qobuz-kennyy',
+		baseUrl: 'https://qobuz.kennyy.com.br',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	},
+	{
+		name: 'qobuz-scavengerfurs',
+		baseUrl: 'https://mono.scavengerfurs.net',
+		weight: 15,
+		requiresProxy: false,
+		category: 'auto-only'
+	}
+] satisfies ApiClusterTarget[];
 const DEFAULT_FALLBACK_BASE_URL = 'https://tidal.401658.xyz';
 const DEFAULT_DYNAMIC_WEIGHT = 15;
 const DEFAULT_REFRESH_TTL_MS = 5 * 60 * 1000;
@@ -147,6 +172,7 @@ const DEFAULT_REFRESH_TIMEOUT_MS = 5000;
 const DYNAMIC_HOSTNAME_CACHE_TTL_MS = 10 * 60 * 1000;
 
 const UPTIME_ENDPOINTS = [
+	'https://tidal-uptime.geeked.wtf',
 	'https://tidal-uptime.jiffy-puffs-1j.workers.dev/',
 	'https://tidal-uptime.props-76styles.workers.dev/'
 ] as const;
@@ -171,6 +197,7 @@ export const API_CONFIG: ApiConfig = {
 	targets: DEFAULT_API_TARGETS.map((target) => ({ ...target })),
 	browseTargets: DEFAULT_API_TARGETS.map((target) => ({ ...target })),
 	streamTargets: DEFAULT_API_TARGETS.map((target) => ({ ...target })),
+	qobuzTargets: DEFAULT_QOBUZ_TARGETS.map((target) => ({ ...target })),
 	baseUrl: DEFAULT_API_TARGETS[0]?.baseUrl ?? DEFAULT_FALLBACK_BASE_URL,
 	// Proxy configuration for endpoints that need it
 	useProxy: true,
@@ -529,22 +556,27 @@ function chooseBestPayload(payloads: UptimeResponse[]): UptimeResponse | null {
 function resolveTargetPoolsFromPayload(payload: UptimeResponse): {
 	browseTargets: ApiClusterTarget[];
 	streamTargets: ApiClusterTarget[];
+	qobuzTargets: ApiClusterTarget[];
 } {
 	const downSet = parseDownUrlSet(payload.down);
 	const streamingEntries = parseUptimeEntries(payload.streaming);
 	const apiEntries = parseUptimeEntries(payload.api);
+	const qobuzEntries = parseUptimeEntries(payload.qobuz);
 	const streamTargets = buildTargetsFromEntries(streamingEntries, downSet);
 	const browseTargets = buildTargetsFromEntries(apiEntries, downSet);
+	const qobuzTargets = buildTargetsFromEntries(qobuzEntries, downSet);
 
 	return {
 		browseTargets,
-		streamTargets
+		streamTargets,
+		qobuzTargets
 	};
 }
 
 function applyTargetPools(
 	browseTargets: ApiClusterTarget[],
 	streamTargets: ApiClusterTarget[],
+	qobuzTargets: ApiClusterTarget[] = DEFAULT_QOBUZ_TARGETS,
 	source: 'static' | 'uptime'
 ): void {
 	const nextBrowseTargets =
@@ -562,9 +594,20 @@ function applyTargetPools(
 
 	API_CONFIG.browseTargets = nextBrowseTargets.map((target) => ({ ...target }));
 	API_CONFIG.streamTargets = nextStreamTargets.map((target) => ({ ...target }));
+	API_CONFIG.qobuzTargets = (qobuzTargets.length > 0 ? qobuzTargets : DEFAULT_QOBUZ_TARGETS).map(
+		(target) => ({ ...target })
+	);
 	API_CONFIG.targets = API_CONFIG.browseTargets.map((target) => ({ ...target }));
 	API_CONFIG.baseUrl = API_CONFIG.browseTargets[0]?.baseUrl ?? DEFAULT_FALLBACK_BASE_URL;
 	lastRefreshSource = source;
+}
+
+function getConfiguredTargetCount(): number {
+	return (
+		API_CONFIG.browseTargets.length +
+		API_CONFIG.streamTargets.length +
+		API_CONFIG.qobuzTargets.length
+	);
 }
 
 export async function refreshApiTargets(options?: RefreshOptions): Promise<RefreshResult> {
@@ -572,7 +615,7 @@ export async function refreshApiTargets(options?: RefreshOptions): Promise<Refre
 	if (!isDynamicRefreshEnabled(force)) {
 		return {
 			updated: false,
-			count: API_CONFIG.targets.length,
+			count: getConfiguredTargetCount(),
 			source: lastRefreshSource,
 			error: lastRefreshError ?? undefined
 		};
@@ -583,7 +626,7 @@ export async function refreshApiTargets(options?: RefreshOptions): Promise<Refre
 	if (!force && lastSuccessfulRefreshAt > 0 && now - lastSuccessfulRefreshAt < ttlMs) {
 		return {
 			updated: false,
-			count: API_CONFIG.targets.length,
+			count: getConfiguredTargetCount(),
 			source: lastRefreshSource,
 			error: lastRefreshError ?? undefined
 		};
@@ -597,7 +640,7 @@ export async function refreshApiTargets(options?: RefreshOptions): Promise<Refre
 	if (!fetchImpl) {
 		return {
 			updated: false,
-			count: API_CONFIG.targets.length,
+			count: getConfiguredTargetCount(),
 			source: lastRefreshSource,
 			error: lastRefreshError ?? undefined
 		};
@@ -618,7 +661,7 @@ export async function refreshApiTargets(options?: RefreshOptions): Promise<Refre
 				lastRefreshError = errorMessage;
 				return {
 					updated: false,
-					count: API_CONFIG.targets.length,
+					count: getConfiguredTargetCount(),
 					source: lastRefreshSource,
 					error: errorMessage
 				};
@@ -633,12 +676,16 @@ export async function refreshApiTargets(options?: RefreshOptions): Promise<Refre
 				resolvedPools.streamTargets,
 				options?.isTrustedHostname ?? defaultIsTrustedHostname
 			);
+			const trustedQobuzTargets = await filterTrustedDynamicTargets(
+				resolvedPools.qobuzTargets,
+				options?.isTrustedHostname ?? defaultIsTrustedHostname
+			);
 			if (trustedBrowseTargets.length === 0 && trustedStreamTargets.length === 0) {
 				const errorMessage = 'Uptime payload had no trusted API targets';
 				lastRefreshError = errorMessage;
 				return {
 					updated: false,
-					count: API_CONFIG.targets.length,
+					count: getConfiguredTargetCount(),
 					source: lastRefreshSource,
 					error: errorMessage,
 					lastUpdated:
@@ -646,12 +693,15 @@ export async function refreshApiTargets(options?: RefreshOptions): Promise<Refre
 				};
 			}
 
-			applyTargetPools(trustedBrowseTargets, trustedStreamTargets, 'uptime');
+			applyTargetPools(trustedBrowseTargets, trustedStreamTargets, trustedQobuzTargets, 'uptime');
 			lastRefreshError = null;
 			lastSuccessfulRefreshAt = Date.now();
 			return {
 				updated: true,
-				count: API_CONFIG.browseTargets.length + API_CONFIG.streamTargets.length,
+				count:
+					API_CONFIG.browseTargets.length +
+					API_CONFIG.streamTargets.length +
+					API_CONFIG.qobuzTargets.length,
 				source: 'uptime',
 				lastUpdated: typeof chosen.lastUpdated === 'string' ? chosen.lastUpdated : undefined
 			};
@@ -660,7 +710,7 @@ export async function refreshApiTargets(options?: RefreshOptions): Promise<Refre
 			lastRefreshError = message;
 			return {
 				updated: false,
-				count: API_CONFIG.targets.length,
+				count: getConfiguredTargetCount(),
 				source: lastRefreshSource,
 				error: message
 			};
@@ -685,20 +735,22 @@ export function getApiTargetRefreshState(): {
 	targetCount: number;
 	browseTargetCount: number;
 	streamTargetCount: number;
+	qobuzTargetCount: number;
 } {
 	return {
 		lastSuccessfulRefreshAt,
 		source: lastRefreshSource,
 		error: lastRefreshError ?? undefined,
-		targetCount: API_CONFIG.browseTargets.length + API_CONFIG.streamTargets.length,
+		targetCount: getConfiguredTargetCount(),
 		browseTargetCount: API_CONFIG.browseTargets.length,
-		streamTargetCount: API_CONFIG.streamTargets.length
+		streamTargetCount: API_CONFIG.streamTargets.length,
+		qobuzTargetCount: API_CONFIG.qobuzTargets.length
 	};
 }
 
 export const __test = {
 	resetTargets(): void {
-		applyTargetPools(DEFAULT_API_TARGETS, DEFAULT_API_TARGETS, 'static');
+		applyTargetPools(DEFAULT_API_TARGETS, DEFAULT_API_TARGETS, DEFAULT_QOBUZ_TARGETS, 'static');
 		lastSuccessfulRefreshAt = 0;
 		lastRefreshError = null;
 		refreshInFlight = null;
