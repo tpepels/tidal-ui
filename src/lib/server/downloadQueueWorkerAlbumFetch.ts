@@ -1,5 +1,6 @@
 import { API_CONFIG } from '$lib/config';
 import { refreshApiTargetsIfStale } from '$lib/config/targets';
+import { isNativeTidalApiEnabled, nativeGetAlbum } from '$lib/api/tidalNativeClient';
 import * as rateLimiter from './rateLimiter';
 import { rotateTargets } from './downloadQueueWorkerPolicy';
 import { parseAlbumResponse } from './downloadQueueWorkerAlbumResponse';
@@ -38,10 +39,55 @@ function markTargetDown(name: string, reason: string, timeoutMs: number): void {
 	console.warn(`[Worker] Marking target ${name} down for ${seconds}s (${reason})`);
 }
 
+async function fetchAlbumFromNativeTidal(
+	jobId: string,
+	albumId: number
+): Promise<AlbumFetchResult | null> {
+	if (!isNativeTidalApiEnabled()) {
+		return null;
+	}
+
+	const requestedStop = await shouldStopJob(jobId);
+	if (requestedStop) {
+		return { stopState: requestedStop };
+	}
+
+	try {
+		console.log(`[Worker] Album ${albumId}: Trying native TIDAL metadata`);
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), ALBUM_TARGET_TIMEOUT_MS);
+		let nativeAlbum: Awaited<ReturnType<typeof nativeGetAlbum>>;
+		try {
+			nativeAlbum = await nativeGetAlbum(albumId, { signal: controller.signal });
+		} finally {
+			clearTimeout(timeout);
+		}
+		if (nativeAlbum.tracks.length === 0) {
+			throw new Error('Native TIDAL album metadata returned no tracks');
+		}
+		console.log(`[Worker] Album ${albumId}: Successfully fetched from native TIDAL metadata`);
+		return {
+			album: nativeAlbum.album as unknown as Record<string, unknown>,
+			tracks: nativeAlbum.tracks as unknown as Array<Record<string, unknown>>
+		};
+	} catch (error) {
+		console.warn('[Worker] Native TIDAL album metadata failed; using hifi-api fallback:', {
+			albumId,
+			error: error instanceof Error ? error.message : String(error)
+		});
+		return null;
+	}
+}
+
 export async function fetchAlbumWithTargetRotation(
 	jobId: string,
 	albumId: number
 ): Promise<AlbumFetchResult> {
+	const nativeAlbum = await fetchAlbumFromNativeTidal(jobId, albumId);
+	if (nativeAlbum) {
+		return nativeAlbum;
+	}
+
 	try {
 		await refreshApiTargetsIfStale();
 	} catch (refreshError) {
@@ -81,7 +127,7 @@ export async function fetchAlbumWithTargetRotation(
 		albumTargetCursor++
 	);
 
-	const maxAttempts = Math.min(3, rotatedTargets.length);
+	const maxAttempts = rotatedTargets.length;
 	for (let index = 0; index < maxAttempts; index += 1) {
 		const requestedStop = await shouldStopJob(jobId);
 		if (requestedStop) {
