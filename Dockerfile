@@ -1,5 +1,7 @@
-# Use a Node.js Slim image for the builder stage
-FROM node:24.0.1-slim AS builder
+ARG NODE_VERSION=24
+
+# Use a patched Node.js Slim image for the builder stage
+FROM node:${NODE_VERSION}-slim AS builder
 
 # Install OpenSSL for cert generation
 RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
@@ -23,7 +25,7 @@ RUN mkdir -p /app/.certs && \
 RUN npm prune --production
 
 # Use another Node.js Slim image for the final stage
-FROM node:24.0.1-slim AS runner
+FROM node:${NODE_VERSION}-slim AS runner
 
 # Install Redis and ffmpeg for metadata embedding
 RUN apt-get update && apt-get install -y redis-server ffmpeg && rm -rf /var/lib/apt/lists/*
