@@ -389,6 +389,10 @@ export function buildDashManifestResult(params: {
 		return { kind: 'dash', manifest: manifestText, contentType };
 	}
 
+	if (isValidMediaUrl(trimmed)) {
+		return { kind: 'flac', manifestText, urls: [trimmed], contentType };
+	}
+
 	const parsed = parseJsonSafely(manifestText);
 	const urls = extractUrlsFromDashJsonPayload(parsed);
 	if (urls.length > 0) {

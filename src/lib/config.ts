@@ -334,7 +334,7 @@ function isLikelyProxyErrorPayload(payload: unknown): boolean {
 	return false;
 }
 
-function hasPreviewAssetPresentation(payload: unknown): boolean {
+function hasPreviewPresentation(payload: unknown): boolean {
 	const queue: unknown[] = [payload];
 	let inspected = 0;
 
@@ -358,6 +358,13 @@ function hasPreviewAssetPresentation(payload: unknown): boolean {
 		) {
 			return true;
 		}
+		const trackPresentation = record.trackPresentation;
+		if (
+			typeof trackPresentation === 'string' &&
+			trackPresentation.trim().toUpperCase() === 'PREVIEW'
+		) {
+			return true;
+		}
 
 		for (const value of Object.values(record)) {
 			if (value && (typeof value === 'object' || Array.isArray(value))) {
@@ -372,6 +379,11 @@ function hasPreviewAssetPresentation(payload: unknown): boolean {
 function isTrackPlaybackLookupUrl(url: URL): boolean {
 	const path = url.pathname.toLowerCase();
 	return path === '/track' || path === '/track/' || path.endsWith('/track/');
+}
+
+function isTrackManifestLookupUrl(url: URL): boolean {
+	const path = url.pathname.toLowerCase();
+	return path === '/trackmanifests' || path === '/trackmanifests/' || path.endsWith('/trackmanifests/');
 }
 
 // NOTE: This function consumes the provided response body.
@@ -397,7 +409,7 @@ async function getUnexpectedOkResponseReason(
 		if (isLikelyProxyErrorPayload(payload)) {
 			return 'proxy error payload';
 		}
-		if (options?.rejectPreviewPlayback && hasPreviewAssetPresentation(payload)) {
+		if (options?.rejectPreviewPlayback && hasPreviewPresentation(payload)) {
 			return 'preview playback asset';
 		}
 		return null;
@@ -763,7 +775,8 @@ export async function fetchWithCORS(
 			if (response.ok) {
 				const unexpectedReason = await getUnexpectedOkResponseReason(response.clone(), {
 					rejectPreviewPlayback:
-						targetPurpose === 'stream' && isTrackPlaybackLookupUrl(rewrittenUrl)
+						targetPurpose === 'stream' &&
+						(isTrackPlaybackLookupUrl(rewrittenUrl) || isTrackManifestLookupUrl(rewrittenUrl))
 				});
 				if (!unexpectedReason) {
 					if (stickyEndpointKey) {

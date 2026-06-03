@@ -337,6 +337,81 @@ describe('config target selection', () => {
 		warnSpy.mockRestore();
 	});
 
+	it('tries fallback targets when a trackManifests lookup returns preview presentation', async () => {
+		const { config, retryFetch } = await setupConfig({
+			targets: [
+				{
+					name: 'primary',
+					baseUrl: 'https://primary.example.com',
+					weight: 1,
+					requiresProxy: false,
+					category: 'auto-only'
+				},
+				{
+					name: 'fallback',
+					baseUrl: 'https://fallback.example.com',
+					weight: 1,
+					requiresProxy: false,
+					category: 'auto-only'
+				}
+			]
+		});
+		vi.spyOn(Math, 'random').mockReturnValue(0);
+		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const previewResponse = new Response(
+			JSON.stringify({
+				version: '2.10',
+				data: {
+					data: {
+						id: '123',
+						type: 'trackManifests',
+						attributes: {
+							trackPresentation: 'PREVIEW',
+							previewReason: 'FULL_REQUIRES_SUBSCRIPTION',
+							formats: ['FLAC_HIRES']
+						}
+					}
+				}
+			}),
+			{ status: 200, headers: { 'content-type': 'application/json' } }
+		);
+		const fullResponse = new Response(
+			JSON.stringify({
+				version: '2.10',
+				data: {
+					data: {
+						id: '123',
+						type: 'trackManifests',
+						attributes: {
+							trackPresentation: 'FULL',
+							formats: ['FLAC_HIRES']
+						}
+					}
+				}
+			}),
+			{ status: 200, headers: { 'content-type': 'application/json' } }
+		);
+		retryFetch.mockResolvedValueOnce(previewResponse).mockResolvedValueOnce(fullResponse);
+
+		const result = await config.fetchWithCORS(
+			'https://primary.example.com/trackManifests/?id=123&formats=FLAC_HIRES'
+		);
+
+		expect(result).toBe(fullResponse);
+		expect(retryFetch).toHaveBeenCalledTimes(2);
+		const calledUrls = retryFetch.mock.calls.map((call) => call[0] as string);
+		expect(calledUrls[0]).toBe('https://primary.example.com/trackManifests/?id=123&formats=FLAC_HIRES');
+		expect(calledUrls[1]).toBe('https://fallback.example.com/trackManifests/?id=123&formats=FLAC_HIRES');
+		expect(warnSpy).toHaveBeenCalledWith(
+			'[API Targets] Target returned preview playback info; trying next target',
+			expect.objectContaining({
+				target: 'primary',
+				trackId: '123'
+			})
+		);
+		warnSpy.mockRestore();
+	});
+
 	it('does not retry the same target repeatedly when only one target is available', async () => {
 		const { config, retryFetch } = await setupConfig({
 			targets: [

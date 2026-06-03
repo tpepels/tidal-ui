@@ -161,6 +161,7 @@ export interface TrackInfo {
 	manifestMimeType: string;
 	manifestHash?: string;
 	assetPresentation: string;
+	previewReason?: string;
 	albumReplayGain?: number;
 	albumPeakAmplitude?: number;
 	trackReplayGain?: number;

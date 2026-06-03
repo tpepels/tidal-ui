@@ -22,6 +22,7 @@ import {
 } from './api/streamManifest';
 import { runMetadataEmbeddingPipeline } from './api/metadataEmbedding';
 import { fetchTrackBlobPayload } from './api/trackBlob';
+import { resolveQobuzFallbackLookup } from './api/qobuzFallback';
 import {
 	downloadFlacFromMpdManifest,
 	downloadTrackToClient,
@@ -83,6 +84,7 @@ type CodedError = Error & { code?: string };
 
 type TrackManifestAttributes = {
 	trackPresentation?: string;
+	previewReason?: string;
 	uri?: string;
 	manifest?: string;
 	manifestHash?: string;
@@ -346,6 +348,17 @@ class LosslessAPI {
 		return String(quality).toUpperCase() === 'HI_RES_LOSSLESS';
 	}
 
+	private isPreviewEntitlementFailure(error: unknown): boolean {
+		if (!(error instanceof Error)) return false;
+		const message = error.message.toLowerCase();
+		return (
+			message.includes('preview') ||
+			message.includes('assetpresentation') ||
+			message.includes('trackpresentation: preview') ||
+			message.includes('full_requires_subscription')
+		);
+	}
+
 	private isV2ApiContainer(payload: unknown): payload is { version?: unknown; data?: unknown } {
 		if (!payload || typeof payload !== 'object') return false;
 		if (!('version' in (payload as Record<string, unknown>))) return false;
@@ -428,6 +441,7 @@ class LosslessAPI {
 			manifestHash: typeof data.manifestHash === 'string' ? data.manifestHash : undefined,
 			assetPresentation:
 				typeof data.assetPresentation === 'string' ? data.assetPresentation : 'FULL',
+			previewReason: typeof data.previewReason === 'string' ? data.previewReason : undefined,
 			albumReplayGain: typeof data.albumReplayGain === 'number' ? data.albumReplayGain : undefined,
 			albumPeakAmplitude:
 				typeof data.albumPeakAmplitude === 'number' ? data.albumPeakAmplitude : undefined,
@@ -437,6 +451,46 @@ class LosslessAPI {
 			bitDepth: typeof data.bitDepth === 'number' ? data.bitDepth : undefined,
 			sampleRate: typeof data.sampleRate === 'number' ? data.sampleRate : undefined
 		};
+	}
+
+	private isPreviewTrackLookup(lookup: TrackLookup): boolean {
+		return lookup.info?.assetPresentation?.trim().toUpperCase() === 'PREVIEW';
+	}
+
+	private async getQobuzFallbackLookup(
+		track: Track,
+		quality: AudioQuality
+	): Promise<TrackLookup | null> {
+		try {
+			return await resolveQobuzFallbackLookup({
+				track,
+				quality
+			});
+		} catch (error) {
+			console.warn('[API] Qobuz fallback failed', {
+				trackId: track.id,
+				quality,
+				error: error instanceof Error ? error.message : String(error)
+			});
+			return null;
+		}
+	}
+
+	private async getQobuzFallbackLookupByTrackId(
+		trackId: number,
+		quality: AudioQuality
+	): Promise<TrackLookup | null> {
+		try {
+			const track = await this.fetchTrackMetadata(trackId, 'v2');
+			return await this.getQobuzFallbackLookup(track, quality);
+		} catch (error) {
+			console.warn('[API] Could not prepare Qobuz fallback', {
+				trackId,
+				quality,
+				error: error instanceof Error ? error.message : String(error)
+			});
+			return null;
+		}
 	}
 
 	private extractOriginalTrackUrl(payload: Record<string, unknown>): string | undefined {
@@ -515,6 +569,10 @@ class LosslessAPI {
 			trackPresentation:
 				typeof attributes.trackPresentation === 'string'
 					? attributes.trackPresentation
+					: undefined,
+			previewReason:
+				typeof attributes.previewReason === 'string'
+					? attributes.previewReason
 					: undefined,
 			uri: typeof attributes.uri === 'string' ? attributes.uri : undefined,
 			manifest: typeof attributes.manifest === 'string' ? attributes.manifest : undefined,
@@ -618,6 +676,14 @@ class LosslessAPI {
 				`trackManifests response did not include required format ${requiredFormat} for ${quality}`
 			);
 		}
+		if (attributes.trackPresentation?.trim().toUpperCase() === 'PREVIEW') {
+			const reason = attributes.previewReason?.trim();
+			throw new Error(
+				`TIDAL returned a preview track manifest instead of the full track ` +
+					`(trackPresentation: PREVIEW${reason ? `, previewReason: ${reason}` : ''}). ` +
+					`Track ${id} is not available as a full ${quality} stream from this upstream account.`
+			);
+		}
 
 		const manifestPayload = await this.resolveTrackManifestText(attributes);
 		const track = await this.fetchTrackMetadata(id, 'v2');
@@ -632,6 +698,7 @@ class LosslessAPI {
 				manifestHash: attributes.manifestHash,
 				assetPresentation:
 					attributes.trackPresentation?.trim().toUpperCase() === 'PREVIEW' ? 'PREVIEW' : 'FULL',
+				previewReason: attributes.previewReason,
 				albumReplayGain: attributes.albumReplayGain,
 				albumPeakAmplitude: attributes.albumPeakAmplitude,
 				trackReplayGain: attributes.trackReplayGain,
@@ -904,6 +971,12 @@ class LosslessAPI {
 					quality,
 					error: error instanceof Error ? error.message : String(error)
 				});
+				if (this.isPreviewEntitlementFailure(error)) {
+					const qobuzFallback = await this.getQobuzFallbackLookupByTrackId(id, quality);
+					if (qobuzFallback) {
+						return qobuzFallback;
+					}
+				}
 				if (this.isTrackManifestQualityUnavailable(error)) {
 					throw error;
 				}
@@ -920,10 +993,16 @@ class LosslessAPI {
 			this.ensureNotRateLimited(response);
 			if (response.ok) {
 				const data = await response.json();
-				if (this.isV2ApiContainer(data)) {
-					return await this.parseTrackLookupV2(id, data, 'v2');
+				const lookup = this.isV2ApiContainer(data)
+					? await this.parseTrackLookupV2(id, data, 'v2')
+					: this.parseTrackLookup(data);
+				if (this.isPreviewTrackLookup(lookup)) {
+					const qobuzFallback = await this.getQobuzFallbackLookup(lookup.track, quality);
+					if (qobuzFallback) {
+						return qobuzFallback;
+					}
 				}
-				return this.parseTrackLookup(data);
+				return lookup;
 			}
 
 			let detail: string | undefined;

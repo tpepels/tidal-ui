@@ -20,9 +20,14 @@ export function assertFullTrackStream(
 		return;
 	}
 
+	const previewReason =
+		typeof lookup.info?.previewReason === 'string' && lookup.info.previewReason.trim().length > 0
+			? `, previewReason: ${lookup.info.previewReason.trim()}`
+			: '';
+
 	throw new Error(
 		`TIDAL returned a 30-second preview clip instead of the full track ` +
-			`(assetPresentation: PREVIEW). Track ${context.trackId} may not be available in ` +
+			`(assetPresentation: PREVIEW${previewReason}). Track ${context.trackId} may not be available in ` +
 			`${context.quality} quality on this account.`
 	);
 }
